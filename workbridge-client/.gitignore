@@ -1,0 +1,19 @@
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Environment
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# Vercel
+.vercel
+
+# Debug
+npm-debug.log*
+next-debug.log*

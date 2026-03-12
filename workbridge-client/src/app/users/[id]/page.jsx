@@ -1,0 +1,132 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import api from '@/lib/api';
+import Card from '@/components/ui/Card';
+
+export default function UserProfilePage() {
+  const { id } = useParams();
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get(`/api/users/${id}`)
+      .then(({ data }) => setUser(data))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (!user) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">사용자를 찾을 수 없습니다</div>;
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <Card className="p-6 mb-6">
+        <div className="flex items-start gap-4">
+          <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
+            {user.profileImage ? (
+              <img src={user.profileImage} alt={user.name} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-primary-700 font-bold text-xl">{user.name?.[0]?.toUpperCase()}</span>
+            )}
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-bold text-gray-900">{user.name}</h1>
+              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">
+                {user.role === 'CLIENT' ? '의뢰인' : '프리랜서'}
+              </span>
+            </div>
+            {user.avgRating !== null && (
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-yellow-400">★</span>
+                <span className="text-sm font-medium">{user.avgRating?.toFixed(1)}</span>
+                <span className="text-sm text-gray-500">({user.reviewCount}개 리뷰)</span>
+              </div>
+            )}
+            {user.bio && <p className="text-gray-600 mt-2 text-sm">{user.bio}</p>}
+          </div>
+        </div>
+
+        {user.role === 'FREELANCER' && (
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              {user.experienceYears && (
+                <div>
+                  <span className="text-gray-500">경력</span>
+                  <span className="ml-2 font-medium">{user.experienceYears}년</span>
+                </div>
+              )}
+              {user.hourlyRate && (
+                <div>
+                  <span className="text-gray-500">시간당 단가</span>
+                  <span className="ml-2 font-medium">{user.hourlyRate?.toLocaleString()}원</span>
+                </div>
+              )}
+            </div>
+            {user.skills?.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {user.skills.map((skill) => (
+                  <span key={skill} className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">{skill}</span>
+                ))}
+              </div>
+            )}
+            {user.portfolioUrl && (
+              <a href={user.portfolioUrl} target="_blank" rel="noopener noreferrer"
+                className="inline-block mt-3 text-sm text-primary-600 hover:text-primary-700">
+                포트폴리오 보기 →
+              </a>
+            )}
+          </div>
+        )}
+
+        {user.role === 'CLIENT' && (
+          <div className="mt-4 pt-4 border-t border-gray-100 text-sm">
+            {user.companyName && <p className="text-gray-600">🏢 {user.companyName}</p>}
+            {user.businessField && <p className="text-gray-600">💼 {user.businessField}</p>}
+            {user.website && (
+              <a href={user.website} target="_blank" rel="noopener noreferrer"
+                className="text-primary-600 hover:text-primary-700">
+                🌐 {user.website}
+              </a>
+            )}
+          </div>
+        )}
+      </Card>
+
+      {/* Reviews */}
+      {user.receivedReviews?.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">리뷰</h2>
+          <div className="space-y-3">
+            {user.receivedReviews.map((review) => (
+              <Card key={review.id} className="p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-sm font-medium text-gray-600">
+                    {review.reviewer?.name?.[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm text-gray-900">{review.reviewer?.name}</span>
+                      <div className="flex text-yellow-400 text-sm">{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</div>
+                    </div>
+                    <p className="text-sm text-gray-700 mt-1">{review.content}</p>
+                    {review.tags?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {review.tags.map((tag) => (
+                          <span key={tag} className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">{new Date(review.createdAt).toLocaleDateString('ko-KR')}</p>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

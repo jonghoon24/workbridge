@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLIENT
+  FREELANCER
+}
+
+enum ProjectStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  CLOSED
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum ContractStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  REFUNDED
+  FAILED
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  password        String?
+  name            String
+  role            Role
+  profileImage    String?
+  bio             String?
+  companyName     String?
+  businessField   String?
+  website         String?
+  skills          String[]
+  experienceYears Int?
+  hourlyRate      Float?
+  portfolioUrl    String?
+  googleId        String?   @unique
+  createdAt       DateTime  @default(now())
+  deletedAt       DateTime?
+
+  clientProjects    Project[]     @relation("ClientProjects")
+  applications      Application[] @relation("FreelancerApplications")
+  clientContracts   Contract[]    @relation("ClientContracts")
+  freelancerContracts Contract[]  @relation("FreelancerContracts")
+  clientPayments    Payment[]     @relation("ClientPayments")
+  givenReviews      Review[]      @relation("ReviewerReviews")
+  receivedReviews   Review[]      @relation("RevieweeReviews")
+}
+
+model Project {
+  id             String        @id @default(uuid())
+  title          String
+  description    String
+  category       String
+  budget         Float
+  deadline       DateTime
+  requiredSkills String[]
+  status         ProjectStatus @default(OPEN)
+  clientId       String
+  client         User          @relation("ClientProjects", fields: [clientId], references: [id])
+  deletedAt      DateTime?
+  createdAt      DateTime      @default(now())
+
+  applications    Application[]
+  contract        Contract?
+  pricingAnalysis PricingAnalysis?
+}
+
+model Application {
+  id               String            @id @default(uuid())
+  projectId        String
+  project          Project           @relation(fields: [projectId], references: [id])
+  freelancerId     String
+  freelancer       User              @relation("FreelancerApplications", fields: [freelancerId], references: [id])
+  coverLetter      String
+  expectedRate     Float
+  expectedDuration String
+  status           ApplicationStatus @default(PENDING)
+  createdAt        DateTime          @default(now())
+
+  contract Contract?
+
+  @@unique([projectId, freelancerId])
+}
+
+model Contract {
+  id              String         @id @default(uuid())
+  projectId       String         @unique
+  project         Project        @relation(fields: [projectId], references: [id])
+  applicationId   String         @unique
+  application     Application    @relation(fields: [applicationId], references: [id])
+  clientId        String
+  client          User           @relation("ClientContracts", fields: [clientId], references: [id])
+  freelancerId    String
+  freelancer      User           @relation("FreelancerContracts", fields: [freelancerId], references: [id])
+  amount          Float
+  startDate       DateTime
+  endDate         DateTime
+  clientSigned    Boolean        @default(false)
+  freelancerSigned Boolean       @default(false)
+  status          ContractStatus @default(PENDING)
+  createdAt       DateTime       @default(now())
+
+  payment Payment?
+  reviews Review[]
+}
+
+model Payment {
+  id         String        @id @default(uuid())
+  contractId String        @unique
+  contract   Contract      @relation(fields: [contractId], references: [id])
+  clientId   String
+  client     User          @relation("ClientPayments", fields: [clientId], references: [id])
+  amount     Float
+  status     PaymentStatus @default(PENDING)
+  paymentKey String?
+  orderId    String        @unique
+  createdAt  DateTime      @default(now())
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+  reviewerId String
+  reviewer   User     @relation("ReviewerReviews", fields: [reviewerId], references: [id])
+  revieweeId String
+  reviewee   User     @relation("RevieweeReviews", fields: [revieweeId], references: [id])
+  rating     Int
+  content    String
+  tags       String[]
+  createdAt  DateTime @default(now())
+
+  @@unique([contractId, reviewerId])
+}
+
+model PricingAnalysis {
+  id          String   @id @default(uuid())
+  projectId   String   @unique
+  project     Project  @relation(fields: [projectId], references: [id])
+  features    Json
+  totalAmount Float
+  summary     String?
+  marketReference String?
+  createdAt   DateTime @default(now())
+}
