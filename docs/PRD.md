@@ -7,7 +7,7 @@
 |------|------|
 | 기술 스택 | JavaScript, React, Express, PostgreSQL, Prisma |
 | 외부 API | OpenAI API, 토스페이먼츠, OAuth 2.0 |
-| 배포 | Vercel (프론트엔드), Render (백엔드) |
+| 배포 | Vercel (프론트엔드 + 백엔드) |
 | 협업 도구 | Git/GitHub, 칸반 보드 |
 | 총 수업시간 | 198시간 (실기 중심) |
 
@@ -40,7 +40,7 @@
 - React와 Express를 사용하여 풀스택 웹 애플리케이션을 구현할 수 있다.
 - OAuth, PG 결제, OpenAI API 등 외부 Open API를 연동할 수 있다.
 - 칸반 보드와 스프린트 계획을 통해 애자일 개발 프로세스를 경험한다.
-- 완성된 서비스를 Vercel/Render에 배포하고 운영할 수 있다.
+- 완성된 서비스를 Vercel에 배포하고 운영할 수 있다.
 
 ### 1.3 최종 산출물
 
@@ -341,7 +341,7 @@
 | AI | OpenAI API | gpt-4o-mini 권장 | 비용 절약을 위해 mini 모델 사용 |
 | 결제 | 토스페이먼츠 | 최신 SDK | 테스트 환경만 사용 |
 | 배포 (FE) | Vercel | - | GitHub 연동 자동 배포 |
-| 배포 (BE) | Render | - | Free tier 사용 가능 |
+| 배포 (BE) | Vercel | - | Serverless Functions 사용 |
 
 ### 8.1 환경 변수 관리 규칙
 
