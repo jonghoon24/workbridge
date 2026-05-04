@@ -14,6 +14,7 @@ function AuthCallbackContent() {
   useEffect(() => {
     const token = searchParams.get('token');
     const error = searchParams.get('error');
+    const needsRoleSelection = searchParams.get('needsRoleSelection') === 'true';
 
     if (error) {
       router.push('/login?error=oauth_failed');
@@ -27,7 +28,7 @@ function AuthCallbackContent() {
       api.get('/api/users/me')
         .then(({ data }) => {
           setAuth(data, token);
-          router.push('/');
+          router.push(needsRoleSelection ? '/auth/select-role' : '/');
         })
         .catch(() => {
           localStorage.removeItem('accessToken');

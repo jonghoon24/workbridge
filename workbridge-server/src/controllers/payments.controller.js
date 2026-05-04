@@ -58,6 +58,11 @@ export async function confirmPayment(req, res, next) {
       throw new AppError('paymentKey, orderId, and amount are required', 400);
     }
 
+    const requestedAmount = Number(amount);
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      throw new AppError('Invalid payment amount', 400);
+    }
+
     const payment = await prisma.payment.findUnique({
       where: { orderId },
     });
@@ -70,16 +75,28 @@ export async function confirmPayment(req, res, next) {
       throw new AppError('Not authorized', 403);
     }
 
+    if (payment.status !== 'PENDING') {
+      throw new AppError('Payment has already been processed', 409);
+    }
+
+    if (requestedAmount !== payment.amount) {
+      throw new AppError('Payment amount does not match the contract amount', 400);
+    }
+
     // Verify with Toss Payments
     try {
       const secretKey = process.env.TOSS_SECRET_KEY;
       const credentials = Buffer.from(`${secretKey}:`).toString('base64');
 
-      await axios.post(
+      const { data: tossPayment } = await axios.post(
         'https://api.tosspayments.com/v1/payments/confirm',
-        { paymentKey, orderId, amount },
+        { paymentKey, orderId, amount: requestedAmount },
         { headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/json' } }
       );
+
+      if (Number(tossPayment.totalAmount) !== payment.amount || tossPayment.status !== 'DONE') {
+        throw new AppError('Payment verification failed', 400);
+      }
 
       const updated = await prisma.payment.update({
         where: { orderId },

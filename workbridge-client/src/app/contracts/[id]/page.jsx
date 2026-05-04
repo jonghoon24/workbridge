@@ -42,9 +42,7 @@ export default function ContractPage() {
 
   async function handleCompleteContract() {
     try {
-      await api.patch(`/api/projects/${contract.projectId}/status`, { status: 'COMPLETED' });
-      await api.patch(`/api/contracts/${id}`, { status: 'COMPLETED' });
-      const { data } = await api.get(`/api/contracts/${id}`);
+      const { data } = await api.patch(`/api/contracts/${id}`, { status: 'COMPLETED' });
       setContract(data);
       alert('프로젝트가 완료되었습니다!');
     } catch (err) {
