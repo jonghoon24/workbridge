@@ -7,3 +7,15 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Environment
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Local agent/tooling
+.agents/
+.claude/
+skills-lock.json
