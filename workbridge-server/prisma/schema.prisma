@@ -45,6 +45,7 @@ model User {
   password        String?
   name            String
   role            Role
+  roleSelected    Boolean   @default(true)
   profileImage    String?
   bio             String?
   companyName     String?

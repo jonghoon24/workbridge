@@ -78,6 +78,7 @@ export async function getApplications(req, res, next) {
             portfolioUrl: true,
           },
         },
+        contract: { select: { id: true, status: true } },
       },
       orderBy: { createdAt: 'desc' },
     });

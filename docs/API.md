@@ -8,6 +8,7 @@
 | POST | `/api/auth/login` | 로그인 |
 | POST | `/api/auth/logout` | 로그아웃 |
 | POST | `/api/auth/refresh` | 토큰 갱신 |
+| POST | `/api/auth/select-role` | OAuth 최초 로그인 역할 선택 |
 | GET | `/api/auth/google` | Google OAuth 시작 |
 | GET | `/api/auth/google/callback` | Google OAuth 콜백 |
 
@@ -56,4 +57,4 @@
 | Method | Endpoint | 설명 |
 | --- | --- | --- |
 | POST | `/api/reviews` | 리뷰 작성 |
-| GET | `/api/reviews/users/:id` | 사용자 리뷰 조회 |
+| GET | `/api/users/:id/reviews` | 사용자 리뷰 조회 |

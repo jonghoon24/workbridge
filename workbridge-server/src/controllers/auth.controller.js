@@ -21,6 +21,10 @@ function issueTokens(user) {
   return { accessToken, refreshToken };
 }
 
+function authUserPayload(user) {
+  return { id: user.id, email: user.email, name: user.name, role: user.role };
+}
+
 export async function signup(req, res, next) {
   try {
     const { email, password, name, role } = req.body;
@@ -48,7 +52,7 @@ export async function signup(req, res, next) {
 
     res.status(201).json({
       accessToken,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: authUserPayload(user),
     });
   } catch (err) {
     next(err);
@@ -78,7 +82,7 @@ export async function login(req, res, next) {
 
     res.json({
       accessToken,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: authUserPayload(user),
     });
   } catch (err) {
     next(err);
@@ -163,11 +167,14 @@ export async function googleCallback(req, res, next) {
       where: { OR: [{ googleId }, { email }] },
     });
 
+    let needsRoleSelection = false;
+
     if (user) {
       user = await prisma.user.update({
         where: { id: user.id },
         data: { googleId, profileImage: user.profileImage || picture },
       });
+      needsRoleSelection = !user.roleSelected;
     } else {
       user = await prisma.user.create({
         data: {
@@ -175,17 +182,56 @@ export async function googleCallback(req, res, next) {
           name,
           googleId,
           profileImage: picture,
-          role: 'FREELANCER', // Default role, user can change in profile
+          role: 'FREELANCER',
+          roleSelected: false,
         },
       });
+      needsRoleSelection = true;
     }
 
     const { accessToken, refreshToken } = issueTokens(user);
     setRefreshTokenCookie(res, refreshToken);
 
-    res.redirect(`${process.env.CLIENT_URL}/auth/callback?token=${accessToken}`);
+    const params = new URLSearchParams({
+      token: accessToken,
+      needsRoleSelection: String(needsRoleSelection),
+    });
+
+    res.redirect(`${process.env.CLIENT_URL}/auth/callback?${params}`);
   } catch (err) {
     console.error('Google OAuth error:', err);
     res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
+  }
+}
+
+export async function selectRole(req, res, next) {
+  try {
+    const { role } = req.body;
+
+    if (!['CLIENT', 'FREELANCER'].includes(role)) {
+      throw new AppError('Role must be CLIENT or FREELANCER', 400);
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
+
+    if (user.roleSelected) {
+      throw new AppError('Role has already been selected', 400);
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: { role, roleSelected: true },
+    });
+
+    const { accessToken, refreshToken } = issueTokens(updated);
+    setRefreshTokenCookie(res, refreshToken);
+
+    res.json({ accessToken, user: authUserPayload(updated) });
+  } catch (err) {
+    next(err);
   }
 }

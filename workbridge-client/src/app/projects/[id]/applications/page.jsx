@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button';
 
 export default function ApplicationsPage() {
   const { id } = useParams();
+  const router = useRouter();
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(null);
@@ -26,10 +27,12 @@ export default function ApplicationsPage() {
   async function handleUpdate(appId, status) {
     setUpdating(appId);
     try {
-      await api.patch(`/api/projects/${id}/applications/${appId}`, { status });
+      const { data: result } = await api.patch(`/api/projects/${id}/applications/${appId}`, { status });
       const { data } = await api.get(`/api/projects/${id}/applications`);
       setApplications(data);
-      if (status === 'ACCEPTED') alert('지원자를 수락했습니다. 계약서가 생성되었습니다.');
+      if (status === 'ACCEPTED' && result.contract?.id) {
+        router.push(`/contracts/${result.contract.id}`);
+      }
     } catch (err) {
       alert(err.response?.data?.error?.message || '처리에 실패했습니다');
     } finally {
@@ -93,6 +96,11 @@ export default function ApplicationsPage() {
                       거절
                     </Button>
                   </div>
+                )}
+                {app.contract?.id && (
+                  <Link href={`/contracts/${app.contract.id}`} className="ml-4">
+                    <Button size="sm" variant="secondary">계약서 보기</Button>
+                  </Link>
                 )}
               </div>
             </Card>

@@ -145,6 +145,7 @@ export async function getMyApplications(req, res, next) {
     const applications = await prisma.application.findMany({
       where: { freelancerId: req.user.id },
       include: {
+        contract: { select: { id: true, status: true } },
         project: {
           select: {
             id: true,

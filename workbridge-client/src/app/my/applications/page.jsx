@@ -48,6 +48,11 @@ export default function MyApplicationsPage() {
                     {app.project?.category} · {app.project?.client?.companyName || app.project?.client?.name}
                   </p>
                   <p className="text-sm text-gray-600 mt-2 line-clamp-2">{app.coverLetter}</p>
+                  {app.contract?.id && (
+                    <Link href={`/contracts/${app.contract.id}`} className="inline-block mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium">
+                      계약서 보기 →
+                    </Link>
+                  )}
                 </div>
                 <div className="text-right ml-4">
                   <p className="text-sm font-medium text-gray-900">
