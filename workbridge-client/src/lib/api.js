@@ -53,11 +53,7 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const { data } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
+        const { data } = await axios.post('/api/auth/refresh', {}, { withCredentials: true });
 
         const { accessToken } = data;
         if (typeof window !== 'undefined') {

@@ -14,5 +14,5 @@
 ## 배포 후 업데이트
 
 - 백엔드 `CLIENT_URL` → 프론트엔드 Vercel URL
-- 백엔드 `GOOGLE_CALLBACK_URL` → 백엔드 Vercel URL + `/api/auth/google/callback`
+- 백엔드 `GOOGLE_CALLBACK_URL` → 프론트엔드 Vercel URL + `/api/auth/google/callback`
 - 프론트엔드 `NEXT_PUBLIC_API_URL` → 백엔드 Vercel URL

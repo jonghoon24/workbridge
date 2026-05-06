@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import useAuthStore from '@/store/authStore';
-import api from '@/lib/api';
+import authApi from '@/lib/authApi';
 
 export default function LoginForm() {
   const router = useRouter();
@@ -24,7 +24,7 @@ export default function LoginForm() {
     setLoading(true);
 
     try {
-      const { data } = await api.post('/api/auth/login', form);
+      const { data } = await authApi.post('/api/auth/login', form);
       setAuth(data.user, data.accessToken);
       router.push(redirect);
     } catch (err) {
@@ -35,7 +35,7 @@ export default function LoginForm() {
   }
 
   function handleGoogleLogin() {
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/google`;
+    window.location.href = '/api/auth/google';
   }
 
   return (
