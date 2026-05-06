@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useAuthStore from '@/store/authStore';
-import api from '@/lib/api';
+import authApi from '@/lib/authApi';
 
 export default function Header() {
   const router = useRouter();
@@ -17,7 +17,7 @@ export default function Header() {
 
   async function handleLogout() {
     try {
-      await api.post('/api/auth/logout');
+      await authApi.post('/api/auth/logout');
     } catch {}
     clearAuth();
     router.push('/');

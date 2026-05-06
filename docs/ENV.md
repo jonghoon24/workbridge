@@ -12,7 +12,7 @@
 | `JWT_REFRESH_EXPIRES_IN` | Refresh Token 만료 시간 (기본 7d) |
 | `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 |
-| `GOOGLE_CALLBACK_URL` | Google OAuth 콜백 URL |
+| `GOOGLE_CALLBACK_URL` | Google OAuth 콜백 URL. 프론트엔드 `/api/auth/google/callback` URL 사용 |
 | `OPENAI_API_KEY` | OpenAI API 키 |
 | `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키 (test_sk_...) |
 | `CLIENT_URL` | 프론트엔드 URL (기본 http://localhost:3000) |
@@ -38,7 +38,7 @@
 
 1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트 생성
 2. APIs & Services > Credentials에서 OAuth 2.0 클라이언트 ID 생성
-3. 승인된 리디렉션 URI에 `http://localhost:4000/api/auth/google/callback` 추가
+3. 승인된 리디렉션 URI에 `http://localhost:3000/api/auth/google/callback` 추가
 
 ### 토스페이먼츠
 

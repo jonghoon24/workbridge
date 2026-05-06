@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import useAuthStore from '@/store/authStore';
-import api from '@/lib/api';
+import authApi from '@/lib/authApi';
 
 export default function SignupForm() {
   const router = useRouter();
@@ -35,7 +35,7 @@ export default function SignupForm() {
 
     setLoading(true);
     try {
-      const { data } = await api.post('/api/auth/signup', form);
+      const { data } = await authApi.post('/api/auth/signup', form);
       setAuth(data.user, data.accessToken);
       router.push('/');
     } catch (err) {

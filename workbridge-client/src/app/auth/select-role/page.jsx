@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import api from '@/lib/api';
+import authApi from '@/lib/authApi';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
@@ -38,7 +38,7 @@ export default function SelectRolePage() {
 
     setLoading(true);
     try {
-      const { data } = await api.post('/api/auth/select-role', { role });
+      const { data } = await authApi.post('/api/auth/select-role', { role });
       setAuth(data.user, data.accessToken);
       router.push('/profile');
     } catch (err) {
