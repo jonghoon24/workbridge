@@ -14,10 +14,40 @@ import { errorHandler } from './middlewares/errorHandler.js';
 
 const app = express();
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+const parseOrigins = (value) => (value || '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+const allowedOrigins = new Set([
+  ...parseOrigins(process.env.CLIENT_URL),
+  ...parseOrigins(process.env.CORS_ORIGINS),
+  ...(!isProduction ? ['http://localhost:3000'] : []),
+]);
+
+const hasAllowedOrigins = allowedOrigins.size > 0;
+
+if (isProduction && !hasAllowedOrigins) {
+  console.warn('CLIENT_URL or CORS_ORIGINS must be set for browser CORS requests.');
+}
+
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
+  origin(origin, callback) {
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.has(origin.replace(/\/$/, ''))) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
   credentials: true,
 }));
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -33,7 +63,7 @@ app.use('/api/reviews', reviewRoutes);
 
 app.use(errorHandler);
 
-if (process.env.NODE_ENV !== 'production') {
+if (!isProduction) {
   const PORT = process.env.PORT || 4000;
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
