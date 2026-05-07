@@ -10,7 +10,10 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
+import ProjectCard from '@/components/projects/ProjectCard';
 import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
+
+const RECOMMENDATION_LIMIT = 3;
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
@@ -23,6 +26,8 @@ export default function ProjectDetailPage() {
   const [applyForm, setApplyForm] = useState({ coverLetter: '', expectedRate: '', expectedDuration: '' });
   const [applyLoading, setApplyLoading] = useState(false);
   const [applyError, setApplyError] = useState('');
+  const [recommendations, setRecommendations] = useState([]);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
 
   useEffect(() => {
     const store = useAuthStore.getState();
@@ -35,6 +40,72 @@ export default function ProjectDetailPage() {
       .catch(() => router.push('/projects'))
       .finally(() => setLoading(false));
   }, [id, router]);
+
+  useEffect(() => {
+    if (!project?.id) {
+      setRecommendations([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function fetchRecommendations() {
+      setRecommendationsLoading(true);
+
+      const nextRecommendations = [];
+      const seenIds = new Set([project.id]);
+      const appendProjects = (projects = []) => {
+        for (const item of projects) {
+          if (!item?.id || seenIds.has(item.id)) continue;
+          seenIds.add(item.id);
+          nextRecommendations.push(item);
+          if (nextRecommendations.length >= RECOMMENDATION_LIMIT) return;
+        }
+      };
+
+      try {
+        if (project.category) {
+          const categoryParams = new URLSearchParams({
+            category: project.category,
+            status: 'ALL',
+            limit: String(RECOMMENDATION_LIMIT + 1),
+            sort: 'latest',
+          });
+          const { data } = await api.get(`/api/projects?${categoryParams}`);
+          appendProjects(data.projects);
+        }
+
+        if (nextRecommendations.length < RECOMMENDATION_LIMIT) {
+          const fallbackParams = new URLSearchParams({
+            status: 'ALL',
+            limit: String(RECOMMENDATION_LIMIT + 4),
+            sort: 'latest',
+          });
+          const { data } = await api.get(`/api/projects?${fallbackParams}`);
+          appendProjects(data.projects);
+        }
+
+        if (!cancelled) {
+          setRecommendations(nextRecommendations);
+        }
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          setRecommendations([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setRecommendationsLoading(false);
+        }
+      }
+    }
+
+    fetchRecommendations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [project?.id, project?.category]);
 
   async function handleApply(e) {
     e.preventDefault();
@@ -186,6 +257,39 @@ export default function ProjectDetailPage() {
           </Card>
         </div>
       </div>
+
+      {(recommendationsLoading || recommendations.length > 0) && (
+        <section className="mt-10">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">추천 프로젝트</h2>
+              <p className="text-sm text-gray-500 mt-1">비슷한 분야의 다른 프로젝트를 확인해보세요</p>
+            </div>
+            {project.category && (
+              <Link
+                href={`/projects?category=${encodeURIComponent(project.category)}&status=ALL`}
+                className="text-sm font-medium text-primary-700 hover:text-primary-800"
+              >
+                같은 분야 더 보기
+              </Link>
+            )}
+          </div>
+
+          {recommendationsLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: RECOMMENDATION_LIMIT }).map((_, index) => (
+                <div key={index} className="h-48 bg-gray-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {recommendations.map((recommendedProject) => (
+                <ProjectCard key={recommendedProject.id} project={recommendedProject} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Apply Modal */}
       <Modal isOpen={applyModal} onClose={() => setApplyModal(false)} title="프로젝트 지원">
