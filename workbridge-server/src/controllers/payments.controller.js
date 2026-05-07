@@ -28,8 +28,35 @@ export async function createPayment(req, res, next) {
       throw new AppError('Contract must be active to proceed with payment', 400);
     }
 
+    if (contract.payment?.status === 'COMPLETED') {
+      throw new AppError('Payment already completed for this contract', 409);
+    }
+
+    if (contract.payment?.status === 'PENDING') {
+      return res.json({
+        orderId: contract.payment.orderId,
+        amount: contract.payment.amount,
+        paymentId: contract.payment.id,
+      });
+    }
+
+    if (contract.payment?.status === 'FAILED') {
+      const orderId = uuidv4();
+      const payment = await prisma.payment.update({
+        where: { id: contract.payment.id },
+        data: {
+          amount: contract.amount,
+          status: 'PENDING',
+          paymentKey: null,
+          orderId,
+        },
+      });
+
+      return res.json({ orderId, amount: payment.amount, paymentId: payment.id });
+    }
+
     if (contract.payment) {
-      throw new AppError('Payment already exists for this contract', 409);
+      throw new AppError('Payment cannot be created for this contract', 409);
     }
 
     const orderId = uuidv4();

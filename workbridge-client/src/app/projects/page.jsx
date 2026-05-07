@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import useProjectStore from '@/store/projectStore';
 import ProjectCard from '@/components/projects/ProjectCard';
 import ProjectFilters from '@/components/projects/ProjectFilters';
@@ -15,15 +16,53 @@ function useDebounce(value, delay) {
   return debounced;
 }
 
-export default function ProjectsPage() {
-  const { filters, page, setFilters, setPage } = useProjectStore();
+function ProjectsContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { filters, page, setFilters, setPage, setFiltersAndPage } = useProjectStore();
   const debouncedSearch = useDebounce(filters.search, 300);
 
   const [projects, setProjects] = useState([]);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  useEffect(() => {
+    if (initialized) return;
+
+    const queryPage = Number.parseInt(searchParams.get('page') || '1', 10);
+    const querySort = searchParams.get('sort') || 'latest';
+
+    setFiltersAndPage({
+      search: searchParams.get('search') || '',
+      category: searchParams.get('category') || '',
+      minBudget: searchParams.get('minBudget') || '',
+      maxBudget: searchParams.get('maxBudget') || '',
+      skills: searchParams.get('skills') || '',
+      sort: ['latest', 'deadline', 'budget'].includes(querySort) ? querySort : 'latest',
+    }, Number.isInteger(queryPage) && queryPage > 0 ? queryPage : 1);
+    setInitialized(true);
+  }, [initialized, searchParams, setFiltersAndPage]);
+
+  useEffect(() => {
+    if (!initialized) return;
+
+    const params = new URLSearchParams();
+    if (filters.search) params.set('search', filters.search);
+    if (filters.category) params.set('category', filters.category);
+    if (filters.minBudget) params.set('minBudget', filters.minBudget);
+    if (filters.maxBudget) params.set('maxBudget', filters.maxBudget);
+    if (filters.skills) params.set('skills', filters.skills);
+    if (filters.sort !== 'latest') params.set('sort', filters.sort);
+    if (page > 1) params.set('page', String(page));
+
+    const query = params.toString();
+    router.replace(query ? `/projects?${query}` : '/projects', { scroll: false });
+  }, [filters, initialized, page, router]);
 
   const fetchProjects = useCallback(async () => {
+    if (!initialized) return;
+
     setLoading(true);
     try {
       const params = new URLSearchParams({
@@ -45,7 +84,7 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filters.category, filters.minBudget, filters.maxBudget, filters.skills, filters.sort, page]);
+  }, [debouncedSearch, filters.category, filters.minBudget, filters.maxBudget, filters.skills, filters.sort, initialized, page]);
 
   useEffect(() => {
     fetchProjects();
@@ -134,5 +173,13 @@ export default function ProjectsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ProjectsPage() {
+  return (
+    <Suspense fallback={<div className="max-w-7xl mx-auto px-4 py-8 text-center">로딩 중...</div>}>
+      <ProjectsContent />
+    </Suspense>
   );
 }

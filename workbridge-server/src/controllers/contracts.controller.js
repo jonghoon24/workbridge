@@ -6,7 +6,13 @@ const contractInclude = {
   client: { select: { id: true, name: true, email: true, companyName: true, profileImage: true } },
   freelancer: { select: { id: true, name: true, email: true, skills: true, profileImage: true } },
   payment: true,
-  reviews: true,
+  reviews: {
+    include: {
+      reviewer: { select: { id: true, name: true, profileImage: true } },
+      reviewee: { select: { id: true, name: true, profileImage: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  },
 };
 
 export async function getContract(req, res, next) {
@@ -49,20 +55,19 @@ export async function signContract(req, res, next) {
       ? { clientSigned: true }
       : { freelancerSigned: true };
 
-    await prisma.contract.update({
+    const signed = await prisma.contract.update({
       where: { id: req.params.id },
       data: updateData,
     });
 
-    const signed = await prisma.contract.findUnique({
-      where: { id: req.params.id },
-    });
-
+    // Activate contract if both parties signed
     if (signed.clientSigned && signed.freelancerSigned) {
-      await prisma.contract.update({
+      const updated = await prisma.contract.update({
         where: { id: req.params.id },
         data: { status: 'ACTIVE' },
+        include: contractInclude,
       });
+      return res.json(updated);
     }
 
     const updated = await prisma.contract.findUnique({
@@ -86,7 +91,7 @@ export async function completeContract(req, res, next) {
 
     const contract = await prisma.contract.findUnique({
       where: { id: req.params.id },
-      include: { payment: true, project: true },
+      include: { payment: true },
     });
 
     if (!contract) {
@@ -102,7 +107,7 @@ export async function completeContract(req, res, next) {
     }
 
     if (contract.payment?.status !== 'COMPLETED') {
-      throw new AppError('Payment must be completed before closing the contract', 400);
+      throw new AppError('Payment must be completed before completing the contract', 400);
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -111,13 +116,9 @@ export async function completeContract(req, res, next) {
         data: { status: 'COMPLETED' },
       });
 
-      await tx.contract.update({
+      return tx.contract.update({
         where: { id: contract.id },
         data: { status: 'COMPLETED' },
-      });
-
-      return tx.contract.findUnique({
-        where: { id: contract.id },
         include: contractInclude,
       });
     });

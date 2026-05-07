@@ -60,6 +60,16 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleCloseProject() {
+    if (!confirm('프로젝트 모집을 마감하시겠습니까?')) return;
+    try {
+      const { data } = await api.patch(`/api/projects/${id}/status`, { status: 'CLOSED' });
+      setProject((prev) => ({ ...prev, status: data.status }));
+    } catch (err) {
+      alert(err.response?.data?.error?.message || '모집 마감에 실패했습니다');
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -77,6 +87,7 @@ export default function ProjectDetailPage() {
   const isOwner = user?.id === project.clientId;
   const isFreelancer = user?.role === 'FREELANCER';
   const canApply = isFreelancer && project.status === 'OPEN';
+  const canClose = isOwner && project.status === 'OPEN';
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -103,6 +114,9 @@ export default function ProjectDetailPage() {
               <Link href={`/projects/${id}/analysis`}>
                 <Button variant="secondary" size="sm">AI 분석</Button>
               </Link>
+              {canClose && (
+                <Button variant="secondary" size="sm" onClick={handleCloseProject}>모집 마감</Button>
+              )}
               <Button variant="danger" size="sm" onClick={handleDelete}>삭제</Button>
             </>
           )}
