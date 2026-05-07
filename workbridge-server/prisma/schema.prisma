@@ -61,13 +61,14 @@ model User {
   createdAt        DateTime  @default(now())
   deletedAt        DateTime?
 
-  clientProjects      Project[]     @relation("ClientProjects")
-  applications        Application[] @relation("FreelancerApplications")
-  clientContracts     Contract[]    @relation("ClientContracts")
-  freelancerContracts Contract[]    @relation("FreelancerContracts")
-  clientPayments      Payment[]     @relation("ClientPayments")
-  givenReviews        Review[]      @relation("ReviewerReviews")
-  receivedReviews     Review[]      @relation("RevieweeReviews")
+  clientProjects      Project[]         @relation("ClientProjects")
+  applications        Application[]     @relation("FreelancerApplications")
+  clientContracts     Contract[]        @relation("ClientContracts")
+  freelancerContracts Contract[]        @relation("FreelancerContracts")
+  clientPayments      Payment[]         @relation("ClientPayments")
+  givenReviews        Review[]          @relation("ReviewerReviews")
+  receivedReviews     Review[]          @relation("RevieweeReviews")
+  projectBookmarks    ProjectBookmark[]
 }
 
 model Project {
@@ -87,6 +88,19 @@ model Project {
   applications    Application[]
   contract        Contract?
   pricingAnalysis PricingAnalysis?
+  bookmarks       ProjectBookmark[]
+}
+
+model ProjectBookmark {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId, createdAt])
 }
 
 model Application {

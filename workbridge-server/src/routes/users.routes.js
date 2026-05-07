@@ -4,6 +4,7 @@ import {
   updateMe,
   getUserById,
   getMyApplications,
+  getMyBookmarks,
   getMyProjects,
 } from '../controllers/users.controller.js';
 import { getUserReviews } from '../controllers/reviews.controller.js';
@@ -15,6 +16,7 @@ const router = Router();
 router.get('/me', authenticate, getMe);
 router.patch('/me', authenticate, upload.single('profileImage'), updateMe);
 router.get('/me/applications', authenticate, getMyApplications);
+router.get('/me/bookmarks', authenticate, getMyBookmarks);
 router.get('/me/projects', authenticate, getMyProjects);
 router.get('/:id/reviews', getUserReviews);
 router.get('/:id', getUserById);

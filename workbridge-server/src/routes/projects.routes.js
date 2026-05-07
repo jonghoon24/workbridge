@@ -3,6 +3,9 @@ import {
   getProjects,
   createProject,
   getProjectById,
+  getProjectBookmark,
+  createProjectBookmark,
+  deleteProjectBookmark,
   updateProject,
   deleteProject,
   updateProjectStatus,
@@ -14,6 +17,9 @@ const router = Router();
 
 router.get('/', getProjects);
 router.post('/', authenticate, requireRole('CLIENT'), createProject);
+router.get('/:id/bookmark', authenticate, requireRole('FREELANCER'), getProjectBookmark);
+router.post('/:id/bookmark', authenticate, requireRole('FREELANCER'), createProjectBookmark);
+router.delete('/:id/bookmark', authenticate, requireRole('FREELANCER'), deleteProjectBookmark);
 router.get('/:id', getProjectById);
 router.patch('/:id', authenticate, requireRole('CLIENT'), updateProject);
 router.delete('/:id', authenticate, requireRole('CLIENT'), deleteProject);
