@@ -2,6 +2,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import ProjectCard from '@/components/projects/ProjectCard';
 import HeroActions from '@/components/home/HeroActions';
+import ProjectDiscovery from '@/components/home/ProjectDiscovery';
 
 async function getRecentProjects() {
   try {
@@ -32,6 +33,8 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      <ProjectDiscovery />
 
       {/* Features Section */}
       <section className="py-16 bg-white">
