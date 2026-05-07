@@ -185,7 +185,7 @@ async function main() {
       budget: 12000000,
       deadline: new Date('2026-07-31'),
       requiredSkills: ['React Native', 'Node.js', 'Firebase', 'HealthKit'],
-      status: 'OPEN',
+      status: 'UPCOMING',
       clientId: client1.id,
     },
   });

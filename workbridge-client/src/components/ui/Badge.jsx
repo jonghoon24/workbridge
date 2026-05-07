@@ -1,6 +1,7 @@
 'use client';
 
 const variants = {
+  UPCOMING: 'bg-purple-100 text-purple-800',
   OPEN: 'bg-green-100 text-green-800',
   IN_PROGRESS: 'bg-blue-100 text-blue-800',
   COMPLETED: 'bg-gray-100 text-gray-800',
@@ -13,6 +14,7 @@ const variants = {
 };
 
 const statusLabels = {
+  UPCOMING: '모집예정',
   OPEN: '모집중',
   IN_PROGRESS: '진행중',
   COMPLETED: '완료',
