@@ -184,6 +184,38 @@ export async function getMyApplications(req, res, next) {
   }
 }
 
+export async function getMyBookmarks(req, res, next) {
+  try {
+    if (req.user.role !== 'FREELANCER') {
+      throw new AppError('Only freelancers can view their bookmarks', 403);
+    }
+
+    const bookmarks = await prisma.projectBookmark.findMany({
+      where: {
+        userId: req.user.id,
+        project: { deletedAt: null },
+      },
+      include: {
+        project: {
+          include: {
+            client: { select: { id: true, name: true, companyName: true, profileImage: true } },
+            _count: { select: { applications: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(bookmarks.map((bookmark) => ({
+      ...bookmark.project,
+      isBookmarked: true,
+      bookmarkedAt: bookmark.createdAt,
+    })));
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getMyProjects(req, res, next) {
   try {
     if (req.user.role !== 'CLIENT') {

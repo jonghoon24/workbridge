@@ -10,6 +10,7 @@ import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
+import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
@@ -103,6 +104,9 @@ export default function ProjectDetailPage() {
         </div>
 
         <div className="flex gap-2">
+          {isFreelancer && (
+            <ProjectBookmarkButton projectId={id} />
+          )}
           {isOwner && (
             <>
               <Link href={`/projects/${id}/edit`}>

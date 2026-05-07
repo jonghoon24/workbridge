@@ -67,13 +67,22 @@ export default function Header() {
                       내 프로필
                     </Link>
                     {user.role === 'FREELANCER' && (
-                      <Link
-                        href="/my/applications"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={() => setDropdownOpen(false)}
-                      >
-                        내 지원 현황
-                      </Link>
+                      <>
+                        <Link
+                          href="/my/bookmarks"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          내 북마크
+                        </Link>
+                        <Link
+                          href="/my/applications"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          내 지원 현황
+                        </Link>
+                      </>
                     )}
                     {user.role === 'CLIENT' && (
                       <>
