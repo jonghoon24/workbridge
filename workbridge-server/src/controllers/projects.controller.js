@@ -177,6 +177,70 @@ export async function getProjectById(req, res, next) {
   }
 }
 
+export async function getProjectBookmark(req, res, next) {
+  try {
+    const bookmark = await prisma.projectBookmark.findUnique({
+      where: {
+        projectId_userId: {
+          projectId: req.params.id,
+          userId: req.user.id,
+        },
+      },
+      select: { id: true },
+    });
+
+    res.json({ bookmarked: !!bookmark });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function createProjectBookmark(req, res, next) {
+  try {
+    const project = await prisma.project.findFirst({
+      where: { id: req.params.id, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!project) {
+      throw new AppError('Project not found', 404);
+    }
+
+    await prisma.projectBookmark.upsert({
+      where: {
+        projectId_userId: {
+          projectId: req.params.id,
+          userId: req.user.id,
+        },
+      },
+      update: {},
+      create: {
+        projectId: req.params.id,
+        userId: req.user.id,
+      },
+    });
+
+    res.status(201).json({ bookmarked: true });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function deleteProjectBookmark(req, res, next) {
+  try {
+    await prisma.projectBookmark.deleteMany({
+      where: {
+        projectId: req.params.id,
+        userId: req.user.id,
+      },
+    });
+
+    res.json({ bookmarked: false });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function updateProject(req, res, next) {
   try {
     const project = await prisma.project.findFirst({

@@ -11,6 +11,7 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import ProjectCard from '@/components/projects/ProjectCard';
+import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
 
 const RECOMMENDATION_LIMIT = 3;
 
@@ -174,6 +175,9 @@ export default function ProjectDetailPage() {
         </div>
 
         <div className="flex gap-2">
+          {isFreelancer && (
+            <ProjectBookmarkButton projectId={id} />
+          )}
           {isOwner && (
             <>
               <Link href={`/projects/${id}/edit`}>
