@@ -19,6 +19,14 @@ export async function apply(req, res, next) {
       throw new AppError('Project not found', 404);
     }
 
+    if (project.status === 'OPEN' && project.deadline < new Date()) {
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { status: 'CLOSED' },
+      });
+      throw new AppError('Project deadline has passed', 400);
+    }
+
     if (project.status !== 'OPEN') {
       throw new AppError('Project is not accepting applications', 400);
     }

@@ -2,9 +2,52 @@ import prisma from '../lib/prisma.js';
 import openai from '../lib/openai.js';
 import { AppError } from '../lib/errors.js';
 
+async function closeExpiredOpenProjects() {
+  await prisma.project.updateMany({
+    where: {
+      status: 'OPEN',
+      deletedAt: null,
+      deadline: { lt: new Date() },
+    },
+    data: { status: 'CLOSED' },
+  });
+}
+
+function parsePositiveInt(value, field, max = null) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new AppError(`${field} must be a positive integer`, 400);
+  }
+  return max ? Math.min(parsed, max) : parsed;
+}
+
+function parseBudget(value, field) {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new AppError(`${field} must be a non-negative number`, 400);
+  }
+  return parsed;
+}
+
 export async function getProjects(req, res, next) {
   try {
+    await closeExpiredOpenProjects();
+
     const { search, category, minBudget, maxBudget, skills, sort = 'latest', page = 1, limit = 10 } = req.query;
+    const validSorts = ['latest', 'deadline', 'budget'];
+
+    if (!validSorts.includes(sort)) {
+      throw new AppError('sort must be latest, deadline, or budget', 400);
+    }
+
+    const pageNum = parsePositiveInt(page, 'page');
+    const limitNum = parsePositiveInt(limit, 'limit', 50);
+    const minBudgetNum = minBudget ? parseBudget(minBudget, 'minBudget') : null;
+    const maxBudgetNum = maxBudget ? parseBudget(maxBudget, 'maxBudget') : null;
+
+    if (minBudgetNum !== null && maxBudgetNum !== null && minBudgetNum > maxBudgetNum) {
+      throw new AppError('minBudget cannot be greater than maxBudget', 400);
+    }
 
     const where = { deletedAt: null, status: 'OPEN' };
 
@@ -16,14 +59,16 @@ export async function getProjects(req, res, next) {
     }
 
     if (category) where.category = category;
-    if (minBudget || maxBudget) {
+    if (minBudgetNum !== null || maxBudgetNum !== null) {
       where.budget = {};
-      if (minBudget) where.budget.gte = parseFloat(minBudget);
-      if (maxBudget) where.budget.lte = parseFloat(maxBudget);
+      if (minBudgetNum !== null) where.budget.gte = minBudgetNum;
+      if (maxBudgetNum !== null) where.budget.lte = maxBudgetNum;
     }
     if (skills) {
-      const skillArray = skills.split(',').map(s => s.trim());
-      where.requiredSkills = { hasSome: skillArray };
+      const skillArray = skills.split(',').map(s => s.trim()).filter(Boolean);
+      if (skillArray.length > 0) {
+        where.requiredSkills = { hasSome: skillArray };
+      }
     }
 
     const orderBy = sort === 'deadline'
@@ -32,8 +77,6 @@ export async function getProjects(req, res, next) {
       ? { budget: 'desc' }
       : { createdAt: 'desc' };
 
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
     const [projects, total] = await Promise.all([
@@ -93,6 +136,8 @@ export async function createProject(req, res, next) {
 
 export async function getProjectById(req, res, next) {
   try {
+    await closeExpiredOpenProjects();
+
     const project = await prisma.project.findFirst({
       where: { id: req.params.id, deletedAt: null },
       include: {

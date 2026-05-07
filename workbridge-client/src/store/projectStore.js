@@ -2,15 +2,17 @@
 
 import { create } from 'zustand';
 
+const defaultFilters = {
+  search: '',
+  category: '',
+  minBudget: '',
+  maxBudget: '',
+  skills: '',
+  sort: 'latest',
+};
+
 const useProjectStore = create((set) => ({
-  filters: {
-    search: '',
-    category: '',
-    minBudget: '',
-    maxBudget: '',
-    skills: '',
-    sort: 'latest',
-  },
+  filters: defaultFilters,
   page: 1,
 
   setFilters: (filters) => set((state) => ({
@@ -20,8 +22,13 @@ const useProjectStore = create((set) => ({
 
   setPage: (page) => set({ page }),
 
+  setFiltersAndPage: (filters, page) => set({
+    filters: { ...defaultFilters, ...filters },
+    page,
+  }),
+
   resetFilters: () => set({
-    filters: { search: '', category: '', minBudget: '', maxBudget: '', skills: '', sort: 'latest' },
+    filters: defaultFilters,
     page: 1,
   }),
 }));

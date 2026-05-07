@@ -42,8 +42,8 @@ export default function PaymentPage() {
         orderId,
         orderName: contract.project?.title || '프로젝트 대금',
         customerName: useAuthStore.getState().user?.name,
-        successUrl: `${window.location.origin}/payments/result?status=success&orderId=${orderId}`,
-        failUrl: `${window.location.origin}/payments/result?status=fail`,
+        successUrl: `${window.location.origin}/payments/result?status=success&orderId=${orderId}&contractId=${id}`,
+        failUrl: `${window.location.origin}/payments/result?status=fail&contractId=${id}`,
       });
     } catch (err) {
       if (err.code !== 'USER_CANCEL') {

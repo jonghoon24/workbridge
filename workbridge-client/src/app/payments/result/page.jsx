@@ -1,17 +1,17 @@
 'use client';
 
 import { useEffect, useState, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
 
 function PaymentResultContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
   const status = searchParams.get('status');
   const orderId = searchParams.get('orderId');
   const paymentKey = searchParams.get('paymentKey');
   const amount = searchParams.get('amount');
+  const contractId = searchParams.get('contractId');
 
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +64,18 @@ function PaymentResultContent() {
           </>
         )}
         <div className="flex gap-3 justify-center">
+          {result === 'success' && contractId && (
+            <Link href={`/contracts/${contractId}`}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium">
+              계약서 보기
+            </Link>
+          )}
+          {result !== 'success' && contractId && (
+            <Link href={`/payments/${contractId}`}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium">
+              다시 결제하기
+            </Link>
+          )}
           <Link href="/my/payments"
             className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 font-medium">
             결제 내역 보기

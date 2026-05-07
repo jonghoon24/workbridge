@@ -11,6 +11,7 @@ const CATEGORIES = ['웹 개발', '모바일 앱', '디자인', 'AI/ML', '데이
 export default function ProjectForm({ initialData = null }) {
   const router = useRouter();
   const isEditing = !!initialData;
+  const hasApplications = isEditing && (initialData?._count?.applications || 0) > 0;
 
   const [form, setForm] = useState({
     title: initialData?.title || '',
@@ -28,8 +29,8 @@ export default function ProjectForm({ initialData = null }) {
     if (!form.title.trim()) errs.title = '프로젝트명을 입력하세요';
     if (!form.description.trim()) errs.description = '프로젝트 설명을 입력하세요';
     if (!form.category) errs.category = '카테고리를 선택하세요';
-    if (!form.budget || isNaN(form.budget)) errs.budget = '올바른 예산을 입력하세요';
-    if (!form.deadline) errs.deadline = '마감일을 선택하세요';
+    if (!hasApplications && (!form.budget || isNaN(form.budget))) errs.budget = '올바른 예산을 입력하세요';
+    if (!hasApplications && !form.deadline) errs.deadline = '마감일을 선택하세요';
     return errs;
   }
 
@@ -44,12 +45,18 @@ export default function ProjectForm({ initialData = null }) {
     setLoading(true);
     try {
       const payload = {
-        ...form,
-        budget: parseFloat(form.budget),
+        title: form.title,
+        description: form.description,
+        category: form.category,
         requiredSkills: form.requiredSkills
           ? form.requiredSkills.split(',').map((s) => s.trim()).filter(Boolean)
           : [],
       };
+
+      if (!hasApplications) {
+        payload.budget = parseFloat(form.budget);
+        payload.deadline = form.deadline;
+      }
 
       if (isEditing) {
         await api.patch(`/api/projects/${initialData.id}`, payload);
@@ -70,6 +77,12 @@ export default function ProjectForm({ initialData = null }) {
       {errors.submit && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           {errors.submit}
+        </div>
+      )}
+
+      {hasApplications && (
+        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
+          지원자가 있는 프로젝트는 예산과 마감일을 변경할 수 없습니다.
         </div>
       )}
 
@@ -126,6 +139,8 @@ export default function ProjectForm({ initialData = null }) {
           onChange={(e) => setForm({ ...form, budget: e.target.value })}
           error={errors.budget}
           placeholder="예: 1000000"
+          disabled={hasApplications}
+          helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다' : undefined}
         />
 
         <Input
@@ -136,6 +151,8 @@ export default function ProjectForm({ initialData = null }) {
           onChange={(e) => setForm({ ...form, deadline: e.target.value })}
           error={errors.deadline}
           min={new Date().toISOString().split('T')[0]}
+          disabled={hasApplications}
+          helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다' : undefined}
         />
       </div>
 
