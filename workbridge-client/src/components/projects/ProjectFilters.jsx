@@ -5,6 +5,13 @@ import useProjectStore from '@/store/projectStore';
 import CheckboxChips from '@/components/ui/CheckboxChips';
 import { PROJECT_CATEGORIES, SKILL_OPTIONS, splitOptionList } from '@/constants/taxonomy';
 
+const PROJECT_STATUS_OPTIONS = [
+  { value: 'OPEN', label: '모집 중' },
+  { value: 'UPCOMING', label: '모집 예정' },
+  { value: 'CLOSED', label: '마감' },
+  { value: 'ALL', label: '전체' },
+];
+
 export default function ProjectFilters() {
   const { filters, setFilters, resetFilters } = useProjectStore();
   const selectedSkills = splitOptionList(filters.skills);
@@ -23,6 +30,19 @@ export default function ProjectFilters() {
         <button onClick={resetFilters} className="text-sm text-primary-600 hover:text-primary-700">
           초기화
         </button>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">모집 상태</label>
+        <select
+          value={filters.status}
+          onChange={(e) => handleChange('status', e.target.value)}
+          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+        >
+          {PROJECT_STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
       </div>
 
       <div>

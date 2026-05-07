@@ -32,6 +32,7 @@ function ProjectsContent() {
 
     const queryPage = Number.parseInt(searchParams.get('page') || '1', 10);
     const querySort = searchParams.get('sort') || 'latest';
+    const queryStatus = searchParams.get('status') || 'OPEN';
 
     setFiltersAndPage({
       search: searchParams.get('search') || '',
@@ -39,6 +40,7 @@ function ProjectsContent() {
       minBudget: searchParams.get('minBudget') || '',
       maxBudget: searchParams.get('maxBudget') || '',
       skills: searchParams.get('skills') || '',
+      status: ['ALL', 'UPCOMING', 'OPEN', 'CLOSED'].includes(queryStatus) ? queryStatus : 'OPEN',
       sort: ['latest', 'deadline', 'budget'].includes(querySort) ? querySort : 'latest',
     }, Number.isInteger(queryPage) && queryPage > 0 ? queryPage : 1);
     setInitialized(true);
@@ -53,6 +55,7 @@ function ProjectsContent() {
     if (filters.minBudget) params.set('minBudget', filters.minBudget);
     if (filters.maxBudget) params.set('maxBudget', filters.maxBudget);
     if (filters.skills) params.set('skills', filters.skills);
+    if (filters.status !== 'OPEN') params.set('status', filters.status);
     if (filters.sort !== 'latest') params.set('sort', filters.sort);
     if (page > 1) params.set('page', String(page));
 
@@ -75,6 +78,7 @@ function ProjectsContent() {
       if (filters.minBudget) params.append('minBudget', filters.minBudget);
       if (filters.maxBudget) params.append('maxBudget', filters.maxBudget);
       if (filters.skills) params.append('skills', filters.skills);
+      if (filters.status) params.append('status', filters.status);
 
       const { data } = await api.get(`/api/projects?${params}`);
       setProjects(data.projects);
@@ -84,7 +88,7 @@ function ProjectsContent() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, filters.category, filters.minBudget, filters.maxBudget, filters.skills, filters.sort, initialized, page]);
+  }, [debouncedSearch, filters.category, filters.minBudget, filters.maxBudget, filters.skills, filters.sort, filters.status, initialized, page]);
 
   useEffect(() => {
     fetchProjects();

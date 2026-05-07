@@ -5,7 +5,7 @@ import { AppError } from '../lib/errors.js';
 async function closeExpiredOpenProjects() {
   await prisma.project.updateMany({
     where: {
-      status: 'OPEN',
+      status: { in: ['UPCOMING', 'OPEN'] },
       deletedAt: null,
       deadline: { lt: new Date() },
     },
@@ -33,11 +33,26 @@ export async function getProjects(req, res, next) {
   try {
     await closeExpiredOpenProjects();
 
-    const { search, category, minBudget, maxBudget, skills, sort = 'latest', page = 1, limit = 10 } = req.query;
+    const {
+      search,
+      category,
+      minBudget,
+      maxBudget,
+      skills,
+      status = 'OPEN',
+      sort = 'latest',
+      page = 1,
+      limit = 10,
+    } = req.query;
     const validSorts = ['latest', 'deadline', 'budget'];
+    const validStatuses = ['ALL', 'UPCOMING', 'OPEN', 'CLOSED'];
 
     if (!validSorts.includes(sort)) {
       throw new AppError('sort must be latest, deadline, or budget', 400);
+    }
+
+    if (!validStatuses.includes(status)) {
+      throw new AppError('status must be ALL, UPCOMING, OPEN, or CLOSED', 400);
     }
 
     const pageNum = parsePositiveInt(page, 'page');
@@ -49,7 +64,10 @@ export async function getProjects(req, res, next) {
       throw new AppError('minBudget cannot be greater than maxBudget', 400);
     }
 
-    const where = { deletedAt: null, status: 'OPEN' };
+    const where = {
+      deletedAt: null,
+      status: status === 'ALL' ? { in: ['UPCOMING', 'OPEN', 'CLOSED'] } : status,
+    };
 
     if (search) {
       where.OR = [
@@ -229,6 +247,7 @@ export async function deleteProject(req, res, next) {
 }
 
 const validTransitions = {
+  UPCOMING: ['OPEN', 'CANCELLED', 'CLOSED'],
   OPEN: ['IN_PROGRESS', 'CANCELLED', 'CLOSED'],
   IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
   COMPLETED: [],

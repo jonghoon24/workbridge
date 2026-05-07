@@ -8,6 +8,7 @@ const defaultFilters = {
   minBudget: '',
   maxBudget: '',
   skills: '',
+  status: 'OPEN',
   sort: 'latest',
 };
 
