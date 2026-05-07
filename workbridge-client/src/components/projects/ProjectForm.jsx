@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
+import CheckboxChips from '@/components/ui/CheckboxChips';
 import api from '@/lib/api';
-
-const CATEGORIES = ['웹 개발', '모바일 앱', '디자인', 'AI/ML', '데이터 분석', '마케팅', '기타'];
+import { PROJECT_CATEGORIES, SKILL_OPTIONS } from '@/constants/taxonomy';
 
 export default function ProjectForm({ initialData = null }) {
   const router = useRouter();
@@ -19,7 +19,7 @@ export default function ProjectForm({ initialData = null }) {
     category: initialData?.category || '',
     budget: initialData?.budget || '',
     deadline: initialData?.deadline ? new Date(initialData.deadline).toISOString().split('T')[0] : '',
-    requiredSkills: initialData?.requiredSkills?.join(', ') || '',
+    requiredSkills: initialData?.requiredSkills || [],
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
@@ -48,9 +48,7 @@ export default function ProjectForm({ initialData = null }) {
         title: form.title,
         description: form.description,
         category: form.category,
-        requiredSkills: form.requiredSkills
-          ? form.requiredSkills.split(',').map((s) => s.trim()).filter(Boolean)
-          : [],
+        requiredSkills: form.requiredSkills,
       };
 
       if (!hasApplications) {
@@ -123,7 +121,7 @@ export default function ProjectForm({ initialData = null }) {
           }`}
         >
           <option value="">카테고리 선택</option>
-          {CATEGORIES.map((cat) => (
+          {PROJECT_CATEGORIES.map((cat) => (
             <option key={cat} value={cat}>{cat}</option>
           ))}
         </select>
@@ -156,13 +154,14 @@ export default function ProjectForm({ initialData = null }) {
         />
       </div>
 
-      <Input
-        label="필요 기술 스택"
-        value={form.requiredSkills}
-        onChange={(e) => setForm({ ...form, requiredSkills: e.target.value })}
-        placeholder="React, Node.js, Python (쉼표로 구분)"
-        helpText="쉼표로 구분하여 입력하세요"
-      />
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">필요 기술 스택</label>
+        <CheckboxChips
+          options={SKILL_OPTIONS}
+          value={form.requiredSkills}
+          onChange={(requiredSkills) => setForm({ ...form, requiredSkills })}
+        />
+      </div>
 
       <div className="flex gap-3 justify-end">
         <Button type="button" variant="secondary" onClick={() => router.back()}>

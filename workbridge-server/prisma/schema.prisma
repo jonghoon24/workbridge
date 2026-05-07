@@ -40,32 +40,33 @@ enum PaymentStatus {
 }
 
 model User {
-  id              String    @id @default(uuid())
-  email           String    @unique
-  password        String?
-  name            String
-  role            Role
-  roleSelected    Boolean   @default(true)
-  profileImage    String?
-  bio             String?
-  companyName     String?
-  businessField   String?
-  website         String?
-  skills          String[]
-  experienceYears Int?
-  hourlyRate      Float?
-  portfolioUrl    String?
-  googleId        String?   @unique
-  createdAt       DateTime  @default(now())
-  deletedAt       DateTime?
+  id               String    @id @default(uuid())
+  email            String    @unique
+  password         String?
+  name             String
+  role             Role
+  roleSelected     Boolean   @default(true)
+  profileImage     String?
+  bio              String?
+  companyName      String?
+  businessField    String?
+  website          String?
+  skills           String[]
+  activityCategory String?
+  experienceYears  Int?
+  hourlyRate       Float?
+  portfolioUrl     String?
+  googleId         String?   @unique
+  createdAt        DateTime  @default(now())
+  deletedAt        DateTime?
 
-  clientProjects    Project[]     @relation("ClientProjects")
-  applications      Application[] @relation("FreelancerApplications")
-  clientContracts   Contract[]    @relation("ClientContracts")
-  freelancerContracts Contract[]  @relation("FreelancerContracts")
-  clientPayments    Payment[]     @relation("ClientPayments")
-  givenReviews      Review[]      @relation("ReviewerReviews")
-  receivedReviews   Review[]      @relation("RevieweeReviews")
+  clientProjects      Project[]     @relation("ClientProjects")
+  applications        Application[] @relation("FreelancerApplications")
+  clientContracts     Contract[]    @relation("ClientContracts")
+  freelancerContracts Contract[]    @relation("FreelancerContracts")
+  clientPayments      Payment[]     @relation("ClientPayments")
+  givenReviews        Review[]      @relation("ReviewerReviews")
+  receivedReviews     Review[]      @relation("RevieweeReviews")
 }
 
 model Project {
@@ -105,22 +106,22 @@ model Application {
 }
 
 model Contract {
-  id              String         @id @default(uuid())
-  projectId       String         @unique
-  project         Project        @relation(fields: [projectId], references: [id])
-  applicationId   String         @unique
-  application     Application    @relation(fields: [applicationId], references: [id])
-  clientId        String
-  client          User           @relation("ClientContracts", fields: [clientId], references: [id])
-  freelancerId    String
-  freelancer      User           @relation("FreelancerContracts", fields: [freelancerId], references: [id])
-  amount          Float
-  startDate       DateTime
-  endDate         DateTime
-  clientSigned    Boolean        @default(false)
-  freelancerSigned Boolean       @default(false)
-  status          ContractStatus @default(PENDING)
-  createdAt       DateTime       @default(now())
+  id               String         @id @default(uuid())
+  projectId        String         @unique
+  project          Project        @relation(fields: [projectId], references: [id])
+  applicationId    String         @unique
+  application      Application    @relation(fields: [applicationId], references: [id])
+  clientId         String
+  client           User           @relation("ClientContracts", fields: [clientId], references: [id])
+  freelancerId     String
+  freelancer       User           @relation("FreelancerContracts", fields: [freelancerId], references: [id])
+  amount           Float
+  startDate        DateTime
+  endDate          DateTime
+  clientSigned     Boolean        @default(false)
+  freelancerSigned Boolean        @default(false)
+  status           ContractStatus @default(PENDING)
+  createdAt        DateTime       @default(now())
 
   payment Payment?
   reviews Review[]
@@ -156,12 +157,12 @@ model Review {
 }
 
 model PricingAnalysis {
-  id          String   @id @default(uuid())
-  projectId   String   @unique
-  project     Project  @relation(fields: [projectId], references: [id])
-  features    Json
-  totalAmount Float
-  summary     String?
+  id              String   @id @default(uuid())
+  projectId       String   @unique
+  project         Project  @relation(fields: [projectId], references: [id])
+  features        Json
+  totalAmount     Float
+  summary         String?
   marketReference String?
-  createdAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
 }

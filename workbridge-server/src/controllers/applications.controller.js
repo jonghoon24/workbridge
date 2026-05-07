@@ -81,6 +81,7 @@ export async function getApplications(req, res, next) {
             profileImage: true,
             bio: true,
             skills: true,
+            activityCategory: true,
             experienceYears: true,
             hourlyRate: true,
             portfolioUrl: true,

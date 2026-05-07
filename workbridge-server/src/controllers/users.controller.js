@@ -18,6 +18,7 @@ export async function getMe(req, res, next) {
         businessField: true,
         website: true,
         skills: true,
+        activityCategory: true,
         experienceYears: true,
         hourlyRate: true,
         portfolioUrl: true,
@@ -37,7 +38,18 @@ export async function getMe(req, res, next) {
 
 export async function updateMe(req, res, next) {
   try {
-    const { name, bio, companyName, businessField, website, skills, experienceYears, hourlyRate, portfolioUrl } = req.body;
+    const {
+      name,
+      bio,
+      companyName,
+      businessField,
+      website,
+      skills,
+      activityCategory,
+      experienceYears,
+      hourlyRate,
+      portfolioUrl,
+    } = req.body;
 
     let profileImage;
     if (req.file) {
@@ -55,7 +67,10 @@ export async function updateMe(req, res, next) {
       if (businessField !== undefined) updateData.businessField = businessField;
       if (website !== undefined) updateData.website = website;
     } else if (req.user.role === 'FREELANCER') {
-      if (skills !== undefined) updateData.skills = Array.isArray(skills) ? skills : skills.split(',').map(s => s.trim());
+      if (skills !== undefined) updateData.skills = Array.isArray(skills)
+        ? skills
+        : skills.split(',').map(s => s.trim()).filter(Boolean);
+      if (activityCategory !== undefined) updateData.activityCategory = activityCategory;
       if (experienceYears !== undefined) updateData.experienceYears = parseInt(experienceYears);
       if (hourlyRate !== undefined) updateData.hourlyRate = parseFloat(hourlyRate);
       if (portfolioUrl !== undefined) updateData.portfolioUrl = portfolioUrl;
@@ -75,6 +90,7 @@ export async function updateMe(req, res, next) {
         businessField: true,
         website: true,
         skills: true,
+        activityCategory: true,
         experienceYears: true,
         hourlyRate: true,
         portfolioUrl: true,
@@ -102,6 +118,7 @@ export async function getUserById(req, res, next) {
         businessField: true,
         website: true,
         skills: true,
+        activityCategory: true,
         experienceYears: true,
         hourlyRate: true,
         portfolioUrl: true,
