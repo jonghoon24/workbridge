@@ -42,7 +42,7 @@ export default function ProjectDetailPage() {
     try {
       await api.post(`/api/projects/${id}/applications`, applyForm);
       setApplyModal(false);
-      alert('지원이 완료되었습니다!');
+      router.push('/my/applications');
     } catch (err) {
       setApplyError(err.response?.data?.error?.message || '지원에 실패했습니다');
     } finally {

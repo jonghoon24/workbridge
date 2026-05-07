@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import api from '@/lib/api';
 import ProjectCard from '@/components/projects/ProjectCard';
+import HeroActions from '@/components/home/HeroActions';
 
 async function getRecentProjects() {
   try {
@@ -27,20 +28,7 @@ export default async function HomePage() {
               WorkBridge는 의뢰인과 프리랜서를 연결하는 안전한 매칭 플랫폼입니다.
               AI 기반 단가 분석으로 합리적인 가격에 최고의 결과를 만드세요.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Link
-                href="/projects"
-                className="inline-flex items-center justify-center px-8 py-3 bg-white text-primary-600 font-semibold rounded-lg hover:bg-primary-50 transition-colors"
-              >
-                프로젝트 찾기
-              </Link>
-              <Link
-                href="/signup"
-                className="inline-flex items-center justify-center px-8 py-3 border-2 border-white text-white font-semibold rounded-lg hover:bg-primary-600 transition-colors"
-              >
-                시작하기
-              </Link>
-            </div>
+            <HeroActions />
           </div>
         </div>
       </section>

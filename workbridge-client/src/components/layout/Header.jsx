@@ -76,13 +76,22 @@ export default function Header() {
                       </Link>
                     )}
                     {user.role === 'CLIENT' && (
-                      <Link
-                        href="/my/payments"
-                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={() => setDropdownOpen(false)}
-                      >
-                        결제 내역
-                      </Link>
+                      <>
+                        <Link
+                          href="/my/projects"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          내 프로젝트 보기
+                        </Link>
+                        <Link
+                          href="/my/payments"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          결제 내역
+                        </Link>
+                      </>
                     )}
                     <hr className="my-1 border-gray-200" />
                     <button
