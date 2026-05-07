@@ -4,16 +4,45 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useAuthStore from '@/store/authStore';
+import api from '@/lib/api';
 import authApi from '@/lib/authApi';
 
 export default function Header() {
   const router = useRouter();
   const { user, clearAuth, initAuth } = useAuthStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     initAuth();
   }, [initAuth]);
+
+  useEffect(() => {
+    if (!user) {
+      setUnreadCount(0);
+      return undefined;
+    }
+
+    let ignored = false;
+
+    function refreshUnreadCount() {
+      api.get('/api/notifications/unread-count')
+        .then(({ data }) => {
+          if (!ignored) setUnreadCount(data.unreadCount || 0);
+        })
+        .catch(() => {
+          if (!ignored) setUnreadCount(0);
+        });
+    }
+
+    refreshUnreadCount();
+    window.addEventListener('notifications:changed', refreshUnreadCount);
+
+    return () => {
+      ignored = true;
+      window.removeEventListener('notifications:changed', refreshUnreadCount);
+    };
+  }, [user?.id]);
 
   async function handleLogout() {
     try {
@@ -44,18 +73,30 @@ export default function Header() {
 
           <div className="flex items-center gap-3">
             {user ? (
-              <div className="relative">
-                <button
-                  onClick={() => setDropdownOpen(!dropdownOpen)}
-                  className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+              <>
+                <Link
+                  href="/my/notifications"
+                  className="relative hidden sm:inline-flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
                 >
-                  <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                    <span className="text-primary-700 font-semibold text-xs">
-                      {user.name?.[0]?.toUpperCase()}
+                  알림
+                  {unreadCount > 0 && (
+                    <span className="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                      {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
-                  </div>
-                  <span className="hidden md:block">{user.name}</span>
-                </button>
+                  )}
+                </Link>
+                <div className="relative">
+                  <button
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+                  >
+                    <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
+                      <span className="text-primary-700 font-semibold text-xs">
+                        {user.name?.[0]?.toUpperCase()}
+                      </span>
+                    </div>
+                    <span className="hidden md:block">{user.name}</span>
+                  </button>
 
                 {dropdownOpen && (
                   <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
@@ -65,6 +106,18 @@ export default function Header() {
                       onClick={() => setDropdownOpen(false)}
                     >
                       내 프로필
+                    </Link>
+                    <Link
+                      href="/my/notifications"
+                      className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      <span>알림</span>
+                      {unreadCount > 0 && (
+                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">
+                          {unreadCount > 99 ? '99+' : unreadCount}
+                        </span>
+                      )}
                     </Link>
                     {user.role === 'FREELANCER' && (
                       <>
@@ -112,6 +165,7 @@ export default function Header() {
                   </div>
                 )}
               </div>
+              </>
             ) : (
               <>
                 <Link href="/login" className="text-sm font-medium text-gray-600 hover:text-gray-900">

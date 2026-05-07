@@ -10,6 +10,7 @@ import applicationRoutes from './routes/applications.routes.js';
 import contractRoutes from './routes/contracts.routes.js';
 import paymentRoutes from './routes/payments.routes.js';
 import reviewRoutes from './routes/reviews.routes.js';
+import notificationRoutes from './routes/notifications.routes.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 
 const app = express();
@@ -60,6 +61,7 @@ app.use('/api/projects', applicationRoutes);
 app.use('/api/contracts', contractRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/reviews', reviewRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 app.use(errorHandler);
 
