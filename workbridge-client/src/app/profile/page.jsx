@@ -7,10 +7,22 @@ import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import CheckboxChips from '@/components/ui/CheckboxChips';
+import {
+  BUSINESS_FIELD_OPTIONS,
+  FREELANCER_ACTIVITY_CATEGORIES,
+  SKILL_OPTIONS,
+  resolveOtherValue,
+  resolvePreset,
+} from '@/constants/taxonomy';
+
+function resolveSelectableValue(preset, other) {
+  return preset === '기타' ? other.trim() : preset;
+}
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, setAuth } = useAuthStore();
+  const { setAuth } = useAuthStore();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -28,9 +40,12 @@ export default function ProfilePage() {
           name: data.name || '',
           bio: data.bio || '',
           companyName: data.companyName || '',
-          businessField: data.businessField || '',
+          businessFieldPreset: resolvePreset(data.businessField, BUSINESS_FIELD_OPTIONS),
+          businessFieldOther: resolveOtherValue(data.businessField, BUSINESS_FIELD_OPTIONS),
           website: data.website || '',
-          skills: data.skills?.join(', ') || '',
+          skills: data.skills || [],
+          activityCategoryPreset: resolvePreset(data.activityCategory, FREELANCER_ACTIVITY_CATEGORIES),
+          activityCategoryOther: resolveOtherValue(data.activityCategory, FREELANCER_ACTIVITY_CATEGORIES),
           experienceYears: data.experienceYears || '',
           hourlyRate: data.hourlyRate || '',
           portfolioUrl: data.portfolioUrl || '',
@@ -48,8 +63,32 @@ export default function ProfilePage() {
 
     try {
       const formData = new FormData();
-      Object.entries(form).forEach(([key, value]) => {
-        if (value !== '') formData.append(key, value);
+      const payload = {
+        name: form.name,
+        bio: form.bio,
+      };
+
+      if (profile?.role === 'CLIENT') {
+        payload.companyName = form.companyName;
+        payload.businessField = resolveSelectableValue(form.businessFieldPreset, form.businessFieldOther);
+        payload.website = form.website;
+      }
+
+      if (profile?.role === 'FREELANCER') {
+        payload.skills = form.skills;
+        payload.activityCategory = resolveSelectableValue(form.activityCategoryPreset, form.activityCategoryOther);
+        payload.portfolioUrl = form.portfolioUrl;
+        if (form.experienceYears !== '') payload.experienceYears = form.experienceYears;
+        if (form.hourlyRate !== '') payload.hourlyRate = form.hourlyRate;
+      }
+
+      Object.entries(payload).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+          formData.append(key, value.join(','));
+          return;
+        }
+
+        formData.append(key, value ?? '');
       });
       if (imageFile) formData.append('profileImage', imageFile);
 
@@ -120,19 +159,62 @@ export default function ProfilePage() {
           {profile?.role === 'CLIENT' && (
             <>
               <Input label="회사명" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} />
-              <Input label="사업 분야" value={form.businessField} onChange={(e) => setForm({ ...form, businessField: e.target.value })} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">사업 분야</label>
+                <select
+                  value={form.businessFieldPreset || ''}
+                  onChange={(e) => setForm({ ...form, businessFieldPreset: e.target.value })}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                >
+                  <option value="">사업 분야 선택</option>
+                  {BUSINESS_FIELD_OPTIONS.map((field) => (
+                    <option key={field} value={field}>{field}</option>
+                  ))}
+                </select>
+              </div>
+              {form.businessFieldPreset === '기타' && (
+                <Input
+                  label="기타 사업 분야"
+                  value={form.businessFieldOther}
+                  onChange={(e) => setForm({ ...form, businessFieldOther: e.target.value })}
+                  placeholder="사업 분야를 입력하세요"
+                />
+              )}
               <Input label="웹사이트" type="url" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
             </>
           )}
 
           {profile?.role === 'FREELANCER' && (
             <>
-              <Input
-                label="기술 스택"
-                value={form.skills}
-                onChange={(e) => setForm({ ...form, skills: e.target.value })}
-                placeholder="React, Node.js (쉼표 구분)"
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">기술 스택</label>
+                <CheckboxChips
+                  options={SKILL_OPTIONS}
+                  value={form.skills}
+                  onChange={(skills) => setForm({ ...form, skills })}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">주요 활동 카테고리</label>
+                <select
+                  value={form.activityCategoryPreset || ''}
+                  onChange={(e) => setForm({ ...form, activityCategoryPreset: e.target.value })}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                >
+                  <option value="">활동 카테고리 선택</option>
+                  {FREELANCER_ACTIVITY_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                </select>
+              </div>
+              {form.activityCategoryPreset === '기타' && (
+                <Input
+                  label="기타 활동 카테고리"
+                  value={form.activityCategoryOther}
+                  onChange={(e) => setForm({ ...form, activityCategoryOther: e.target.value })}
+                  placeholder="활동 카테고리를 입력하세요"
+                />
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <Input
                   label="경력 (년)"

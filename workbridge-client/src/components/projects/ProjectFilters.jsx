@@ -2,11 +2,12 @@
 
 import { useCallback } from 'react';
 import useProjectStore from '@/store/projectStore';
-
-const CATEGORIES = ['웹 개발', '모바일 앱', '디자인', 'AI/ML', '데이터 분석', '마케팅', '기타'];
+import CheckboxChips from '@/components/ui/CheckboxChips';
+import { PROJECT_CATEGORIES, SKILL_OPTIONS, splitOptionList } from '@/constants/taxonomy';
 
 export default function ProjectFilters() {
   const { filters, setFilters, resetFilters } = useProjectStore();
+  const selectedSkills = splitOptionList(filters.skills);
 
   const handleChange = useCallback(
     (key, value) => {
@@ -32,7 +33,7 @@ export default function ProjectFilters() {
           className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
         >
           <option value="">전체</option>
-          {CATEGORIES.map((cat) => (
+          {PROJECT_CATEGORIES.map((cat) => (
             <option key={cat} value={cat}>{cat}</option>
           ))}
         </select>
@@ -61,13 +62,14 @@ export default function ProjectFilters() {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">기술 스택</label>
-        <input
-          type="text"
-          value={filters.skills}
-          onChange={(e) => handleChange('skills', e.target.value)}
-          placeholder="React, Python (쉼표 구분)"
-          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-        />
+        <div className="max-h-64 overflow-y-auto pr-1">
+          <CheckboxChips
+            options={SKILL_OPTIONS}
+            value={selectedSkills}
+            onChange={(nextSkills) => handleChange('skills', nextSkills.join(','))}
+            columns
+          />
+        </div>
       </div>
 
       <div>

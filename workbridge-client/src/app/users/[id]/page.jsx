@@ -64,6 +64,12 @@ export default function UserProfilePage() {
                   <span className="ml-2 font-medium">{user.hourlyRate?.toLocaleString()}원</span>
                 </div>
               )}
+              {user.activityCategory && (
+                <div>
+                  <span className="text-gray-500">주요 활동</span>
+                  <span className="ml-2 font-medium">{user.activityCategory}</span>
+                </div>
+              )}
             </div>
             {user.skills?.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-3">
