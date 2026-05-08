@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
@@ -11,8 +11,10 @@ import { PROJECT_CATEGORIES, SKILL_OPTIONS } from '@/constants/taxonomy';
 const STEPS = [
   { title: '기본 정보', fields: ['title', 'category', 'description'] },
   { title: '모집 조건', fields: ['budget', 'deadline'] },
-  { title: '기술/검토', fields: [] },
+  { title: '기술/검토', fields: ['requiredSkills'] },
 ];
+
+const REVIEW_SUBMIT_DELAY_MS = 500;
 
 export default function ProjectForm({ initialData = null }) {
   const router = useRouter();
@@ -31,6 +33,18 @@ export default function ProjectForm({ initialData = null }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [canSubmitReview, setCanSubmitReview] = useState(false);
+
+  useEffect(() => {
+    if (currentStep !== lastStep) {
+      setCanSubmitReview(false);
+      return undefined;
+    }
+
+    setCanSubmitReview(false);
+    const timer = window.setTimeout(() => setCanSubmitReview(true), REVIEW_SUBMIT_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [currentStep, lastStep]);
 
   function validate() {
     const errs = {};
@@ -42,6 +56,7 @@ export default function ProjectForm({ initialData = null }) {
       errs.budget = '올바른 예산을 입력하세요';
     }
     if (!hasApplications && !form.deadline) errs.deadline = '마감일을 선택하세요';
+    if (form.requiredSkills.length === 0) errs.requiredSkills = '필요 기술을 하나 이상 선택하세요';
     return errs;
   }
 
@@ -77,6 +92,8 @@ export default function ProjectForm({ initialData = null }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!canSubmitReview) return;
+
     const errs = validate();
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -244,12 +261,15 @@ export default function ProjectForm({ initialData = null }) {
       {currentStep === 2 && (
         <div className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">필요 기술 스택</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              필요 기술 스택 <span className="text-red-500">*</span>
+            </label>
             <CheckboxChips
               options={SKILL_OPTIONS}
               value={form.requiredSkills}
               onChange={(requiredSkills) => setForm({ ...form, requiredSkills })}
             />
+            {errors.requiredSkills && <p className="mt-2 text-sm text-red-600">{errors.requiredSkills}</p>}
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
@@ -301,7 +321,7 @@ export default function ProjectForm({ initialData = null }) {
               다음
             </Button>
           ) : (
-            <Button type="submit" loading={loading}>
+            <Button type="submit" loading={loading} disabled={!canSubmitReview}>
               {isEditing ? '수정하기' : '등록하기'}
             </Button>
           )}
