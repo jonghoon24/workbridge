@@ -20,28 +20,9 @@ export async function apply(req, res, next) {
     }
 
     if (project.status === 'OPEN' && project.deadline < new Date()) {
-      await prisma.$transaction(async (tx) => {
-        await tx.project.update({
-          where: { id: projectId },
-          data: { status: 'CLOSED' },
-        });
-
-        const existingApplications = await tx.application.findMany({
-          where: { projectId },
-          select: { freelancerId: true },
-        });
-
-        if (existingApplications.length > 0) {
-          await tx.notification.createMany({
-            data: existingApplications.map((application) => ({
-              userId: application.freelancerId,
-              type: 'PROJECT_STATUS_CHANGED',
-              title: '프로젝트 모집이 마감되었습니다',
-              message: `'${project.title}' 프로젝트의 모집 상태가 마감으로 변경되었습니다.`,
-              href: `/projects/${projectId}`,
-            })),
-          });
-        }
+      await prisma.project.update({
+        where: { id: projectId },
+        data: { status: 'CLOSED' },
       });
       throw new AppError('Project deadline has passed', 400);
     }
