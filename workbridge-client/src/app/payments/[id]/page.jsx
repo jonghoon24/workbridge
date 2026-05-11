@@ -8,6 +8,9 @@ import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 
+const paymentBypassEnabled =
+  process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS === 'true';
+
 export default function PaymentPage() {
   const { id } = useParams(); // contract id
   const router = useRouter();
@@ -54,6 +57,18 @@ export default function PaymentPage() {
     }
   }
 
+  async function handleDevPaymentComplete() {
+    setPaymentLoading(true);
+    try {
+      await api.post('/api/payments/dev-complete', { contractId: id });
+      router.push(`/payments/result?status=dev-success&contractId=${id}`);
+    } catch (err) {
+      alert(err.response?.data?.error?.message || '개발용 결제 완료 처리에 실패했습니다');
+    } finally {
+      setPaymentLoading(false);
+    }
+  }
+
   if (loading) return <div className="max-w-lg mx-auto px-4 py-8 text-center">로딩 중...</div>;
   if (!contract) return null;
 
@@ -94,6 +109,18 @@ export default function PaymentPage() {
         >
           {sdkReady ? `${contract.amount?.toLocaleString()}원 결제하기` : '결제 준비 중...'}
         </Button>
+
+        {paymentBypassEnabled && contract.payment?.status !== 'COMPLETED' && (
+          <Button
+            onClick={handleDevPaymentComplete}
+            loading={paymentLoading}
+            variant="secondary"
+            className="w-full mt-3"
+            size="lg"
+          >
+            개발용 결제 완료 처리
+          </Button>
+        )}
       </div>
     </>
   );

@@ -15,6 +15,7 @@
 | `GOOGLE_CALLBACK_URL` | Google OAuth 콜백 URL. 프론트엔드 `/api/auth/google/callback` URL 사용 |
 | `OPENAI_API_KEY` | OpenAI API 키 |
 | `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키 (test_sk_...) |
+| `ALLOW_PAYMENT_BYPASS` | 로컬/개발에서만 `true`로 설정하면 토스 결제창 없이 결제 완료 처리 가능 |
 | `CLIENT_URL` | 프론트엔드 URL (기본 http://localhost:3000) |
 | `SUPABASE_URL` | Supabase 프로젝트 URL |
 | `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...) |
@@ -25,6 +26,7 @@
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | 백엔드 API URL (기본 http://localhost:4000) |
 | `NEXT_PUBLIC_TOSS_CLIENT_KEY` | 토스페이먼츠 클라이언트 키 (test_ck_...) |
+| `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` | 로컬/개발에서만 `true`로 설정하면 결제 페이지에 개발용 결제 완료 버튼 표시 |
 
 ## 외부 서비스 설정
 
@@ -44,6 +46,10 @@
 
 1. [토스페이먼츠 개발자센터](https://developers.tosspayments.com/)에서 테스트 키 발급
 2. 클라이언트 키 (`test_ck_...`)와 시크릿 키 (`test_sk_...`) 확인
+
+### 결제 우회 테스트
+
+실제 결제창을 사용할 수 없는 로컬/개발 환경에서는 서버 `.env`의 `ALLOW_PAYMENT_BYPASS=true`와 클라이언트 `.env.local`의 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true`를 함께 설정합니다. 결제 페이지에서 "개발용 결제 완료 처리"를 누르면 서버가 개발용 완료 결제 레코드를 만들고, 이후 계약 상세 화면에서 기존 "프로젝트 완료 처리" 버튼을 눌러 리뷰 작성 플로우를 확인할 수 있습니다.
 
 ### OpenAI
 

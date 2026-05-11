@@ -105,8 +105,9 @@ export default function ContractPage() {
   const isFreelancer = currentUser?.id === contract.freelancerId;
   const hasSigned = isClient ? contract.clientSigned : contract.freelancerSigned;
   const canSign = (isClient || isFreelancer) && !hasSigned;
-  const canPay = isClient && contract.status === 'ACTIVE' && !contract.payment;
-  const canComplete = isClient && contract.status === 'ACTIVE' && contract.payment?.status === 'COMPLETED';
+  const hasCompletedPayment = contract.payment?.status === 'COMPLETED';
+  const canPay = isClient && contract.status === 'ACTIVE' && !hasCompletedPayment;
+  const canComplete = isClient && contract.status === 'ACTIVE' && hasCompletedPayment;
   const ownReview = contract.reviews?.find((review) => review.reviewerId === currentUser?.id);
   const canReview = (isClient || isFreelancer) && contract.status === 'COMPLETED' && !ownReview;
   const reviewTagOptions = isClient
