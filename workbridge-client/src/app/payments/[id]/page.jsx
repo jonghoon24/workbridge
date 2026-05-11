@@ -9,7 +9,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 
 const paymentBypassEnabled =
-  process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS === 'true';
+  process.env.NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS === 'true';
 
 export default function PaymentPage() {
   const { id } = useParams(); // contract id

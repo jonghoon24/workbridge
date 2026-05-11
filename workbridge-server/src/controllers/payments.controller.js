@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 
 const isPaymentBypassEnabled = () =>
-  process.env.NODE_ENV !== 'production' && process.env.ALLOW_PAYMENT_BYPASS === 'true';
+  process.env.ALLOW_PAYMENT_BYPASS === 'true';
 
 export async function createPayment(req, res, next) {
   try {
