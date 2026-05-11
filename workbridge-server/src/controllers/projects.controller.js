@@ -11,36 +11,18 @@ async function closeExpiredOpenProjects() {
     },
     select: {
       id: true,
-      title: true,
-      applications: { select: { freelancerId: true } },
     },
   });
 
   if (expiredProjects.length === 0) return;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.project.updateMany({
-      where: {
-        id: { in: expiredProjects.map((project) => project.id) },
-        status: { in: ['UPCOMING', 'OPEN'] },
-        deletedAt: null,
-      },
-      data: { status: 'CLOSED' },
-    });
-
-    const notifications = expiredProjects.flatMap((project) => (
-      project.applications.map((application) => ({
-        userId: application.freelancerId,
-        type: 'PROJECT_STATUS_CHANGED',
-        title: '프로젝트 모집이 마감되었습니다',
-        message: `'${project.title}' 프로젝트의 모집 상태가 마감으로 변경되었습니다.`,
-        href: `/projects/${project.id}`,
-      }))
-    ));
-
-    if (notifications.length > 0) {
-      await tx.notification.createMany({ data: notifications });
-    }
+  await prisma.project.updateMany({
+    where: {
+      id: { in: expiredProjects.map((project) => project.id) },
+      status: { in: ['UPCOMING', 'OPEN'] },
+      deletedAt: null,
+    },
+    data: { status: 'CLOSED' },
   });
 }
 
@@ -350,15 +332,6 @@ const validTransitions = {
   CLOSED: [],
 };
 
-const projectStatusLabels = {
-  UPCOMING: '모집 예정',
-  OPEN: '모집 중',
-  IN_PROGRESS: '진행 중',
-  COMPLETED: '완료',
-  CANCELLED: '취소',
-  CLOSED: '마감',
-};
-
 export async function updateProjectStatus(req, res, next) {
   try {
     const { status } = req.body;
@@ -389,14 +362,14 @@ export async function updateProjectStatus(req, res, next) {
       });
 
       const recipientIds = [...new Set(project.applications.map((application) => application.freelancerId))];
-      if (recipientIds.length > 0) {
+      if (status === 'CLOSED' && recipientIds.length > 0) {
         await tx.notification.createMany({
           data: recipientIds.map((userId) => ({
             userId,
             type: 'PROJECT_STATUS_CHANGED',
-            title: '프로젝트 상태가 변경되었습니다',
-            message: `'${project.title}' 프로젝트 상태가 ${projectStatusLabels[status] || status}(으)로 변경되었습니다.`,
-            href: `/projects/${project.id}`,
+            title: '프로젝트 모집이 마감되었습니다',
+            message: `'${project.title}' 프로젝트 모집이 마감되었습니다.`,
+            href: '/my/applications',
           })),
         });
       }
