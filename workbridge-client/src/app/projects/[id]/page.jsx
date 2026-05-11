@@ -22,6 +22,7 @@ export default function ProjectDetailPage() {
 
   const [project, setProject] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [applyModal, setApplyModal] = useState(false);
   const [applyForm, setApplyForm] = useState({ coverLetter: '', expectedRate: '', expectedDuration: '' });
   const [applyLoading, setApplyLoading] = useState(false);
@@ -35,11 +36,17 @@ export default function ProjectDetailPage() {
   }, []);
 
   useEffect(() => {
+    setLoading(true);
+    setError('');
+
     api.get(`/api/projects/${id}`)
       .then(({ data }) => setProject(data))
-      .catch(() => router.push('/projects'))
+      .catch((err) => {
+        setProject(null);
+        setError(err.response?.data?.error?.message || '프로젝트를 불러오지 못했습니다');
+      })
       .finally(() => setLoading(false));
-  }, [id, router]);
+  }, [id]);
 
   useEffect(() => {
     if (!project?.id) {
@@ -154,7 +161,23 @@ export default function ProjectDetailPage() {
     );
   }
 
-  if (!project) return null;
+  if (!project) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <Card className="p-6">
+          <h1 className="text-xl font-bold text-gray-900">프로젝트를 찾을 수 없습니다</h1>
+          <p className="text-sm text-gray-600 mt-2">
+            {error || '요청한 프로젝트가 삭제되었거나 일시적으로 불러올 수 없습니다.'}
+          </p>
+          <div className="mt-5">
+            <Link href="/projects">
+              <Button variant="secondary">프로젝트 찾기로 이동</Button>
+            </Link>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const isOwner = user?.id === project.clientId;
   const isFreelancer = user?.role === 'FREELANCER';

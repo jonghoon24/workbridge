@@ -1,7 +1,15 @@
 import axios from 'axios';
 
+function getBaseURL() {
+  if (typeof window === 'undefined') {
+    return (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+  }
+
+  return '';
+}
+
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
+  baseURL: getBaseURL(),
   withCredentials: true,
   timeout: 30000,
 });

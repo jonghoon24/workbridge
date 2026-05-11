@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60;
 
-function getApiUrl() {
+export function getApiUrl() {
   return (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
 }
 
