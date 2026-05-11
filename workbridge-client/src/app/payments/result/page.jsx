@@ -17,7 +17,10 @@ function PaymentResultContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (status === 'success' && orderId && paymentKey && amount) {
+    if (status === 'dev-success') {
+      setResult('success');
+      setLoading(false);
+    } else if (status === 'success' && orderId && paymentKey && amount) {
       api.post('/api/payments/confirm', { orderId, paymentKey, amount: parseInt(amount) })
         .then(() => setResult('success'))
         .catch(() => setResult('fail'))

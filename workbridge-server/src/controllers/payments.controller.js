@@ -3,6 +3,9 @@ import { AppError } from '../lib/errors.js';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 
+const isPaymentBypassEnabled = () =>
+  process.env.ALLOW_PAYMENT_BYPASS === 'true';
+
 export async function createPayment(req, res, next) {
   try {
     const { contractId } = req.body;
@@ -139,6 +142,73 @@ export async function confirmPayment(req, res, next) {
 
       throw new AppError('Payment verification failed', 400);
     }
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function completePaymentForDev(req, res, next) {
+  try {
+    if (!isPaymentBypassEnabled()) {
+      throw new AppError('Payment bypass is disabled', 403);
+    }
+
+    const { contractId } = req.body;
+
+    if (!contractId) {
+      throw new AppError('Contract ID is required', 400);
+    }
+
+    const contract = await prisma.contract.findUnique({
+      where: { id: contractId },
+      include: { payment: true },
+    });
+
+    if (!contract) {
+      throw new AppError('Contract not found', 404);
+    }
+
+    if (contract.clientId !== req.user.id) {
+      throw new AppError('Not authorized', 403);
+    }
+
+    if (contract.status !== 'ACTIVE') {
+      throw new AppError('Contract must be active to proceed with payment', 400);
+    }
+
+    if (contract.payment?.status === 'COMPLETED') {
+      return res.json(contract.payment);
+    }
+
+    if (contract.payment?.status === 'REFUNDED') {
+      throw new AppError('Payment cannot be completed for a refunded contract', 409);
+    }
+
+    const paymentData = {
+      amount: contract.amount,
+      status: 'COMPLETED',
+      paymentKey: `dev_bypass_${contract.id}`,
+    };
+
+    if (contract.payment) {
+      const payment = await prisma.payment.update({
+        where: { id: contract.payment.id },
+        data: paymentData,
+      });
+
+      return res.json(payment);
+    }
+
+    const payment = await prisma.payment.create({
+      data: {
+        ...paymentData,
+        contractId,
+        clientId: req.user.id,
+        orderId: `dev-${uuidv4()}`,
+      },
+    });
+
+    res.status(201).json(payment);
   } catch (err) {
     next(err);
   }
