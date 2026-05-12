@@ -80,9 +80,10 @@ export default function Header() {
                 >
                   알림
                   {unreadCount > 0 && (
-                    <span className="ml-1 inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                      {unreadCount > 99 ? '99+' : unreadCount}
-                    </span>
+                    <span
+                      className="ml-1.5 h-2 w-2 rounded-full bg-primary-600"
+                      aria-label="읽지 않은 알림 있음"
+                    />
                   )}
                 </Link>
                 <div className="relative">
@@ -114,9 +115,10 @@ export default function Header() {
                     >
                       <span>알림</span>
                       {unreadCount > 0 && (
-                        <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">
-                          {unreadCount > 99 ? '99+' : unreadCount}
-                        </span>
+                        <span
+                          className="h-2 w-2 rounded-full bg-primary-600"
+                          aria-label="읽지 않은 알림 있음"
+                        />
                       )}
                     </Link>
                     {user.role === 'FREELANCER' && (
