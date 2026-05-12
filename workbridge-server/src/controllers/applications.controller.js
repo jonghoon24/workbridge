@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import { Prisma } from '@prisma/client';
+import { rejectPendingApplicationsForClosedProjects } from '../lib/projectLifecycle.js';
 
 export async function apply(req, res, next) {
   try {
@@ -20,9 +21,13 @@ export async function apply(req, res, next) {
     }
 
     if (project.status === 'OPEN' && project.deadline < new Date()) {
-      await prisma.project.update({
-        where: { id: projectId },
-        data: { status: 'CLOSED' },
+      await prisma.$transaction(async (tx) => {
+        await tx.project.update({
+          where: { id: projectId },
+          data: { status: 'CLOSED' },
+        });
+
+        await rejectPendingApplicationsForClosedProjects({ projectId }, tx);
       });
       throw new AppError('Project deadline has passed', 400);
     }
@@ -90,6 +95,8 @@ export async function getApplications(req, res, next) {
     if (project.clientId !== req.user.id) {
       throw new AppError('Not authorized', 403);
     }
+
+    await rejectPendingApplicationsForClosedProjects({ projectId });
 
     const applications = await prisma.application.findMany({
       where: { projectId },
