@@ -17,6 +17,11 @@ export async function apply(req, res, next) {
       throw new AppError('All fields are required', 400);
     }
 
+    const parsedExpectedRate = Number.parseFloat(expectedRate);
+    if (!Number.isFinite(parsedExpectedRate) || parsedExpectedRate <= 0) {
+      throw new AppError('expectedRate must be a positive number', 400);
+    }
+
     const project = await prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
     });
@@ -54,7 +59,7 @@ export async function apply(req, res, next) {
             projectId,
             freelancerId: req.user.id,
             coverLetter,
-            expectedRate: parseFloat(expectedRate),
+            expectedRate: parsedExpectedRate,
             expectedDuration,
             status: 'PENDING',
           },
@@ -120,6 +125,7 @@ export async function getApplications(req, res, next) {
           },
         },
         contract: { select: { id: true, status: true } },
+        project: { select: { budget: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -183,7 +189,7 @@ export async function updateApplication(req, res, next) {
             applicationId: appId,
             clientId: project.clientId,
             freelancerId: application.freelancerId,
-            amount: project.budget,
+            amount: application.expectedRate,
             startDate: new Date(),
             endDate: project.deadline,
             status: 'PENDING',

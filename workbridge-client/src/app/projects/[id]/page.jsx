@@ -342,7 +342,7 @@ export default function ProjectDetailPage() {
             />
           </div>
           <Input
-            label="예상 단가 (원)"
+            label="제안 금액 (원)"
             type="number"
             required
             value={applyForm.expectedRate}
