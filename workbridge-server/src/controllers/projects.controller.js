@@ -6,6 +6,10 @@ import {
   getProjectStatusForRecruitmentStart,
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle.js';
+import {
+  expandSkillSearchTerms,
+  normalizeSkillList,
+} from '../lib/skills.js';
 
 function parsePositiveInt(value, field, max = null) {
   const parsed = Number.parseInt(value, 10);
@@ -94,7 +98,7 @@ export async function getProjects(req, res, next) {
       if (maxBudgetNum !== null) where.budget.lte = maxBudgetNum;
     }
     if (skills) {
-      const skillArray = skills.split(',').map(s => s.trim()).filter(Boolean);
+      const skillArray = expandSkillSearchTerms(skills);
       if (skillArray.length > 0) {
         where.requiredSkills = { hasSome: skillArray };
       }
@@ -159,7 +163,7 @@ export async function createProject(req, res, next) {
         budget: parsedBudget,
         recruitmentStartDate: parsedRecruitmentStartDate,
         deadline: parsedDeadline,
-        requiredSkills: Array.isArray(requiredSkills) ? requiredSkills : [],
+        requiredSkills: normalizeSkillList(requiredSkills),
         clientId: req.user.id,
         status: getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate),
       },
@@ -281,7 +285,7 @@ export async function updateProject(req, res, next) {
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (category !== undefined) updateData.category = category;
-    if (requiredSkills !== undefined) updateData.requiredSkills = requiredSkills;
+    if (requiredSkills !== undefined) updateData.requiredSkills = normalizeSkillList(requiredSkills);
 
     // Restrict pricing and recruitment schedule changes if applications exist.
     if (project._count.applications > 0) {

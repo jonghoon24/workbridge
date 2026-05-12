@@ -11,6 +11,7 @@ import CheckboxChips from '@/components/ui/CheckboxChips';
 import {
   BUSINESS_FIELD_OPTIONS,
   FREELANCER_ACTIVITY_CATEGORIES,
+  normalizeSkillList,
   SKILL_OPTIONS,
   resolveOtherValue,
   resolvePreset,
@@ -43,7 +44,7 @@ export default function ProfilePage() {
           businessFieldPreset: resolvePreset(data.businessField, BUSINESS_FIELD_OPTIONS),
           businessFieldOther: resolveOtherValue(data.businessField, BUSINESS_FIELD_OPTIONS),
           website: data.website || '',
-          skills: data.skills || [],
+          skills: normalizeSkillList(data.skills || []),
           activityCategoryPreset: resolvePreset(data.activityCategory, FREELANCER_ACTIVITY_CATEGORIES),
           activityCategoryOther: resolveOtherValue(data.activityCategory, FREELANCER_ACTIVITY_CATEGORIES),
           experienceYears: data.experienceYears || '',
@@ -99,7 +100,7 @@ export default function ProfilePage() {
           return;
         }
 
-        payload.skills = form.skills;
+        payload.skills = normalizeSkillList(form.skills);
         payload.activityCategory = activityCategory;
         payload.portfolioUrl = form.portfolioUrl;
         if (form.experienceYears !== '') payload.experienceYears = form.experienceYears;
@@ -220,7 +221,7 @@ export default function ProfilePage() {
                 <CheckboxChips
                   options={SKILL_OPTIONS}
                   value={form.skills}
-                  onChange={(skills) => setForm({ ...form, skills })}
+                  onChange={(skills) => setForm({ ...form, skills: normalizeSkillList(skills) })}
                 />
               </div>
               <div>

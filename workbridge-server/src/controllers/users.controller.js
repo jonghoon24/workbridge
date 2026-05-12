@@ -4,6 +4,7 @@ import {
   closeExpiredOpenProjects,
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle.js';
+import { normalizeSkillList } from '../lib/skills.js';
 import { uploadToSupabase } from '../middlewares/upload.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -71,9 +72,7 @@ export async function updateMe(req, res, next) {
       if (businessField !== undefined) updateData.businessField = businessField;
       if (website !== undefined) updateData.website = website;
     } else if (req.user.role === 'FREELANCER') {
-      if (skills !== undefined) updateData.skills = Array.isArray(skills)
-        ? skills
-        : skills.split(',').map(s => s.trim()).filter(Boolean);
+      if (skills !== undefined) updateData.skills = normalizeSkillList(skills);
       if (activityCategory !== undefined) updateData.activityCategory = activityCategory;
       if (experienceYears !== undefined) updateData.experienceYears = parseInt(experienceYears);
       if (hourlyRate !== undefined) updateData.hourlyRate = parseFloat(hourlyRate);
