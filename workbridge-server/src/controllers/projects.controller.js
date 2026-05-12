@@ -74,8 +74,11 @@ export async function getProjects(req, res, next) {
 
     const where = {
       deletedAt: null,
-      status: status === 'ALL' ? { in: ['UPCOMING', 'OPEN', 'CLOSED'] } : status,
     };
+
+    if (status !== 'ALL') {
+      where.status = status;
+    }
 
     if (search) {
       where.OR = [
