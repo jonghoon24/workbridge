@@ -74,18 +74,19 @@ model User {
 }
 
 model Project {
-  id             String        @id @default(uuid())
-  title          String
-  description    String
-  category       String
-  budget         Float
-  deadline       DateTime
-  requiredSkills String[]
-  status         ProjectStatus @default(OPEN)
-  clientId       String
-  client         User          @relation("ClientProjects", fields: [clientId], references: [id])
-  deletedAt      DateTime?
-  createdAt      DateTime      @default(now())
+  id                   String        @id @default(uuid())
+  title                String
+  description          String
+  category             String
+  budget               Float
+  recruitmentStartDate DateTime?
+  deadline             DateTime
+  requiredSkills       String[]
+  status               ProjectStatus @default(OPEN)
+  clientId             String
+  client               User          @relation("ClientProjects", fields: [clientId], references: [id])
+  deletedAt            DateTime?
+  createdAt            DateTime      @default(now())
 
   applications    Application[]
   contract        Contract?

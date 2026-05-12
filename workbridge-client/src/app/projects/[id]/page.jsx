@@ -254,6 +254,14 @@ export default function ProjectDetailPage() {
                 <dd className="font-medium">{project.budget?.toLocaleString()}원</dd>
               </div>
               <div className="flex justify-between">
+                <dt className="text-gray-500">모집 시작일</dt>
+                <dd className="font-medium">
+                  {project.recruitmentStartDate
+                    ? new Date(project.recruitmentStartDate).toLocaleDateString('ko-KR')
+                    : '-'}
+                </dd>
+              </div>
+              <div className="flex justify-between">
                 <dt className="text-gray-500">마감일</dt>
                 <dd className="font-medium">{new Date(project.deadline).toLocaleDateString('ko-KR')}</dd>
               </div>

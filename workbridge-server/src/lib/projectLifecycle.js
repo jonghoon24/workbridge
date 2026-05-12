@@ -1,5 +1,13 @@
 import prisma from './prisma.js';
 
+export function getProjectStatusForRecruitmentStart(recruitmentStartDate, now = new Date()) {
+  if (recruitmentStartDate && new Date(recruitmentStartDate) > now) {
+    return 'UPCOMING';
+  }
+
+  return 'OPEN';
+}
+
 export async function rejectPendingApplicationsForClosedProjects(applicationWhere = {}, client = prisma) {
   return client.application.updateMany({
     where: {
@@ -16,11 +24,23 @@ export async function rejectPendingApplicationsForClosedProjects(applicationWher
 
 export async function closeExpiredOpenProjects() {
   return prisma.$transaction(async (tx) => {
+    const now = new Date();
+
+    await tx.project.updateMany({
+      where: {
+        status: 'UPCOMING',
+        deletedAt: null,
+        recruitmentStartDate: { lte: now },
+        deadline: { gte: now },
+      },
+      data: { status: 'OPEN' },
+    });
+
     const expiredProjects = await tx.project.findMany({
       where: {
         status: { in: ['UPCOMING', 'OPEN'] },
         deletedAt: null,
-        deadline: { lt: new Date() },
+        deadline: { lt: now },
       },
       select: {
         id: true,
@@ -36,7 +56,7 @@ export async function closeExpiredOpenProjects() {
         id: { in: projectIds },
         status: { in: ['UPCOMING', 'OPEN'] },
         deletedAt: null,
-        deadline: { lt: new Date() },
+        deadline: { lt: now },
       },
       data: { status: 'CLOSED' },
     });

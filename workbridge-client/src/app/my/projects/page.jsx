@@ -72,6 +72,11 @@ export default function MyProjectsPage() {
                     <span>{project.category}</span>
                     <span>지원자 {project._count?.applications || 0}명</span>
                     <span>{project.budget?.toLocaleString()}원</span>
+                    <span>
+                      모집 시작 {project.recruitmentStartDate
+                        ? new Date(project.recruitmentStartDate).toLocaleDateString('ko-KR')
+                        : '-'}
+                    </span>
                     <span>마감 {new Date(project.deadline).toLocaleDateString('ko-KR')}</span>
                   </div>
                 </div>

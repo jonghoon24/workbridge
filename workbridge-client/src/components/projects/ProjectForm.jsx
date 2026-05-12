@@ -10,24 +10,36 @@ import { PROJECT_CATEGORIES, SKILL_OPTIONS } from '@/constants/taxonomy';
 
 const STEPS = [
   { title: '기본 정보', fields: ['title', 'category', 'description'] },
-  { title: '모집 조건', fields: ['budget', 'deadline'] },
+  { title: '모집 조건', fields: ['budget', 'recruitmentStartDate', 'deadline'] },
   { title: '기술/검토', fields: ['requiredSkills'] },
 ];
 
 const REVIEW_SUBMIT_DELAY_MS = 500;
+
+function formatDateInput(value = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().split('T')[0];
+}
 
 export default function ProjectForm({ initialData = null }) {
   const router = useRouter();
   const isEditing = !!initialData;
   const hasApplications = isEditing && (initialData?._count?.applications || 0) > 0;
   const lastStep = STEPS.length - 1;
+  const today = formatDateInput();
 
   const [form, setForm] = useState({
     title: initialData?.title || '',
     description: initialData?.description || '',
     category: initialData?.category || '',
     budget: initialData?.budget || '',
-    deadline: initialData?.deadline ? new Date(initialData.deadline).toISOString().split('T')[0] : '',
+    recruitmentStartDate: initialData?.recruitmentStartDate
+      ? formatDateInput(initialData.recruitmentStartDate)
+      : today,
+    deadline: initialData?.deadline ? formatDateInput(initialData.deadline) : '',
     requiredSkills: initialData?.requiredSkills || [],
   });
   const [currentStep, setCurrentStep] = useState(0);
@@ -55,7 +67,18 @@ export default function ProjectForm({ initialData = null }) {
     if (!hasApplications && (!form.budget || !Number.isFinite(budget) || budget <= 0)) {
       errs.budget = '올바른 예산을 입력하세요';
     }
+    if (!hasApplications && !form.recruitmentStartDate) {
+      errs.recruitmentStartDate = '모집 시작일을 선택하세요';
+    }
     if (!hasApplications && !form.deadline) errs.deadline = '마감일을 선택하세요';
+    if (
+      !hasApplications
+      && form.recruitmentStartDate
+      && form.deadline
+      && form.recruitmentStartDate > form.deadline
+    ) {
+      errs.deadline = '마감일은 모집 시작일 이후로 선택하세요';
+    }
     if (form.requiredSkills.length === 0) errs.requiredSkills = '필요 기술을 하나 이상 선택하세요';
     return errs;
   }
@@ -112,6 +135,7 @@ export default function ProjectForm({ initialData = null }) {
 
       if (!hasApplications) {
         payload.budget = parseFloat(form.budget);
+        payload.recruitmentStartDate = form.recruitmentStartDate;
         payload.deadline = form.deadline;
       }
 
@@ -140,6 +164,9 @@ export default function ProjectForm({ initialData = null }) {
   }
 
   const formattedBudget = form.budget ? `${Number(form.budget).toLocaleString()}원` : '-';
+  const formattedRecruitmentStartDate = form.recruitmentStartDate
+    ? new Date(form.recruitmentStartDate).toLocaleDateString('ko-KR')
+    : '-';
   const formattedDeadline = form.deadline ? new Date(form.deadline).toLocaleDateString('ko-KR') : '-';
 
   return (
@@ -178,7 +205,7 @@ export default function ProjectForm({ initialData = null }) {
 
       {hasApplications && (
         <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
-          지원자가 있는 프로젝트는 예산과 마감일을 변경할 수 없습니다.
+          지원자가 있는 프로젝트는 예산과 모집 일정을 변경할 수 없습니다.
         </div>
       )}
 
@@ -231,7 +258,7 @@ export default function ProjectForm({ initialData = null }) {
       )}
 
       {currentStep === 1 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Input
             label="예산 (원)"
             required
@@ -245,13 +272,25 @@ export default function ProjectForm({ initialData = null }) {
           />
 
           <Input
+            label="모집 시작일"
+            required
+            type="date"
+            value={form.recruitmentStartDate}
+            onChange={(e) => setForm({ ...form, recruitmentStartDate: e.target.value })}
+            error={errors.recruitmentStartDate}
+            min={today}
+            disabled={hasApplications}
+            helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다' : undefined}
+          />
+
+          <Input
             label="마감일"
             required
             type="date"
             value={form.deadline}
             onChange={(e) => setForm({ ...form, deadline: e.target.value })}
             error={errors.deadline}
-            min={new Date().toISOString().split('T')[0]}
+            min={form.recruitmentStartDate || today}
             disabled={hasApplications}
             helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다' : undefined}
           />
@@ -286,6 +325,10 @@ export default function ProjectForm({ initialData = null }) {
               <div>
                 <dt className="text-gray-500">예산</dt>
                 <dd className="font-medium text-gray-900">{formattedBudget}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">모집 시작일</dt>
+                <dd className="font-medium text-gray-900">{formattedRecruitmentStartDate}</dd>
               </div>
               <div>
                 <dt className="text-gray-500">마감일</dt>

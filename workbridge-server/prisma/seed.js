@@ -184,6 +184,7 @@ async function main() {
         '사용자의 운동 기록, 식단 관리, 건강 데이터 시각화를 제공하는 모바일 앱입니다. iOS/Android 크로스 플랫폼으로 개발하며 웨어러블 기기 연동도 고려해주세요.',
       category: '모바일 앱',
       budget: 12000000,
+      recruitmentStartDate: new Date('2026-06-01'),
       deadline: new Date('2026-07-31'),
       requiredSkills: ['React Native', 'Node.js', 'Firebase', 'HealthKit'],
       status: 'UPCOMING',

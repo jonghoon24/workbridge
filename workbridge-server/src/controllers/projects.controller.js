@@ -3,6 +3,7 @@ import openai from '../lib/openai.js';
 import { AppError } from '../lib/errors.js';
 import {
   closeExpiredOpenProjects,
+  getProjectStatusForRecruitmentStart,
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle.js';
 
@@ -20,6 +21,20 @@ function parseBudget(value, field) {
     throw new AppError(`${field} must be a non-negative number`, 400);
   }
   return parsed;
+}
+
+function parseProjectDate(value, field) {
+  const parsed = new Date(value);
+  if (!value || Number.isNaN(parsed.getTime())) {
+    throw new AppError(`${field} must be a valid date`, 400);
+  }
+  return parsed;
+}
+
+function validateRecruitmentSchedule(recruitmentStartDate, deadline) {
+  if (recruitmentStartDate > deadline) {
+    throw new AppError('recruitmentStartDate cannot be after deadline', 400);
+  }
 }
 
 export async function getProjects(req, res, next) {
@@ -120,22 +135,30 @@ export async function getProjects(req, res, next) {
 
 export async function createProject(req, res, next) {
   try {
-    const { title, description, category, budget, deadline, requiredSkills } = req.body;
+    const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = req.body;
 
     if (!title || !description || !category || !budget || !deadline) {
       throw new AppError('All fields are required', 400);
     }
+
+    const parsedDeadline = parseProjectDate(deadline, 'deadline');
+    const parsedRecruitmentStartDate = recruitmentStartDate
+      ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate')
+      : new Date();
+    const parsedBudget = parseBudget(budget, 'budget');
+    validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
 
     const project = await prisma.project.create({
       data: {
         title,
         description,
         category,
-        budget: parseFloat(budget),
-        deadline: new Date(deadline),
+        budget: parsedBudget,
+        recruitmentStartDate: parsedRecruitmentStartDate,
+        deadline: parsedDeadline,
         requiredSkills: Array.isArray(requiredSkills) ? requiredSkills : [],
         clientId: req.user.id,
-        status: 'OPEN',
+        status: getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate),
       },
     });
 
@@ -249,7 +272,7 @@ export async function updateProject(req, res, next) {
       throw new AppError('Not authorized', 403);
     }
 
-    const { title, description, category, budget, deadline, requiredSkills } = req.body;
+    const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = req.body;
     const updateData = {};
 
     if (title !== undefined) updateData.title = title;
@@ -257,14 +280,33 @@ export async function updateProject(req, res, next) {
     if (category !== undefined) updateData.category = category;
     if (requiredSkills !== undefined) updateData.requiredSkills = requiredSkills;
 
-    // Restrict budget/deadline changes if applications exist
+    // Restrict pricing and recruitment schedule changes if applications exist.
     if (project._count.applications > 0) {
-      if (budget !== undefined || deadline !== undefined) {
-        throw new AppError('Cannot change budget or deadline after applications have been submitted', 400);
+      if (budget !== undefined || recruitmentStartDate !== undefined || deadline !== undefined) {
+        throw new AppError('Cannot change budget or recruitment dates after applications have been submitted', 400);
       }
     } else {
-      if (budget !== undefined) updateData.budget = parseFloat(budget);
-      if (deadline !== undefined) updateData.deadline = new Date(deadline);
+      if (budget !== undefined) updateData.budget = parseBudget(budget, 'budget');
+
+      const parsedDeadline = deadline !== undefined
+        ? parseProjectDate(deadline, 'deadline')
+        : project.deadline;
+      const parsedRecruitmentStartDate = recruitmentStartDate !== undefined
+        ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate')
+        : project.recruitmentStartDate || new Date();
+
+      validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
+
+      if (deadline !== undefined) updateData.deadline = parsedDeadline;
+      if (recruitmentStartDate !== undefined) {
+        updateData.recruitmentStartDate = parsedRecruitmentStartDate;
+      }
+      if (
+        ['UPCOMING', 'OPEN'].includes(project.status)
+        && (deadline !== undefined || recruitmentStartDate !== undefined)
+      ) {
+        updateData.status = getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate);
+      }
     }
 
     const updated = await prisma.project.update({
