@@ -41,6 +41,42 @@ function validateRecruitmentSchedule(recruitmentStartDate, deadline) {
   }
 }
 
+function parseAnalysisAmount(value) {
+  const normalized = typeof value === 'string'
+    ? value.replace(/[^\d.-]/g, '')
+    : value;
+  const parsed = Number(normalized);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 0;
+  }
+
+  return Math.round(parsed);
+}
+
+function normalizePricingAnalysisData(data) {
+  const features = (Array.isArray(data?.features) ? data.features : [])
+    .map((feature, index) => ({
+      name: String(feature?.name || `기능 ${index + 1}`).trim(),
+      description: String(feature?.description || '').trim(),
+      estimatedCost: parseAnalysisAmount(feature?.estimatedCost),
+      rationale: String(feature?.rationale || '').trim(),
+      duration: feature?.duration ? String(feature.duration).trim() : null,
+    }))
+    .filter((feature) => feature.estimatedCost > 0);
+
+  if (features.length === 0) {
+    throw new AppError('AI analysis did not return valid feature pricing', 502);
+  }
+
+  return {
+    features,
+    totalAmount: features.reduce((sum, feature) => sum + feature.estimatedCost, 0),
+    summary: data?.summary ? String(data.summary).trim() : null,
+    marketReference: data?.marketReference ? String(data.marketReference).trim() : null,
+  };
+}
+
 export async function getProjects(req, res, next) {
   try {
     await closeExpiredOpenProjects();
@@ -436,9 +472,12 @@ export async function analyzeProject(req, res, next) {
 프로젝트명: ${project.title}
 카테고리: ${project.category}
 설명: ${project.description}
-예산: ${project.budget.toLocaleString()}원
 필요 기술: ${project.requiredSkills.join(', ')}
 마감일: ${new Date(project.deadline).toLocaleDateString('ko-KR')}
+
+클라이언트가 입력한 희망 예산은 제공하지 않습니다.
+기존 예산이나 임의의 목표 금액에 맞추지 말고, 프로젝트 범위, 기능, 기술 난이도, 예상 작업량을 기준으로 독립적인 시장 적정가를 산정하세요.
+각 기능별 estimatedCost의 합계가 totalAmount와 반드시 일치해야 합니다.
 
 다음 JSON 형식으로만 응답해주세요:
 {
@@ -467,7 +506,9 @@ export async function analyzeProject(req, res, next) {
       temperature: 0.3,
     });
 
-    const analysisData = JSON.parse(completion.choices[0].message.content);
+    const analysisData = normalizePricingAnalysisData(
+      JSON.parse(completion.choices[0].message.content),
+    );
 
     const analysis = await prisma.pricingAnalysis.upsert({
       where: { projectId: project.id },
