@@ -8,7 +8,7 @@ import { PROJECT_CATEGORIES, SKILL_OPTIONS, splitOptionList } from '@/constants/
 const PROJECT_STATUS_OPTIONS = [
   { value: 'OPEN', label: '모집 중' },
   { value: 'UPCOMING', label: '모집 예정' },
-  { value: 'CLOSED', label: '마감' },
+  { value: 'CLOSED', label: '모집마감' },
   { value: 'ALL', label: '전체' },
 ];
 

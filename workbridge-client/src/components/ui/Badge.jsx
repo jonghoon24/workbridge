@@ -19,7 +19,7 @@ const statusLabels = {
   IN_PROGRESS: '진행중',
   COMPLETED: '완료',
   CANCELLED: '취소',
-  CLOSED: '마감',
+  CLOSED: '모집마감',
   PENDING: '검토중',
   ACCEPTED: '수락됨',
   REJECTED: '거절됨',
