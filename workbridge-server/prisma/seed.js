@@ -235,7 +235,7 @@ async function main() {
     },
   });
 
-  // 진행중 프로젝트
+  // 계약 진행 중인 마감 프로젝트
   const project8 = await prisma.project.create({
     data: {
       title: '이커머스 관리자 페이지 개발',
@@ -245,7 +245,7 @@ async function main() {
       budget: 6000000,
       deadline: new Date('2026-05-15'),
       requiredSkills: ['React', 'TypeScript', 'Node.js', 'Prisma'],
-      status: 'IN_PROGRESS',
+      status: 'CLOSED',
       clientId: client3.id,
     },
   });

@@ -160,7 +160,7 @@ export async function updateApplication(req, res, next) {
     }
 
     if (status === 'ACCEPTED') {
-      // Atomic transaction: accept application, reject others, create contract, update project
+      // Atomic transaction: accept application, reject others, create contract, close recruitment
       const result = await prisma.$transaction(async (tx) => {
         const rejectedApplications = await tx.application.findMany({
           where: { projectId, id: { not: appId }, status: 'PENDING' },
@@ -192,7 +192,7 @@ export async function updateApplication(req, res, next) {
 
         await tx.project.update({
           where: { id: projectId },
-          data: { status: 'IN_PROGRESS' },
+          data: { status: 'CLOSED' },
         });
 
         await tx.notification.create({

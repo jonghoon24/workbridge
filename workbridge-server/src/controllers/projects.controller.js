@@ -347,7 +347,7 @@ export async function deleteProject(req, res, next) {
 
 const validTransitions = {
   UPCOMING: ['OPEN', 'CANCELLED', 'CLOSED'],
-  OPEN: ['IN_PROGRESS', 'CANCELLED', 'CLOSED'],
+  OPEN: ['CANCELLED', 'CLOSED'],
   IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
   COMPLETED: [],
   CANCELLED: [],
