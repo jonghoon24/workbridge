@@ -6,9 +6,19 @@ import Badge from '@/components/ui/Badge';
 import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
 
 export default function ProjectCard({ project, onBookmarkChange }) {
+  const now = new Date();
+  const recruitmentStartDate = project.recruitmentStartDate
+    ? new Date(project.recruitmentStartDate)
+    : null;
+  const daysUntilStart = recruitmentStartDate
+    ? Math.ceil((recruitmentStartDate - now) / (1000 * 60 * 60 * 24))
+    : null;
   const daysLeft = Math.ceil(
-    (new Date(project.deadline) - new Date()) / (1000 * 60 * 60 * 24)
+    (new Date(project.deadline) - now) / (1000 * 60 * 60 * 24)
   );
+  const timelineLabel = project.status === 'UPCOMING' && recruitmentStartDate
+    ? daysUntilStart > 0 ? `${daysUntilStart}일 후 시작` : '오늘 시작'
+    : daysLeft > 0 ? `${daysLeft}일 남음` : '마감됨';
 
   return (
     <Card className="p-5 hover:shadow-md transition-shadow h-full">
@@ -49,7 +59,7 @@ export default function ProjectCard({ project, onBookmarkChange }) {
           </span>
         </div>
         <div className="text-gray-500">
-          {daysLeft > 0 ? `${daysLeft}일 남음` : '마감됨'}
+          {timelineLabel}
         </div>
       </div>
 

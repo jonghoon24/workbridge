@@ -1,12 +1,17 @@
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import { Prisma } from '@prisma/client';
-import { rejectPendingApplicationsForClosedProjects } from '../lib/projectLifecycle.js';
+import {
+  closeExpiredOpenProjects,
+  rejectPendingApplicationsForClosedProjects,
+} from '../lib/projectLifecycle.js';
 
 export async function apply(req, res, next) {
   try {
     const { coverLetter, expectedRate, expectedDuration } = req.body;
     const projectId = req.params.id;
+
+    await closeExpiredOpenProjects();
 
     if (!coverLetter || !expectedRate || !expectedDuration) {
       throw new AppError('All fields are required', 400);

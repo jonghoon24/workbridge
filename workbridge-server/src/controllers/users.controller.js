@@ -229,6 +229,8 @@ export async function getMyProjects(req, res, next) {
       throw new AppError('Only clients can view their projects', 403);
     }
 
+    await closeExpiredOpenProjects();
+
     const projects = await prisma.project.findMany({
       where: { clientId: req.user.id, deletedAt: null },
       include: {
