@@ -9,11 +9,14 @@ import Button from '@/components/ui/Button';
 
 export default function AnalysisPage() {
   const { id } = useParams();
+  const user = useAuthStore((state) => state.user);
   const [project, setProject] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
+  const [applyingBudget, setApplyingBudget] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
@@ -31,9 +34,11 @@ export default function AnalysisPage() {
   async function handleAnalyze() {
     setAnalyzing(true);
     setError('');
+    setSuccess('');
     try {
       const { data } = await api.post(`/api/projects/${id}/analyze`);
       setAnalysis(data);
+      setProject((prev) => (prev ? { ...prev, pricingAnalysis: data } : prev));
     } catch (err) {
       setError(err.response?.data?.error?.message || 'AI 분석에 실패했습니다');
     } finally {
@@ -41,7 +46,42 @@ export default function AnalysisPage() {
     }
   }
 
+  async function handleApplySuggestedBudget() {
+    if (!analysis?.totalAmount) return;
+    if (!confirm(`프로젝트 예산을 ${analysis.totalAmount.toLocaleString()}원으로 변경하시겠습니까?`)) {
+      return;
+    }
+
+    setApplyingBudget(true);
+    setError('');
+    setSuccess('');
+    try {
+      const { data } = await api.patch(`/api/projects/${id}`, { budget: analysis.totalAmount });
+      setProject((prev) => (prev ? { ...prev, ...data } : data));
+      setSuccess('제안된 예산이 프로젝트 예산에 반영되었습니다');
+    } catch (err) {
+      setError(err.response?.data?.error?.message || '제안된 예산 반영에 실패했습니다');
+    } finally {
+      setApplyingBudget(false);
+    }
+  }
+
   if (loading) return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+
+  const applicationCount = project?._count?.applications || 0;
+  const hasApplications = applicationCount > 0;
+  const isOwner = project?.clientId === user?.id;
+  const suggestedBudget = Number(analysis?.totalAmount);
+  const currentBudget = Number(project?.budget);
+  const hasSuggestedBudget = Number.isFinite(suggestedBudget) && suggestedBudget > 0;
+  const isBudgetApplied = hasSuggestedBudget && Math.round(currentBudget) === Math.round(suggestedBudget);
+  const canApplySuggestedBudget = isOwner && hasSuggestedBudget && !hasApplications && !isBudgetApplied;
+  const budgetApplyMessage = (() => {
+    if (!hasSuggestedBudget) return '분석 결과의 총 단가를 확인할 수 없습니다';
+    if (hasApplications) return '지원자가 있는 프로젝트는 예산을 변경할 수 없습니다';
+    if (isBudgetApplied) return '제안된 예산이 현재 프로젝트 예산과 같습니다';
+    return 'AI가 산정한 총 단가를 프로젝트 예산으로 저장할 수 있습니다';
+  })();
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -68,6 +108,12 @@ export default function AnalysisPage() {
         </div>
       )}
 
+      {success && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 mb-6">
+          {success}
+        </div>
+      )}
+
       {analysis && !analyzing && (
         <div className="space-y-6">
           <Card className="p-6">
@@ -79,6 +125,25 @@ export default function AnalysisPage() {
             </div>
             {analysis.summary && (
               <p className="text-gray-600 mt-3 text-sm">{analysis.summary}</p>
+            )}
+
+            {isOwner && (
+              <div className="mt-5 flex flex-col gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">
+                    현재 프로젝트 예산: {project?.budget?.toLocaleString()}원
+                  </p>
+                  <p className="text-sm text-gray-500 mt-1">{budgetApplyMessage}</p>
+                </div>
+                <Button
+                  onClick={handleApplySuggestedBudget}
+                  loading={applyingBudget}
+                  disabled={!canApplySuggestedBudget}
+                  className="w-full sm:w-auto"
+                >
+                  {isBudgetApplied ? '반영 완료' : '제안된 예산 반영하기'}
+                </Button>
+              </div>
             )}
           </Card>
 
