@@ -9,6 +9,10 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 
+function formatWon(value) {
+  return `${Number(value || 0).toLocaleString()}원`;
+}
+
 export default function ApplicationsPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -24,7 +28,24 @@ export default function ApplicationsPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  async function handleUpdate(appId, status) {
+  async function handleUpdate(application, status) {
+    if (status === 'ACCEPTED') {
+      const proposedAmount = Number(application.expectedRate);
+      const projectBudget = Number(application.project?.budget);
+
+      if (
+        Number.isFinite(proposedAmount)
+        && Number.isFinite(projectBudget)
+        && proposedAmount !== projectBudget
+      ) {
+        const confirmed = confirm(
+          `프로젝트 예산은 ${formatWon(projectBudget)}이고, ${application.freelancer?.name || '지원자'}님의 제안 금액은 ${formatWon(proposedAmount)}입니다.\n계약 금액은 제안 금액으로 생성됩니다. 수락하시겠습니까?`
+        );
+        if (!confirmed) return;
+      }
+    }
+
+    const appId = application.id;
     setUpdating(appId);
     try {
       const { data: result } = await api.patch(`/api/projects/${id}/applications/${appId}`, { status });
@@ -73,7 +94,7 @@ export default function ApplicationsPage() {
                     </p>
                     <p className="text-sm text-gray-700 line-clamp-3">{app.coverLetter}</p>
                     <p className="text-sm text-gray-500 mt-2">
-                      예상 단가: {app.expectedRate?.toLocaleString()}원 · 예상 기간: {app.expectedDuration}
+                      제안 금액: {app.expectedRate?.toLocaleString()}원 · 예상 기간: {app.expectedDuration}
                     </p>
                   </div>
                 </div>
@@ -82,7 +103,7 @@ export default function ApplicationsPage() {
                   <div className="flex gap-2 ml-4">
                     <Button
                       size="sm"
-                      onClick={() => handleUpdate(app.id, 'ACCEPTED')}
+                      onClick={() => handleUpdate(app, 'ACCEPTED')}
                       loading={updating === app.id}
                     >
                       수락
@@ -90,7 +111,7 @@ export default function ApplicationsPage() {
                     <Button
                       size="sm"
                       variant="danger"
-                      onClick={() => handleUpdate(app.id, 'REJECTED')}
+                      onClick={() => handleUpdate(app, 'REJECTED')}
                       loading={updating === app.id}
                     >
                       거절
