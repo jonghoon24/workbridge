@@ -1,30 +1,10 @@
 import prisma from '../lib/prisma.js';
 import openai from '../lib/openai.js';
 import { AppError } from '../lib/errors.js';
-
-async function closeExpiredOpenProjects() {
-  const expiredProjects = await prisma.project.findMany({
-    where: {
-      status: { in: ['UPCOMING', 'OPEN'] },
-      deletedAt: null,
-      deadline: { lt: new Date() },
-    },
-    select: {
-      id: true,
-    },
-  });
-
-  if (expiredProjects.length === 0) return;
-
-  await prisma.project.updateMany({
-    where: {
-      id: { in: expiredProjects.map((project) => project.id) },
-      status: { in: ['UPCOMING', 'OPEN'] },
-      deletedAt: null,
-    },
-    data: { status: 'CLOSED' },
-  });
-}
+import {
+  closeExpiredOpenProjects,
+  rejectPendingApplicationsForClosedProjects,
+} from '../lib/projectLifecycle.js';
 
 function parsePositiveInt(value, field, max = null) {
   const parsed = Number.parseInt(value, 10);
@@ -360,6 +340,10 @@ export async function updateProjectStatus(req, res, next) {
         where: { id: req.params.id },
         data: { status },
       });
+
+      if (status === 'CLOSED') {
+        await rejectPendingApplicationsForClosedProjects({ projectId: req.params.id }, tx);
+      }
 
       const recipientIds = [...new Set(project.applications.map((application) => application.freelancerId))];
       if (status === 'CLOSED' && recipientIds.length > 0) {

@@ -1,5 +1,9 @@
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
+import {
+  closeExpiredOpenProjects,
+  rejectPendingApplicationsForClosedProjects,
+} from '../lib/projectLifecycle.js';
 import { uploadToSupabase } from '../middlewares/upload.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -158,6 +162,9 @@ export async function getMyApplications(req, res, next) {
     if (req.user.role !== 'FREELANCER') {
       throw new AppError('Only freelancers can view their applications', 403);
     }
+
+    await closeExpiredOpenProjects();
+    await rejectPendingApplicationsForClosedProjects({ freelancerId: req.user.id });
 
     const applications = await prisma.application.findMany({
       where: { freelancerId: req.user.id },
