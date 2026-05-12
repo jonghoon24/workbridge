@@ -12,6 +12,7 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import ProjectCard from '@/components/projects/ProjectCard';
 import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
+import { getProfileCompletionMessage, isProfileComplete } from '@/lib/profileCompletion';
 
 const RECOMMENDATION_LIMIT = 3;
 
@@ -26,6 +27,7 @@ export default function ProjectDetailPage() {
   const [applyModal, setApplyModal] = useState(false);
   const [applyForm, setApplyForm] = useState({ coverLetter: '', expectedRate: '', expectedDuration: '' });
   const [applyLoading, setApplyLoading] = useState(false);
+  const [profileChecking, setProfileChecking] = useState(false);
   const [applyError, setApplyError] = useState('');
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
@@ -123,9 +125,34 @@ export default function ProjectDetailPage() {
       setApplyModal(false);
       router.push('/my/applications');
     } catch (err) {
-      setApplyError(err.response?.data?.error?.message || '지원에 실패했습니다');
+      const message = err.response?.data?.error?.message || '지원에 실패했습니다';
+      if (err.response?.status === 403 && message.includes('프로필')) {
+        alert(getProfileCompletionMessage('FREELANCER'));
+        setApplyModal(false);
+        router.push('/profile');
+        return;
+      }
+      setApplyError(message);
     } finally {
       setApplyLoading(false);
+    }
+  }
+
+  async function handleOpenApply() {
+    setProfileChecking(true);
+    try {
+      const { data } = await api.get('/api/users/me');
+      if (!isProfileComplete(data)) {
+        alert(getProfileCompletionMessage(data.role));
+        router.push('/profile');
+        return;
+      }
+
+      setApplyModal(true);
+    } catch (err) {
+      alert(err.response?.data?.error?.message || '프로필을 확인하지 못했습니다');
+    } finally {
+      setProfileChecking(false);
     }
   }
 
@@ -219,7 +246,7 @@ export default function ProjectDetailPage() {
             </>
           )}
           {canApply && (
-            <Button onClick={() => setApplyModal(true)}>지원하기</Button>
+            <Button onClick={handleOpenApply} loading={profileChecking}>지원하기</Button>
           )}
         </div>
       </div>
