@@ -69,14 +69,38 @@ export default function ProfilePage() {
       };
 
       if (profile?.role === 'CLIENT') {
+        const businessField = resolveSelectableValue(form.businessFieldPreset, form.businessFieldOther);
+        if (!form.companyName?.trim() || !businessField) {
+          setError('회사명과 사업 분야를 입력해주세요');
+          return;
+        }
+
         payload.companyName = form.companyName;
-        payload.businessField = resolveSelectableValue(form.businessFieldPreset, form.businessFieldOther);
+        payload.businessField = businessField;
         payload.website = form.website;
       }
 
       if (profile?.role === 'FREELANCER') {
+        const activityCategory = resolveSelectableValue(form.activityCategoryPreset, form.activityCategoryOther);
+        const experienceYears = Number(form.experienceYears);
+        const hourlyRate = Number(form.hourlyRate);
+
+        if (
+          form.skills.length === 0
+          || !activityCategory
+          || form.experienceYears === ''
+          || !Number.isInteger(experienceYears)
+          || experienceYears < 0
+          || form.hourlyRate === ''
+          || !Number.isFinite(hourlyRate)
+          || hourlyRate <= 0
+        ) {
+          setError('기술 스택, 활동 카테고리, 경력, 시간당 단가를 입력해주세요');
+          return;
+        }
+
         payload.skills = form.skills;
-        payload.activityCategory = resolveSelectableValue(form.activityCategoryPreset, form.activityCategoryOther);
+        payload.activityCategory = activityCategory;
         payload.portfolioUrl = form.portfolioUrl;
         if (form.experienceYears !== '') payload.experienceYears = form.experienceYears;
         if (form.hourlyRate !== '') payload.hourlyRate = form.hourlyRate;
@@ -158,10 +182,13 @@ export default function ProfilePage() {
           {/* Role-specific fields */}
           {profile?.role === 'CLIENT' && (
             <>
-              <Input label="회사명" value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} />
+              <Input label="회사명" required value={form.companyName} onChange={(e) => setForm({ ...form, companyName: e.target.value })} />
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">사업 분야</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  사업 분야 <span className="text-red-500">*</span>
+                </label>
                 <select
+                  required
                   value={form.businessFieldPreset || ''}
                   onChange={(e) => setForm({ ...form, businessFieldPreset: e.target.value })}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
@@ -187,7 +214,9 @@ export default function ProfilePage() {
           {profile?.role === 'FREELANCER' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">기술 스택</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  기술 스택 <span className="text-red-500">*</span>
+                </label>
                 <CheckboxChips
                   options={SKILL_OPTIONS}
                   value={form.skills}
@@ -195,8 +224,11 @@ export default function ProfilePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">주요 활동 카테고리</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  주요 활동 카테고리 <span className="text-red-500">*</span>
+                </label>
                 <select
+                  required
                   value={form.activityCategoryPreset || ''}
                   onChange={(e) => setForm({ ...form, activityCategoryPreset: e.target.value })}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
@@ -218,6 +250,7 @@ export default function ProfilePage() {
               <div className="grid grid-cols-2 gap-4">
                 <Input
                   label="경력 (년)"
+                  required
                   type="number"
                   value={form.experienceYears}
                   onChange={(e) => setForm({ ...form, experienceYears: e.target.value })}
@@ -225,6 +258,7 @@ export default function ProfilePage() {
                 />
                 <Input
                   label="시간당 단가 (원)"
+                  required
                   type="number"
                   value={form.hourlyRate}
                   onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
