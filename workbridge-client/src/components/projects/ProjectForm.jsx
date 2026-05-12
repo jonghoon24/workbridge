@@ -6,7 +6,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import CheckboxChips from '@/components/ui/CheckboxChips';
 import api from '@/lib/api';
-import { PROJECT_CATEGORIES, SKILL_OPTIONS } from '@/constants/taxonomy';
+import { normalizeSkillList, PROJECT_CATEGORIES, SKILL_OPTIONS } from '@/constants/taxonomy';
 
 const STEPS = [
   { title: '기본 정보', fields: ['title', 'category', 'description'] },
@@ -40,7 +40,7 @@ export default function ProjectForm({ initialData = null }) {
       ? formatDateInput(initialData.recruitmentStartDate)
       : today,
     deadline: initialData?.deadline ? formatDateInput(initialData.deadline) : '',
-    requiredSkills: initialData?.requiredSkills || [],
+    requiredSkills: normalizeSkillList(initialData?.requiredSkills || []),
   });
   const [currentStep, setCurrentStep] = useState(0);
   const [errors, setErrors] = useState({});
@@ -130,7 +130,7 @@ export default function ProjectForm({ initialData = null }) {
         title: form.title,
         description: form.description,
         category: form.category,
-        requiredSkills: form.requiredSkills,
+        requiredSkills: normalizeSkillList(form.requiredSkills),
       };
 
       if (!hasApplications) {
@@ -306,7 +306,7 @@ export default function ProjectForm({ initialData = null }) {
             <CheckboxChips
               options={SKILL_OPTIONS}
               value={form.requiredSkills}
-              onChange={(requiredSkills) => setForm({ ...form, requiredSkills })}
+              onChange={(requiredSkills) => setForm({ ...form, requiredSkills: normalizeSkillList(requiredSkills) })}
             />
             {errors.requiredSkills && <p className="mt-2 text-sm text-red-600">{errors.requiredSkills}</p>}
           </div>

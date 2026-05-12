@@ -3,7 +3,7 @@
 import { useCallback } from 'react';
 import useProjectStore from '@/store/projectStore';
 import CheckboxChips from '@/components/ui/CheckboxChips';
-import { PROJECT_CATEGORIES, SKILL_OPTIONS, splitOptionList } from '@/constants/taxonomy';
+import { normalizeSkillList, PROJECT_CATEGORIES, SKILL_OPTIONS } from '@/constants/taxonomy';
 
 const PROJECT_STATUS_OPTIONS = [
   { value: 'OPEN', label: '모집 중' },
@@ -14,7 +14,7 @@ const PROJECT_STATUS_OPTIONS = [
 
 export default function ProjectFilters() {
   const { filters, setFilters, resetFilters } = useProjectStore();
-  const selectedSkills = splitOptionList(filters.skills);
+  const selectedSkills = normalizeSkillList(filters.skills);
 
   const handleChange = useCallback(
     (key, value) => {
@@ -86,7 +86,7 @@ export default function ProjectFilters() {
           <CheckboxChips
             options={SKILL_OPTIONS}
             value={selectedSkills}
-            onChange={(nextSkills) => handleChange('skills', nextSkills.join(','))}
+            onChange={(nextSkills) => handleChange('skills', normalizeSkillList(nextSkills).join(','))}
             columns
           />
         </div>

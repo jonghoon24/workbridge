@@ -16,12 +16,9 @@ export const SKILL_OPTIONS = [
   'Swift',
   'Dart',
   'Firebase',
-  'PostgreSQL',
-  'MySQL',
   'SQL',
   'Prisma',
   'AWS',
-  'AWS S3',
   'Docker',
   'Kubernetes',
   'Redis',
@@ -39,6 +36,12 @@ export const SKILL_OPTIONS = [
   'Tailwind CSS',
   'Framer Motion',
 ];
+
+const SKILL_ALIASES = {
+  PostgreSQL: 'SQL',
+  MySQL: 'SQL',
+  'AWS S3': 'AWS',
+};
 
 export const FREELANCER_ACTIVITY_CATEGORIES = [
   '웹 개발',
@@ -67,6 +70,15 @@ export function splitOptionList(value) {
   if (Array.isArray(value)) return value.filter(Boolean);
   if (!value) return [];
   return value.split(',').map((item) => item.trim()).filter(Boolean);
+}
+
+export function normalizeSkill(skill) {
+  return SKILL_ALIASES[skill] || skill;
+}
+
+export function normalizeSkillList(value) {
+  const normalized = splitOptionList(value).map(normalizeSkill);
+  return [...new Set(normalized)];
 }
 
 export function resolvePreset(value, options) {
