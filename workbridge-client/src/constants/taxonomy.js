@@ -33,6 +33,10 @@ export const SKILL_OPTIONS = [
   'Illustrator',
   'Photoshop',
   'Branding',
+  'GA4',
+  'Meta Ads',
+  'Google Ads',
+  'Mailchimp',
   'Tailwind CSS',
   'Framer Motion',
 ];
