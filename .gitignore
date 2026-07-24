@@ -19,3 +19,7 @@ Thumbs.db
 .agents/
 .claude/
 skills-lock.json
+
+# Planning/scaffolding docs (kept locally, not tracked)
+docs/PRD.md
+docs/TODO.md

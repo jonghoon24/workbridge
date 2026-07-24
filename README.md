@@ -40,9 +40,6 @@ npx prisma db seed
 
 | 문서 | 설명 |
 | --- | --- |
-| [docs/PRD.md](docs/PRD.md) | 기획 요구사항 정의서 |
-| [docs/TECH_STACK.md](docs/TECH_STACK.md) | 기술 스택 |
-| [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | 프로젝트 디렉토리 구조 |
 | [docs/API.md](docs/API.md) | API 엔드포인트 목록 |
 | [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 모델 |
 | [docs/ENV.md](docs/ENV.md) | 환경변수 및 외부 서비스 설정 |
