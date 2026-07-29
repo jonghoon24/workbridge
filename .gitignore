@@ -17,8 +17,12 @@ Thumbs.db
 
 # Local agent/tooling
 .agents/
-.claude/
 skills-lock.json
+
+# .claude/ is local-only, except the shared skills subtree
+.claude/*
+!.claude/skills/
+!.claude/skills/**
 
 # Planning/scaffolding docs (kept locally, not tracked)
 docs/PRD.md
