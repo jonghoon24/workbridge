@@ -1,6 +1,13 @@
+import type { NextFunction, Response } from 'express';
+import type { Prisma } from '@prisma/client';
+
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
+import type { AuthedRequest } from '../types/index.js';
 
+// `satisfies` (rather than a plain annotation) keeps the literal types Prisma needs —
+// e.g. `orderBy: { createdAt: 'desc' }` must stay `'desc'`, not widen to `string` —
+// while still letting each query infer its own result payload from this shape.
 const contractInclude = {
   project: { select: { id: true, title: true, description: true, category: true, status: true } },
   client: { select: { id: true, name: true, email: true, companyName: true, profileImage: true } },
@@ -13,9 +20,9 @@ const contractInclude = {
     },
     orderBy: { createdAt: 'desc' },
   },
-};
+} satisfies Prisma.ContractInclude;
 
-export async function getContract(req, res, next) {
+export async function getContract(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const contract = await prisma.contract.findUnique({
       where: { id: req.params.id },
@@ -36,7 +43,7 @@ export async function getContract(req, res, next) {
   }
 }
 
-export async function signContract(req, res, next) {
+export async function signContract(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const contract = await prisma.contract.findUnique({
       where: { id: req.params.id },
@@ -51,7 +58,7 @@ export async function signContract(req, res, next) {
     }
 
     const isClient = contract.clientId === req.user.id;
-    const updateData = isClient
+    const updateData: Prisma.ContractUpdateInput = isClient
       ? { clientSigned: true }
       : { freelancerSigned: true };
 
@@ -81,7 +88,7 @@ export async function signContract(req, res, next) {
   }
 }
 
-export async function completeContract(req, res, next) {
+export async function completeContract(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { status } = req.body;
 

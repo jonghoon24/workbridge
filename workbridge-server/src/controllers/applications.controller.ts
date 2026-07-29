@@ -1,12 +1,16 @@
+import type { NextFunction, Response } from 'express';
+
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
+// Imported as a value, not a type: the `instanceof` check below needs the runtime object.
 import { Prisma } from '@prisma/client';
 import {
   closeExpiredOpenProjects,
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle.js';
+import type { AuthedRequest } from '../types/index.js';
 
-export async function apply(req, res, next) {
+export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { coverLetter, expectedRate, expectedDuration } = req.body;
     const projectId = req.params.id;
@@ -90,7 +94,7 @@ export async function apply(req, res, next) {
   }
 }
 
-export async function getApplications(req, res, next) {
+export async function getApplications(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const projectId = req.params.id;
 
@@ -136,7 +140,7 @@ export async function getApplications(req, res, next) {
   }
 }
 
-export async function updateApplication(req, res, next) {
+export async function updateApplication(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { projectId, appId } = req.params;
     const { status } = req.body;
