@@ -1,5 +1,6 @@
 import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
+import { env } from '../env.js';
 
 export const upload = multer({
   storage: multer.memoryStorage(),
@@ -14,11 +15,15 @@ export const upload = multer({
 });
 
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SECRET_KEY
+  env.SUPABASE_URL,
+  env.SUPABASE_SECRET_KEY
 );
 
-export async function uploadToSupabase(buffer, mimetype, filename) {
+export async function uploadToSupabase(
+  buffer: Buffer,
+  mimetype: string,
+  filename: string
+): Promise<string> {
   const { data, error } = await supabase.storage
     .from('workbridge')
     .upload(`profiles/${filename}`, buffer, {

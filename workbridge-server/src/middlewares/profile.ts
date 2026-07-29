@@ -1,3 +1,4 @@
+import type { NextFunction, Request, Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import { isProfileComplete } from '../lib/profileCompletion.js';
@@ -12,7 +13,7 @@ const profileSelect = {
   hourlyRate: true,
 };
 
-export async function requireCompleteProfile(req, res, next) {
+export async function requireCompleteProfile(req: Request, res: Response, next: NextFunction) {
   try {
     if (!req.user) {
       throw new AppError('Authentication required', 401);
