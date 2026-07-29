@@ -1,4 +1,4 @@
-import type { ProfileCompletionInput } from '../types/index.js';
+import type { ProfileCompletionInput } from '../types/index';
 
 export function isProfileComplete(user: ProfileCompletionInput | null): boolean {
   if (!user) return false;

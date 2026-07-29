@@ -1,9 +1,9 @@
 import type { NextFunction, Request, Response } from 'express';
-import prisma from '../lib/prisma.js';
-import { AppError } from '../lib/errors.js';
+import prisma from '../lib/prisma';
+import { AppError } from '../lib/errors';
 // Value import, not `import type` — `instanceof` needs the runtime object.
 import { Prisma } from '@prisma/client';
-import type { AuthedRequest } from '../types/index.js';
+import type { AuthedRequest } from '../types/index';
 
 export async function createReview(req: AuthedRequest, res: Response, next: NextFunction) {
   try {

@@ -1,9 +1,9 @@
 import jwt from 'jsonwebtoken';
 import type { NextFunction, Request, Response } from 'express';
 import type { Role } from '@prisma/client';
-import { AppError } from '../lib/errors.js';
-import { env } from '../env.js';
-import type { JwtUserPayload } from '../types/index.js';
+import { AppError } from '../lib/errors';
+import { env } from '../env';
+import type { JwtUserPayload } from '../types/index';
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;

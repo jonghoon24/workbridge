@@ -3,9 +3,9 @@ import {
   apply,
   getApplications,
   updateApplication,
-} from '../controllers/applications.controller.js';
-import { authenticate, requireRole } from '../middlewares/auth.js';
-import { requireCompleteProfile } from '../middlewares/profile.js';
+} from '../controllers/applications.controller';
+import { authenticate, requireRole } from '../middlewares/auth';
+import { requireCompleteProfile } from '../middlewares/profile';
 
 const router = Router();
 

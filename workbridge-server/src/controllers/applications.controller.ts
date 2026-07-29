@@ -1,14 +1,14 @@
 import type { NextFunction, Response } from 'express';
 
-import prisma from '../lib/prisma.js';
-import { AppError } from '../lib/errors.js';
+import prisma from '../lib/prisma';
+import { AppError } from '../lib/errors';
 // Imported as a value, not a type: the `instanceof` check below needs the runtime object.
 import { Prisma } from '@prisma/client';
 import {
   closeExpiredOpenProjects,
   rejectPendingApplicationsForClosedProjects,
-} from '../lib/projectLifecycle.js';
-import type { AuthedRequest } from '../types/index.js';
+} from '../lib/projectLifecycle';
+import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
   try {

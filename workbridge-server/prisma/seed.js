@@ -1,6 +1,9 @@
-import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
-import { v4 as uuidv4 } from 'uuid';
+// CommonJS: this file is run directly by `node` and is outside tsconfig's `include`,
+// so it is not transpiled. The package has no `"type": "module"`, which means `import`
+// syntax here would be a SyntaxError.
+const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 
 const prisma = new PrismaClient();
 
@@ -8,6 +11,11 @@ async function main() {
   console.log('Seeding database...');
 
   // Clean existing data (역순으로 삭제)
+  // Notification must be deleted first: it holds a `userId` foreign key, so the
+  // `user.deleteMany()` below fails with Prisma P2003 if any notification rows survive.
+  // The app creates these whenever an application is accepted, so anyone who uses the
+  // app and then re-seeds hits this.
+  await prisma.notification.deleteMany();
   await prisma.review.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.contract.deleteMany();

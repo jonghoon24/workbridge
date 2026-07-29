@@ -7,8 +7,8 @@ import {
   googleAuth,
   googleCallback,
   selectRole,
-} from '../controllers/auth.controller.js';
-import { authenticate } from '../middlewares/auth.js';
+} from '../controllers/auth.controller';
+import { authenticate } from '../middlewares/auth';
 
 const router = Router();
 

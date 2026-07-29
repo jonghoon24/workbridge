@@ -1,7 +1,7 @@
 import type { NextFunction, Response } from 'express';
-import prisma from '../lib/prisma.js';
-import { AppError } from '../lib/errors.js';
-import type { AuthedRequest } from '../types/index.js';
+import prisma from '../lib/prisma';
+import { AppError } from '../lib/errors';
+import type { AuthedRequest } from '../types/index';
 
 function parseLimit(value: string | undefined): number {
   const parsed = Number.parseInt(value || '20', 10);

@@ -1,8 +1,8 @@
 import jwt from 'jsonwebtoken';
 import type { SignOptions } from 'jsonwebtoken';
 
-import { env } from '../env.js';
-import type { JwtUserPayload } from '../types/index.js';
+import { env } from '../env';
+import type { JwtUserPayload } from '../types/index';
 
 /** The claims we mint. `iat`/`exp` are added by `jsonwebtoken` itself. */
 type TokenPayload = Pick<JwtUserPayload, 'id' | 'email' | 'role'>;

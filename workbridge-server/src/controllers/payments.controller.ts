@@ -1,10 +1,10 @@
 import type { NextFunction, Response } from 'express';
-import prisma from '../lib/prisma.js';
-import { AppError } from '../lib/errors.js';
+import prisma from '../lib/prisma';
+import { AppError } from '../lib/errors';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
-import { env } from '../env.js';
-import type { AuthedRequest } from '../types/index.js';
+import { env } from '../env';
+import type { AuthedRequest } from '../types/index';
 
 const isPaymentBypassEnabled = () =>
   env.ALLOW_PAYMENT_BYPASS === 'true';

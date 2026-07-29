@@ -1,9 +1,9 @@
 import type { NextFunction, Response } from 'express';
 import type { Prisma } from '@prisma/client';
 
-import prisma from '../lib/prisma.js';
-import { AppError } from '../lib/errors.js';
-import type { AuthedRequest } from '../types/index.js';
+import prisma from '../lib/prisma';
+import { AppError } from '../lib/errors';
+import type { AuthedRequest } from '../types/index';
 
 // `satisfies` (rather than a plain annotation) keeps the literal types Prisma needs —
 // e.g. `orderBy: { createdAt: 'desc' }` must stay `'desc'`, not widen to `string` —

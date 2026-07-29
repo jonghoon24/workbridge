@@ -1,14 +1,14 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { Prisma } from '@prisma/client';
-import type { AuthedFileRequest, AuthedRequest } from '../types/index.js';
-import prisma from '../lib/prisma.js';
-import { AppError } from '../lib/errors.js';
+import type { AuthedFileRequest, AuthedRequest } from '../types/index';
+import prisma from '../lib/prisma';
+import { AppError } from '../lib/errors';
 import {
   closeExpiredOpenProjects,
   rejectPendingApplicationsForClosedProjects,
-} from '../lib/projectLifecycle.js';
-import { normalizeSkillList } from '../lib/skills.js';
-import { uploadToSupabase } from '../middlewares/upload.js';
+} from '../lib/projectLifecycle';
+import { normalizeSkillList } from '../lib/skills';
+import { uploadToSupabase } from '../middlewares/upload';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function getMe(req: AuthedRequest, res: Response, next: NextFunction) {

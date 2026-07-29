@@ -6,10 +6,10 @@ import {
   getMyApplications,
   getMyBookmarks,
   getMyProjects,
-} from '../controllers/users.controller.js';
-import { getUserReviews } from '../controllers/reviews.controller.js';
-import { authenticate } from '../middlewares/auth.js';
-import { upload } from '../middlewares/upload.js';
+} from '../controllers/users.controller';
+import { getUserReviews } from '../controllers/reviews.controller';
+import { authenticate } from '../middlewares/auth';
+import { upload } from '../middlewares/upload';
 
 const router = Router();
 

@@ -4,8 +4,8 @@ import {
   getUnreadNotificationCount,
   markAllNotificationsRead,
   markNotificationRead,
-} from '../controllers/notifications.controller.js';
-import { authenticate } from '../middlewares/auth.js';
+} from '../controllers/notifications.controller';
+import { authenticate } from '../middlewares/auth';
 
 const router = Router();
 

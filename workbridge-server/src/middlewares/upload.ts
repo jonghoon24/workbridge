@@ -1,6 +1,6 @@
 import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
-import { env } from '../env.js';
+import { env } from '../env';
 
 export const upload = multer({
   storage: multer.memoryStorage(),

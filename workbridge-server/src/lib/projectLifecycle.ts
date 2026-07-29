@@ -1,7 +1,7 @@
 import type { Prisma, ProjectStatus } from '@prisma/client';
 
-import prisma from './prisma.js';
-import type { PrismaTransactionClient } from '../types/index.js';
+import prisma from './prisma';
+import type { PrismaTransactionClient } from '../types/index';
 
 export function getProjectStatusForRecruitmentStart(
   recruitmentStartDate: Date | string | null | undefined,

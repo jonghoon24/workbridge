@@ -1,24 +1,24 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { Prisma, ProjectStatus } from '@prisma/client';
 
-import prisma from '../lib/prisma.js';
-import openai from '../lib/openai.js';
-import { AppError } from '../lib/errors.js';
+import prisma from '../lib/prisma';
+import openai from '../lib/openai';
+import { AppError } from '../lib/errors';
 import {
   closeExpiredOpenProjects,
   getProjectStatusForRecruitmentStart,
   rejectPendingApplicationsForClosedProjects,
-} from '../lib/projectLifecycle.js';
+} from '../lib/projectLifecycle';
 import {
   expandSkillSearchTerms,
   normalizeSkillList,
-} from '../lib/skills.js';
+} from '../lib/skills';
 import type {
   AuthedRequest,
   PricingAnalysisData,
   ProjectStatusTransitions,
   RawPricingAnalysis,
-} from '../types/index.js';
+} from '../types/index';
 
 /**
  * `req.query` values are `string | string[] | ParsedQs | ParsedQs[] | undefined`.

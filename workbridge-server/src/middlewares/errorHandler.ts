@@ -1,5 +1,5 @@
 import type { ErrorRequestHandler } from 'express';
-import type { ErrorEnvelope } from '../types/index.js';
+import type { ErrorEnvelope } from '../types/index';
 
 /**
  * Global error handler, mounted last in `index.ts`.

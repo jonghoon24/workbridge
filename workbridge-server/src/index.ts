@@ -1,21 +1,21 @@
-// `dotenv/config` must stay the first import: ESM evaluates imports depth-first in
-// source order, and modules below (`lib/openai.ts`, `middlewares/upload.ts`) read
-// `process.env` at module-evaluation time.
+// `dotenv/config` must stay the first import. It compiles to a `require()` that runs
+// before the ones below it, and `lib/openai.ts` / `middlewares/upload.ts` read
+// `process.env` at module-evaluation time — so moving it breaks boot.
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 
-import { env } from './env.js';
-import authRoutes from './routes/auth.routes.js';
-import userRoutes from './routes/users.routes.js';
-import projectRoutes from './routes/projects.routes.js';
-import applicationRoutes from './routes/applications.routes.js';
-import contractRoutes from './routes/contracts.routes.js';
-import paymentRoutes from './routes/payments.routes.js';
-import reviewRoutes from './routes/reviews.routes.js';
-import notificationRoutes from './routes/notifications.routes.js';
-import { errorHandler } from './middlewares/errorHandler.js';
+import { env } from './env';
+import authRoutes from './routes/auth.routes';
+import userRoutes from './routes/users.routes';
+import projectRoutes from './routes/projects.routes';
+import applicationRoutes from './routes/applications.routes';
+import contractRoutes from './routes/contracts.routes';
+import paymentRoutes from './routes/payments.routes';
+import reviewRoutes from './routes/reviews.routes';
+import notificationRoutes from './routes/notifications.routes';
+import { errorHandler } from './middlewares/errorHandler';
 
 const app = express();
 

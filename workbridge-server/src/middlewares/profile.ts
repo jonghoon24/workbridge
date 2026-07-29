@@ -1,7 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
-import prisma from '../lib/prisma.js';
-import { AppError } from '../lib/errors.js';
-import { isProfileComplete } from '../lib/profileCompletion.js';
+import prisma from '../lib/prisma';
+import { AppError } from '../lib/errors';
+import { isProfileComplete } from '../lib/profileCompletion';
 
 const profileSelect = {
   role: true,

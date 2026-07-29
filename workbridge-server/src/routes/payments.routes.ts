@@ -4,8 +4,8 @@ import {
   confirmPayment,
   completePaymentForDev,
   getPayments,
-} from '../controllers/payments.controller.js';
-import { authenticate } from '../middlewares/auth.js';
+} from '../controllers/payments.controller';
+import { authenticate } from '../middlewares/auth';
 
 const router = Router();
 

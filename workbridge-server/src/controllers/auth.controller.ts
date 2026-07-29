@@ -2,11 +2,11 @@ import bcrypt from 'bcryptjs';
 import axios from 'axios';
 import type { NextFunction, Request, Response } from 'express';
 import type { User } from '@prisma/client';
-import prisma from '../lib/prisma.js';
-import { generateAccessToken, generateRefreshToken } from '../lib/jwt.js';
-import { AppError } from '../lib/errors.js';
-import { env } from '../env.js';
-import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index.js';
+import prisma from '../lib/prisma';
+import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
+import { AppError } from '../lib/errors';
+import { env } from '../env';
+import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index';
 import jwt from 'jsonwebtoken';
 
 function setRefreshTokenCookie(res: Response, token: string) {
