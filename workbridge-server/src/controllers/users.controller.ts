@@ -1,3 +1,6 @@
+import type { NextFunction, Request, Response } from 'express';
+import type { Prisma } from '@prisma/client';
+import type { AuthedFileRequest, AuthedRequest } from '../types/index.js';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import {
@@ -8,7 +11,7 @@ import { normalizeSkillList } from '../lib/skills.js';
 import { uploadToSupabase } from '../middlewares/upload.js';
 import { v4 as uuidv4 } from 'uuid';
 
-export async function getMe(req, res, next) {
+export async function getMe(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
@@ -41,7 +44,7 @@ export async function getMe(req, res, next) {
   }
 }
 
-export async function updateMe(req, res, next) {
+export async function updateMe(req: AuthedFileRequest, res: Response, next: NextFunction) {
   try {
     const {
       name,
@@ -56,13 +59,13 @@ export async function updateMe(req, res, next) {
       portfolioUrl,
     } = req.body;
 
-    let profileImage;
+    let profileImage: string | undefined;
     if (req.file) {
       const filename = `${req.user.id}-${uuidv4()}.${req.file.mimetype.split('/')[1]}`;
       profileImage = await uploadToSupabase(req.file.buffer, req.file.mimetype, filename);
     }
 
-    const updateData = {};
+    const updateData: Prisma.UserUpdateInput = {};
     if (name !== undefined) updateData.name = name;
     if (bio !== undefined) updateData.bio = bio;
     if (profileImage) updateData.profileImage = profileImage;
@@ -107,7 +110,8 @@ export async function updateMe(req, res, next) {
   }
 }
 
-export async function getUserById(req, res, next) {
+// Public route (no `authenticate`) — must not read `req.user`.
+export async function getUserById(req: Request, res: Response, next: NextFunction) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.params.id },
@@ -156,7 +160,7 @@ export async function getUserById(req, res, next) {
   }
 }
 
-export async function getMyApplications(req, res, next) {
+export async function getMyApplications(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     if (req.user.role !== 'FREELANCER') {
       throw new AppError('Only freelancers can view their applications', 403);
@@ -190,7 +194,7 @@ export async function getMyApplications(req, res, next) {
   }
 }
 
-export async function getMyBookmarks(req, res, next) {
+export async function getMyBookmarks(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     if (req.user.role !== 'FREELANCER') {
       throw new AppError('Only freelancers can view their bookmarks', 403);
@@ -222,7 +226,7 @@ export async function getMyBookmarks(req, res, next) {
   }
 }
 
-export async function getMyProjects(req, res, next) {
+export async function getMyProjects(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     if (req.user.role !== 'CLIENT') {
       throw new AppError('Only clients can view their projects', 403);
