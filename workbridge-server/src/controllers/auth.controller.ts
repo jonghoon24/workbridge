@@ -132,16 +132,25 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-export async function googleAuth(req: Request, res: Response) {
-  const params = new URLSearchParams({
-    client_id: env.GOOGLE_CLIENT_ID,
-    redirect_uri: env.GOOGLE_CALLBACK_URL,
-    response_type: 'code',
-    scope: 'openid email profile',
-    access_type: 'offline',
-  });
+// The try/catch is load-bearing even though nothing here is awaited: `env` reads are
+// throwing getters, and because this function is `async`, a synchronous throw becomes a
+// rejected promise. Express 4 does not capture those, so an unhandled rejection would
+// terminate the process (Node treats them as fatal by default) instead of returning a
+// response. Do not remove it as dead weight.
+export async function googleAuth(req: Request, res: Response, next: NextFunction) {
+  try {
+    const params = new URLSearchParams({
+      client_id: env.GOOGLE_CLIENT_ID,
+      redirect_uri: env.GOOGLE_CALLBACK_URL,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+    });
 
-  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+  } catch (err) {
+    next(err);
+  }
 }
 
 export async function googleCallback(req: Request, res: Response, next: NextFunction) {
