@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.js",
+    "dev": "tsx watch src/index.ts",
     "postinstall": "prisma generate",
-    "start": "tsx src/index.js",
+    "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
