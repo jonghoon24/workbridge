@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "nodemon src/index.js",
+    "dev": "tsx watch src/index.js",
     "postinstall": "prisma generate",
-    "start": "node src/index.js",
+    "start": "tsx src/index.js",
+    "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
@@ -15,21 +16,31 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
     "@prisma/client": "^5.7.0",
+    "@supabase/supabase-js": "^2.39.0",
+    "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "openai": "^4.24.1",
-    "axios": "^1.6.2",
-    "uuid": "^9.0.0",
-    "@supabase/supabase-js": "^2.39.0"
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.25",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^1.4.13",
+    "@types/node": "^22.20.1",
+    "@types/uuid": "^9.0.8",
+    "nodemon": "^3.0.2",
     "prisma": "^5.7.0",
-    "nodemon": "^3.0.2"
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3"
   }
 }

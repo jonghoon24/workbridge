@@ -1,0 +1,36 @@
+name: typecheck
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  server:
+    name: workbridge-server
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workbridge-server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workbridge-server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Prisma's generated types must exist before typecheck — the whole data model
+      # is inherited from them.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Validate Prisma schema
+        run: npx prisma validate

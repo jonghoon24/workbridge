@@ -1,6 +1,12 @@
-import prisma from './prisma.js';
+import type { Prisma, ProjectStatus } from '@prisma/client';
 
-export function getProjectStatusForRecruitmentStart(recruitmentStartDate, now = new Date()) {
+import prisma from './prisma.js';
+import type { PrismaTransactionClient } from '../types/index.js';
+
+export function getProjectStatusForRecruitmentStart(
+  recruitmentStartDate: Date | string | null | undefined,
+  now: Date = new Date(),
+): ProjectStatus {
   if (recruitmentStartDate && new Date(recruitmentStartDate) > now) {
     return 'UPCOMING';
   }
@@ -8,7 +14,10 @@ export function getProjectStatusForRecruitmentStart(recruitmentStartDate, now = 
   return 'OPEN';
 }
 
-export async function rejectPendingApplicationsForClosedProjects(applicationWhere = {}, client = prisma) {
+export async function rejectPendingApplicationsForClosedProjects(
+  applicationWhere: Prisma.ApplicationWhereInput = {},
+  client: PrismaTransactionClient = prisma,
+) {
   return client.application.updateMany({
     where: {
       ...applicationWhere,
@@ -22,7 +31,7 @@ export async function rejectPendingApplicationsForClosedProjects(applicationWher
   });
 }
 
-export async function closeExpiredOpenProjects() {
+export async function closeExpiredOpenProjects(): Promise<string[]> {
   return prisma.$transaction(async (tx) => {
     const now = new Date();
 
