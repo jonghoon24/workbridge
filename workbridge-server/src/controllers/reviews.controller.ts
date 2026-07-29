@@ -1,8 +1,11 @@
+import type { NextFunction, Request, Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
+// Value import, not `import type` — `instanceof` needs the runtime object.
 import { Prisma } from '@prisma/client';
+import type { AuthedRequest } from '../types/index.js';
 
-export async function createReview(req, res, next) {
+export async function createReview(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { contractId, revieweeId, rating, content, tags } = req.body;
 
@@ -63,7 +66,9 @@ export async function createReview(req, res, next) {
   }
 }
 
-export async function getUserReviews(req, res, next) {
+// Public route (`GET /api/reviews/users/:id` is not behind `authenticate`) — `req.user` is
+// unset at runtime here, so this handler must not read it.
+export async function getUserReviews(req: Request, res: Response, next: NextFunction) {
   try {
     const reviews = await prisma.review.findMany({
       where: { revieweeId: req.params.id },

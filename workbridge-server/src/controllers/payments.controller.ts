@@ -1,12 +1,15 @@
+import type { NextFunction, Response } from 'express';
 import prisma from '../lib/prisma.js';
 import { AppError } from '../lib/errors.js';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
+import { env } from '../env.js';
+import type { AuthedRequest } from '../types/index.js';
 
 const isPaymentBypassEnabled = () =>
-  process.env.ALLOW_PAYMENT_BYPASS === 'true';
+  env.ALLOW_PAYMENT_BYPASS === 'true';
 
-export async function createPayment(req, res, next) {
+export async function createPayment(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { contractId } = req.body;
 
@@ -80,7 +83,7 @@ export async function createPayment(req, res, next) {
   }
 }
 
-export async function confirmPayment(req, res, next) {
+export async function confirmPayment(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { paymentKey, orderId, amount } = req.body;
 
@@ -115,7 +118,11 @@ export async function confirmPayment(req, res, next) {
 
     // Verify with Toss Payments
     try {
-      const secretKey = process.env.TOSS_SECRET_KEY;
+      // Deliberately `string | undefined` rather than a required env var: the template
+      // literal below stringifies an unset key, so a missing TOSS_SECRET_KEY still surfaces
+      // as a 400 "Payment verification failed" from Toss. Behavior preserved from the JS
+      // version — promoting it to required would turn that into a 500 instead.
+      const secretKey = env.TOSS_SECRET_KEY;
       const credentials = Buffer.from(`${secretKey}:`).toString('base64');
 
       const { data: tossPayment } = await axios.post(
@@ -147,7 +154,11 @@ export async function confirmPayment(req, res, next) {
   }
 }
 
-export async function completePaymentForDev(req, res, next) {
+export async function completePaymentForDev(
+  req: AuthedRequest,
+  res: Response,
+  next: NextFunction
+) {
   try {
     if (!isPaymentBypassEnabled()) {
       throw new AppError('Payment bypass is disabled', 403);
@@ -186,7 +197,9 @@ export async function completePaymentForDev(req, res, next) {
 
     const paymentData = {
       amount: contract.amount,
-      status: 'COMPLETED',
+      // `as const` keeps the literal from widening to `string`, which Prisma's
+      // `PaymentStatus` enum input would reject.
+      status: 'COMPLETED' as const,
       paymentKey: `dev_bypass_${contract.id}`,
     };
 
@@ -214,7 +227,7 @@ export async function completePaymentForDev(req, res, next) {
   }
 }
 
-export async function getPayments(req, res, next) {
+export async function getPayments(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const payments = await prisma.payment.findMany({
       where: { clientId: req.user.id },
