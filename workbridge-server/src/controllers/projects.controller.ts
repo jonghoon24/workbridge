@@ -1,3 +1,6 @@
+import type { NextFunction, Request, Response } from 'express';
+import type { Prisma, ProjectStatus } from '@prisma/client';
+
 import prisma from '../lib/prisma.js';
 import openai from '../lib/openai.js';
 import { AppError } from '../lib/errors.js';
@@ -10,8 +13,23 @@ import {
   expandSkillSearchTerms,
   normalizeSkillList,
 } from '../lib/skills.js';
+import type {
+  AuthedRequest,
+  PricingAnalysisData,
+  ProjectStatusTransitions,
+  RawPricingAnalysis,
+} from '../types/index.js';
 
-function parsePositiveInt(value, field, max = null) {
+/**
+ * `req.query` values are `string | string[] | ParsedQs | ParsedQs[] | undefined`.
+ * Every filter below reads a single scalar, so collapse anything else to
+ * `undefined` and let the caller fall back to its default.
+ */
+function queryString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function parsePositiveInt(value: string, field: string, max: number | null = null) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 1) {
     throw new AppError(`${field} must be a positive integer`, 400);
@@ -19,7 +37,7 @@ function parsePositiveInt(value, field, max = null) {
   return max ? Math.min(parsed, max) : parsed;
 }
 
-function parseBudget(value, field) {
+function parseBudget(value: string, field: string) {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed < 0) {
     throw new AppError(`${field} must be a non-negative number`, 400);
@@ -27,7 +45,7 @@ function parseBudget(value, field) {
   return parsed;
 }
 
-function parseProjectDate(value, field) {
+function parseProjectDate(value: string, field: string) {
   const parsed = new Date(value);
   if (!value || Number.isNaN(parsed.getTime())) {
     throw new AppError(`${field} must be a valid date`, 400);
@@ -35,13 +53,13 @@ function parseProjectDate(value, field) {
   return parsed;
 }
 
-function validateRecruitmentSchedule(recruitmentStartDate, deadline) {
+function validateRecruitmentSchedule(recruitmentStartDate: Date, deadline: Date) {
   if (recruitmentStartDate > deadline) {
     throw new AppError('recruitmentStartDate cannot be after deadline', 400);
   }
 }
 
-function parseAnalysisAmount(value) {
+function parseAnalysisAmount(value: unknown) {
   const normalized = typeof value === 'string'
     ? value.replace(/[^\d.-]/g, '')
     : value;
@@ -54,7 +72,7 @@ function parseAnalysisAmount(value) {
   return Math.round(parsed);
 }
 
-function normalizePricingAnalysisData(data) {
+function normalizePricingAnalysisData(data: RawPricingAnalysis): PricingAnalysisData {
   const features = (Array.isArray(data?.features) ? data.features : [])
     .map((feature, index) => ({
       name: String(feature?.name || `기능 ${index + 1}`).trim(),
@@ -77,21 +95,19 @@ function normalizePricingAnalysisData(data) {
   };
 }
 
-export async function getProjects(req, res, next) {
+export async function getProjects(req: Request, res: Response, next: NextFunction) {
   try {
     await closeExpiredOpenProjects();
 
-    const {
-      search,
-      category,
-      minBudget,
-      maxBudget,
-      skills,
-      status = 'OPEN',
-      sort = 'latest',
-      page = 1,
-      limit = 10,
-    } = req.query;
+    const search = queryString(req.query.search);
+    const category = queryString(req.query.category);
+    const minBudget = queryString(req.query.minBudget);
+    const maxBudget = queryString(req.query.maxBudget);
+    const skills = req.query.skills;
+    const status = queryString(req.query.status) ?? 'OPEN';
+    const sort = queryString(req.query.sort) ?? 'latest';
+    const page = queryString(req.query.page) ?? '1';
+    const limit = queryString(req.query.limit) ?? '10';
     const validSorts = ['latest', 'deadline', 'budget'];
     const validStatuses = ['ALL', 'UPCOMING', 'OPEN', 'CLOSED'];
 
@@ -112,12 +128,14 @@ export async function getProjects(req, res, next) {
       throw new AppError('minBudget cannot be greater than maxBudget', 400);
     }
 
-    const where = {
+    const where: Prisma.ProjectWhereInput = {
       deletedAt: null,
     };
 
     if (status !== 'ALL') {
-      where.status = status;
+      // Validated against `validStatuses` above, and 'ALL' is excluded here, so the
+      // remaining values are exactly ProjectStatus members.
+      where.status = status as ProjectStatus;
     }
 
     if (search) {
@@ -140,7 +158,7 @@ export async function getProjects(req, res, next) {
       }
     }
 
-    const orderBy = sort === 'deadline'
+    const orderBy: Prisma.ProjectOrderByWithRelationInput = sort === 'deadline'
       ? { deadline: 'asc' }
       : sort === 'budget'
       ? { budget: 'desc' }
@@ -176,7 +194,7 @@ export async function getProjects(req, res, next) {
   }
 }
 
-export async function createProject(req, res, next) {
+export async function createProject(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = req.body;
 
@@ -211,7 +229,7 @@ export async function createProject(req, res, next) {
   }
 }
 
-export async function getProjectById(req, res, next) {
+export async function getProjectById(req: Request, res: Response, next: NextFunction) {
   try {
     await closeExpiredOpenProjects();
 
@@ -236,7 +254,7 @@ export async function getProjectById(req, res, next) {
   }
 }
 
-export async function getProjectBookmark(req, res, next) {
+export async function getProjectBookmark(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const bookmark = await prisma.projectBookmark.findUnique({
       where: {
@@ -254,7 +272,7 @@ export async function getProjectBookmark(req, res, next) {
   }
 }
 
-export async function createProjectBookmark(req, res, next) {
+export async function createProjectBookmark(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const project = await prisma.project.findFirst({
       where: { id: req.params.id, deletedAt: null },
@@ -285,7 +303,7 @@ export async function createProjectBookmark(req, res, next) {
   }
 }
 
-export async function deleteProjectBookmark(req, res, next) {
+export async function deleteProjectBookmark(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     await prisma.projectBookmark.deleteMany({
       where: {
@@ -300,7 +318,7 @@ export async function deleteProjectBookmark(req, res, next) {
   }
 }
 
-export async function updateProject(req, res, next) {
+export async function updateProject(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const project = await prisma.project.findFirst({
       where: { id: req.params.id, deletedAt: null },
@@ -316,7 +334,7 @@ export async function updateProject(req, res, next) {
     }
 
     const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = req.body;
-    const updateData = {};
+    const updateData: Prisma.ProjectUpdateInput = {};
 
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
@@ -363,7 +381,7 @@ export async function updateProject(req, res, next) {
   }
 }
 
-export async function deleteProject(req, res, next) {
+export async function deleteProject(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const project = await prisma.project.findFirst({
       where: { id: req.params.id, deletedAt: null },
@@ -388,7 +406,7 @@ export async function deleteProject(req, res, next) {
   }
 }
 
-const validTransitions = {
+const validTransitions: ProjectStatusTransitions = {
   UPCOMING: ['OPEN', 'CANCELLED', 'CLOSED'],
   OPEN: ['CANCELLED', 'CLOSED'],
   IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
@@ -397,7 +415,7 @@ const validTransitions = {
   CLOSED: [],
 };
 
-export async function updateProjectStatus(req, res, next) {
+export async function updateProjectStatus(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { status } = req.body;
 
@@ -452,7 +470,7 @@ export async function updateProjectStatus(req, res, next) {
   }
 }
 
-export async function analyzeProject(req, res, next) {
+export async function analyzeProject(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const project = await prisma.project.findFirst({
       where: { id: req.params.id, deletedAt: null },
@@ -506,21 +524,29 @@ export async function analyzeProject(req, res, next) {
       temperature: 0.3,
     });
 
+    const content = completion.choices[0].message.content;
+
+    if (!content) {
+      throw new AppError('AI analysis did not return a response', 502);
+    }
+
     const analysisData = normalizePricingAnalysisData(
-      JSON.parse(completion.choices[0].message.content),
+      JSON.parse(content) as RawPricingAnalysis,
     );
+    // `PricingAnalysis.features` is a Json column; the normalized rows are plain JSON.
+    const features = analysisData.features as unknown as Prisma.InputJsonValue;
 
     const analysis = await prisma.pricingAnalysis.upsert({
       where: { projectId: project.id },
       create: {
         projectId: project.id,
-        features: analysisData.features,
+        features,
         totalAmount: analysisData.totalAmount,
         summary: analysisData.summary,
         marketReference: analysisData.marketReference,
       },
       update: {
-        features: analysisData.features,
+        features,
         totalAmount: analysisData.totalAmount,
         summary: analysisData.summary,
         marketReference: analysisData.marketReference,
