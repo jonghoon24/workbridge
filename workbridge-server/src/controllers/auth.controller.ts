@@ -1,31 +1,37 @@
 import bcrypt from 'bcryptjs';
 import axios from 'axios';
+import type { NextFunction, Request, Response } from 'express';
+import type { User } from '@prisma/client';
 import prisma from '../lib/prisma.js';
 import { generateAccessToken, generateRefreshToken } from '../lib/jwt.js';
 import { AppError } from '../lib/errors.js';
+import { env } from '../env.js';
+import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index.js';
 import jwt from 'jsonwebtoken';
 
-function setRefreshTokenCookie(res, token) {
+function setRefreshTokenCookie(res: Response, token: string) {
   res.cookie('refreshToken', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: env.isProduction,
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
 }
 
-function issueTokens(user) {
+/** Builds the JWT claims — distinct from {@link authUserPayload}, the HTTP response shape. */
+function issueTokens(user: Pick<User, 'id' | 'email' | 'role'>) {
   const payload = { id: user.id, email: user.email, role: user.role };
   const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
   return { accessToken, refreshToken };
 }
 
-function authUserPayload(user) {
+/** Builds the user object sent to clients — distinct from the JWT claims in {@link issueTokens}. */
+function authUserPayload(user: Pick<User, 'id' | 'email' | 'name' | 'role'>): AuthUserResponse {
   return { id: user.id, email: user.email, name: user.name, role: user.role };
 }
 
-export async function signup(req, res, next) {
+export async function signup(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password, name, role } = req.body;
 
@@ -59,7 +65,7 @@ export async function signup(req, res, next) {
   }
 }
 
-export async function login(req, res, next) {
+export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body;
 
@@ -89,7 +95,7 @@ export async function login(req, res, next) {
   }
 }
 
-export async function logout(req, res, next) {
+export async function logout(req: Request, res: Response, next: NextFunction) {
   try {
     res.clearCookie('refreshToken');
     res.json({ message: 'Logged out successfully' });
@@ -98,16 +104,17 @@ export async function logout(req, res, next) {
   }
 }
 
-export async function refresh(req, res, next) {
+export async function refresh(req: Request, res: Response, next: NextFunction) {
   try {
     const token = req.cookies?.refreshToken;
     if (!token) {
       throw new AppError('Refresh token not found', 401);
     }
 
-    let decoded;
+    // `jwt.verify` is typed `string | JwtPayload`; we only ever sign `JwtUserPayload` claims.
+    let decoded: JwtUserPayload;
     try {
-      decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+      decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as JwtUserPayload;
     } catch {
       throw new AppError('Invalid or expired refresh token', 401);
     }
@@ -125,10 +132,10 @@ export async function refresh(req, res, next) {
   }
 }
 
-export async function googleAuth(req, res) {
+export async function googleAuth(req: Request, res: Response) {
   const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID,
-    redirect_uri: process.env.GOOGLE_CALLBACK_URL,
+    client_id: env.GOOGLE_CLIENT_ID,
+    redirect_uri: env.GOOGLE_CALLBACK_URL,
     response_type: 'code',
     scope: 'openid email profile',
     access_type: 'offline',
@@ -137,19 +144,19 @@ export async function googleAuth(req, res) {
   res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
 }
 
-export async function googleCallback(req, res, next) {
+export async function googleCallback(req: Request, res: Response, next: NextFunction) {
   try {
     const { code } = req.query;
     if (!code) {
-      return res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
+      return res.redirect(`${env.CLIENT_URL}/login?error=oauth_failed`);
     }
 
     // Exchange code for tokens
     const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: process.env.GOOGLE_CALLBACK_URL,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: env.GOOGLE_CALLBACK_URL,
       grant_type: 'authorization_code',
     });
 
@@ -197,14 +204,14 @@ export async function googleCallback(req, res, next) {
       needsRoleSelection: String(needsRoleSelection),
     });
 
-    res.redirect(`${process.env.CLIENT_URL}/auth/callback?${params}`);
+    res.redirect(`${env.CLIENT_URL}/auth/callback?${params}`);
   } catch (err) {
     console.error('Google OAuth error:', err);
-    res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
+    res.redirect(`${env.CLIENT_URL}/login?error=oauth_failed`);
   }
 }
 
-export async function selectRole(req, res, next) {
+export async function selectRole(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { role } = req.body;
 
