@@ -123,19 +123,26 @@ export interface RawPricingAnalysis {
   marketReference?: unknown;
 }
 
-/** A single normalized feature row persisted into `PricingAnalysis.features` (Json). */
-export interface PricingAnalysisFeature {
+/**
+ * A single normalized feature row persisted into `PricingAnalysis.features` (Json).
+ *
+ * Declared as a **type alias, not an interface**, on purpose: TypeScript grants implicit
+ * index signatures only to type aliases, and without one an array of these is neither
+ * assignable nor directly castable to `Prisma.InputJsonArray` — which would force an
+ * `as unknown as` double cast at the persistence site.
+ */
+export type PricingAnalysisFeature = {
   name: string;
   description: string;
   estimatedCost: number;
   rationale: string;
   duration: string | null;
-}
+};
 
 /** The normalized, validated result of `normalizePricingAnalysisData`. */
-export interface PricingAnalysisData {
+export type PricingAnalysisData = {
   features: PricingAnalysisFeature[];
   totalAmount: number;
   summary: string | null;
   marketReference: string | null;
-}
+};

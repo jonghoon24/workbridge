@@ -534,7 +534,7 @@ export async function analyzeProject(req: AuthedRequest, res: Response, next: Ne
       JSON.parse(content) as RawPricingAnalysis,
     );
     // `PricingAnalysis.features` is a Json column; the normalized rows are plain JSON.
-    const features = analysisData.features as unknown as Prisma.InputJsonValue;
+    const features: Prisma.InputJsonValue = analysisData.features;
 
     const analysis = await prisma.pricingAnalysis.upsert({
       where: { projectId: project.id },
