@@ -444,15 +444,41 @@ not repairing a live race. The genuine defect was the missing status guard.
 
 | ID | Issue | Intended | Current |
 |---|---|---|---|
-| **D3** | Numeric profile fields unvalidated | Non-numeric `experienceYears`/`hourlyRate` → 400 | `parseInt`/`parseFloat` with no `NaN` guard, so `NaN` reaches Prisma → 500 |
+| **D3** | Numeric profile fields unvalidated — **silently destroys data** | Non-numeric `experienceYears`/`hourlyRate` → 400, row unchanged | `parseInt`/`parseFloat` with no `NaN` guard. Both columns are nullable, so Prisma serializes `NaN` to `null` and **the write succeeds**: `PATCH /me` with `experienceYears: 'abc'` returns **200**, persists the other fields, and wipes `experienceYears` to `null`. Because `requireCompleteProfile` needs an integer `experienceYears >= 0` and a finite `hourlyRate > 0`, one typo silently makes a freelancer's profile incomplete and every later `POST /:id/applications` 403 |
 | **D5** | Google account linking by email alone | Linking requires proven control of the address | An existing password account is matched by `email` and has `googleId` attached, enabling takeover of a known address |
 | **D6** | Multer errors have no status | Oversized → 413/400, wrong type → 400 | `LIMIT_FILE_SIZE`, the image-filter `Error`, and the raw Supabase throw reach `errorHandler` without a `statusCode` → 500 |
 | **D8** | Payment failure cause is discarded | Provider faults and amount mismatches are distinguishable in logs | `catch (tossError)` ignores its argument; every cause yields the same 400 and marks the payment `FAILED` |
 | **D9** | Review rating validated before coercion | Non-numeric rating → 400 | `rating < 1 \|\| rating > 5` runs on an untyped value, so `"abc"` passes both comparisons, then `parseInt` yields `NaN` → 500 |
 | **D10** | `apply` sends its response inside the `try` | A post-response failure must not attempt a second write | `res.status(201).json(...)` sits inside the inner `try`, so a throw after send reaches `errorHandler`, which writes again |
 | **D11** | Project deletion ignores live contracts (decided in Q4) | → 409 when a contract exists and is not `COMPLETED` | `deleteProject` checks only existence and ownership, so a project with a `PENDING` or `ACTIVE` contract can be soft-deleted, leaving the contract referencing a deleted project |
+| **D12** | Soft delete is enforced only on **read** paths, not writes | A soft-deleted principal cannot mutate anything — every write → ≥400 with no row change | The D1 fix covered authentication and profile reads. Write paths never re-check the actor: holding a still-valid access token, a soft-deleted user gets **200** from `PATCH /api/users/me` (and the change persists), **201** from `POST /api/projects/:id/applications` (a real application row is created), **201** from `POST /api/payments`, and **200** from `POST /api/contracts/:id/sign` |
+| **D13** | Concurrent payment creation collides | Unique-constraint collision → **409** (cross-cutting rule 8) | `Payment.contractId` is unique and `createPayment` does not catch P2002. Two simultaneous `POST /api/payments` for one `ACTIVE` contract return one **201** and one **500**. Same defect class as D4, which was fixed for contracts but not on the money path |
+| **D14** | Prisma errors leak internals in the 500 body | A 500 body must not expose file paths, source excerpts, or SQL | `errorHandler` renders `err.message` verbatim, and Prisma's formatted errors embed the **absolute source path and a source excerpt** — e.g. the D13 collision returns `Invalid prisma.payment.create() invocation in /Users/…/src/controllers/payments.controller.ts:70:42` plus surrounding lines. Note this is specific to Prisma-formatted errors; a plain `TypeError` such as `skill.trim is not a function` leaks nothing |
+| **D15** | `POST /api/projects` rejects `budget: 0` | Budget is specified as a **non-negative** number, so `0` → **201** | The required-field guard is `!budget` and `0` is falsy, so it → 400 `All fields are required`. **`PATCH /:id` is already correct** — it gates on `budget !== undefined`, so a zero-budget update succeeds. Only creation is affected. (Contrast the review `rating: 0` case, which the spec documents as intentionally caught by the required-field check.) |
+| **D16** | A skills array of non-strings → 500 | Malformed value → **400** (cross-cutting rule 8) | `normalizeSkillList` calls `.trim()` on each element, so `skills: [1, 2]` throws `TypeError: skill.trim is not a function` → 500. Affects `PATCH /api/users/me` and both `requiredSkills` paths on projects |
+| **D17** | A tags array of non-strings → 500 | Malformed value → **400** | `createReview` passes `tags` straight through when `Array.isArray` is true, so `tags: [1, 2]` reaches Prisma and is rejected as a 500. Non-array tags are handled correctly (coerced to `[]`) |
+| **D18** | `POST /api/payments/confirm` replay guard is not concurrency-safe | Confirmation is non-replayable: of two simultaneous confirms, exactly one succeeds and the other → 409 | The `status !== 'PENDING'` check is a read followed by a separate write with no row lock, so two concurrent confirms can both pass it and both proceed to call the provider |
+| **D19** | A soft-deleted project is still visible to bookmarking | Rule 5 is unconditional: a soft-deleted project must be invisible to listing, fetching, applying, **and bookmarking** | `GET /:id/bookmark` still reports `{ bookmarked: true }` for a soft-deleted project and `DELETE` still removes the row. Only `POST` checks. **This is distinct from Q6** — Q6 defers the narrower question of whether `GET`/`DELETE` should 404 for an id that never existed; rule 5 already decides the soft-deleted case |
+| **D20** | Concurrent accepts **deadlock** and return 500 | Of several simultaneous accepts on one project, one succeeds and the losers → **409** (rule 8) | Three concurrent `PATCH /:projectId/applications/:appId` calls on *different* PENDING applications of the same project deadlock in the accept transaction: Postgres raises **`40P01` deadlock detected**, which surfaces as `PrismaClientUnknownRequestError` → **500**. The D4 fix catches only `P2002`, so this class escapes it. The database invariants still hold (exactly one contract, one ACCEPTED application) — only the status code is wrong. Reproduced in 2 of 16 full-suite runs; needs a warm connection pool to race |
 
 ---
+
+### Found by the suite, not yet numbered
+
+The table above is **not exhaustive**. Writing the tests surfaced these, each covered by an
+`it.fails` tagged `[unlisted]` at the cited location. They are recorded here rather than numbered
+because they need triage first — several may be the same root cause, and a few may be acceptable.
+
+| Behavior | Where |
+|---|---|
+| `POST /:id/bookmark` losing the upsert's find-then-insert race → 500 with a Prisma leak. `prisma.upsert` on a compound unique is a find-then-`INSERT`, not `INSERT … ON CONFLICT`, so an insert blocked on an uncommitted duplicate wakes to P2002. Violates both "idempotent (upsert)" and rule 8 — and confirms **D14**'s leak is not specific to the payment path | `bookmarks.test.ts:368` |
+| Non-string `expectedDuration` on apply → 500 | `applications.test.ts:221` |
+| The `Project deadline has passed` branch in `apply` is **dead code** — the lazy sweep closes the project first, so it is unreachable | `applications.test.ts:394` |
+| Three `analyze` paths → 500 instead of 502: non-JSON content, a response with no `choices`, and the provider throwing | `projects-write.test.ts:1754, :1765, :1776` |
+| `GET /api/projects` accepts a fractional `page`/`limit` and a trailing-garbage `page` (`parseInt` truncates) rather than 400 | `projects-list.test.ts:365, :371, :378` |
+| `GET /api/notifications` same for fractional and trailing-garbage `limit` | `notifications.test.ts:263, :273` |
+| `SKILL_ALIASES` is a bare object literal, so a skill named `constructor`/`toString` resolves through `Object.prototype` | `lib.test.ts:111, :190` |
+| A `requiredSkills` array containing SQL `NULL` (reachable only by raw SQL) makes `GET /api/projects` 500 with Prisma `P2032` — **one bad row takes down the whole public listing** | not tested (unreachable via the API) |
 
 ## Open questions
 
@@ -483,8 +509,14 @@ obviously a bug.
 | ID | Question |
 |---|---|
 | **Q5** | What is `IN_PROGRESS` for? It exists in the enum and in `validTransitions`, but nothing ever assigns it — `CLOSED` currently means both "recruitment ended" and "work underway". Proposal: when `signContract` activates a contract, set the project to `IN_PROGRESS` in the same transaction; `completeContract` then transitions `IN_PROGRESS → COMPLETED`, which is already an allowed transition, removing today's direct `CLOSED → COMPLETED` bypass. Related dead states, likely part of the same decision: `PaymentStatus.REFUNDED` is read but never assigned (there is no refund flow), and `ContractStatus` has no cancelled/terminated value, so a contract can never be abandoned. |
-| **Q6** | Should `GET`/`DELETE` bookmark verify the project exists and is undeleted, as `POST` does? *(deferred)* |
+| **Q6** | Should `GET`/`DELETE` bookmark 404 for a project id that **never existed**, as `POST` does? *(deferred.* The *soft-deleted* case is not deferred — rule 5 decides it, and the gap is tracked as **D19**.*)* |
 | **Q7** | Should the unpaginated list endpoints (`GET /:id/applications`, `/me/applications`, `/api/payments`, review lists) be paginated before they grow? *(deferred)* |
+| **Q8** | Role gating reads the role from the **token**, not the database row, so a user demoted from FREELANCER to CLIENT keeps FREELANCER access for up to 15 minutes. Consistent with the stateless-token decision in Q1, but it is privilege-retention-after-demotion and deserves an explicit yes. |
+| **Q9** | `GET /api/contracts/:id` returns **both parties' email addresses** (`contractInclude` selects `email` for client and freelancer). Every other endpoint withholds email. Intended, since the parties are counterparties to a signed contract — or an oversight? |
+| **Q10** | Unmatched paths and methods bypass `errorHandler` entirely and get Express's default HTML 404, violating cross-cutting rule 1 ("every error response body is exactly `{ error: { message } }`"). Add a terminal 404 handler, or scope rule 1 to handled routes? |
+| **Q11** | Does the soft-delete rule extend to **joined** owners? A project whose client has been soft-deleted still appears in the public listing and in `GET /:id`, complete with the client's name, company and avatar. |
+| **Q12** | A repeated `?limit=1&limit=2` on `GET /api/notifications` yields 1 (the array stringifies to `'1,2'` and `parseInt` takes the leading number) — neither the documented default of 20 nor a 400. `GET /api/projects` deliberately falls back to its default in the same situation. Should notifications match? |
+| **Q13** | An **empty** query value is treated inconsistently. `GET /api/projects` 400s on `?status=`, `?sort=`, `?page=`, `?limit=` but ignores `?search=`, `?category=`, `?skills=`, `?minBudget=`; `GET /api/notifications` treats `?limit=` as absent and falls back to its default of 20. Reading `''` as "absent → default" is at least as defensible as "non-integer → 400". Both behaviors are currently pinned by tests; the spec should pick one. |
 
 ### Note on `validTransitions`
 

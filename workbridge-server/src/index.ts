@@ -73,7 +73,10 @@ app.use('/api/notifications', notificationRoutes);
 
 app.use(errorHandler);
 
-if (!isProduction) {
+// Also skipped under test: supertest spins up its own ephemeral server per request, so
+// binding a real port here would collide across test files and leave an open handle that
+// stops the test process from exiting.
+if (!isProduction && env.NODE_ENV !== 'test') {
   // `env.PORT` is a string (defaulted to '4000'); `app.listen` needs the number
   // overload, otherwise a string resolves to the unix-socket-path signature.
   const PORT = Number(env.PORT);

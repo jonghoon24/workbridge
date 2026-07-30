@@ -12,12 +12,36 @@ jobs:
     defaults:
       run:
         working-directory: workbridge-server
+
+    # The suite runs against a real Postgres rather than a mocked Prisma client: the bugs it
+    # exists to catch are database behaviours — foreign keys, unique constraints, transaction
+    # rollback — and mocks would make every one of them invisible.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: workbridge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
-      # `prisma validate` and `prisma generate` resolve the `env()` references in
-      # schema.prisma, so these must be *defined* — but nothing here connects to a
-      # database, so placeholders are sufficient. Locally these come from .env.
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
-      DIRECT_URL: postgresql://ci:ci@localhost:5432/ci
+      # `prisma generate` and `prisma validate` resolve the `env()` references in schema.prisma,
+      # so these must be defined. They also point at the service container above, which the test
+      # step migrates and uses. The database name contains "test" deliberately — `test/helpers/db.ts`
+      # refuses to run against a URL that does not, because it truncates every table.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_test
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/workbridge_test
+      # vitest.config.ts otherwise falls back to `postgresql://$USER@localhost/workbridge_test`,
+      # which does not match this container's credentials.
+      TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_test
+
     steps:
       - uses: actions/checkout@v4
 
@@ -40,3 +64,9 @@ jobs:
 
       - name: Validate Prisma schema
         run: npx prisma validate
+
+      - name: Apply migrations to the test database
+        run: npx prisma migrate deploy
+
+      - name: Test
+        run: npm test
