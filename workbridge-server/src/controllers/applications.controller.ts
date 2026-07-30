@@ -169,66 +169,85 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
       throw new AppError('Application not found', 404);
     }
 
+    // Only a pending application can be decided. Without this, accepting an already-decided
+    // application would proceed and attempt a second Contract on the project — and
+    // `Contract.projectId` is unique, so that surfaced as a 500 rather than a conflict.
+    if (application.status !== 'PENDING') {
+      throw new AppError('This application has already been processed', 409);
+    }
+
     if (status === 'ACCEPTED') {
       // Atomic transaction: accept application, reject others, create contract, close recruitment
-      const result = await prisma.$transaction(async (tx) => {
-        const rejectedApplications = await tx.application.findMany({
-          where: { projectId, id: { not: appId }, status: 'PENDING' },
-          select: { freelancerId: true },
-        });
-
-        const updatedApp = await tx.application.update({
-          where: { id: appId },
-          data: { status: 'ACCEPTED' },
-        });
-
-        await tx.application.updateMany({
-          where: { projectId, id: { not: appId }, status: 'PENDING' },
-          data: { status: 'REJECTED' },
-        });
-
-        const contract = await tx.contract.create({
-          data: {
-            projectId,
-            applicationId: appId,
-            clientId: project.clientId,
-            freelancerId: application.freelancerId,
-            amount: application.expectedRate,
-            startDate: new Date(),
-            endDate: project.deadline,
-            status: 'PENDING',
-          },
-        });
-
-        await tx.project.update({
-          where: { id: projectId },
-          data: { status: 'CLOSED' },
-        });
-
-        await tx.notification.create({
-          data: {
-            userId: application.freelancerId,
-            type: 'APPLICATION_ACCEPTED',
-            title: '지원이 수락되었습니다',
-            message: `'${project.title}' 프로젝트 지원이 수락되었습니다. 계약서를 확인해주세요.`,
-            href: `/contracts/${contract.id}`,
-          },
-        });
-
-        if (rejectedApplications.length > 0) {
-          await tx.notification.createMany({
-            data: rejectedApplications.map((rejected) => ({
-              userId: rejected.freelancerId,
-              type: 'APPLICATION_REJECTED',
-              title: '지원 결과가 업데이트되었습니다',
-              message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
-              href: '/my/applications',
-            })),
+      let result;
+      try {
+        result = await prisma.$transaction(async (tx) => {
+          const rejectedApplications = await tx.application.findMany({
+            where: { projectId, id: { not: appId }, status: 'PENDING' },
+            select: { freelancerId: true },
           });
-        }
 
-        return { application: updatedApp, contract };
-      });
+          const updatedApp = await tx.application.update({
+            where: { id: appId },
+            data: { status: 'ACCEPTED' },
+          });
+
+          await tx.application.updateMany({
+            where: { projectId, id: { not: appId }, status: 'PENDING' },
+            data: { status: 'REJECTED' },
+          });
+
+          const contract = await tx.contract.create({
+            data: {
+              projectId,
+              applicationId: appId,
+              clientId: project.clientId,
+              freelancerId: application.freelancerId,
+              amount: application.expectedRate,
+              startDate: new Date(),
+              endDate: project.deadline,
+              status: 'PENDING',
+            },
+          });
+
+          await tx.project.update({
+            where: { id: projectId },
+            data: { status: 'CLOSED' },
+          });
+
+          await tx.notification.create({
+            data: {
+              userId: application.freelancerId,
+              type: 'APPLICATION_ACCEPTED',
+              title: '지원이 수락되었습니다',
+              message: `'${project.title}' 프로젝트 지원이 수락되었습니다. 계약서를 확인해주세요.`,
+              href: `/contracts/${contract.id}`,
+            },
+          });
+
+          if (rejectedApplications.length > 0) {
+            await tx.notification.createMany({
+              data: rejectedApplications.map((rejected) => ({
+                userId: rejected.freelancerId,
+                type: 'APPLICATION_REJECTED',
+                title: '지원 결과가 업데이트되었습니다',
+                message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
+                href: '/my/applications',
+              })),
+            });
+          }
+
+          return { application: updatedApp, contract };
+        });
+      } catch (err) {
+        // `Contract.projectId` is unique. The PENDING guard above stops the common case, but
+        // two concurrent accepts of *different* pending applications on the same project can
+        // both pass it — the constraint is the real backstop, so surface it as a conflict
+        // rather than letting P2002 become a 500.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new AppError('A contract already exists for this project', 409);
+        }
+        throw err;
+      }
 
       res.json(result);
     } else {

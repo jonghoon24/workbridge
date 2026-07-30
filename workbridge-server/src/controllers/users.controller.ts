@@ -13,8 +13,10 @@ import { v4 as uuidv4 } from 'uuid';
 
 export async function getMe(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
+    // `findFirst`, not `findUnique`: a soft-deleted user holding a still-valid access token
+    // must not be able to read their profile. `deletedAt` is not part of a unique constraint.
+    const user = await prisma.user.findFirst({
+      where: { id: req.user.id, deletedAt: null },
       select: {
         id: true,
         email: true,
@@ -113,8 +115,9 @@ export async function updateMe(req: AuthedFileRequest, res: Response, next: Next
 // Public route (no `authenticate`) — must not read `req.user`.
 export async function getUserById(req: Request, res: Response, next: NextFunction) {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.params.id },
+    // Soft-deleted users must not remain publicly visible.
+    const user = await prisma.user.findFirst({
+      where: { id: req.params.id, deletedAt: null },
       select: {
         id: true,
         name: true,

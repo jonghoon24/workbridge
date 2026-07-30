@@ -43,6 +43,9 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
       throw new AppError('Role must be CLIENT or FREELANCER', 400);
     }
 
+    // Deliberately does NOT filter `deletedAt: null`. `email` is unique at the database
+    // level, so a soft-deleted user still occupies the address — filtering here would
+    // report it as available and then fail with P2002 on create.
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       throw new AppError('Email already in use', 409);
@@ -73,7 +76,9 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       throw new AppError('Email and password are required', 400);
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    // `findFirst`, not `findUnique`: soft-deleted users must not be able to log in, and
+    // `deletedAt` is not part of a unique constraint.
+    const user = await prisma.user.findFirst({ where: { email, deletedAt: null } });
     if (!user || !user.password) {
       throw new AppError('Invalid credentials', 401);
     }
@@ -119,7 +124,8 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
       throw new AppError('Invalid or expired refresh token', 401);
     }
 
-    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    // A still-valid refresh token must stop working once the user is soft-deleted.
+    const user = await prisma.user.findFirst({ where: { id: decoded.id, deletedAt: null } });
     if (!user) {
       throw new AppError('User not found', 401);
     }
@@ -180,7 +186,7 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
 
     // Upsert user
     let user = await prisma.user.findFirst({
-      where: { OR: [{ googleId }, { email }] },
+      where: { deletedAt: null, OR: [{ googleId }, { email }] },
     });
 
     let needsRoleSelection = false;
@@ -228,7 +234,7 @@ export async function selectRole(req: AuthedRequest, res: Response, next: NextFu
       throw new AppError('Role must be CLIENT or FREELANCER', 400);
     }
 
-    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    const user = await prisma.user.findFirst({ where: { id: req.user.id, deletedAt: null } });
 
     if (!user) {
       throw new AppError('User not found', 404);

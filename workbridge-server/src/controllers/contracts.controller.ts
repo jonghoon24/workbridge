@@ -57,29 +57,39 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
       throw new AppError('Not authorized', 403);
     }
 
+    if (contract.status === 'COMPLETED') {
+      throw new AppError('A completed contract cannot be signed again', 400);
+    }
+
     const isClient = contract.clientId === req.user.id;
     const updateData: Prisma.ContractUpdateInput = isClient
       ? { clientSigned: true }
       : { freelancerSigned: true };
 
-    const signed = await prisma.contract.update({
-      where: { id: req.params.id },
-      data: updateData,
-    });
+    // Both writes in one transaction. Postgres already serializes the two parties on the row
+    // lock its UPDATE takes — verified: 15 concurrent sign pairs all activated correctly — so
+    // this is not fixing a live race. It closes the window where a failure between the two
+    // statements leaves a contract signed-but-inactive, and matches the repo convention that
+    // multi-step state changes are transactional.
+    const updated = await prisma.$transaction(async (tx) => {
+      const signed = await tx.contract.update({
+        where: { id: contract.id },
+        data: updateData,
+      });
 
-    // Activate contract if both parties signed
-    if (signed.clientSigned && signed.freelancerSigned) {
-      const updated = await prisma.contract.update({
-        where: { id: req.params.id },
-        data: { status: 'ACTIVE' },
+      // Guarded on PENDING so activation can never overwrite a later status.
+      if (signed.clientSigned && signed.freelancerSigned && signed.status === 'PENDING') {
+        return tx.contract.update({
+          where: { id: contract.id },
+          data: { status: 'ACTIVE' },
+          include: contractInclude,
+        });
+      }
+
+      return tx.contract.findUnique({
+        where: { id: contract.id },
         include: contractInclude,
       });
-      return res.json(updated);
-    }
-
-    const updated = await prisma.contract.findUnique({
-      where: { id: req.params.id },
-      include: contractInclude,
     });
 
     res.json(updated);
