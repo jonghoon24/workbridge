@@ -842,6 +842,61 @@ describe('a soft-deleted project', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
+// §5 / D21 — the contract endpoints never filter deletedAt
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * `getContract`, `signContract` and `completeContract` all resolve the contract with a plain
+ * `findUnique` and never consult `deletedAt` on the joined project. Rule 5 ("every read and
+ * write must filter `deletedAt: null`") decides the soft-deleted case, so a contract whose
+ * project is gone must be invisible. Today all three succeed: the contract is served with the
+ * deleted project embedded in the body, it can be signed, and `completeContract` writes
+ * `status: COMPLETED` onto the deleted project row. Interacts with D11/Q4 — once deleting a
+ * project with a live contract is blocked, this state becomes much harder to reach.
+ */
+describe('a contract whose project is soft-deleted (D21)', () => {
+  it.fails('is not served by GET /api/contracts/:id [D21]', async () => {
+    const { client, project, contract } = await makeContractScenario();
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(client).get(`/api/contracts/${contract.id}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: expect.any(String) } });
+  });
+
+  it.fails('cannot be signed: 404 and no signature recorded [D21]', async () => {
+    const { freelancer, project, contract } = await makeContractScenario();
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(404);
+    const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(stored.freelancerSigned).toBe(false);
+    expect(stored.status).toBe('PENDING');
+  });
+
+  it.fails('cannot be completed: COMPLETED is not written onto the deleted project [D21]', async () => {
+    const { client, project, contract } = await makeContractScenario({
+      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
+    });
+    await makePayment(contract.id, client.id, { status: 'COMPLETED' });
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(client)
+      .patch(`/api/contracts/${contract.id}`)
+      .send({ status: 'COMPLETED' });
+
+    expect(res.status).toBe(404);
+    const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+    const storedProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(storedContract.status).toBe('ACTIVE');
+    expect(storedProject.status).not.toBe('COMPLETED');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
 // §5 vs. the review lists — an unaddressed edge, filed under Q11
 // ---------------------------------------------------------------------------------------------
 
