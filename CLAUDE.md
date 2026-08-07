@@ -13,7 +13,9 @@ Run these from inside the respective package directory.
 **Server** (`workbridge-server/`):
 ```bash
 npm run dev                          # tsx watch src/index.ts on http://localhost:4000
-npm run typecheck                    # tsc --noEmit — the primary correctness check
+npm run typecheck                    # tsc --noEmit (covers src/ and test/)
+npm test                             # vitest behavior suite — needs a real Postgres test db
+bash scripts/test-db.sh              # create + migrate workbridge_test (prints its URL)
 npx prisma migrate dev --name <name> # create + apply a migration (updates schema)
 npm run db:push                      # push schema without a migration (prototyping)
 npm run db:generate                  # regenerate Prisma client after schema edits
@@ -27,7 +29,7 @@ npm run build   # production build — the client's correctness check
 npm run lint     # eslint (next lint)
 ```
 
-There is **no automated test suite** in either package. Verify changes with `npm run typecheck` (server), `npm run build` (client), `npx prisma validate` (schema), and manual flow testing. `.github/workflows/typecheck.yml` is the only CI. Prisma client is auto-generated on `npm install` via `postinstall`; its types must exist before typecheck.
+The **server has a behavior test suite** (`test/`, vitest + supertest) asserted against `docs/BEHAVIOR.md`; known divergences are pinned with `it.fails`. It runs against a **real Postgres database**, not mocks — `scripts/test-db.sh` creates and migrates `workbridge_test`, or point `TEST_DATABASE_URL` at your own. The helpers truncate every table between tests, so never aim it at a database you care about. Cross-cutting concerns are tested once, centrally: the 401/403/ownership matrix lives in `test/authorization.test.ts` and soft-delete behavior in `test/soft-delete.test.ts` — don't re-assert those per endpoint. The client has **no tests**; `npm run build` is its correctness check, plus manual flow testing. CI (`.github/workflows/typecheck.yml`) runs the server typecheck, `prisma validate`, and the test suite against a Postgres service container. Prisma client is auto-generated on `npm install` via `postinstall`; its types must exist before typecheck.
 
 To exercise the running app, use the `run-workbridge` skill. Its `drive.sh` screenshot checks only assert that a non-empty PNG was written — open the images to judge them.
 
@@ -58,7 +60,7 @@ Next.js 14 App Router (JSX, not TS), Tailwind, Zustand:
 PostgreSQL (Supabase). Core chain: `User` (CLIENT/FREELANCER) → `Project` → `Application` → `Contract` → `Payment` → `Review`. Key invariants: `Project.contract` and `Contract.payment` are 1:1 (`@unique`); an `Application` is unique per `(projectId, freelancerId)`; a `Review` is unique per `(contractId, reviewerId)` (one review per party). Deletion is **soft** via `deletedAt` on `User`/`Project` — always filter `deletedAt: null` in queries.
 
 ## Conventions & Gotchas
-- **`tsconfig.json` scopes `include` to `src/` only** — `prisma/seed.js` is deliberately left as plain CommonJS JavaScript, run untranspiled by `node`. Don't convert it.
+- **`tsconfig.json` includes `src/`, `test/`, and `vitest.config.ts` — but not `prisma/`** — `prisma/seed.js` is deliberately left as plain CommonJS JavaScript, run untranspiled by `node`. Don't convert it.
 - **`vercel.json` hardcodes the entry path twice** (`builds[].src` and `routes[].dest`) — renaming `src/index.ts` requires changing both. `@vercel/node` transpiles TypeScript natively, so there is deliberately no build step and no `dist/`; the Vercel Build Command lives in the dashboard, not the repo, so avoid changes that would require editing it.
 - After editing `schema.prisma`, run a migration (or `db:push`) **and** `db:generate` before the new fields/models are usable.
 - **Payment bypass**: `ALLOW_PAYMENT_BYPASS` (server) + `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` (client) enable a "dev payment complete" shortcut around the TossPayments sandbox for local/demo use. Both must stay `false` in production.
