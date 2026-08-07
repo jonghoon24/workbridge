@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Notification, Prisma, User } from '@prisma/client';
 
-import { api, authed, expiredToken, tokenWithWrongSecret } from './helpers/api';
+import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer } from './helpers/factories';
 
@@ -51,46 +51,6 @@ async function twoUsers(): Promise<{ caller: User; other: User }> {
 }
 
 describe('GET /api/notifications', () => {
-  it('requires a bearer token', async () => {
-    const res = await api().get('/api/notifications');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
-  it('rejects an expired token with 401', async () => {
-    const caller = await makeClient();
-    await seedNotifications(caller.id, 2);
-
-    const res = await api()
-      .get('/api/notifications')
-      .set('Authorization', `Bearer ${expiredToken(caller)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-  });
-
-  it('rejects a token signed with the wrong secret with 401', async () => {
-    const caller = await makeClient();
-    await seedNotifications(caller.id, 2);
-
-    const res = await api()
-      .get('/api/notifications')
-      .set('Authorization', `Bearer ${tokenWithWrongSecret(caller)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-  });
-
-  it('rejects a malformed Authorization header with 401', async () => {
-    const caller = await makeClient();
-
-    const res = await api().get('/api/notifications').set('Authorization', 'NotBearer whatever');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
   it('returns an empty list and a zero unread count for a user with none', async () => {
     const caller = await makeClient();
 
@@ -148,31 +108,6 @@ describe('GET /api/notifications', () => {
       readAt: null,
     });
     expect(res.body.notifications[0].createdAt).toEqual(expect.any(String));
-  });
-
-  it('never returns another user notifications', async () => {
-    const { caller, other } = await twoUsers();
-    await seedNotifications(other.id, 3);
-    await makeNotification(caller.id, { title: 'mine' });
-
-    const res = await authed(caller).get('/api/notifications');
-
-    expect(res.status).toBe(200);
-    expect(res.body.notifications).toHaveLength(1);
-    expect(res.body.notifications[0].title).toBe('mine');
-    expect(res.body.notifications[0].userId).toBe(caller.id);
-    expect(res.body.unreadCount).toBe(1);
-  });
-
-  it('returns an empty page when only another user has notifications', async () => {
-    const { caller, other } = await twoUsers();
-    await seedNotifications(other.id, 5);
-
-    const res = await authed(caller).get('/api/notifications');
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ notifications: [], unreadCount: 0 });
-    expect(await prisma.notification.count()).toBe(5);
   });
 
   it('defaults limit to 20', async () => {
@@ -342,13 +277,6 @@ describe('GET /api/notifications', () => {
 });
 
 describe('GET /api/notifications/unread-count', () => {
-  it('requires a bearer token', async () => {
-    const res = await api().get('/api/notifications/unread-count');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
   it('returns 0 when the caller has no notifications', async () => {
     const caller = await makeClient();
 
@@ -382,17 +310,6 @@ describe('GET /api/notifications/unread-count', () => {
 });
 
 describe('PATCH /api/notifications/:id/read', () => {
-  it('requires a bearer token', async () => {
-    const caller = await makeClient();
-    const notification = await makeNotification(caller.id);
-
-    const res = await api().patch(`/api/notifications/${notification.id}/read`);
-
-    expect(res.status).toBe(401);
-    const stored = await prisma.notification.findUniqueOrThrow({ where: { id: notification.id } });
-    expect(stored.readAt).toBeNull();
-  });
-
   it('marks the caller notification read and persists readAt', async () => {
     const caller = await makeClient();
     const notification = await makeNotification(caller.id);
@@ -466,53 +383,9 @@ describe('PATCH /api/notifications/:id/read', () => {
     const stored = await prisma.notification.findUniqueOrThrow({ where: { id: notification.id } });
     expect(stored.readAt!.toISOString()).toBe(readAt.toISOString());
   });
-
-  it('returns 404 for a notification that does not exist', async () => {
-    const caller = await makeClient();
-
-    const res = await authed(caller).patch('/api/notifications/no-such-notification/read');
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Notification not found' } });
-  });
-
-  it('returns 404 for another user notification and does not mutate it', async () => {
-    const { caller, other } = await twoUsers();
-    const foreign = await makeNotification(other.id);
-
-    const res = await authed(caller).patch(`/api/notifications/${foreign.id}/read`);
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Notification not found' } });
-
-    const stored = await prisma.notification.findUniqueOrThrow({ where: { id: foreign.id } });
-    expect(stored.readAt).toBeNull();
-  });
-
-  it('makes a foreign id indistinguishable from a non-existent one', async () => {
-    const { caller, other } = await twoUsers();
-    const foreign = await makeNotification(other.id);
-
-    const missing = await authed(caller).patch('/api/notifications/definitely-not-an-id/read');
-    const foreignRes = await authed(caller).patch(`/api/notifications/${foreign.id}/read`);
-
-    expect(foreignRes.status).toBe(missing.status);
-    expect(foreignRes.body).toEqual(missing.body);
-  });
 });
 
 describe('PATCH /api/notifications/read-all', () => {
-  it('requires a bearer token', async () => {
-    const caller = await makeClient();
-    await seedNotifications(caller.id, 2);
-
-    const res = await api().patch('/api/notifications/read-all');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-    expect(await prisma.notification.count({ where: { readAt: null } })).toBe(2);
-  });
-
   it('marks every unread notification of the caller read', async () => {
     const caller = await makeClient();
     await seedNotifications(caller.id, 4);

@@ -586,18 +586,13 @@ describe('GET /api/projects', () => {
       await makeProject(clientId, { title: 'Front end', requiredSkills: ['React', 'CSS'] });
     });
 
+    // lib.test.ts owns normalization/alias/trim/case coverage; these prove the endpoint wiring.
+
     it('finds a project requiring SQL when searching for the alias PostgreSQL', async () => {
       const res = await api().get('/api/projects?skills=PostgreSQL');
 
       expect(res.status).toBe(200);
       // PostgreSQL normalizes to SQL, and SQL expands back to its aliases, so both match.
-      expect(titles(res.body).sort()).toEqual(['Postgres raw', 'SQL heavy']);
-    });
-
-    it('finds an alias-stored project when searching for the canonical skill', async () => {
-      const res = await api().get('/api/projects?skills=SQL');
-
-      expect(res.status).toBe(200);
       expect(titles(res.body).sort()).toEqual(['Postgres raw', 'SQL heavy']);
     });
 
@@ -608,53 +603,11 @@ describe('GET /api/projects', () => {
       expect(titles(res.body)).toEqual(['Front end']);
     });
 
-    it('matches a project that has only one of its required skills requested', async () => {
-      const res = await api().get('/api/projects?skills=CSS');
-
-      expect(res.status).toBe(200);
-      expect(titles(res.body)).toEqual(['Front end']);
-    });
-
-    it('unions across a comma-separated list', async () => {
-      const res = await api().get('/api/projects?skills=React,MySQL');
-
-      expect(res.status).toBe(200);
-      expect(titles(res.body).sort()).toEqual(['Front end', 'Postgres raw', 'SQL heavy']);
-    });
-
-    it('accepts a repeated skills parameter as a list', async () => {
-      const res = await api().get('/api/projects?skills=React&skills=SQL');
-
-      expect(res.status).toBe(200);
-      expect(titles(res.body).sort()).toEqual(['Front end', 'Postgres raw', 'SQL heavy']);
-    });
-
-    it('tolerates whitespace around skill names', async () => {
-      const res = await api().get('/api/projects?skills=%20React%20,%20CSS%20');
-
-      expect(res.status).toBe(200);
-      expect(titles(res.body)).toEqual(['Front end']);
-    });
-
-    it('returns an empty list when no project requires the skill', async () => {
-      const res = await api().get('/api/projects?skills=COBOL');
-
-      expect(res.status).toBe(200);
-      expect(res.body.projects).toEqual([]);
-    });
-
     it('ignores an empty skills value rather than matching nothing', async () => {
       const res = await api().get('/api/projects?skills=');
 
       expect(res.status).toBe(200);
       expect(res.body.meta.total).toBe(3);
-    });
-
-    it('is case-sensitive on skill names', async () => {
-      const res = await api().get('/api/projects?skills=react');
-
-      expect(res.status).toBe(200);
-      expect(res.body.projects).toEqual([]);
     });
   });
 
@@ -724,18 +677,7 @@ describe('GET /api/projects', () => {
   // ----------------------------------------------------------- soft delete ----
 
   describe('soft delete', () => {
-    it('never returns a soft-deleted project, under any status filter', async () => {
-      await makeProject(clientId, { title: 'Visible' });
-      await makeProject(clientId, { title: 'Deleted', deletedAt: new Date() });
-
-      const dflt = await api().get('/api/projects');
-      const all = await api().get('/api/projects?status=ALL');
-
-      expect(titles(dflt.body)).toEqual(['Visible']);
-      expect(dflt.body.meta.total).toBe(1);
-      expect(titles(all.body)).toEqual(['Visible']);
-      expect(all.body.meta.total).toBe(1);
-    });
+    // soft-delete.test.ts owns listing absence; only filtered searches and Q11 live here.
 
     it('excludes soft-deleted projects from filtered searches too', async () => {
       await makeProject(clientId, {

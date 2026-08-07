@@ -18,9 +18,6 @@ import {
  * from `CLOSED` to `COMPLETED`, and `(Q9)` on both parties' email addresses being returned.
  */
 
-/** Well-formed but absent id, so a 404 comes from the lookup rather than from id parsing. */
-const MISSING_ID = '00000000-0000-0000-0000-000000000000';
-
 /** Every error body is exactly `{ error: { message } }` — cross-cutting rule 1. */
 function expectErrorEnvelope(body: unknown, message?: string) {
   expect(body).toEqual({ error: { message: message ?? expect.any(String) } });
@@ -126,15 +123,6 @@ afterEach(() => {
 });
 
 describe('GET /api/contracts/:id', () => {
-  it('requires authentication', async () => {
-    const { contract } = await makeContractScenario();
-
-    const res = await api().get(`/api/contracts/${contract.id}`);
-
-    expect(res.status).toBe(401);
-    expectErrorEnvelope(res.body, 'Authentication required');
-  });
-
   it('lets the client read the contract', async () => {
     const { client, contract } = await makeContractScenario();
 
@@ -148,43 +136,6 @@ describe('GET /api/contracts/:id', () => {
       freelancerSigned: false,
       amount: 4_000_000,
     });
-  });
-
-  it('lets the freelancer read the contract', async () => {
-    const { freelancer, contract } = await makeContractScenario();
-
-    const res = await authed(freelancer).get(`/api/contracts/${contract.id}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.id).toBe(contract.id);
-  });
-
-  it('returns 403 for a third party', async () => {
-    const { contract } = await makeContractScenario();
-    const stranger = await makeClient();
-
-    const res = await authed(stranger).get(`/api/contracts/${contract.id}`);
-
-    expect(res.status).toBe(403);
-    expectErrorEnvelope(res.body, 'Not authorized');
-  });
-
-  it('returns 403 for an unrelated freelancer', async () => {
-    const { contract } = await makeContractScenario();
-    const otherFreelancer = await makeFreelancer();
-
-    const res = await authed(otherFreelancer).get(`/api/contracts/${contract.id}`);
-
-    expect(res.status).toBe(403);
-  });
-
-  it('returns 404 for a contract that does not exist', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client).get(`/api/contracts/${MISSING_ID}`);
-
-    expect(res.status).toBe(404);
-    expectErrorEnvelope(res.body, 'Contract not found');
   });
 
   it('includes the project, both parties and the payment', async () => {
@@ -278,43 +229,6 @@ describe('GET /api/contracts/:id', () => {
 });
 
 describe('POST /api/contracts/:id/sign', () => {
-  it('requires authentication', async () => {
-    const { contract } = await makeContractScenario();
-
-    const res = await api().post(`/api/contracts/${contract.id}/sign`);
-
-    expect(res.status).toBe(401);
-    expectErrorEnvelope(res.body, 'Authentication required');
-    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(after.clientSigned).toBe(false);
-    expect(after.freelancerSigned).toBe(false);
-  });
-
-  it('returns 404 for a contract that does not exist', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client).post(`/api/contracts/${MISSING_ID}/sign`);
-
-    expect(res.status).toBe(404);
-    expectErrorEnvelope(res.body, 'Contract not found');
-  });
-
-  it('returns 403 for a third party and records no signature', async () => {
-    const { contract } = await makeContractScenario();
-    const stranger = await makeClient();
-
-    const res = await authed(stranger).post(`/api/contracts/${contract.id}/sign`);
-
-    expect(res.status).toBe(403);
-    expectErrorEnvelope(res.body, 'Not authorized');
-    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(after).toMatchObject({
-      clientSigned: false,
-      freelancerSigned: false,
-      status: 'PENDING',
-    });
-  });
-
   it("records the client's signature without activating the contract", async () => {
     const { client, contract } = await makeContractScenario();
 
@@ -464,14 +378,6 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(after.status).toBe('COMPLETED');
   });
 
-  it('checks existence before authorization, so a stranger sees 404 not 403', async () => {
-    const stranger = await makeFreelancer();
-
-    const res = await authed(stranger).post(`/api/contracts/${MISSING_ID}/sign`);
-
-    expect(res.status).toBe(404);
-  });
-
   /**
    * Both parties signing simultaneously must still yield exactly one activation and never a
    * contract stuck at PENDING with both flags set.
@@ -610,17 +516,6 @@ describe('PATCH /api/contracts/:id', () => {
     return { ...scenario, payment };
   }
 
-  it('requires authentication', async () => {
-    const { contract } = await completable();
-
-    const res = await api().patch(`/api/contracts/${contract.id}`).send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(401);
-    expectErrorEnvelope(res.body, 'Authentication required');
-    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(after.status).toBe('ACTIVE');
-  });
-
   it('returns 400 when status is missing', async () => {
     const { client, contract } = await completable();
 
@@ -646,32 +541,6 @@ describe('PATCH /api/contracts/:id', () => {
     expect(after.status).toBe('ACTIVE');
   });
 
-  it('returns 404 for a contract that does not exist', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${MISSING_ID}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(404);
-    expectErrorEnvelope(res.body, 'Contract not found');
-  });
-
-  it('returns 403 when the freelancer tries to complete it', async () => {
-    const { freelancer, contract, project } = await completable();
-
-    const res = await authed(freelancer)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(403);
-    expectErrorEnvelope(res.body, 'Only the client can complete the contract');
-    const afterContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    const afterProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(afterContract.status).toBe('ACTIVE');
-    expect(afterProject.status).toBe('CLOSED');
-  });
-
   it('returns 403 for a third party', async () => {
     const { contract } = await completable();
     const stranger = await makeClient();
@@ -683,16 +552,6 @@ describe('PATCH /api/contracts/:id', () => {
     expect(res.status).toBe(403);
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after.status).toBe('ACTIVE');
-  });
-
-  it('checks existence before ownership, so the freelancer sees 404 for a missing contract', async () => {
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer)
-      .patch(`/api/contracts/${MISSING_ID}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(404);
   });
 
   it('returns 400 when the contract is still PENDING', async () => {

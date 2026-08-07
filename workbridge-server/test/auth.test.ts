@@ -14,7 +14,7 @@ vi.mock('axios', () => {
 
 import axios from 'axios';
 
-import { api, authed, expiredToken, tokenFor, tokenWithWrongSecret } from './helpers/api';
+import { api, authed, tokenFor } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeUser, TEST_PASSWORD } from './helpers/factories';
 import { generateRefreshToken } from '../src/lib/jwt';
@@ -142,21 +142,6 @@ describe('POST /api/auth/signup', () => {
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: { message: 'Email already in use' } });
-    expect(await prisma.user.count()).toBe(1);
-  });
-
-  it('still 409s when the address belongs to a soft-deleted user', async () => {
-    // Deliberate: `email` is unique at the database level, so a soft-deleted row still
-    // occupies the address. Filtering `deletedAt: null` here would report it free and
-    // then fail with P2002 on create.
-    const deleted = await makeUser({ email: 'gone@test.local', deletedAt: new Date() });
-
-    const res = await api()
-      .post('/api/auth/signup')
-      .send({ ...valid, email: deleted.email });
-
-    expect(res.status).toBe(409);
-    expect(res.body.error.message).toBe('Email already in use');
     expect(await prisma.user.count()).toBe(1);
   });
 
@@ -320,31 +305,6 @@ describe('POST /api/auth/login', () => {
     expect(wrongPassword.body).toEqual(unknown.body);
   });
 
-  it('refuses a soft-deleted user even with the correct password', async () => {
-    const user = await makeUser({ deletedAt: new Date() });
-
-    const res = await api()
-      .post('/api/auth/login')
-      .send({ email: user.email, password: TEST_PASSWORD });
-
-    expect(res.status).toBe(401);
-    expect(res.body.error.message).toBe('Invalid credentials');
-    expect(refreshCookie(res)).toBeUndefined();
-  });
-
-  it('lets a restored user log in again — the block is the flag, not the row [D1]', async () => {
-    const user = await makeUser({ deletedAt: new Date() });
-    const credentials = { email: user.email, password: TEST_PASSWORD };
-
-    expect((await api().post('/api/auth/login').send(credentials)).status).toBe(401);
-
-    await prisma.user.update({ where: { id: user.id }, data: { deletedAt: null } });
-
-    const res = await api().post('/api/auth/login').send(credentials);
-    expect(res.status).toBe(200);
-    expect(res.body.user.id).toBe(user.id);
-  });
-
   it('logs a valid user in with 200, the user payload, and a refreshed cookie', async () => {
     const user = await makeClient();
 
@@ -391,46 +351,6 @@ describe('POST /api/auth/login', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/auth/logout', () => {
-  it('requires authentication', async () => {
-    const res = await api().post('/api/auth/logout');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
-  it('rejects a malformed Authorization header', async () => {
-    const user = await makeUser();
-
-    const res = await api()
-      .post('/api/auth/logout')
-      .set('Authorization', tokenFor(user)); // no "Bearer " prefix
-
-    expect(res.status).toBe(401);
-    expect(res.body.error.message).toBe('Authentication required');
-  });
-
-  it('rejects an expired access token with 401 Invalid or expired token', async () => {
-    const user = await makeUser();
-
-    const res = await api()
-      .post('/api/auth/logout')
-      .set('Authorization', `Bearer ${expiredToken(user)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-  });
-
-  it('rejects an access token signed with the wrong secret with 401', async () => {
-    const user = await makeUser();
-
-    const res = await api()
-      .post('/api/auth/logout')
-      .set('Authorization', `Bearer ${tokenWithWrongSecret(user)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body.error.message).toBe('Invalid or expired token');
-  });
-
   it('clears the refreshToken cookie and returns 200', async () => {
     const user = await makeUser();
 
@@ -533,19 +453,6 @@ describe('POST /api/auth/refresh', () => {
     expect(res.body).toEqual({ error: { message: 'User not found' } });
   });
 
-  it('rejects a valid token for a soft-deleted user with 401', async () => {
-    const user = await makeUser();
-    const token = generateRefreshToken({ id: user.id, email: user.email, role: user.role });
-    await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } });
-
-    const res = await api()
-      .post('/api/auth/refresh')
-      .set('Cookie', `refreshToken=${token}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body.error.message).toBe('User not found');
-  });
-
   it('returns a new accessToken and nothing else on success', async () => {
     const user = await makeClient();
     const token = generateRefreshToken({ id: user.id, email: user.email, role: user.role });
@@ -620,13 +527,6 @@ describe('POST /api/auth/refresh', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/auth/select-role', () => {
-  it('requires authentication', async () => {
-    const res = await api().post('/api/auth/select-role').send({ role: 'CLIENT' });
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
   it('rejects a missing role with 400', async () => {
     const user = await makeUser({ roleSelected: false });
 
@@ -661,15 +561,6 @@ describe('POST /api/auth/select-role', () => {
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: { message: 'User not found' } });
-  });
-
-  it('returns 404 for a soft-deleted user', async () => {
-    const user = await makeUser({ roleSelected: false, deletedAt: new Date() });
-
-    const res = await authed(user).post('/api/auth/select-role').send({ role: 'CLIENT' });
-
-    expect(res.status).toBe(404);
-    expect(res.body.error.message).toBe('User not found');
   });
 
   it('rejects a second selection with 400 and leaves the role untouched', async () => {

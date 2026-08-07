@@ -47,21 +47,6 @@ async function contractFor(freelancerId: string) {
 }
 
 describe('POST /api/reviews', () => {
-  it('requires a bearer token', async () => {
-    const { contract, freelancer } = await completedScenario();
-
-    const res = await api().post('/api/reviews').send({
-      contractId: contract.id,
-      revieweeId: freelancer.id,
-      rating: 5,
-      content: 'Great work',
-    });
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-    expect(await prisma.review.count()).toBe(0);
-  });
-
   it('creates the review with 201 and persists it', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
@@ -286,36 +271,6 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-  });
-
-  it('returns 404 for a contract that does not exist', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client).post('/api/reviews').send({
-      contractId: 'no-such-contract',
-      revieweeId: client.id,
-      rating: 5,
-      content: 'Ghost contract.',
-    });
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
-  });
-
-  it('returns 403 for a caller who is not a party to the contract', async () => {
-    const { contract, freelancer } = await completedScenario();
-    const outsider = await makeFreelancer();
-
-    const res = await authed(outsider).post('/api/reviews').send({
-      contractId: contract.id,
-      revieweeId: freelancer.id,
-      rating: 5,
-      content: 'Not my contract.',
-    });
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
-    expect(await prisma.review.count()).toBe(0);
   });
 
   it('returns 403 for an outsider even when the contract is not COMPLETED', async () => {

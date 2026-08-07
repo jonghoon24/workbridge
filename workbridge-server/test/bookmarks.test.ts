@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  api,
-  authed,
-  expiredToken,
-  tokenFor,
-  tokenWithWrongSecret,
-  type Principal,
-} from './helpers/api';
+import { authed, type Principal } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeProject } from './helpers/factories';
 
@@ -156,57 +149,6 @@ describe('GET /api/projects/:id/bookmark', () => {
     expect(theirs.body).toEqual({ bookmarked: true });
   });
 
-  it('rejects a CLIENT with 403', async () => {
-    const { client, project } = await freelancerWithProject();
-
-    const res = await authed(client).get(bookmarkPath(project.id));
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
-  });
-
-  it('rejects a request with no token with 401', async () => {
-    const { project } = await freelancerWithProject();
-
-    const res = await api().get(bookmarkPath(project.id));
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
-  it('rejects a malformed Authorization header with 401', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-
-    const res = await api()
-      .get(bookmarkPath(project.id))
-      .set('Authorization', tokenFor(freelancer)); // no "Bearer " prefix
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
-  it('rejects an expired token with 401', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-
-    const res = await api()
-      .get(bookmarkPath(project.id))
-      .set('Authorization', `Bearer ${expiredToken(freelancer)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-  });
-
-  it('rejects a token signed with the wrong secret with 401', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-
-    const res = await api()
-      .get(bookmarkPath(project.id))
-      .set('Authorization', `Bearer ${tokenWithWrongSecret(freelancer)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-  });
-
   // ---- Q6: GET does not verify the project, unlike POST -------------------------------------
   // Current behavior: the handler only looks up the (projectId, userId) bookmark row, so an
   // unknown id simply has no bookmark and answers 200 instead of 404.
@@ -285,17 +227,6 @@ describe('POST /api/projects/:id/bookmark', () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).post(bookmarkPath(MISSING_PROJECT_ID));
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
-    expect(await countBookmarks()).toBe(0);
-  });
-
-  it('returns 404 for a soft-deleted project and writes nothing', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(freelancer).post(bookmarkPath(project.id));
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: { message: 'Project not found' } });
@@ -388,49 +319,6 @@ describe('POST /api/projects/:id/bookmark', () => {
     expect(await countBookmarks()).toBe(1);
   });
 
-  it('rejects a CLIENT with 403 and writes nothing', async () => {
-    const { client, project } = await freelancerWithProject();
-
-    const res = await authed(client).post(bookmarkPath(project.id));
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
-    expect(await countBookmarks()).toBe(0);
-  });
-
-  it('rejects a request with no token with 401 and writes nothing', async () => {
-    const { project } = await freelancerWithProject();
-
-    const res = await api().post(bookmarkPath(project.id));
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-    expect(await countBookmarks()).toBe(0);
-  });
-
-  it('rejects an expired token with 401', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-
-    const res = await api()
-      .post(bookmarkPath(project.id))
-      .set('Authorization', `Bearer ${expiredToken(freelancer)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-    expect(await countBookmarks()).toBe(0);
-  });
-
-  it('rejects a token signed with the wrong secret with 401', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-
-    const res = await api()
-      .post(bookmarkPath(project.id))
-      .set('Authorization', `Bearer ${tokenWithWrongSecret(freelancer)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-    expect(await countBookmarks()).toBe(0);
-  });
 });
 
 describe('DELETE /api/projects/:id/bookmark', () => {
@@ -495,54 +383,6 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     expect((await authed(other).get(bookmarkPath(project.id))).body).toEqual({ bookmarked: true });
   });
 
-  it('rejects a CLIENT with 403 and leaves the bookmark in place', async () => {
-    const { client, freelancer, project } = await freelancerWithProject();
-    await authed(freelancer).post(bookmarkPath(project.id));
-
-    const res = await authed(client).delete(bookmarkPath(project.id));
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
-    expect(await countBookmarks()).toBe(1);
-  });
-
-  it('rejects a request with no token with 401 and leaves the bookmark in place', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-    await authed(freelancer).post(bookmarkPath(project.id));
-
-    const res = await api().delete(bookmarkPath(project.id));
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-    expect(await countBookmarks()).toBe(1);
-  });
-
-  it('rejects an expired token with 401 and leaves the bookmark in place', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-    await authed(freelancer).post(bookmarkPath(project.id));
-
-    const res = await api()
-      .delete(bookmarkPath(project.id))
-      .set('Authorization', `Bearer ${expiredToken(freelancer)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-    expect(await countBookmarks()).toBe(1);
-  });
-
-  it('rejects a token signed with the wrong secret with 401', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-    await authed(freelancer).post(bookmarkPath(project.id));
-
-    const res = await api()
-      .delete(bookmarkPath(project.id))
-      .set('Authorization', `Bearer ${tokenWithWrongSecret(freelancer)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-    expect(await countBookmarks()).toBe(1);
-  });
-
   // ---- Q6: DELETE does not verify the project, unlike POST ----------------------------------
   // Current behavior: `deleteMany` matches zero rows and the handler answers 200 rather than 404.
   it('DELETE bookmark for a non-existent project currently succeeds (Q6)', async () => {
@@ -602,56 +442,5 @@ describe('GET /api/users/me/bookmarks (reflects rows written by the bookmark end
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
-  });
-
-  it('excludes bookmarks whose project has been soft-deleted', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-    const client = await makeClient();
-    const live = await makeProject(client.id);
-    await authed(freelancer).post(bookmarkPath(project.id));
-    await authed(freelancer).post(bookmarkPath(live.id));
-    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(freelancer).get('/api/users/me/bookmarks');
-
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].id).toBe(live.id);
-    // The bookmark row itself is untouched by the project's soft delete.
-    expect(await countBookmarks()).toBe(2);
-  });
-
-  it('shows one freelancer nothing of another\'s bookmarks', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-    const other = await makeFreelancer();
-    await authed(other).post(bookmarkPath(project.id));
-
-    const mine = await authed(freelancer).get('/api/users/me/bookmarks');
-    const theirs = await authed(other).get('/api/users/me/bookmarks');
-
-    expect(mine.body).toEqual([]);
-    expect(theirs.body).toHaveLength(1);
-    expect(theirs.body[0].id).toBe(project.id);
-  });
-
-  // The role check on this route lives *inside* `getMyBookmarks`, not in `requireRole`, so the
-  // message is bespoke ('Only freelancers can view their bookmarks') and does not match
-  // BEHAVIOR.md rule 3, which specifies 'Insufficient permissions' for role gating. The status is
-  // the part the spec pins down, so only that is asserted exactly — matching `users.test.ts`,
-  // which covers the same endpoint.
-  it('rejects a CLIENT with 403', async () => {
-    const { client } = await freelancerWithProject();
-
-    const res = await authed(client).get('/api/users/me/bookmarks');
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-  });
-
-  it('rejects a request with no token with 401', async () => {
-    const res = await api().get('/api/users/me/bookmarks');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
   });
 });

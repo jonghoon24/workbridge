@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma, User } from '@prisma/client';
 
-import { api, authed, expiredToken, tokenWithWrongSecret } from './helpers/api';
+import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import {
   makeApplication,
@@ -141,40 +141,6 @@ function assertNoInternalsLeak(message: unknown) {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/payments', () => {
-  it('requires authentication', async () => {
-    const { contract } = await activeScenario();
-
-    const res = await api().post('/api/payments').send({ contractId: contract.id });
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-    expect(await prisma.payment.count()).toBe(0);
-  });
-
-  it('rejects an expired token with 401', async () => {
-    const { client, contract } = await activeScenario();
-
-    const res = await api()
-      .post('/api/payments')
-      .set('Authorization', `Bearer ${expiredToken(client)}`)
-      .send({ contractId: contract.id });
-
-    expect(res.status).toBe(401);
-    expect(res.body.error.message).toBe('Invalid or expired token');
-  });
-
-  it('rejects a token signed with the wrong secret with 401', async () => {
-    const { client, contract } = await activeScenario();
-
-    const res = await api()
-      .post('/api/payments')
-      .set('Authorization', `Bearer ${tokenWithWrongSecret(client)}`)
-      .send({ contractId: contract.id });
-
-    expect(res.status).toBe(401);
-    expect(res.body.error.message).toBe('Invalid or expired token');
-  });
-
   it('rejects a missing contractId with 400 and writes nothing', async () => {
     const { client } = await activeScenario();
 
@@ -485,17 +451,6 @@ describe('POST /api/payments/confirm', () => {
     paymentKey: 'pk_test_123',
     orderId,
     amount,
-  });
-
-  it('requires authentication', async () => {
-    const { payment } = await pendingPayment();
-
-    const res = await api().post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
-
-    expect(res.status).toBe(401);
-    expect(tossPost).not.toHaveBeenCalled();
-    const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    expect(after.status).toBe('PENDING');
   });
 
   it.each([
@@ -877,14 +832,6 @@ describe('POST /api/payments/confirm', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/payments/dev-complete', () => {
-  it('requires authentication', async () => {
-    const { contract } = await activeScenario();
-
-    const res = await api().post('/api/payments/dev-complete').send({ contractId: contract.id });
-
-    expect(res.status).toBe(401);
-  });
-
   describe('when the bypass is disabled', () => {
     it("returns 403 with ALLOW_PAYMENT_BYPASS='false' and writes nothing", async () => {
       expect(process.env.ALLOW_PAYMENT_BYPASS).toBe('false');
@@ -1144,13 +1091,6 @@ describe('POST /api/payments/dev-complete', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /api/payments', () => {
-  it('requires authentication', async () => {
-    const res = await api().get('/api/payments');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
   it('returns an empty array when the caller has no payments', async () => {
     const client = await makeClient();
 

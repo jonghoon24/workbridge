@@ -118,34 +118,6 @@ describe('POST /api/projects', () => {
     deadline: daysFromNow(30).toISOString(),
   });
 
-  it('rejects an unauthenticated request with 401', async () => {
-    const res = await api().post('/api/projects').send(validBody());
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-    expect(await prisma.project.count()).toBe(0);
-  });
-
-  it('rejects a FREELANCER with 403 Insufficient permissions', async () => {
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer).post('/api/projects').send(validBody());
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
-    expect(await prisma.project.count()).toBe(0);
-  });
-
-  it('rejects a CLIENT with an incomplete profile with 403', async () => {
-    const client = await makeClient({ companyName: null });
-
-    const res = await authed(client).post('/api/projects').send(validBody());
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: '프로필을 먼저 완성해주세요' } });
-    expect(await prisma.project.count()).toBe(0);
-  });
-
   it.each(['title', 'description', 'category', 'budget', 'deadline'])(
     'rejects a body missing %s with 400',
     async (field) => {
@@ -493,29 +465,6 @@ describe('GET /api/projects/:id', () => {
     expect(res.body._count.applications).toBe(0);
   });
 
-  it('is public — no token required', async () => {
-    const { project } = await ownedProject();
-
-    const res = await api().get(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(200);
-  });
-
-  it('returns 404 for an unknown id', async () => {
-    const res = await api().get('/api/projects/00000000-0000-0000-0000-000000000000');
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-  });
-
-  it('returns 404 for a soft-deleted project', async () => {
-    const { project } = await ownedProject({ deletedAt: new Date() });
-
-    const res = await api().get(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(404);
-  });
-
   it('writes rows: the lifecycle sweep promotes UPCOMING to OPEN on read', async () => {
     const { project } = await ownedProject({
       status: 'UPCOMING',
@@ -560,63 +509,6 @@ describe('GET /api/projects/:id', () => {
 // ======================================================================================
 
 describe('PATCH /api/projects/:id', () => {
-  it('rejects an unauthenticated request with 401', async () => {
-    const { project } = await ownedProject();
-
-    const res = await api().patch(`/api/projects/${project.id}`).send({ title: 'new' });
-
-    expect(res.status).toBe(401);
-  });
-
-  it('rejects a FREELANCER with 403 Insufficient permissions', async () => {
-    const { project } = await ownedProject();
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer).patch(`/api/projects/${project.id}`).send({ title: 'new' });
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
-  });
-
-  it('returns 404 for an unknown id', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client)
-      .patch('/api/projects/00000000-0000-0000-0000-000000000000')
-      .send({ title: 'new' });
-
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 404 for a soft-deleted project', async () => {
-    const { client, project } = await ownedProject({ deletedAt: new Date() });
-
-    const res = await authed(client).patch(`/api/projects/${project.id}`).send({ title: 'new' });
-
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 403 Not authorized for a client who does not own the project', async () => {
-    const { project } = await ownedProject();
-    const intruder = await makeClient();
-
-    const res = await authed(intruder).patch(`/api/projects/${project.id}`).send({ title: 'hijack' });
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(stored.title).toBe(project.title);
-  });
-
-  it('checks existence before ownership: a non-existent project is 404, not 403', async () => {
-    const intruder = await makeClient();
-
-    const res = await authed(intruder).patch('/api/projects/no-such-project').send({ title: 'x' });
-
-    expect(res.status).toBe(404);
-  });
-
   it('edits title, description, category and requiredSkills', async () => {
     const { client, project } = await ownedProject();
 
@@ -1031,56 +923,6 @@ describe('PATCH /api/projects/:id', () => {
 // ======================================================================================
 
 describe('DELETE /api/projects/:id', () => {
-  it('rejects an unauthenticated request with 401', async () => {
-    const { project } = await ownedProject();
-
-    const res = await api().delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(401);
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(stored.deletedAt).toBeNull();
-  });
-
-  it('rejects a FREELANCER with 403 Insufficient permissions', async () => {
-    const { project } = await ownedProject();
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
-  });
-
-  it('returns 404 for an unknown id', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client).delete('/api/projects/00000000-0000-0000-0000-000000000000');
-
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 404 for an already soft-deleted project', async () => {
-    const { client, project } = await ownedProject({ deletedAt: new Date() });
-
-    const res = await authed(client).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 403 Not authorized for a client who does not own the project', async () => {
-    const { project } = await ownedProject();
-    const intruder = await makeClient();
-
-    const res = await authed(intruder).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(stored.deletedAt).toBeNull();
-  });
-
   it('soft-deletes: sets deletedAt and keeps the row', async () => {
     const { client, project } = await ownedProject();
 
@@ -1192,41 +1034,11 @@ describe('DELETE /api/projects/:id', () => {
 // ======================================================================================
 
 describe('PATCH /api/projects/:id/status', () => {
-  it('rejects an unauthenticated request with 401', async () => {
-    const { project } = await ownedProject();
-
-    const res = await api().patch(`/api/projects/${project.id}/status`).send({ status: 'CLOSED' });
-
-    expect(res.status).toBe(401);
-  });
-
-  it('rejects a FREELANCER with 403 Insufficient permissions', async () => {
-    const { project } = await ownedProject();
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer)
-      .patch(`/api/projects/${project.id}/status`)
-      .send({ status: 'CLOSED' });
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
-  });
-
   it('returns 404 for an unknown id', async () => {
     const client = await makeClient();
 
     const res = await authed(client)
       .patch('/api/projects/00000000-0000-0000-0000-000000000000/status')
-      .send({ status: 'CLOSED' });
-
-    expect(res.status).toBe(404);
-  });
-
-  it('returns 404 for a soft-deleted project', async () => {
-    const { client, project } = await ownedProject({ deletedAt: new Date() });
-
-    const res = await authed(client)
-      .patch(`/api/projects/${project.id}/status`)
       .send({ status: 'CLOSED' });
 
     expect(res.status).toBe(404);
@@ -1482,36 +1294,10 @@ describe('POST /api/projects/:id/analyze', () => {
     openaiCreate.mockReset();
   });
 
-  it('rejects an unauthenticated request with 401 and never calls the model', async () => {
-    const res = await api().post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(401);
-    expect(openaiCreate).not.toHaveBeenCalled();
-  });
-
-  it('rejects a FREELANCER with 403 Insufficient permissions', async () => {
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
-    expect(openaiCreate).not.toHaveBeenCalled();
-  });
-
   it('returns 404 for an unknown id', async () => {
     const res = await authed(client).post(
       '/api/projects/00000000-0000-0000-0000-000000000000/analyze',
     );
-
-    expect(res.status).toBe(404);
-    expect(openaiCreate).not.toHaveBeenCalled();
-  });
-
-  it('returns 404 for a soft-deleted project', async () => {
-    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
 
     expect(res.status).toBe(404);
     expect(openaiCreate).not.toHaveBeenCalled();

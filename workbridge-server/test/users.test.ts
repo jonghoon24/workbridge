@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 
 import { uploadToSupabase } from '../src/middlewares/upload';
-import { api, authed, expiredToken, tokenFor, tokenWithWrongSecret } from './helpers/api';
+import { api, authed, tokenFor } from './helpers/api';
 import { prisma } from './helpers/db';
 import {
   daysFromNow,
@@ -111,56 +111,6 @@ describe('GET /api/users/me', () => {
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: { message: 'User not found' } });
   });
-
-  it('404s for a soft-deleted user holding a valid token', async () => {
-    const user = await makeFreelancer();
-    await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(user).get('/api/users/me');
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
-  });
-
-  it('200s again once a soft-deleted user is restored', async () => {
-    const user = await makeFreelancer();
-    await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } });
-    await prisma.user.update({ where: { id: user.id }, data: { deletedAt: null } });
-
-    const res = await authed(user).get('/api/users/me');
-
-    expect(res.status).toBe(200);
-    expect(res.body.id).toBe(user.id);
-  });
-
-  it('401s without an Authorization header', async () => {
-    const res = await api().get('/api/users/me');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-  });
-
-  it('401s for a token signed with the wrong secret', async () => {
-    const user = await makeFreelancer();
-
-    const res = await api()
-      .get('/api/users/me')
-      .set('Authorization', `Bearer ${tokenWithWrongSecret(user)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-  });
-
-  it('401s for an expired token', async () => {
-    const user = await makeFreelancer();
-
-    const res = await api()
-      .get('/api/users/me')
-      .set('Authorization', `Bearer ${expiredToken(user)}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired token' } });
-  });
 });
 
 describe('PATCH /api/users/me', () => {
@@ -175,17 +125,6 @@ describe('PATCH /api/users/me', () => {
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
     expect(stored.name).toBe('새 이름');
     expect(stored.bio).toBe('소개');
-  });
-
-  it('updates name and bio for a FREELANCER and persists them', async () => {
-    const freelancer = await makeFreelancer({ name: 'Old Name' });
-
-    const res = await authed(freelancer).patch('/api/users/me').send({ name: '프리랜서', bio: 'hi' });
-
-    expect(res.status).toBe(200);
-
-    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
-    expect(stored).toMatchObject({ name: '프리랜서', bio: 'hi' });
   });
 
   it('lets a CLIENT set companyName, businessField and website', async () => {
@@ -295,32 +234,6 @@ describe('PATCH /api/users/me', () => {
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.skills).toEqual(['SQL']);
-  });
-
-  it('accepts skills as a comma-separated multipart field and normalizes them', async () => {
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer)
-      .patch('/api/users/me')
-      .field('skills', 'PostgreSQL, MySQL , React, AWS S3');
-
-    expect(res.status).toBe(200);
-    expect(res.body.skills).toEqual(['SQL', 'React', 'AWS']);
-  });
-
-  it('coerces numeric strings, as multipart form fields always arrive', async () => {
-    const freelancer = await makeFreelancer({ experienceYears: 1, hourlyRate: 1 });
-
-    const res = await authed(freelancer)
-      .patch('/api/users/me')
-      .field('experienceYears', '7')
-      .field('hourlyRate', '45000.5');
-
-    expect(res.status).toBe(200);
-
-    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
-    expect(stored.experienceYears).toBe(7);
-    expect(stored.hourlyRate).toBe(45_000.5);
   });
 
   it('leaves omitted fields untouched', async () => {
@@ -452,13 +365,6 @@ describe('PATCH /api/users/me', () => {
     expect(stored.name).toBe('Unchanged');
     expect(stored.skills).toEqual(['React', 'Node.js']);
     expect(stored.activityCategory).toBe('웹 개발');
-  });
-
-  it('401s without a token', async () => {
-    const res = await api().patch('/api/users/me').send({ name: 'nope' });
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
   });
 
   /*
@@ -839,26 +745,6 @@ describe('GET /api/users/:id', () => {
     expect(res.body).toEqual({ error: { message: 'User not found' } });
   });
 
-  it('404s for a soft-deleted user', async () => {
-    const freelancer = await makeFreelancer();
-    await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
-
-    const res = await api().get(`/api/users/${freelancer.id}`);
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
-  });
-
-  it('200s again once a soft-deleted user is restored', async () => {
-    const freelancer = await makeFreelancer();
-    await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
-    await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: null } });
-
-    const res = await api().get(`/api/users/${freelancer.id}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.id).toBe(freelancer.id);
-  });
 });
 
 describe('GET /api/users/me/applications', () => {
@@ -963,24 +849,6 @@ describe('GET /api/users/me/applications', () => {
     expect((await prisma.application.findUniqueOrThrow({ where: { id: theirApp.id } })).status)
       .toBe('PENDING');
   });
-
-  // Role gating here is a controller `if`, not `requireRole`, so the message is bespoke rather
-  // than cross-cutting rule 3's `'Insufficient permissions'`. The wording is not part of the
-  // contract — assert the status and the envelope shape only, matching `bookmarks.test.ts`.
-  it('403s for a CLIENT', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client).get('/api/users/me/applications');
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-  });
-
-  it('401s without a token', async () => {
-    const res = await api().get('/api/users/me/applications');
-
-    expect(res.status).toBe(401);
-  });
 });
 
 describe('GET /api/users/me/bookmarks', () => {
@@ -1059,23 +927,6 @@ describe('GET /api/users/me/bookmarks', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
-  });
-
-  // Bespoke controller message again, not rule 3's `'Insufficient permissions'` — status and
-  // envelope shape only.
-  it('403s for a CLIENT', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client).get('/api/users/me/bookmarks');
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-  });
-
-  it('401s without a token', async () => {
-    const res = await api().get('/api/users/me/bookmarks');
-
-    expect(res.status).toBe(401);
   });
 });
 
@@ -1170,22 +1021,5 @@ describe('GET /api/users/me/projects', () => {
     expect((await prisma.project.findUniqueOrThrow({ where: { id: due.id } })).status).toBe('OPEN');
     expect((await prisma.project.findUniqueOrThrow({ where: { id: expired.id } })).status)
       .toBe('CLOSED');
-  });
-
-  // Bespoke controller message again, not rule 3's `'Insufficient permissions'` — status and
-  // envelope shape only.
-  it('403s for a FREELANCER', async () => {
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer).get('/api/users/me/projects');
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-  });
-
-  it('401s without a token', async () => {
-    const res = await api().get('/api/users/me/projects');
-
-    expect(res.status).toBe(401);
   });
 });

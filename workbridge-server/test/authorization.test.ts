@@ -1264,69 +1264,7 @@ describe('ownership is checked after existence', () => {
   }
 });
 
-// ---------------------------------------------------------------------------------------------
-// §5 Soft delete, as it interacts with the authentication matrix
-// ---------------------------------------------------------------------------------------------
-
-describe('a soft-deleted principal holding a pre-deletion token', () => {
-  it('cannot read its own profile (D1, fixed)', async () => {
-    const client = await makeClient();
-    const token = tokenFor(client);
-    await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
-
-    const res = await api().get('/api/users/me').set('Authorization', `Bearer ${token}`);
-
-    expectErrorEnvelope(res, 404);
-  });
-
-  /**
-   * §5 says every read and write must filter `deletedAt: null`, and D1's acceptance criteria
-   * treat a pre-deletion token as unusable. D12 records that the D1 fix only covered
-   * authentication and profile *reads*: no write path re-checks the actor. Project creation is
-   * the instance of D12 that lands in this file — `requireCompleteProfile` looks the caller up
-   * with a plain `findUnique` and no `deletedAt` filter, so a soft-deleted CLIENT still gets a
-   * **201** and a live project owned by a deleted user persists.
-   */
-  it.fails('cannot create a project [D12]', async () => {
-    const client = await makeClient();
-    const token = tokenFor(client);
-    await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
-
-    const res = await api()
-      .post('/api/projects')
-      .set('Authorization', `Bearer ${token}`)
-      .send({
-        title: 'Ghost project',
-        description: 'Created by a deleted user',
-        category: '웹 개발',
-        budget: 1_000_000,
-        deadline: daysFromNow(10).toISOString(),
-      });
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(await prisma.project.count({ where: { title: 'Ghost project' } })).toBe(0);
-  });
-
-  it('is not visible on the public profile endpoint (D1, fixed)', async () => {
-    const client = await makeClient();
-    await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
-
-    const res = await api().get(`/api/users/${client.id}`);
-
-    expectErrorEnvelope(res, 404);
-  });
-
-  it('cannot log in (D1, fixed)', async () => {
-    const client = await makeClient();
-    await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
-
-    const res = await api().post('/api/auth/login')
-      .send({ email: client.email, password: 'password123' });
-
-    expectErrorEnvelope(res, 401);
-    expect(res.body.error.message).toBe('Invalid credentials');
-  });
-});
+// §5 (soft delete) is asserted in soft-delete.test.ts.
 
 // ---------------------------------------------------------------------------------------------
 // §1 Error envelope

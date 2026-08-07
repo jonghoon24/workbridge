@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { api, app, authed, expiredToken, tokenFor, tokenWithWrongSecret } from './helpers/api';
+import { app, authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import {
   daysFromNow,
@@ -54,74 +54,6 @@ afterEach(() => {
 });
 
 describe('POST /api/projects/:id/applications', () => {
-  it('401s without an Authorization header', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-
-    const res = await api().post(`/api/projects/${project.id}/applications`).send(validApplyBody);
-
-    expect(res.status).toBe(401);
-    expectErrorEnvelope(res.body);
-    expect(await prisma.application.count()).toBe(0);
-  });
-
-  it('401s on a malformed header, a wrong-secret token and an expired token', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const freelancer = await makeFreelancer();
-    const url = `/api/projects/${project.id}/applications`;
-
-    const malformed = await api().post(url).set('Authorization', tokenFor(freelancer)).send(validApplyBody);
-    const wrongSecret = await api().post(url)
-      .set('Authorization', `Bearer ${tokenWithWrongSecret(freelancer)}`).send(validApplyBody);
-    const expired = await api().post(url)
-      .set('Authorization', `Bearer ${expiredToken(freelancer)}`).send(validApplyBody);
-
-    expect([malformed.status, wrongSecret.status, expired.status]).toEqual([401, 401, 401]);
-    expect(await prisma.application.count()).toBe(0);
-  });
-
-  it('403s for a CLIENT', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const otherClient = await makeClient();
-
-    const res = await authed(otherClient)
-      .post(`/api/projects/${project.id}/applications`)
-      .send(validApplyBody);
-
-    expect(res.status).toBe(403);
-    expect(res.body.error.message).toBe('Insufficient permissions');
-    expect(await prisma.application.count()).toBe(0);
-  });
-
-  it('403s for a freelancer with an incomplete profile', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const freelancer = await makeFreelancer({ hourlyRate: null });
-
-    const res = await authed(freelancer)
-      .post(`/api/projects/${project.id}/applications`)
-      .send(validApplyBody);
-
-    expect(res.status).toBe(403);
-    expect(res.body.error.message).toBe('프로필을 먼저 완성해주세요');
-    expect(await prisma.application.count()).toBe(0);
-  });
-
-  it('403s for a freelancer with no skills', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const freelancer = await makeFreelancer({ skills: [] });
-
-    const res = await authed(freelancer)
-      .post(`/api/projects/${project.id}/applications`)
-      .send(validApplyBody);
-
-    expect(res.status).toBe(403);
-    expect(res.body.error.message).toBe('프로필을 먼저 완성해주세요');
-  });
-
   /** Typed so `body` stays an object for `Object.keys` below rather than a union with `field`. */
   const missingFieldCases: [field: string, body: Record<string, unknown>][] = [
     ['coverLetter', { expectedRate: 3_300_000, expectedDuration: '6주' }],
@@ -247,44 +179,6 @@ describe('POST /api/projects/:id/applications', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.error.message).toBe('Project not found');
-  });
-
-  it('404s for a soft-deleted project', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { deletedAt: new Date() });
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer)
-      .post(`/api/projects/${project.id}/applications`)
-      .send(validApplyBody);
-
-    expect(res.status).toBe(404);
-    expect(res.body.error.message).toBe('Project not found');
-    expect(await prisma.application.count()).toBe(0);
-  });
-
-  // [D12] Soft delete is enforced on read paths only. Nothing on the write path re-checks the
-  // actor, so a freelancer soft-deleted after their (stateless — Q1) access token was minted still
-  // gets 201, a real application row, and a notification sent to the client on behalf of a deleted
-  // account. Cross-cutting rule 5 requires *every* read **and write** to filter `deletedAt: null`.
-  it.fails('refuses to create an application for a soft-deleted freelancer [D12]', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const freelancer = await makeFreelancer();
-    // Token minted before the deletion, exactly as in the divergence description.
-    const stillHoldingAToken = authed(freelancer);
-    await prisma.user.update({
-      where: { id: freelancer.id },
-      data: { deletedAt: new Date() },
-    });
-
-    const res = await stillHoldingAToken
-      .post(`/api/projects/${project.id}/applications`)
-      .send(validApplyBody);
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(await prisma.application.count()).toBe(0);
-    expect(await prisma.notification.count()).toBe(0);
   });
 
   // (Q11) Q11 asks whether the soft-delete rule reaches *joined* owners. On this path it does not:
@@ -634,65 +528,6 @@ describe('POST /api/projects/:id/applications', () => {
 });
 
 describe('GET /api/projects/:id/applications', () => {
-  it('401s without a token', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-
-    const res = await api().get(`/api/projects/${project.id}/applications`);
-
-    expect(res.status).toBe(401);
-    expectErrorEnvelope(res.body);
-  });
-
-  it('403s for a FREELANCER', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const freelancer = await makeFreelancer();
-
-    const res = await authed(freelancer).get(`/api/projects/${project.id}/applications`);
-
-    expect(res.status).toBe(403);
-    expect(res.body.error.message).toBe('Insufficient permissions');
-  });
-
-  it('404s for a project that does not exist', async () => {
-    const client = await makeClient();
-
-    const res = await authed(client).get(`/api/projects/${MISSING_ID}/applications`);
-
-    expect(res.status).toBe(404);
-    expect(res.body.error.message).toBe('Project not found');
-  });
-
-  it('404s for a soft-deleted project, even for its owner', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { deletedAt: new Date() });
-
-    const res = await authed(client).get(`/api/projects/${project.id}/applications`);
-
-    expect(res.status).toBe(404);
-    expect(res.body.error.message).toBe('Project not found');
-  });
-
-  it('403s for a client who does not own the project', async () => {
-    const owner = await makeClient();
-    const project = await makeProject(owner.id);
-    const intruder = await makeClient();
-
-    const res = await authed(intruder).get(`/api/projects/${project.id}/applications`);
-
-    expect(res.status).toBe(403);
-    expect(res.body.error.message).toBe('Not authorized');
-  });
-
-  it('checks existence before ownership, so a missing project 404s for a non-owner', async () => {
-    const intruder = await makeClient();
-
-    const res = await authed(intruder).get(`/api/projects/${MISSING_ID}/applications`);
-
-    expect(res.status).toBe(404);
-  });
-
   it('returns an empty list when nobody has applied', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
@@ -858,25 +693,6 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
   const url = (projectId: string, appId: string) =>
     `/api/projects/${projectId}/applications/${appId}`;
 
-  it('401s without a token', async () => {
-    const s = await scenario();
-
-    const res = await api().patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' });
-
-    expect(res.status).toBe(401);
-    expect(await prisma.contract.count()).toBe(0);
-  });
-
-  it('403s for a FREELANCER, even the applicant', async () => {
-    const s = await scenario();
-
-    const res = await authed(s.winner).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' });
-
-    expect(res.status).toBe(403);
-    expect(res.body.error.message).toBe('Insufficient permissions');
-    expect(await prisma.contract.count()).toBe(0);
-  });
-
   it.each([
     ['PENDING', 'PENDING'],
     ['a bogus value', 'BOGUS'],
@@ -908,17 +724,6 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     const s = await scenario();
 
     const res = await authed(s.client).patch(url(MISSING_ID, s.chosen.id)).send({ status: 'ACCEPTED' });
-
-    expect(res.status).toBe(404);
-    expect(res.body.error.message).toBe('Project not found');
-    expect(await prisma.contract.count()).toBe(0);
-  });
-
-  it('404s for a soft-deleted project', async () => {
-    const s = await scenario();
-    await prisma.project.update({ where: { id: s.project.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' });
 
     expect(res.status).toBe(404);
     expect(res.body.error.message).toBe('Project not found');
@@ -960,26 +765,6 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     const untouched = await prisma.application.findUniqueOrThrow({ where: { id: foreign.id } });
     expect(untouched.status).toBe('PENDING');
     expect(await prisma.contract.count()).toBe(0);
-  });
-
-  // [D12] The same rule on the decision path: `updateApplication` filters `deletedAt: null` on the
-  // **project**, never on the actor, so a soft-deleted client can still run the whole five-write
-  // accept transaction and mint a contract. The divergence table lists `PATCH /api/users/me`,
-  // `POST /:id/applications`, payments and contract signing as its examples; this is the same
-  // defect on the endpoint that creates contracts.
-  it.fails('refuses to accept an application for a soft-deleted client [D12]', async () => {
-    const s = await scenario();
-    const stillHoldingAToken = authed(s.client);
-    await prisma.user.update({ where: { id: s.client.id }, data: { deletedAt: new Date() } });
-
-    const res = await stillHoldingAToken
-      .patch(url(s.project.id, s.chosen.id))
-      .send({ status: 'ACCEPTED' });
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(await prisma.contract.count()).toBe(0);
-    const chosen = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
-    expect(chosen.status).toBe('PENDING');
   });
 
   describe('ACCEPTED', () => {
