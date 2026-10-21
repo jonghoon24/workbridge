@@ -518,8 +518,9 @@ describe('a soft-deleted principal must not be able to write anything (D12)', ()
  *
  * Every expansion phase adds a row here for each new mutating route. **Never add an expansion
  * route to `mutations`** — that table is `it.fails`, and a guarded route would break it with an
- * unexpected pass. Phase 1 adds the milestone, plan and payout-account writes; Phase 3 adds the
- * notification-preferences write.
+ * unexpected pass. Phase 1 adds the milestone, plan and payout-account writes; Phase 2 adds the
+ * conversation, message, portfolio and career writes; Phase 3 adds the notification-preferences
+ * write.
  */
 const activeContract = () => makeContractScenario({
   contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
@@ -770,6 +771,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
+  // Phase 3 — notification preferences (NC7).
   {
     label: 'PUT /api/notifications/preferences',
     async setup() {
@@ -785,23 +787,13 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  {
-    label: 'DELETE /api/conversations/:id/messages/:messageId',
-    async setup() {
-      const { freelancer, conversation } = await makeContractScenario();
-      const message = await makeMessage(conversation.id, freelancer.id);
-      return {
-        actor: freelancer,
-        send: (token) => bearer(token).delete(`/api/conversations/${conversation.id}/messages/${message.id}`),
-        async assertUnchanged() {
-          expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
-        },
-      };
-    },
-  },
 ];
 
 describe('expansion routes refuse a soft-deleted principal (requireActiveUser)', () => {
+  it('lists every guarded route once', () => {
+    expect(new Set(guardedMutations.map((m) => m.label)).size).toBe(guardedMutations.length);
+  });
+
   it.each(guardedMutations)('$label → 401 and writes nothing', async (mutation) => {
     const { actor, send, assertUnchanged } = await mutation.setup();
     const token = tokenFor(actor);

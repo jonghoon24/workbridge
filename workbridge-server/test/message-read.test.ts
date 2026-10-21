@@ -354,5 +354,12 @@ describe('message.unreadDigest (J8)', () => {
     expect(res.status).toBe(200);
     // Either order is consistent: read first → nothing to send; digest first → one email (NC16).
     expect(await digestsFor(freelancer.id)).toHaveLength(1);
+    const deliveries = await prisma.emailDelivery.findMany({ where: { type: 'MESSAGE_UNREAD_DIGEST' } });
+    expect(deliveries.length).toBeLessThanOrEqual(1);
+    if (deliveries.length === 1) expect(deliveries[0].userId).toBe(freelancer.id);
+    // The read lands in either order. (The delivery's `createdAt` is the job's simulated `now`,
+    // ten minutes ahead of the wall clock, so it cannot be ordered against `lastReadAt`.)
+    const sent = await prisma.message.findFirstOrThrow({ where: { conversationId: conversation.id, senderId: client.id } });
+    expect((await watermark(conversation.id, freelancer.id))!.getTime()).toBeGreaterThanOrEqual(sent.createdAt.getTime());
   });
 });

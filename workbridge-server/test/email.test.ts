@@ -42,7 +42,12 @@ class RecordingProvider implements MailProvider {
 
 let provider: RecordingProvider;
 let previous: MailProvider;
-const savedEnv = { MAIL_PROVIDER: process.env.MAIL_PROVIDER, MAIL_FROM: process.env.MAIL_FROM, LOG_LEVEL: process.env.LOG_LEVEL };
+const savedEnv = {
+  MAIL_PROVIDER: process.env.MAIL_PROVIDER,
+  MAIL_FROM: process.env.MAIL_FROM,
+  LOG_LEVEL: process.env.LOG_LEVEL,
+  CLIENT_URL: process.env.CLIENT_URL,
+};
 
 beforeEach(() => {
   provider = new RecordingProvider();
@@ -108,6 +113,16 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
       maxAttempts: 5,
     });
     expect(job.runAt.getTime()).toBe(T0.getTime());
+  });
+
+  it('links use the first CLIENT_URL entry, trimmed and without a trailing slash [NC13] [NC1]', async () => {
+    process.env.CLIENT_URL = 'http://a.test/, http://b.test';
+
+    const { delivery } = await oneDelivery();
+
+    expect(delivery.body).toContain('http://a.test/my/notifications/settings');
+    expect(delivery.body).toContain('http://a.test/contracts/c/milestones/m');
+    expect(delivery.body).not.toContain('b.test');
   });
 
   it('creates no delivery for a recipient without an address [NC9]', async () => {
