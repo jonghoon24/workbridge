@@ -10,6 +10,7 @@ import { env } from './env';
 import { logger } from './lib/logger';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/users.routes';
+import profileRoutes from './routes/profile.routes';
 import projectRoutes from './routes/projects.routes';
 import applicationRoutes from './routes/applications.routes';
 import contractRoutes from './routes/contracts.routes';
@@ -18,6 +19,7 @@ import settlementRoutes from './routes/settlements.routes';
 import paymentRoutes from './routes/payments.routes';
 import reviewRoutes from './routes/reviews.routes';
 import notificationRoutes from './routes/notifications.routes';
+import conversationRoutes from './routes/conversations.routes';
 import internalRoutes from './routes/internal.routes';
 import { errorHandler } from './middlewares/errorHandler';
 import { accessLog } from './middlewares/accessLog';
@@ -91,8 +93,12 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 // Both `projectRoutes` and `applicationRoutes` mount on `/api/projects`; applications
 // live at nested paths (`/:id/applications`). This order is load-bearing.
+// Likewise `userRoutes` and `profileRoutes` both mount on `/api/users`: the profile router
+// (portfolio, careers, completion, recommended projects) comes second, so the existing
+// `/me/*` and `/:id` routes keep precedence.
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/users', profileRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/projects', applicationRoutes);
 app.use('/api/contracts', contractRoutes);
@@ -101,6 +107,7 @@ app.use('/api/settlements', settlementRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/conversations', conversationRoutes);
 app.use('/api/internal', internalRoutes);
 
 app.use(errorHandler);
