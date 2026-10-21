@@ -23,10 +23,13 @@ Scope: the `workbridge-server` HTTP API. The Next.js client is out of scope. Wri
 
 These apply to every endpoint and deserve their own tests, since a violation anywhere is a bug.
 
-### 1. Error envelope
+### 1. Error envelope and error logging
 Every error response body is exactly `{ "error": { "message": string } }`. Controllers signal
 errors by throwing `AppError(message, statusCode)`; the terminal `errorHandler` renders it. No
-controller writes an error response directly. Only status 500 is logged.
+controller writes an error response directly. **Only status 500 is logged at error level** —
+exactly once per request, by `errorHandler` — and a 4xx never produces an error-level line.
+Every request additionally produces one info-level access-log line whatever its status
+(rule 9). **[C7]**
 
 ### 2. Authentication
 - A Bearer access token in `Authorization` is required for every protected route.
@@ -69,8 +72,8 @@ Any operation that changes more than one row must be a single `prisma.$transacti
 fails, none may persist. This applies to accepting/rejecting an application, closing recruitment,
 completing a contract, signing a contract, and the lazy lifecycle sweep.
 
-### 7. Lazy project lifecycle
-There is no cron. `closeExpiredOpenProjects()` runs on read paths and:
+### 7. Project lifecycle: lazy sweep on read paths and a scheduled sweep
+`closeExpiredOpenProjects(now)` runs on read paths and:
 - promotes `UPCOMING` → `OPEN` once `recruitmentStartDate <= now` and `deadline >= now`
 - moves `UPCOMING`/`OPEN` → `CLOSED` once `deadline < now`
 - rejects still-`PENDING` applications on projects that are now `CLOSED`
@@ -78,11 +81,106 @@ There is no cron. `closeExpiredOpenProjects()` runs on read paths and:
 Consequence worth asserting explicitly: **`GET /api/projects` and `GET /api/projects/:id` write
 rows.** They are not read-only.
 
+In addition, **when a job runner is active** (the development worker, `npm run jobs:run`, or
+`POST /api/internal/jobs/run`), the recurring job `project.lifecycleSweep` runs the same sweep
+every 10 minutes (see [Background jobs](#background-jobs)). The sweep is idempotent, so the lazy
+and the scheduled sweep may run in any order or concurrently and leave the same state. The
+scheduled sweep only keeps statuses current when nobody is reading; production has no resident
+worker, so the lazy sweep on read paths remains the guarantee. **[C6]**
+
 ### 8. Validation and status codes
 - Missing required field → **400**
 - Malformed value (unparseable number, invalid date, out-of-range enum) → **400**, never 500 **[D3]**
 - Unique-constraint collision → **409**, never 500
 - Upstream provider failure (OpenAI, TossPayments) → **502** or **400**, never 500
+
+### 9. Request IDs and logging
+- **Every response carries an `X-Request-Id` header** — successes, errors, `/health`, and
+  unmatched paths alike. An incoming `X-Request-Id` that matches `^[A-Za-z0-9._-]{1,128}$` is
+  echoed back unchanged; anything else (absent, empty, longer than 128, other characters) is
+  replaced by a freshly generated UUID v4.
+- The request id **never appears in a response body**. The error envelope stays exactly rule 1.
+- Logs are single-line JSON objects `{ time, level, msg, requestId?, jobId?, ...fields }`.
+  Levels are `debug < info < warn < error`; `LOG_LEVEL` (`debug|info|warn|error|silent`, default
+  `info`) is the threshold. `error` lines go to stderr (`console.error`), the rest to stdout
+  (`console.log`).
+- **Access log:** one `info` line per request when the response finishes, with `method`, `path`
+  (query string removed), `status`, `durationMs`, `ip` (rule 10's client IP) and `userId` when the
+  request was authenticated. A 500 is access-logged at `info` like any other status.
+- **Error level is reserved.** Within the request path only `errorHandler` logs at `error`, and
+  only for a 500 (rule 1). Outside it, the job runner logs at `error` when a job ends `FAILED`
+  (rule 11). The one pre-existing exception is `GET /api/auth/google/callback`, which logs the
+  failure it swallows into a redirect.
+- An `Error` placed in a log field is serialized explicitly as
+  `{ name, message, stack, code?, statusCode?, meta? }` — never as `{}`.
+- A job enqueued while serving a request records that request's id as its `traceId`; lines
+  logged while a job runs carry its `jobId` and, as `requestId`, that `traceId`.
+
+### 10. Rate limiting
+- A limited request → **429** with the standard envelope
+  `{ "error": { "message": "Too many requests. Try again later." } }` and a `Retry-After`
+  header: whole seconds (at least 1) until the window that refused it ends.
+- Windows are **fixed**, aligned to KST (UTC+9) boundaries: a 15-minute window starts at :00,
+  :15, :30 or :45, an hour window on the hour, a day window at 00:00 KST. Counters live in
+  Postgres, so every server instance shares them.
+- Each counted request increments its counter, and is refused when the incremented count exceeds
+  the limit; a refused request still counts. Where several rules apply they are evaluated in
+  the order listed, and a request refused by one rule is not counted by the rules after it.
+- **Client IP** is Express's `req.ip`. With `TRUST_PROXY` set it is the client address taken from
+  `X-Forwarded-For` after discarding the trusted proxies; unset, it is the socket address and
+  `X-Forwarded-For` is ignored. Both Next.js proxies (the `/api/*` catch-all and the auth
+  routes) append the browser address to `X-Forwarded-For`, forward `X-Request-Id`, and copy
+  `X-Request-Id` and `Retry-After` back to the browser, so locally (`TRUST_PROXY=loopback`)
+  each browser is counted separately rather than everyone sharing the Next server's address.
+- `RATE_LIMIT_ENABLED=false` disables every limit; the value is read per request. Default on.
+
+  | Rule | Key | Window | Limit | What counts |
+  |---|---|---|---|---|
+  | login per IP | client IP | 15 min | 20 | every `POST /api/auth/login`, whatever its outcome (400 and 429 included) |
+  | login failures | `email.trim().toLowerCase()` + client IP | 15 min | 5 | only `401 Invalid credentials` outcomes; a successful login resets it |
+  | analyze per hour | user id | 1 hour | 5 | every `POST /api/projects/:id/analyze` that passes authentication and the `CLIENT` role check, whatever its outcome (404, 403, 502 included) |
+  | analyze per day | user id | KST day | 20 | as above |
+
+### 11. Background jobs and time
+- Work that must happen later (or retried) is a `Job` row, **enqueued in the same transaction as
+  the state change that causes it**, so a rolled-back change never leaves a job behind.
+- A job may carry a `dedupeKey`. Enqueueing a key that already exists — in any status — is a
+  silent no-op, never an error, so it is safe inside a transaction.
+- Handlers are **idempotent**: they re-read state when they run and write conditionally, so
+  running one twice (for example after stale-lock recovery) changes nothing the second time.
+- Time-dependent services and handlers take `now` as an argument. Tests drive the queue with
+  `runDueJobs({ now })` and never use fake timers.
+- Calendar rules ("today", day windows, daily schedules) use **KST, a fixed UTC+9 offset** with no
+  daylight saving.
+- Job states, runners and the job types are specified in [Background jobs](#background-jobs).
+
+### 12. Conventions of the expansion domains
+These apply to the routes added by the platform expansion — everything documented after the
+Notifications section. Pre-existing endpoints keep the behavior documented for them, including
+Q12/Q13; the mix is intended.
+- Every new user-facing route runs `authenticate → requireActiveUser → [requireRole] → validate →
+  controller`. `requireActiveUser` re-reads the caller and answers **401**
+  `Account is no longer active` when the user is soft-deleted, so D12 does not exist on new
+  routes. (Internal endpoints authenticate differently, see [Internal endpoints](#internal-endpoints--apiinternal).)
+- Request validation failures → **400** with the message `<path>: <message>` for the **first**
+  failing field, where `<path>` is the dotted field path (`items.0.amount`); a failure with no
+  path is just `<message>`. Validation runs after authentication and role checks.
+- Query parameters: an **empty value is absent** (`?limit=` → the default). A repeated
+  parameter (`?limit=1&limit=2`), a fractional number where an integer is expected (`1.5`), and
+  trailing garbage (`2abc`) → **400**.
+- Money amounts in the new domains are whole won (integers); a non-integer amount → **400**.
+- File uploads use one of two policies, and neither can surface as a 500 (no D6):
+
+  | Upload | Field | Files | Size | Allowed types |
+  |---|---|---|---|---|
+  | attachment | `files` | 0–5 | 10 MB each | `image/*`, PDF, ZIP, plain text, Word/Excel/PowerPoint (legacy and OOXML), HWP |
+  | image | `image` | 0–1 | 5 MB | `image/*` |
+
+  Oversized file → **413**; disallowed type, too many files, an unexpected field name, or a
+  malformed multipart body → **400**.
+- Stored file keys are `<folder>/<uuid>.<ext>`, ASCII only; the original file name never appears
+  in a key. The display name kept in the database is the original name restored from multer's
+  latin1 decoding to UTF-8, so Korean names round-trip.
 
 ---
 
@@ -103,6 +201,13 @@ rows.** They are not read-only.
   enumerate accounts.
 - A soft-deleted user must not be able to log in.
 - On success: **200** with `{ accessToken, user }` and a refreshed cookie.
+- **Rate limited** (rule 10), checked before anything else, including the required-field check:
+  - more than 20 requests from one client IP in a 15-minute window → **429**, whatever the
+    outcome of the earlier ones;
+  - after 5 `401 Invalid credentials` outcomes for one email (trimmed, lowercased) from one IP in
+    a 15-minute window, further attempts for that email and IP → **429**, even with the correct
+    password, until the window ends. Unknown emails count exactly like known ones, so the
+    limiter cannot be used to enumerate accounts. A successful login clears the count. **[C8]**
 
 ### `POST /logout` — authenticated
 - Clears the `refreshToken` cookie and returns 200.
@@ -258,6 +363,10 @@ Runs the lifecycle sweep, then returns the project with its client, application 
 - Empty response → **502** `AI analysis did not return a response`. No usable features → **502**
   `AI analysis did not return valid feature pricing`. Neither may be a 500.
 - Result is **upserted**, so re-analyzing replaces the previous analysis rather than duplicating it.
+- **Rate limited per user** (rule 10): at most 5 calls per hour and 20 per KST day. The limiter
+  runs after authentication and the `CLIENT` role check but before the project lookup, so 404,
+  ownership 403 and 502 outcomes all count — the provider cost is incurred per request. The 6th
+  call in an hour → **429** with `Retry-After`. **[C8]**
 
 ### Bookmarks — `/:id/bookmark`, authenticated, FREELANCER
 - `GET` → `{ bookmarked: boolean }`.
@@ -422,6 +531,85 @@ mutate another user's notifications. `type` is one of `APPLICATION_CREATED`,
   preserves the original `readAt`.
 - **`PATCH /read-all`** — marks only the caller's unread notifications read; already-read ones keep
   their timestamps.
+
+---
+
+## Background jobs
+
+Postgres-backed queue (`Job` table) used by the scheduled sweeps and, in later phases, by
+milestone auto-approval, the settlement batch and email delivery.
+
+### Job states
+
+| From | To | When |
+|---|---|---|
+| — | `PENDING` | enqueued; `runAt` defaults to now, `maxAttempts` to 5 |
+| `PENDING` | `RUNNING` | claimed by a runner once `runAt <= now`; `attempts` +1, `lockedAt`, `lockedBy` set. Claims are ordered by `runAt`, then `createdAt`, and use `FOR UPDATE SKIP LOCKED`, so concurrent runners never claim the same job |
+| `RUNNING` | `SUCCEEDED` | the handler returned; `completedAt` set |
+| `RUNNING` | `PENDING` | the handler threw and `attempts < maxAttempts`: `runAt = now + min(30 s × 2^(attempts − 1), 1 h)`, `lastError` recorded |
+| `RUNNING` | `FAILED` | the handler threw a `PermanentJobError`, the type has no handler, or `attempts` reached `maxAttempts`; `lastError` recorded and an error-level log line written |
+| `RUNNING` | `PENDING` | stale-lock recovery: `lockedAt` older than 10 minutes (the runner died). `attempts` is not refunded |
+| `PENDING` | `CANCELLED` | by domain code that makes a job moot (none in Phase 0) |
+
+### Recurring jobs
+- Each recurring type defines its next slot after a given time and a `dedupeKey` per slot.
+- `ensureRecurringJobs(now)` enqueues the next slot of every recurring type. Thanks to the
+  `dedupeKey` it is safe to call any number of times.
+- When a recurring job is **claimed**, the runner enqueues its next slot (the first slot after the
+  claim time). The chain therefore survives a run that retries and finally fails, and a runner
+  that was down for a while resumes with one catch-up run instead of a backlog.
+
+### Runners
+`runDueJobs({ now, limit = 50, types? })` claims up to `limit` due jobs, runs them one after
+another, and returns `{ claimed, succeeded, retried, failed }`. It does **not** call
+`ensureRecurringJobs`; every production-style entry point does so first:
+
+| Runner | Where it runs | Order |
+|---|---|---|
+| development worker | started by the server in development (not in production, not under test) unless `JOB_WORKER_ENABLED=false` | `ensureRecurringJobs` once at start, then every `JOB_POLL_INTERVAL_MS` (default 5000): `recoverStaleJobs` → `runDueJobs`. SIGINT/SIGTERM finish the current batch, then exit |
+| `npm run jobs:run` | one-shot CLI | `ensureRecurringJobs` → `recoverStaleJobs` → `runDueJobs`, prints the result |
+| `npm run jobs:worker` | standalone worker CLI | same loop as the development worker |
+| `POST /api/internal/jobs/run` | see [Internal endpoints](#internal-endpoints--apiinternal) | `ensureRecurringJobs` → `recoverStaleJobs` → `runDueJobs` |
+
+Production (Vercel) has no resident worker, and which external scheduler calls the internal
+endpoint is not decided yet. Until one does, recurring jobs only run where a runner is started.
+
+### Job types
+
+| Type | Enqueued | `runAt` | `dedupeKey` | Handler runs when | Effect |
+|---|---|---|---|---|---|
+| `project.lifecycleSweep` | recurring | the next 10-minute boundary (:00, :10, …) strictly after `now` | `project.lifecycleSweep:<slot ISO-8601>` | always | `closeExpiredOpenProjects(now)` — exactly rule 7's sweep, evaluated at the job's `now` |
+| `maintenance.cleanup` | recurring | the next 04:00 KST strictly after `now` | `maintenance.cleanup:<KST date YYYY-MM-DD>` | always | deletes `SUCCEEDED` and `CANCELLED` jobs last updated more than 14 days before `now`, and rate-limit counters whose window has ended. `FAILED` jobs are kept for inspection |
+
+---
+
+## Internal endpoints — `/api/internal`
+
+### `POST /jobs/run` — internal token
+- Not a user route: no JWT, and any `Authorization` header is ignored.
+- If `INTERNAL_JOB_TOKEN` is unset or empty, the endpoint does not exist: **404**, answered exactly
+  as an unmatched path is (see Q10), so its existence is not revealed.
+- `X-Internal-Token` missing or different from `INTERNAL_JOB_TOKEN` → **403**
+  `Invalid internal token`. The comparison is constant-time over SHA-256 digests, so a token of
+  any length is a 403, never a 500.
+- Body `{ limit? }` — an integer from 1 to 500, default 50 → else **400** (rule 12 format). Checked
+  after the token.
+- Runs `ensureRecurringJobs(now)` → `recoverStaleJobs(now)` → `runDueJobs({ now, limit })` and
+  responds **200** with `{ claimed, succeeded, retried, failed }`.
+
+---
+
+## Expansion changes to pre-existing behavior
+
+The platform expansion deliberately changes some behavior that predates it. The body of this
+document always states the current intent; the previous behavior is kept only in this table.
+Changed bullets end with **[C*n*]**, and so do the names of the tests that pin them.
+
+| ID | Area | Before | Now | Tests |
+|---|---|---|---|---|
+| **C6** | Lifecycle | lazy sweep only ("there is no cron") | lazy sweep plus a scheduled sweep every 10 minutes when a runner is active (rule 7) | `jobs.test.ts` |
+| **C7** | Logging | `console.error` on 500 | structured JSON logger, same rule: error level only for a 500, exactly once (rules 1, 9) | `payments.test.ts` (logging block), `request-id.test.ts` |
+| **C8** | Login / analyze | unlimited | 429 with `Retry-After` (rule 10) | `rate-limit.test.ts` |
 
 ---
 
