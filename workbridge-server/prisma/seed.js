@@ -19,6 +19,9 @@ async function main() {
   // (Recurring jobs are not seeded — the worker recreates them via `ensureRecurringJobs`.)
   await prisma.job.deleteMany();
   await prisma.rateLimitCounter.deleteMany();
+  // Phase 3: an email delivery may reference a notification, so it goes first.
+  await prisma.emailDelivery.deleteMany();
+  await prisma.notificationPreference.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.review.deleteMany();
   // Phase 2 models, children first. The migration backfills a conversation for every contract,

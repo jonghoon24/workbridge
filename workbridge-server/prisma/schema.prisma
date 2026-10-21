@@ -116,6 +116,8 @@ model User {
   sentMessages        Message[]                 @relation("SentMessages")
   portfolioItems      PortfolioItem[]
   careers             Career[]
+  notificationPrefs   NotificationPreference[]
+  emailDeliveries     EmailDelivery[]
 }
 
 model Project {
@@ -469,6 +471,8 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
+  emailDeliveries EmailDelivery[]
+
   @@index([userId, readAt, createdAt])
 }
 
@@ -481,6 +485,67 @@ model PricingAnalysis {
   summary         String?
   marketReference String?
   createdAt       DateTime @default(now())
+}
+
+// ─── Notification channels (BEHAVIOR.md "Notification channels") ───────────
+
+enum EmailDeliveryStatus {
+  PENDING // created by notify(), awaiting its `notification.email` job (J9)
+  SENT
+  FAILED // the provider threw on the last attempt, or MAIL_PROVIDER is unsupported
+  SKIPPED // the recipient was soft-deleted before the send; the provider was not called
+}
+
+/// Sparse per-user overrides of the notification policy (NC4): a row exists only while a channel
+/// departs from its default. No backfill — a user without rows gets the defaults.
+model NotificationPreference {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  /// `NotificationType` (TS union), a bare String like `Notification.type`
+  type      String
+  /// null = follow the policy default (NC2); never stored for a locked channel
+  inApp     Boolean?
+  /// null = follow the policy default (NC2); never stored for a locked channel
+  email     Boolean?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
+}
+
+/// One email, from `notify()` to the provider (NC11, NC12). The audit trail of what was sent;
+/// no route reads it and nothing deletes it (Q24).
+model EmailDelivery {
+  id                String              @id @default(uuid())
+  userId            String
+  user              User                @relation(fields: [userId], references: [id])
+  /// The in-app row created by the same notify() call; null when in-app is off or absent
+  notificationId    String?
+  notification      Notification?       @relation(fields: [notificationId], references: [id])
+  type              String
+  /// The recipient's address when the row was created
+  toAddress         String
+  subject           String
+  body              String
+  /// 'conversation:<id>' for MESSAGE_UNREAD_DIGEST (the J8 throttle lookup); null otherwise
+  contextKey        String?
+  status            EmailDeliveryStatus @default(PENDING)
+  /// Provider calls made; incremented just before each call
+  attempts          Int                 @default(0)
+  /// MAIL_PROVIDER value of the last send, e.g. 'log'
+  provider          String?
+  providerMessageId String?
+  /// At most 2,000 characters
+  error             String?
+  sentAt            DateTime?
+  /// notify()'s `now` (a job's ctx.now), so the digest throttle is deterministic
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([userId, type, contextKey, createdAt])
+  @@index([userId, createdAt])
+  @@index([status])
 }
 
 // ─── Infrastructure ─────────────────────────────────────────────────────────

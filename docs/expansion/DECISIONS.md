@@ -207,3 +207,11 @@
 - 다이제스트 완성(NC16): throttle은 상태와 무관하게 가장 최근 다이제스트 delivery의 `createdAt`으로 판단하고, 정확히 60분이 지나면 보낸다(J8의 "after"와 같은 경계). 수신자가 다이제스트 이메일을 껐으면 아무것도 만들지 않고 끝난다. href는 `/messages/<conversationId>`(P2A의 스레드 경로). 메일은 다이제스트 작업이 아니라 그 delivery의 `notification.email` 작업이 다음 러너 패스에서 보낸다.
 - 구독 해지 링크는 없다(모두 거래성 메일, 설정 페이지만). 열린 질문 **Q25**로 남겼다. 실제 메일 서비스 미연결, 로그에 주소·본문이 남는 점, delivery 보존 기간, 반송 처리는 **Q24**다. Q 번호는 P2 병렬 워커가 Q를 더하지 않았다는 전제로 이어 붙였다. 머지 때 겹치면 머지 담당이 번호를 다시 매긴다.
 - 배달 기록을 읽는 API는 두지 않는다(감사 기록 전용). `maintenance.cleanup`도 지우지 않는다(Q24).
+
+## P3-S (스키마)
+
+- 마이그레이션 하나(`20261021071341_expansion_notification_channels`): `EmailDeliveryStatus` enum(`PENDING`/`SENT`/`FAILED`/`SKIPPED`), `NotificationPreference`(`@@unique([userId, type])`, `inApp`/`email` nullable), `EmailDelivery`(`contextKey`와 `[userId, type, contextKey, createdAt]` 인덱스, `attempts`, `provider`·`providerMessageId`·`error`·`sentAt` nullable, `updatedAt`). 희소 저장이라 백필은 없다. `migrate dev --create-only`로 만든 SQL을 손대지 않고 적용했고 `migrate diff`로 drift 0을 확인했다.
+- `Notification.type`은 지금처럼 bare String이라 `MESSAGE_UNREAD_DIGEST`는 DB enum 변경이 아니다. TS 유니온(`src/lib/notifications/types.ts`)에 더하는 것은 P3 구현 몫이다.
+- `EmailDelivery.notificationId`는 `Notification`으로의 FK다(선택 관계라 Prisma 기본 `ON DELETE SET NULL`). `provider`는 PLAN과 달리 nullable이고 발송 시점에 쓴다(생성 시에는 어떤 provider가 보낼지 모른다).
+- `seed.js`는 `emailDelivery` → `notificationPreference` → `notification` 순으로 지운다(delivery가 notification을 참조한다). `TABLES`에도 같은 순서로 넣었다.
+- 팩토리 `makeNotificationPreference(userId, type, overrides)`, `makeEmailDelivery(user, overrides)`는 2A/2B 머지가 깨끗하도록 `factories.ts` 맨 끝에만 더했다(상단 type import를 건드리지 않으려고 반환 타입은 추론에 맡긴다). `makeEmailDelivery`는 작업을 enqueue하지 않는다.
