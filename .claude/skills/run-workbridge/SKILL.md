@@ -107,7 +107,8 @@ With both servers up, run the driver — API smoke + login + screenshots:
 bash .claude/skills/run-workbridge/drive.sh /tmp/wb-shots
 ```
 
-Expected tail: `== 6 passed, 0 failed ==` (exit 0). Screenshots land in `/tmp/wb-shots/`
+The script warms both pages with a plain request before screenshotting them, because
+a just-started `next dev` compiles each route on first hit. Expected tail: `== 6 passed, 0 failed ==` (exit 0). Screenshots land in `/tmp/wb-shots/`
 (`home.png`, `projects.png`) — **open them and look**; a blank frame or error page
 means the frontend didn't hydrate. `home.png` shows the hero + feature cards + a
 recent-project card; `projects.png` shows the filter sidebar and project listing.
@@ -118,6 +119,17 @@ Quick manual checks:
 curl -s http://localhost:4000/health                        # {"status":"ok"}
 curl -s http://localhost:3000/api/projects | head -c 200     # proxied list JSON
 ```
+
+### Non-default ports
+
+`npm run dev` in the client is fixed to :3000. To run a second copy (or when 3000/4000 are
+taken), pick a pair and keep every URL consistent:
+
+- server `workbridge-server/.env`: `PORT=4001`, `CLIENT_URL=http://localhost:3001`
+  (and `GOOGLE_CALLBACK_URL` on 3001 if you test OAuth);
+- client `workbridge-client/.env.local`: `API_URL` and `NEXT_PUBLIC_API_URL` =
+  `http://localhost:4001`, then start it with `npx next dev -p 3001`;
+- drive it with `API_PORT=4001 CLIENT_PORT=3001 bash .claude/skills/run-workbridge/drive.sh`.
 
 ## Human path
 

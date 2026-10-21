@@ -16,7 +16,32 @@ export default function SettlementTable({ settlements = [] }) {
   }
 
   return (
-    <div className="overflow-x-auto">
+    <>
+      {/* 좁은 화면(sm 미만)에서는 표 대신 카드로 보여준다. */}
+      <ul className="sm:hidden divide-y divide-gray-100">
+        {settlements.map((settlement) => (
+          <li key={settlement.id}>
+            <Link href={`/settlements/${settlement.id}`} className="block py-3 hover:bg-gray-50">
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-sm font-medium text-gray-900">{formatPeriod(settlement)}</span>
+                <SettlementStatusBadge status={settlement.status} payoutAttempts={settlement.payoutAttempts} />
+              </div>
+              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <dt className="text-gray-500">지급일</dt>
+                <dd className="text-right text-gray-700">{formatDate(settlement.paidAt || settlement.scheduledPayoutAt)}</dd>
+                <dt className="text-gray-500">건수</dt>
+                <dd className="text-right text-gray-700">{settlement.itemCount}</dd>
+                <dt className="text-gray-500">총액</dt>
+                <dd className="text-right text-gray-700">{formatKRW(settlement.grossAmount)}</dd>
+                <dt className="text-gray-500">실지급액</dt>
+                <dd className="text-right font-medium text-gray-900">{formatKRW(settlement.netAmount)}</dd>
+              </dl>
+            </Link>
+          </li>
+        ))}
+      </ul>
+
+      <div className="hidden sm:block overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead>
           <tr className="text-left text-xs font-medium text-gray-500">
@@ -51,6 +76,7 @@ export default function SettlementTable({ settlements = [] }) {
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   );
 }

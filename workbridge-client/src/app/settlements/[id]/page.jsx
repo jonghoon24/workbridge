@@ -122,7 +122,51 @@ export default function SettlementDetailPage() {
 
         <Card className="p-6">
           <h2 className="font-semibold text-gray-900 mb-4">정산 항목</h2>
-          <div className="overflow-x-auto">
+          {/* 좁은 화면(sm 미만)에서는 표 대신 항목마다 카드로 보여준다. */}
+          <ul className="sm:hidden divide-y divide-gray-100">
+            {items.map((item) => (
+              <li key={item.id} className="py-3">
+                {item.projectDeleted ? (
+                  <span className="text-sm font-medium text-gray-900">
+                    #{item.milestoneSequence} {item.milestoneTitle}
+                  </span>
+                ) : (
+                  <Link
+                    href={`/contracts/${item.contractId}/milestones/${item.milestoneId}`}
+                    className="text-sm font-medium text-gray-900 hover:text-primary-600"
+                  >
+                    #{item.milestoneSequence} {item.milestoneTitle}
+                  </Link>
+                )}
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {item.projectTitle}
+                  {item.projectDeleted && <span className="ml-1 text-gray-400">(삭제된 프로젝트)</span>}
+                  <span className="ml-1">· {formatDate(item.approvedAt)} 승인</span>
+                </p>
+                <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <dt className="text-gray-500">총액</dt>
+                  <dd className="text-right text-gray-700">{formatKRW(item.grossAmount)}</dd>
+                  <dt className="text-gray-500">수수료 ({item.feeRateBps / 100}%)</dt>
+                  <dd className="text-right text-gray-700">{formatKRW(item.feeAmount)}</dd>
+                  <dt className="text-gray-500">VAT</dt>
+                  <dd className="text-right text-gray-700">{formatKRW(item.feeVatAmount)}</dd>
+                  <dt className="text-gray-500">실지급</dt>
+                  <dd className="text-right font-medium text-gray-900">{formatKRW(item.netAmount)}</dd>
+                </dl>
+              </li>
+            ))}
+            <li className="py-3">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-semibold text-gray-900">
+                <dt>합계 총액</dt>
+                <dd className="text-right">{formatKRW(settlement.grossAmount)}</dd>
+                <dt>수수료 · VAT</dt>
+                <dd className="text-right">{formatKRW(settlement.feeAmount)} · {formatKRW(settlement.feeVatAmount)}</dd>
+                <dt>실지급</dt>
+                <dd className="text-right text-primary-600">{formatKRW(settlement.netAmount)}</dd>
+              </dl>
+            </li>
+          </ul>
+          <div className="hidden sm:block overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 text-sm">
               <thead>
                 <tr className="text-left text-xs font-medium text-gray-500">

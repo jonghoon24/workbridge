@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Drives the running WorkBridge app end-to-end:
-#   - API smoke tests against the backend (:4000)
+#   - API smoke tests against the backend (:$API_PORT, default 4000)
 #   - a real seed-account login
-#   - browser screenshots of the frontend (:3000) via headless Chrome
+#   - browser screenshots of the frontend (:$CLIENT_PORT, default 3000) via headless Chrome
 #
 # Assumes both dev servers are ALREADY running (see SKILL.md "Run").
-# Usage:  bash drive.sh [screenshot-out-dir]
+# Usage:  [API_PORT=4001 CLIENT_PORT=3001] bash drive.sh [screenshot-out-dir]
 set -uo pipefail
 
 OUT="${1:-${TMPDIR:-/tmp}/workbridge-shots}"
 mkdir -p "$OUT"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-API="http://localhost:4000"
-WEB="http://localhost:3000"
+API="http://localhost:${API_PORT:-4000}"
+WEB="http://localhost:${CLIENT_PORT:-3000}"
 
 pass=0; fail=0
 ok(){   echo "  ✓ $1"; pass=$((pass+1)); }
@@ -37,6 +37,9 @@ curl -s "$WEB/api/projects" | grep -q '"projects"' \
 
 echo "== Browser screenshots -> $OUT =="
 if [ -x "$CHROME" ]; then
+  # A just-started `next dev` compiles each route (and its CSS) on first request; without this
+  # the first screenshot can be an unstyled frame that still counts as a non-empty PNG.
+  for path in "" projects; do curl -s -o /dev/null "$WEB/$path"; done
   for path in "" projects; do
     name="${path:-home}"
     "$CHROME" --headless=new --disable-gpu --hide-scrollbars \
