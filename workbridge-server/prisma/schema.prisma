@@ -41,6 +41,32 @@ enum PaymentStatus {
   FAILED
 }
 
+enum MilestoneStatus {
+  PENDING // planned, not funded
+  FUNDED // paid into escrow, work in progress
+  SUBMITTED // deliverable submitted, awaiting review
+  REVISION_REQUESTED // rejected, awaiting resubmission
+  APPROVED // approved manually or automatically; terminal
+}
+
+enum ApprovalType {
+  MANUAL
+  AUTO
+}
+
+enum SubmissionDecision {
+  APPROVED
+  REJECTED
+}
+
+enum SettlementStatus {
+  SCHEDULED // created by the weekly batch, awaiting its payout date
+  PROCESSING // transfer in flight
+  PAID
+  FAILED // transfer failed; retried while attempts remain
+  ON_HOLD // no payout account (or the freelancer is soft-deleted)
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -71,6 +97,9 @@ model User {
   receivedReviews     Review[]          @relation("RevieweeReviews")
   projectBookmarks    ProjectBookmark[]
   notifications       Notification[]
+  settlementItems     SettlementItem[]  @relation("FreelancerSettlementItems")
+  settlements         Settlement[]      @relation("FreelancerSettlements")
+  payoutAccount       PayoutAccount?
 }
 
 model Project {
@@ -139,23 +168,151 @@ model Contract {
   clientSigned     Boolean        @default(false)
   freelancerSigned Boolean        @default(false)
   status           ContractStatus @default(PENDING)
+  completedAt      DateTime?
   createdAt        DateTime       @default(now())
 
-  payment Payment?
-  reviews Review[]
+  milestones      Milestone[]
+  payments        Payment[]
+  settlementItems SettlementItem[]
+  reviews         Review[]
+}
+
+model Milestone {
+  id            String          @id @default(uuid())
+  contractId    String
+  contract      Contract        @relation(fields: [contractId], references: [id])
+  sequence      Int // 1-based
+  title         String
+  description   String?
+  amount        Float // whole won only (BEHAVIOR.md M6)
+  dueDate       DateTime // 23:59:59.999 KST of the due date (M12)
+  status        MilestoneStatus @default(PENDING)
+  fundedAt      DateTime?
+  submittedAt   DateTime? // latest submission
+  autoApproveAt DateTime? // set only while SUBMITTED
+  approvedAt    DateTime?
+  approvalType  ApprovalType?
+  revisionCount Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  payment        Payment?
+  submissions    MilestoneSubmission[]
+  settlementItem SettlementItem?
+
+  @@unique([contractId, sequence])
+  @@index([status, autoApproveAt])
+}
+
+model MilestoneSubmission {
+  id             String              @id @default(uuid())
+  milestoneId    String
+  milestone      Milestone           @relation(fields: [milestoneId], references: [id])
+  round          Int
+  message        String
+  links          String[]
+  decision       SubmissionDecision? // null = awaiting review
+  decisionReason String?
+  decidedAt      DateTime?
+  decidedById    String? // null for an automatic approval
+  autoDecided    Boolean             @default(false)
+  submittedAt    DateTime            @default(now())
+
+  attachments MilestoneAttachment[]
+
+  @@unique([milestoneId, round])
+}
+
+model MilestoneAttachment {
+  id           String              @id @default(uuid())
+  submissionId String
+  submission   MilestoneSubmission @relation(fields: [submissionId], references: [id])
+  url          String
+  fileName     String
+  mimeType     String
+  size         Int
+  createdAt    DateTime            @default(now())
+
+  @@index([submissionId])
 }
 
 model Payment {
-  id         String        @id @default(uuid())
-  contractId String        @unique
-  contract   Contract      @relation(fields: [contractId], references: [id])
-  clientId   String
-  client     User          @relation("ClientPayments", fields: [clientId], references: [id])
-  amount     Float
-  status     PaymentStatus @default(PENDING)
-  paymentKey String?
-  orderId    String        @unique
-  createdAt  DateTime      @default(now())
+  id          String        @id @default(uuid())
+  contractId  String
+  contract    Contract      @relation(fields: [contractId], references: [id])
+  milestoneId String        @unique
+  milestone   Milestone     @relation(fields: [milestoneId], references: [id])
+  clientId    String
+  client      User          @relation("ClientPayments", fields: [clientId], references: [id])
+  amount      Float
+  status      PaymentStatus @default(PENDING)
+  paymentKey  String?
+  orderId     String        @unique
+  createdAt   DateTime      @default(now())
+
+  @@index([contractId])
+}
+
+model SettlementItem {
+  id           String      @id @default(uuid())
+  milestoneId  String      @unique
+  milestone    Milestone   @relation(fields: [milestoneId], references: [id])
+  contractId   String
+  contract     Contract    @relation(fields: [contractId], references: [id])
+  freelancerId String
+  freelancer   User        @relation("FreelancerSettlementItems", fields: [freelancerId], references: [id])
+  settlementId String? // null = not yet settled
+  settlement   Settlement? @relation(fields: [settlementId], references: [id])
+  grossAmount  Float
+  feeRateBps   Int // snapshot at approval; 1000 = 10%
+  feeAmount    Float
+  feeVatAmount Float
+  netAmount    Float
+  approvedAt   DateTime
+  createdAt    DateTime    @default(now())
+
+  @@index([freelancerId, settlementId])
+  @@index([settlementId])
+}
+
+model Settlement {
+  id                  String           @id @default(uuid())
+  freelancerId        String
+  freelancer          User             @relation("FreelancerSettlements", fields: [freelancerId], references: [id])
+  periodStart         DateTime // Monday 00:00 KST
+  periodEnd           DateTime // next Monday 00:00 KST (exclusive)
+  scheduledPayoutAt   DateTime
+  status              SettlementStatus @default(SCHEDULED)
+  itemCount           Int
+  grossAmount         Float
+  feeAmount           Float
+  feeVatAmount        Float
+  netAmount           Float
+  payoutAttempts      Int              @default(0)
+  bankName            String? // account snapshot taken on entering PROCESSING
+  accountNumberMasked String?
+  accountHolder       String?
+  providerReference   String?
+  failureReason       String?
+  paidAt              DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  items SettlementItem[]
+
+  @@unique([freelancerId, periodStart])
+  @@index([status, scheduledPayoutAt])
+}
+
+model PayoutAccount {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  bankCode      String // lib/banks.ts
+  accountNumber String // digits only, plaintext (BEHAVIOR.md Q22); never returned unmasked
+  holderName    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model Review {

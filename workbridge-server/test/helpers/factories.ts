@@ -1,5 +1,15 @@
 import bcrypt from 'bcryptjs';
-import type { Application, Contract, Payment, Prisma, Project, User } from '@prisma/client';
+import type {
+  Application,
+  Contract,
+  Milestone,
+  MilestoneSubmission,
+  PayoutAccount,
+  Payment,
+  Prisma,
+  Project,
+  User,
+} from '@prisma/client';
 
 import { prisma } from './db';
 
@@ -107,17 +117,74 @@ export function makeContract(
   });
 }
 
-export function makePayment(
+/**
+ * A milestone on `contractId`. `sequence` defaults to the next free one; the amount defaults to
+ * 4,000,000 (the default contract amount) and the due date to 30 days out.
+ */
+export async function makeMilestone(
   contractId: string,
+  overrides: Partial<Prisma.MilestoneUncheckedCreateInput> = {},
+): Promise<Milestone> {
+  const sequence = overrides.sequence
+    ?? (await prisma.milestone.count({ where: { contractId } })) + 1;
+  return prisma.milestone.create({
+    data: {
+      contractId,
+      sequence,
+      title: `Milestone ${sequence}`,
+      amount: 4_000_000,
+      dueDate: daysFromNow(30),
+      ...overrides,
+    },
+  });
+}
+
+/** A payment for `milestoneId`; its `contractId` is taken from the milestone. */
+export async function makePayment(
+  milestoneId: string,
   clientId: string,
   overrides: Partial<Prisma.PaymentUncheckedCreateInput> = {},
 ): Promise<Payment> {
+  const milestone = await prisma.milestone.findUniqueOrThrow({ where: { id: milestoneId } });
   return prisma.payment.create({
     data: {
-      contractId,
+      contractId: milestone.contractId,
+      milestoneId,
       clientId,
-      amount: 4_000_000,
+      amount: milestone.amount,
       orderId: `order-${next()}`,
+      ...overrides,
+    },
+  });
+}
+
+/** A submission (round 1 by default) awaiting review. */
+export function makeSubmission(
+  milestoneId: string,
+  overrides: Partial<Prisma.MilestoneSubmissionUncheckedCreateInput> = {},
+): Promise<MilestoneSubmission> {
+  return prisma.milestoneSubmission.create({
+    data: {
+      milestoneId,
+      round: 1,
+      message: 'Here is the deliverable.',
+      links: [],
+      ...overrides,
+    },
+  });
+}
+
+/** A valid payout account for `user` (holder name = the user's name). */
+export function makePayoutAccount(
+  user: Pick<User, 'id' | 'name'>,
+  overrides: Partial<Prisma.PayoutAccountUncheckedCreateInput> = {},
+): Promise<PayoutAccount> {
+  return prisma.payoutAccount.create({
+    data: {
+      userId: user.id,
+      bankCode: '004',
+      accountNumber: '110123456789',
+      holderName: user.name,
       ...overrides,
     },
   });
@@ -125,15 +192,20 @@ export function makePayment(
 
 /**
  * The full chain most contract, payment, and review tests need: a client, a freelancer, a
- * project whose recruitment has closed, an accepted application, and the resulting contract.
+ * project whose recruitment has closed, an accepted application, the resulting contract, and
+ * its default milestone (sequence 1, the whole contract amount) — as accepting an application
+ * creates it (BEHAVIOR.md M9).
  *
  * Pass `contract` overrides to place the contract in a particular state, e.g.
  * `makeContractScenario({ contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true } })`.
+ * The milestone is `APPROVED` when the contract is `COMPLETED` and `PENDING` otherwise, unless
+ * `milestone` overrides say differently.
  */
 export async function makeContractScenario(overrides: {
   project?: Partial<Prisma.ProjectUncheckedCreateInput>;
   application?: Partial<Prisma.ApplicationUncheckedCreateInput>;
   contract?: Partial<Prisma.ContractUncheckedCreateInput>;
+  milestone?: Partial<Prisma.MilestoneUncheckedCreateInput>;
 } = {}) {
   const client = await makeClient();
   const freelancer = await makeFreelancer();
@@ -151,6 +223,14 @@ export async function makeContractScenario(overrides: {
     },
     overrides.contract,
   );
+  const completed = contract.status === 'COMPLETED';
+  const milestone = await makeMilestone(contract.id, {
+    sequence: 1,
+    title: '전체 작업',
+    amount: Math.round(contract.amount),
+    ...(completed ? { status: 'APPROVED', approvalType: 'MANUAL', approvedAt: new Date() } : {}),
+    ...overrides.milestone,
+  });
 
-  return { client, freelancer, project, application, contract };
+  return { client, freelancer, project, application, contract, milestone };
 }

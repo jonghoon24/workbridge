@@ -21,7 +21,14 @@ async function main() {
   await prisma.rateLimitCounter.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.review.deleteMany();
+  // Phase 1 models, children first (every FK is ON DELETE RESTRICT).
+  await prisma.settlementItem.deleteMany();
+  await prisma.settlement.deleteMany();
+  await prisma.payoutAccount.deleteMany();
+  await prisma.milestoneAttachment.deleteMany();
+  await prisma.milestoneSubmission.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.milestone.deleteMany();
   await prisma.contract.deleteMany();
   await prisma.pricingAnalysis.deleteMany();
   await prisma.projectBookmark.deleteMany();
@@ -395,12 +402,29 @@ async function main() {
       clientSigned: true,
       freelancerSigned: true,
       status: 'COMPLETED',
+      completedAt: new Date('2026-03-15'),
+    },
+  });
+
+  // Payments are per milestone. Minimal plan for now; the full demo plan arrives in Phase 4.
+  const milestone7 = await prisma.milestone.create({
+    data: {
+      contractId: contract7.id,
+      sequence: 1,
+      title: '전체 작업',
+      amount: 9500000,
+      dueDate: new Date('2026-03-15T14:59:59.999Z'),
+      status: 'APPROVED',
+      fundedAt: new Date('2026-02-15'),
+      approvedAt: new Date('2026-03-15'),
+      approvalType: 'MANUAL',
     },
   });
 
   await prisma.payment.create({
     data: {
       contractId: contract7.id,
+      milestoneId: milestone7.id,
       clientId: client2.id,
       amount: 9500000,
       status: 'COMPLETED',
@@ -474,9 +498,22 @@ async function main() {
     },
   });
 
+  const milestone8 = await prisma.milestone.create({
+    data: {
+      contractId: contract8.id,
+      sequence: 1,
+      title: '전체 작업',
+      amount: 5500000,
+      dueDate: new Date('2026-05-15T14:59:59.999Z'),
+      status: 'FUNDED',
+      fundedAt: new Date('2026-03-01'),
+    },
+  });
+
   await prisma.payment.create({
     data: {
       contractId: contract8.id,
+      milestoneId: milestone8.id,
       clientId: client3.id,
       amount: 5500000,
       status: 'COMPLETED',
