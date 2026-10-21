@@ -296,3 +296,12 @@ P3 구현 워커에게 주는 지시. P3 서버 작업은 2A·2B 머지 뒤에 �
 - 테스트: `email.test.ts`(J9·NC9~NC14, J5 트랜잭션은 EmailDelivery INSERT 트리거로 실패를 주입해 인앱 row까지 롤백됨을 확인), `message-digest.test.ts`(NC16 두 경로, 60분 경계, 상태 무관 throttle), `notification-policy.test.ts`(NC2~NC4, 기존 4종 경로), `notification-preferences.test.ts`(NC5~NC8). `message-read.test.ts`의 2A 테스트 둘은 3단계 이후 동작(다이제스트 delivery 1건, 다이제스트 작업 수만 셈)으로 바꿨다. 지원하지 않는 provider의 warn 테스트는 `vi.resetModules()` 뒤 `import('…/provider.js')`로 새 모듈을 읽는다.
 - 클라이언트: 라벨과 오류 번역은 `components/notifications/preferenceLabels.js`. 잠긴 채널 안내는 "필수 알림"(켜진 채 고정), "이메일 전용"(다이제스트 인앱). 화면이 보내지 않는 모양 오류는 기본 문구로 대신한다. 저장은 화면 배열 전체(`type`, `inApp`, `email`)를 PUT하고 응답으로 상태를 바꾼다.
 - 실행 확인(:4003/:3003, `workbridge_dev_p3`): 프리랜서로 설정 화면에서 "기한 임박" 이메일을 끄고 저장 → 새로고침 뒤 꺼짐 유지, 잠긴 토글 비활성 확인. dev-complete로 `MILESTONE_FUNDED` → 워커가 `notification.email` 작업을 돌려 `mail.sent` 한 줄. 의뢰인 메시지 후 `runDueJobs({ now: +11분 })` 두 번 → 다이제스트 delivery SENT 1건, 두 번째 메시지 후 +25분 실행 → `throttled`, 마지막 다이제스트 + 60분에 재예약. D-P3 핀은 없다.
+
+## P4 (구현)
+
+- P3 검증 1차 지적 3: 리뷰가 제안한 "delivery가 1건이면 `lastReadAt` ≥ delivery `createdAt`"은 쓸 수 없다. delivery의 `createdAt`은 작업의 모의 `now`(벽시계 + 10분)라 실제 시각인 `lastReadAt`과 비교되지 않는다. 대신 다이제스트 delivery ≤ 1건(있으면 수신자가 프리랜서), 읽음 watermark ≥ 보낸 메시지의 `createdAt`(어느 순서든 읽기가 반영됨)을 단언했다.
+- P3 검증 1차 지적 1의 라벨 중복 검사는 `guardedMutations` describe 안의 별도 테스트라 전체 수가 하나 늘었다(2013 + NC13 1 + 검사 1 = 2015).
+- 사용자 row 잠금 `lockUserRow`는 `src/lib/locks.ts`에 두고, 같은 SQL을 인라인으로 쓰던 알림 설정(NC7)도 함께 옮겼다. 리뷰 목록의 세 곳(지급 계좌, 포트폴리오·경력, 정산 지급)에 더해 네 번째 사용처다.
+- 클라이언트 오류 번역은 `lib/serverErrors.js`의 `describeServerError(err, fallback, { status, messages, patterns, rewrite, passthrough })` 하나로 모았다. 화면별 문구 표와 공개 함수 이름(`describeProfileError`, `messageErrorText`, `describePreferenceError`)은 그대로 두고 내부만 바꿨다. 통합하면서 `<필드>: ` 접두어 제거와 패턴 비교가 모든 화면에 적용된다(기존에는 프로필만). 번역 표에 없는 문구는 이전처럼 서버 문구 그대로, 알림 설정만 기본 문구다.
+- D13 flake: 지연 주입 대신 테스트가 별도 트랜잭션으로 `LOCK TABLE "Payment" IN SHARE MODE`를 잡고(읽기는 통과, INSERT는 대기), `pg_locks`에서 INSERT 대기 2개를 확인한 뒤 놓는다. 제품 코드는 건드리지 않았고 핀의 단언(200/201/409만, 결제 1건)도 그대로다. P2002를 409로 바꾼 임시 수정으로 핀이 통과로 바뀌는 것도 확인했다. 같은 경합을 쓰는 D14 생성 충돌 테스트도 이 헬퍼를 쓴다. D22(dev-complete)는 트랜잭션 안의 쓰기 순서가 달라 그대로 두었다.
+- `/payments`를 `middleware.js`의 `protectedRoutes`에 넣었다(P1 클라이언트 가정 4, 기존 누락). PLAN·BEHAVIOR에 막는 규칙이 없고, 로그인 없이 결과 화면에 와도 confirm이 401 → 로그인으로 가므로 잃는 흐름이 없다. 헤더의 추천 링크는 프리랜서 드롭다운에만 더했다(PLAN §5.2). 의뢰인의 추천 프리랜서는 지원자 화면에서 들어간다.
