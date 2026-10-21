@@ -28,19 +28,30 @@ export async function enqueueJob<T extends JobType>(
   client: PrismaTransactionClient,
   input: EnqueueJobInput<T>,
 ): Promise<boolean> {
+  return (await enqueueJobs(client, [input])) === 1;
+}
+
+/**
+ * {@link enqueueJob} for several jobs in one statement (`notifyMany`'s one query per table).
+ * Returns how many rows were inserted; a `dedupeKey` that already existed is skipped silently.
+ */
+export async function enqueueJobs<T extends JobType>(
+  client: PrismaTransactionClient,
+  inputs: readonly EnqueueJobInput<T>[],
+): Promise<number> {
+  if (inputs.length === 0) return 0;
+  const traceId = getRequestContext()?.requestId;
   const { count } = await client.job.createMany({
-    data: [
-      {
-        type: input.type,
-        payload: (input.payload ?? {}) as Prisma.InputJsonValue,
-        runAt: input.runAt ?? new Date(),
-        dedupeKey: input.dedupeKey,
-        maxAttempts: input.maxAttempts,
-        traceId: getRequestContext()?.requestId,
-      },
-    ],
+    data: inputs.map((input) => ({
+      type: input.type,
+      payload: (input.payload ?? {}) as Prisma.InputJsonValue,
+      runAt: input.runAt ?? new Date(),
+      dedupeKey: input.dedupeKey,
+      maxAttempts: input.maxAttempts,
+      traceId,
+    })),
     skipDuplicates: true,
   });
 
-  return count === 1;
+  return count;
 }

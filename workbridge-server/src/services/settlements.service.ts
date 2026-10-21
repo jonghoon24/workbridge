@@ -70,8 +70,9 @@ async function notifyFreelancer(
   freelancer: { id: string; deletedAt: Date | null },
   type: TemplateType,
   vars: TemplateVars,
+  now: Date,
 ): Promise<void> {
-  await notifyRecipients(tx, [freelancer], { type, ...renderTemplate(type, vars) });
+  await notifyRecipients(tx, [freelancer], { type, ...renderTemplate(type, vars) }, now);
 }
 
 // ---------------------------------------------------------------------------
@@ -182,7 +183,7 @@ async function settleFreelancer(
 
     if (isNew) {
       const freelancer = await tx.user.findUniqueOrThrow({ where: { id: freelancerId }, select: { id: true, deletedAt: true } });
-      await notifyFreelancer(tx, freelancer, 'SETTLEMENT_SCHEDULED', { settlementId: settlement.id, amount: total.net });
+      await notifyFreelancer(tx, freelancer, 'SETTLEMENT_SCHEDULED', { settlementId: settlement.id, amount: total.net }, now);
       await enqueuePayout(tx, settlement.id, settlement.scheduledPayoutAt);
     }
     return isNew;
@@ -233,7 +234,7 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
         data: { status: 'ON_HOLD' },
       });
       if (held.count === 1) {
-        await notifyFreelancer(tx, freelancer, 'SETTLEMENT_ON_HOLD', { settlementId, amount: settlement.netAmount });
+        await notifyFreelancer(tx, freelancer, 'SETTLEMENT_ON_HOLD', { settlementId, amount: settlement.netAmount }, now);
       }
       return held.count === 1 ? { kind: 'on_hold' as const } : { kind: 'skipped' as const };
     }
@@ -278,7 +279,7 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
       data: { status: 'PAID', paidAt: now, providerReference: reference, failureReason: null },
     });
     if (paid.count === 1) {
-      await notifyFreelancer(tx, freelancer, 'SETTLEMENT_PAID', { settlementId, amount: processing.netAmount });
+      await notifyFreelancer(tx, freelancer, 'SETTLEMENT_PAID', { settlementId, amount: processing.netAmount }, now);
     }
   });
   return 'paid';
@@ -310,7 +311,7 @@ async function recordTransferFailure(
       await enqueuePayout(tx, processing.id, nextAt);
       return 'retry_scheduled';
     }
-    await notifyFreelancer(tx, freelancer, 'SETTLEMENT_FAILED', { settlementId: processing.id, amount: processing.netAmount });
+    await notifyFreelancer(tx, freelancer, 'SETTLEMENT_FAILED', { settlementId: processing.id, amount: processing.netAmount }, now);
     return 'failed';
   });
 }

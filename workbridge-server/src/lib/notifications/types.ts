@@ -1,6 +1,7 @@
 /**
- * `Notification.type` is a bare `String` in the schema. These are the values ever written
- * (BEHAVIOR.md "Notifications" lists them with recipients and links).
+ * `Notification.type` (and `NotificationPreference.type`, `EmailDelivery.type`) is a bare
+ * `String` in the schema. These are the values ever written: BEHAVIOR.md "Notifications" lists
+ * the 19 in-app types with recipients and links, NC2 all 20 with their channel policy.
  */
 export type NotificationType =
   // Pre-existing; their wording stays inline in the old controllers.
@@ -23,4 +24,6 @@ export type NotificationType =
   | 'SETTLEMENT_SCHEDULED'
   | 'SETTLEMENT_PAID'
   | 'SETTLEMENT_ON_HOLD'
-  | 'SETTLEMENT_FAILED';
+  | 'SETTLEMENT_FAILED'
+  // Phase 3; email only — never an in-app row (NC2, NC16).
+  | 'MESSAGE_UNREAD_DIGEST';

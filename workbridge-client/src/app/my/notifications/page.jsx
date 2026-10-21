@@ -113,15 +113,22 @@ export default function NotificationsPage() {
           <h1 className="text-2xl font-bold text-gray-900">알림</h1>
           <p className="text-gray-600 mt-1">지원, 계약, 마일스톤, 정산 소식을 확인하세요</p>
         </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={handleMarkAllRead}
-          disabled={unreadCount === 0}
-          loading={updating === 'all'}
-        >
-          모두 읽음
-        </Button>
+        <div className="flex gap-2">
+          <Link href="/my/notifications/settings">
+            <Button variant="ghost" size="sm">
+              알림 설정
+            </Button>
+          </Link>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleMarkAllRead}
+            disabled={unreadCount === 0}
+            loading={updating === 'all'}
+          >
+            모두 읽음
+          </Button>
+        </div>
       </div>
 
       {error && (

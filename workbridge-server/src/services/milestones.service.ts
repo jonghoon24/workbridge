@@ -194,8 +194,9 @@ async function notifyTemplate(
   recipients: readonly Recipient[],
   type: TemplateType,
   vars: TemplateVars,
+  now: Date,
 ): Promise<void> {
-  await notifyRecipients(tx, recipients, { type, ...renderTemplate(type, vars) });
+  await notifyRecipients(tx, recipients, { type, ...renderTemplate(type, vars) }, now);
 }
 
 // ---------------------------------------------------------------------------
@@ -289,7 +290,7 @@ export async function replacePlan(contractId: string, actorId: string, items: re
       await notifyTemplate(tx, [contract.freelancer], 'MILESTONE_PLAN_UPDATED', {
         projectTitle: contract.project.title,
         contractId,
-      });
+      }, now);
     }
     // MG6: every replacement leaves a system message, signature or not — the last write (MG7).
     await postSystemMessage(tx, contractId, 'MILESTONE_PLAN_UPDATED');
@@ -370,7 +371,7 @@ export async function markFunded(
     include: milestoneContextInclude,
   });
 
-  await notifyTemplate(tx, [milestone.contract.freelancer], 'MILESTONE_FUNDED', varsFor(milestone, { amount: milestone.amount }));
+  await notifyTemplate(tx, [milestone.contract.freelancer], 'MILESTONE_FUNDED', varsFor(milestone, { amount: milestone.amount }), now);
 
   const dueSoonAt = new Date(milestone.dueDate.getTime() - DUE_SOON_MS);
   if (dueSoonAt > now) {
@@ -474,7 +475,7 @@ export async function submitMilestone(
       });
     }
 
-    await notifyTemplate(tx, [milestone.contract.client], 'MILESTONE_SUBMITTED', varsFor(milestone));
+    await notifyTemplate(tx, [milestone.contract.client], 'MILESTONE_SUBMITTED', varsFor(milestone), now);
     await postSystemMessage(tx, milestone.contractId, 'MILESTONE_SUBMITTED', { milestoneTitle: milestone.title, round });
 
     const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
@@ -591,12 +592,12 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
     if (!projectDeleted) {
       const vars = varsFor(milestone);
       if (kind === 'MANUAL') {
-        await notifyTemplate(tx, [contract.freelancer], 'MILESTONE_APPROVED', vars);
+        await notifyTemplate(tx, [contract.freelancer], 'MILESTONE_APPROVED', vars, now);
       } else {
-        await notifyTemplate(tx, [contract.client, contract.freelancer], 'MILESTONE_AUTO_APPROVED', vars);
+        await notifyTemplate(tx, [contract.client, contract.freelancer], 'MILESTONE_AUTO_APPROVED', vars, now);
       }
       if (completed) {
-        await notifyTemplate(tx, [contract.client, contract.freelancer], 'CONTRACT_COMPLETED', vars);
+        await notifyTemplate(tx, [contract.client, contract.freelancer], 'CONTRACT_COMPLETED', vars, now);
       }
 
       // MG6: the approval's own message, then completion — the last writes, so the conversation
@@ -649,7 +650,7 @@ export async function rejectMilestone(
       });
     }
 
-    await notifyTemplate(tx, [milestone.contract.freelancer], 'MILESTONE_REVISION_REQUESTED', varsFor(milestone, { reason }));
+    await notifyTemplate(tx, [milestone.contract.freelancer], 'MILESTONE_REVISION_REQUESTED', varsFor(milestone, { reason }), now);
     await postSystemMessage(tx, milestone.contractId, 'MILESTONE_REVISION_REQUESTED', { milestoneTitle: milestone.title, reason });
 
     const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
@@ -675,9 +676,15 @@ export async function latestRound(milestoneId: string): Promise<number | null> {
   return last?.round ?? null;
 }
 
+/**
+ * J3–J5. These notices have no state change of their own, so they open a transaction: a notice's
+ * in-app rows, email deliveries and email jobs commit together, and a retry after a failure does
+ * not duplicate rows (NC9).
+ */
 export async function sendMilestoneNotice(
   milestone: MilestoneWithContext,
   type: 'MILESTONE_AUTO_APPROVE_REMINDER' | 'MILESTONE_DUE_SOON' | 'MILESTONE_OVERDUE',
+  now: Date,
 ): Promise<void> {
   const { client, freelancer } = milestone.contract;
   const recipients = type === 'MILESTONE_AUTO_APPROVE_REMINDER'
@@ -685,7 +692,7 @@ export async function sendMilestoneNotice(
     : type === 'MILESTONE_DUE_SOON'
       ? [freelancer]
       : [client, freelancer];
-  await notifyTemplate(prisma, recipients, type, varsFor(milestone));
+  await prisma.$transaction((tx) => notifyTemplate(tx, recipients, type, varsFor(milestone), now));
 }
 
 export type { MilestoneWithContext };

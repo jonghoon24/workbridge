@@ -8,6 +8,7 @@ import {
 } from './handlers/milestoneJobs';
 import { settlementPayout, settlementWeeklyBatch } from './handlers/settlementJobs';
 import { messageUnreadDigest } from './handlers/messageDigest';
+import { notificationEmail } from './handlers/notificationEmail';
 import type { JobHandler, JobType } from './types';
 
 /** One handler per job type. The mapped type makes a missing handler a compile error. */
@@ -21,6 +22,7 @@ export const registry: { [T in JobType]: JobHandler<T> } = {
   'settlement.weeklyBatch': settlementWeeklyBatch,
   'settlement.payout': settlementPayout,
   'message.unreadDigest': messageUnreadDigest,
+  'notification.email': notificationEmail,
 };
 
 export function handlerFor(type: string): JobHandler | undefined {

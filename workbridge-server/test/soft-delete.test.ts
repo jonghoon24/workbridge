@@ -518,7 +518,8 @@ describe('a soft-deleted principal must not be able to write anything (D12)', ()
  *
  * Every expansion phase adds a row here for each new mutating route. **Never add an expansion
  * route to `mutations`** — that table is `it.fails`, and a guarded route would break it with an
- * unexpected pass. Phase 1 adds the milestone, plan and payout-account writes.
+ * unexpected pass. Phase 1 adds the milestone, plan and payout-account writes; Phase 3 adds the
+ * notification-preferences write.
  */
 const activeContract = () => makeContractScenario({
   contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
@@ -765,6 +766,35 @@ const guardedMutations: Mutation[] = [
         send: (token) => bearer(token).delete(`/api/users/me/careers/${career.id}`),
         async assertUnchanged() {
           expect(await prisma.career.count({ where: { id: career.id } })).toBe(1);
+        },
+      };
+    },
+  },
+  {
+    label: 'PUT /api/notifications/preferences',
+    async setup() {
+      const actor = await makeFreelancer();
+      return {
+        actor,
+        send: (token) => bearer(token).put('/api/notifications/preferences').send({
+          preferences: [{ type: 'MILESTONE_DUE_SOON', email: false }],
+        }),
+        async assertUnchanged() {
+          expect(await prisma.notificationPreference.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/conversations/:id/messages/:messageId',
+    async setup() {
+      const { freelancer, conversation } = await makeContractScenario();
+      const message = await makeMessage(conversation.id, freelancer.id);
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).delete(`/api/conversations/${conversation.id}/messages/${message.id}`),
+        async assertUnchanged() {
+          expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
         },
       };
     },

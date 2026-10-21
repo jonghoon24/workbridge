@@ -235,7 +235,7 @@ describe('message.unreadDigest (J8)', () => {
     expect(await digestsFor(a.client.id)).toHaveLength(1);
   });
 
-  it('runs to SUCCEEDED without sending when the messages are still unread at the due time (Phase 2A) [J8] [MG21]', async () => {
+  it('runs to SUCCEEDED and creates one email-only digest when the messages are still unread at the due time [J8] [MG21] [NC16]', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await sendText(client, conversation.id);
     const [job] = await digestsFor(freelancer.id);
@@ -244,8 +244,9 @@ describe('message.unreadDigest (J8)', () => {
 
     expect(result).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
     expect((await prisma.job.findUniqueOrThrow({ where: { id: job.id } })).status).toBe('SUCCEEDED');
-    expect(await prisma.job.count()).toBe(1); // nothing re-enqueued
-    expect(await prisma.notification.count()).toBe(0); // no email or in-app row until Phase 3
+    expect(await digestsFor(freelancer.id)).toHaveLength(1); // nothing re-enqueued
+    expect(await prisma.notification.count()).toBe(0); // email only, never an in-app row (MG20)
+    expect(await prisma.emailDelivery.count({ where: { userId: freelancer.id, type: 'MESSAGE_UNREAD_DIGEST' } })).toBe(1);
     expect(await watermark(conversation.id, freelancer.id)).toBeNull();
   });
 
@@ -351,6 +352,7 @@ describe('message.unreadDigest (J8)', () => {
 
     expect(result.succeeded).toBe(1);
     expect(res.status).toBe(200);
-    expect(await prisma.job.count()).toBe(1);
+    // Either order is consistent: read first → nothing to send; digest first → one email (NC16).
+    expect(await digestsFor(freelancer.id)).toHaveLength(1);
   });
 });

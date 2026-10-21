@@ -2,6 +2,7 @@
 import 'dotenv/config';
 
 import prisma from '../lib/prisma';
+import { warnIfUnsupportedMailProvider } from '../lib/mail/provider';
 import { ensureRecurringJobs } from './recurring';
 import { recoverStaleJobs, runDueJobs } from './runner';
 import { startJobWorker } from './worker';
@@ -13,6 +14,9 @@ import { startJobWorker } from './worker';
  * Lives under `src/` so typecheck covers it.
  */
 async function main() {
+  // NC14: once per process, for both `jobs:run` and `jobs:worker`.
+  warnIfUnsupportedMailProvider();
+
   if (process.argv.includes('--once')) {
     const now = new Date();
     const enqueued = await ensureRecurringJobs(now);

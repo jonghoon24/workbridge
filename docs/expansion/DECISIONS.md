@@ -280,3 +280,19 @@ P3 구현 워커에게 주는 지시. P3 서버 작업은 2A·2B 머지 뒤에 �
 - J8의 3~4단계(한 줄 포인터로 교체, 2A가 J8을 구현하며 고칠 수 있다)와 J8 바로 뒤의 "Email handler rule (Phase 3)" 소절(J9)
 - C 표의 C9 행(C10 행과 인접, 2B)
 - Still open 표의 Q23 다음 Q24·Q25
+
+## P3 (구현)
+
+- 파일: `src/lib/mail/provider.ts`(provider, `setMailProvider`, `selectMailProvider`, 시작 시 warn), `src/lib/notifications/policy.ts`(NC2 표, NC3 `effectiveChannels`, NC4 `normalizeStored`를 한 곳에), `src/jobs/handlers/notificationEmail.ts`(J9), 설정 API는 `schemas/notificationPreferences.ts`·`services/notificationPreferences.service.ts`·`controllers/notificationPreferences.controller.ts`(기존 `notifications.controller.ts`는 손대지 않음). 라우트만 `notifications.routes.ts`에 더했다.
+- `notify()`는 `notifyMany()`와 같은 경로 하나로 돈다(사용자 1회, 설정 1회, 인앱 `createManyAndReturn` 1회, delivery `createMany` 1회, 작업 1회). Notification과 EmailDelivery id는 `randomUUID()`로 미리 정해 delivery가 자기 인앱 row를 가리킨다(반환 순서에 기대지 않음). 작업은 `jobs/queue.ts`에 더한 `enqueueJobs`(한 문장, `enqueueJob`은 이것을 부른다)로 넣는다.
+- 핸드오프대로 `sendMilestoneNotice`를 `prisma.$transaction`으로 감쌌고, 그에 더해 `notify()`가 루트 클라이언트를 받으면(런타임에 `$transaction`이 있으면) 스스로 트랜잭션을 연다. 트랜잭션 클라이언트에는 `$transaction`이 없다(확인함).
+- `MAIL_PROVIDER`는 대소문자·공백 그대로 비교한다: 미설정·빈 값·정확히 `log`만 지원, 그 밖은(`LOG`, ` log` 포함) 지원하지 않음. 지원 값은 `provider`에 `log`로, 지원하지 않는 값은 받은 그대로 적는다. 시작 시 warn은 `index.ts` 모듈 로드(테스트·Vercel import 포함, LOG_LEVEL이 거른다)와 `jobs/cli.ts`에서 부르고 프로세스당 한 번만 찍는다.
+- 링크 기준 주소는 `CLIENT_URL`의 첫 항목이다(`index.ts`가 CORS용으로 쉼표 목록을 받으므로). `toAddress`는 `user.email` 그대로 저장하고, 빈 주소 판정만 trim 뒤에 한다.
+- delivery의 `error`는 `err.message`(2,000자 자름)다. 작업의 `lastError`(`Name: message`)와 형식이 다르다. J9는 명세의 `mail.sent` 외에 `email sent`/`email skipped` info 한 줄(`deliveryId`, `type`, `contextKey`)을 남긴다. error 레벨은 쓰지 않는다.
+- 다이제스트 결과 값은 `not-applicable`/`nothing-unread`/`rescheduled`/`throttled`/`notified`다(2A의 `due`는 없어졌다). `notified`는 수신자가 다이제스트를 꺼서 아무것도 만들지 않은 경우도 포함한다. 문구는 `templates.ts`의 `MESSAGE_UNREAD_DIGEST` 템플릿(프로젝트 제목, 안 읽은 수, `/messages/<id>`)이고 `TemplateVars`에 `conversationId`, `unreadCount`를 더했다.
+- 기존 4종: 수락 경로는 수락의 `now`를 넘기고, 지원·거절·수동 마감은 기본값(요청 시각)이다. 계약 서명(CONTRACT_ACTIVATED)도 기본값 그대로다.
+- NC6: 본문이 객체가 아니면(배열 등) `preferences`가 없는 것으로 보고 `preferences: Expected 1 to 20 entries`. 배열·`null` 항목은 `Expected an object`, `type`이 없으면 `Unknown notification type`. 규칙 3은 "잠긴 off 인앱에 `true`"로 구현했고 해당 type은 다이제스트뿐이다. 검증은 zod `z.unknown().transform` 하나에 두 단계를 직접 적었다(메시지와 순서를 NC6 그대로 맞추려고).
+- NC7: 정규화 결과가 저장된 row와 같으면 update하지 않는다(같은 본문을 두 번 보내도 `updatedAt`까지 그대로, NC8). 동시 PUT 4개 × 3회 테스트로 500과 중복 row가 없음을 본다.
+- 테스트: `email.test.ts`(J9·NC9~NC14, J5 트랜잭션은 EmailDelivery INSERT 트리거로 실패를 주입해 인앱 row까지 롤백됨을 확인), `message-digest.test.ts`(NC16 두 경로, 60분 경계, 상태 무관 throttle), `notification-policy.test.ts`(NC2~NC4, 기존 4종 경로), `notification-preferences.test.ts`(NC5~NC8). `message-read.test.ts`의 2A 테스트 둘은 3단계 이후 동작(다이제스트 delivery 1건, 다이제스트 작업 수만 셈)으로 바꿨다. 지원하지 않는 provider의 warn 테스트는 `vi.resetModules()` 뒤 `import('…/provider.js')`로 새 모듈을 읽는다.
+- 클라이언트: 라벨과 오류 번역은 `components/notifications/preferenceLabels.js`. 잠긴 채널 안내는 "필수 알림"(켜진 채 고정), "이메일 전용"(다이제스트 인앱). 화면이 보내지 않는 모양 오류는 기본 문구로 대신한다. 저장은 화면 배열 전체(`type`, `inApp`, `email`)를 PUT하고 응답으로 상태를 바꾼다.
+- 실행 확인(:4003/:3003, `workbridge_dev_p3`): 프리랜서로 설정 화면에서 "기한 임박" 이메일을 끄고 저장 → 새로고침 뒤 꺼짐 유지, 잠긴 토글 비활성 확인. dev-complete로 `MILESTONE_FUNDED` → 워커가 `notification.email` 작업을 돌려 `mail.sent` 한 줄. 의뢰인 메시지 후 `runDueJobs({ now: +11분 })` 두 번 → 다이제스트 delivery SENT 1건, 두 번째 메시지 후 +25분 실행 → `throttled`, 마지막 다이제스트 + 60분에 재예약. D-P3 핀은 없다.
