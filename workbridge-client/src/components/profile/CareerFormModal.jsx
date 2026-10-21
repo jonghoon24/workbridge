@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import api from '@/lib/api';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
@@ -23,16 +23,11 @@ function toForm(career) {
 }
 
 // 경력 추가·수정(BEHAVIOR.md PF13, PF14). JSON으로 보낸다. 재직 중이면 endDate를 null로 보낸다.
+// 폼은 첫 렌더부터 career로 채운다(PortfolioItemModal과 같은 이유). 부모가 key로 새로 마운트한다.
 export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(() => toForm(career));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setForm(toForm(career));
-    setError('');
-  }, [isOpen, career]);
 
   function validate() {
     if (!form.company.trim()) return '회사명을 입력해주세요.';

@@ -28,22 +28,16 @@ function toForm(item) {
 }
 
 // 포트폴리오 추가·수정(BEHAVIOR.md PF9, PF10). 이미지가 있을 수 있어 항상 multipart로 보낸다.
-// 수정 때는 모든 필드를 보낸다: 빈 값은 서버에서 null로 지워진다.
+// 수정 때는 모든 필드를 보낸다: 빈 값은 서버에서 null로 지워진다. 그래서 폼은 첫 렌더부터 item으로
+// 채워져 있어야 한다(effect로 채우면 첫 프레임의 입력이 빈 폼으로 저장되어 항목이 지워진다).
+// 부모는 열 때마다 key={item?.id ?? 'new'}로 새로 마운트한다.
 export default function PortfolioItemModal({ isOpen, item, onClose, onSaved }) {
-  const [form, setForm] = useState(EMPTY);
+  const [form, setForm] = useState(() => toForm(item));
   const [imageFile, setImageFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setForm(toForm(item));
-    setImageFile(null);
-    setRemoveImage(false);
-    setError('');
-  }, [isOpen, item]);
 
   useEffect(() => {
     if (!imageFile) {

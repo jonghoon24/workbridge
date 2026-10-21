@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { api, authed } from './helpers/api';
+import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { jobsOf, runJobs } from './helpers/jobs';
 import {
@@ -424,10 +424,6 @@ describe('GET /api/contracts/:id/conversation', () => {
 
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: { message: 'Conversation not found' } });
-  });
-
-  it('requires a token', async () => {
-    expect((await api().get('/api/contracts/x/conversation')).status).toBe(401);
   });
 });
 

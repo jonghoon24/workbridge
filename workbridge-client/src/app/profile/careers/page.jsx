@@ -113,12 +113,15 @@ export default function CareersManagePage() {
         )}
       </Card>
 
-      <CareerFormModal
-        isOpen={modal.open}
-        career={modal.career}
-        onClose={() => setModal({ open: false, career: null })}
-        onSaved={handleSaved}
-      />
+      {modal.open && (
+        <CareerFormModal
+          key={modal.career?.id ?? 'new'}
+          isOpen
+          career={modal.career}
+          onClose={() => setModal({ open: false, career: null })}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }

@@ -547,9 +547,9 @@ describe('KST months', () => {
     expect(kstMonthString(new Date('2025-03-31T14:59:59.999Z'))).toBe('2025-03');
   });
 
-  it('accepts only YYYY-MM with months 01–12 [PF2]', () => {
-    for (const ok of ['2025-01', '2025-12', '1999-09']) expect(isKstMonth(ok)).toBe(true);
-    for (const bad of ['2025-00', '2025-13', '2025-1', '25-01', '2025-03-01', '2025/03', '', ' 2025-03']) {
+  it('accepts only YYYY-MM with years from 1900 and months 01–12 [PF2]', () => {
+    for (const ok of ['2025-01', '2025-12', '1999-09', '1900-01']) expect(isKstMonth(ok)).toBe(true);
+    for (const bad of ['2025-00', '2025-13', '2025-1', '25-01', '2025-03-01', '2025/03', '', ' 2025-03', '0000-01', '1899-12']) {
       expect(isKstMonth(bad)).toBe(false);
     }
     expect(() => kstMonthToDate('2025-13')).toThrow(RangeError);

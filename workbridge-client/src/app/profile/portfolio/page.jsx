@@ -142,12 +142,15 @@ export default function PortfolioManagePage() {
         />
       )}
 
-      <PortfolioItemModal
-        isOpen={modal.open}
-        item={modal.item}
-        onClose={() => setModal({ open: false, item: null })}
-        onSaved={handleSaved}
-      />
+      {modal.open && (
+        <PortfolioItemModal
+          key={modal.item?.id ?? 'new'}
+          isOpen
+          item={modal.item}
+          onClose={() => setModal({ open: false, item: null })}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }

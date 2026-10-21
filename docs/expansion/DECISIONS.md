@@ -193,7 +193,7 @@
 - 추천 라우트 경로는 BEHAVIOR.md를 따른다: `GET /api/projects/:id/recommended-freelancers`(RC3), `GET /api/users/me/recommended-projects`(RC6). RC3에도 규칙 12대로 `requireActiveUser`를 붙였다(`authenticate → requireActiveUser → requireRole('CLIENT') → validate`).
 - 추천은 서비스 파일 없이 `src/lib/recommendations.ts`가 prefilter 쿼리와 점수(RC4, RC7 표를 주석으로 한 번만)를 모두 담는다(핸드오프 표의 파일 목록). 후보의 `avgRating`은 `GET /api/users/:id`처럼 받은 리뷰 전부의 평균이다.
 - 포트폴리오 PF5 정렬은 `portfolio.service.ts`의 `PORTFOLIO_ORDER`가 기준이고, `lib/recommendations.ts`는 lib → services 의존을 피하려고 같은 정렬을 직접 적었다.
-- 월 헬퍼(`isKstMonth`, `kstMonthToDate`, `kstMonthString`, `kstMonthOrNull`, `kstMonthIndex`)는 `lib/time.ts`에 있다. 연도는 네 자리면 받는다(하한 없음, 명세에 없음). "미래" 판정은 요청 시각의 KST 달과 문자열 비교다.
+- 월 헬퍼(`isKstMonth`, `kstMonthToDate`, `kstMonthString`, `kstMonthOrNull`, `kstMonthIndex`)는 `lib/time.ts`에 있다. 연도는 1900 이상 네 자리만 받는다(P2 검증 1차 지적 1: `0000-01`이 Prisma가 저장하지 못하는 음수 연도가 되어 500과 D14 누출이 났다. 더 이른 연도는 `Month must be a YYYY-MM month`). "미래" 판정은 요청 시각의 KST 달과 문자열 비교다.
 - 경력 생성에서 `startDate`가 없으면 `startDate: Month must be a YYYY-MM month`다(PF13은 필수라고만 적었다). `removeImage`가 true/false가 아니면 `removeImage: Must be true or false`. 스킬 배열에 문자열이 아닌 값이 있으면 zod union 메시지(`skills: Invalid input`)라 접두어만 의미가 있다.
 - `removeImage`와 `image`를 같이 보낸 400은 스키마가 파일을 보지 못해 컨트롤러에서 검사하지만, 서비스 호출 전이라 PF7의 "검증 → 존재" 순서를 지킨다.
 - PATCH의 병합 행 월 검사는 시작 쪽을 바꿔서 생긴 위반도 끝 필드 경로로 보고한다(`startedAt: ''`이면 `endedAt: Start month is required with an end month`, 시작이 저장된 끝보다 뒤면 `endDate: End month must not be before start month`). 생성의 교차 검사와 같은 문구다.

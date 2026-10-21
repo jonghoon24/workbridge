@@ -74,9 +74,11 @@ export function nextKstWeekday(now: Date, weekday: number, hour = 0, minute = 0)
 // as the first instant of that month in KST and returned as `YYYY-MM` again.
 // ---------------------------------------------------------------------------------------------
 
-const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
+// Years from 1900: earlier (above all year 0000) yields instants Prisma cannot store, and no
+// portfolio or career plausibly predates it.
+const MONTH_PATTERN = /^(19\d{2}|[2-9]\d{3})-(0[1-9]|1[0-2])$/;
 
-/** True for a `YYYY-MM` string with a month from `01` to `12`. */
+/** True for a `YYYY-MM` string with a year from 1900 and a month from `01` to `12`. */
 export function isKstMonth(value: string): boolean {
   return MONTH_PATTERN.test(value);
 }

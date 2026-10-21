@@ -621,20 +621,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Phase 2B — portfolio and careers (PF20).
-  {
-    label: 'POST /api/users/me/portfolio',
-    async setup() {
-      const actor = await makeFreelancer();
-      return {
-        actor,
-        send: (token) => bearer(token).post('/api/users/me/portfolio').send({ title: GHOST }),
-        async assertUnchanged() {
-          expect(await prisma.portfolioItem.count()).toBe(0);
-        },
-      };
-    },
-  },
+  // Phase 2A — conversations and messages (MG10).
   {
     label: 'POST /api/conversations/:id/messages',
     async setup() {
@@ -650,20 +637,6 @@ const guardedMutations: Mutation[] = [
     },
   },
   {
-    label: 'PATCH /api/users/me/portfolio/:itemId',
-    async setup() {
-      const actor = await makeFreelancer();
-      const item = await makePortfolioItem(actor.id, { title: 'Before deletion' });
-      return {
-        actor,
-        send: (token) => bearer(token).patch(`/api/users/me/portfolio/${item.id}`).send({ title: GHOST }),
-        async assertUnchanged() {
-          expect((await prisma.portfolioItem.findUniqueOrThrow({ where: { id: item.id } })).title).toBe('Before deletion');
-        },
-      };
-    },
-  },
-  {
     label: 'POST /api/conversations/:id/read',
     async setup() {
       const { client, freelancer, conversation } = await makeContractScenario();
@@ -674,6 +647,48 @@ const guardedMutations: Mutation[] = [
         async assertUnchanged() {
           const me = await prisma.conversationParticipant.findFirstOrThrow({ where: { userId: freelancer.id } });
           expect(me.lastReadAt).toBeNull();
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/conversations/:id/messages/:messageId',
+    async setup() {
+      const { freelancer, conversation } = await makeContractScenario();
+      const message = await makeMessage(conversation.id, freelancer.id);
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).delete(`/api/conversations/${conversation.id}/messages/${message.id}`),
+        async assertUnchanged() {
+          expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
+        },
+      };
+    },
+  },
+  // Phase 2B — portfolio and careers (PF20).
+  {
+    label: 'POST /api/users/me/portfolio',
+    async setup() {
+      const actor = await makeFreelancer();
+      return {
+        actor,
+        send: (token) => bearer(token).post('/api/users/me/portfolio').send({ title: GHOST }),
+        async assertUnchanged() {
+          expect(await prisma.portfolioItem.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'PATCH /api/users/me/portfolio/:itemId',
+    async setup() {
+      const actor = await makeFreelancer();
+      const item = await makePortfolioItem(actor.id, { title: 'Before deletion' });
+      return {
+        actor,
+        send: (token) => bearer(token).patch(`/api/users/me/portfolio/${item.id}`).send({ title: GHOST }),
+        async assertUnchanged() {
+          expect((await prisma.portfolioItem.findUniqueOrThrow({ where: { id: item.id } })).title).toBe('Before deletion');
         },
       };
     },
@@ -750,20 +765,6 @@ const guardedMutations: Mutation[] = [
         send: (token) => bearer(token).delete(`/api/users/me/careers/${career.id}`),
         async assertUnchanged() {
           expect(await prisma.career.count({ where: { id: career.id } })).toBe(1);
-        },
-      };
-    },
-  },
-  {
-    label: 'DELETE /api/conversations/:id/messages/:messageId',
-    async setup() {
-      const { freelancer, conversation } = await makeContractScenario();
-      const message = await makeMessage(conversation.id, freelancer.id);
-      return {
-        actor: freelancer,
-        send: (token) => bearer(token).delete(`/api/conversations/${conversation.id}/messages/${message.id}`),
-        async assertUnchanged() {
-          expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
         },
       };
     },

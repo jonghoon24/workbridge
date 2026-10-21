@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import { api, authed, tokenFor } from './helpers/api';
-import { prisma } from './helpers/db';
 import {
   makeCareer,
   makeClient,
@@ -137,16 +136,5 @@ describe('GET /api/users/me/profile-completion', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.items.map((item: { key: string }) => item.key)).toEqual(CLIENT_KEYS.map(([key]) => key));
-  });
-
-  it('is 401 for a soft-deleted caller (rule 12) [PF21]', async () => {
-    const freelancer = await makeFreelancer();
-    const token = tokenFor(freelancer);
-    await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
-
-    const res = await api().get('/api/users/me/profile-completion').set('Authorization', `Bearer ${token}`);
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Account is no longer active' } });
   });
 });

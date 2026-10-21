@@ -177,6 +177,24 @@ describe('POST /api/users/me/portfolio', () => {
     expect(await prisma.portfolioItem.count()).toBe(0);
   });
 
+  it('400s a year before 1900 on create and update — 0000 never reaches the database [PF2]', async () => {
+    const freelancer = await makeFreelancer();
+    const item = await makePortfolioItem(freelancer.id);
+
+    const created = await post(freelancer, { title: 't', startedAt: '0000-01' });
+    const old = await post(freelancer, { title: 't', startedAt: '1899-12' });
+    const patched = await patch(freelancer, item.id, { startedAt: '0000-01' });
+    const career = await authed(freelancer).post('/api/users/me/careers')
+      .send({ company: 'C', position: 'P', employmentType: 'FULL_TIME', startDate: '0000-01' });
+    const earliest = await post(freelancer, { title: 't', startedAt: '1900-01' });
+
+    expect(created.body).toEqual({ error: { message: 'startedAt: Month must be a YYYY-MM month' } });
+    expect(old.status).toBe(400);
+    expect(patched.body).toEqual({ error: { message: 'startedAt: Month must be a YYYY-MM month' } });
+    expect(career.body).toEqual({ error: { message: 'startDate: Month must be a YYYY-MM month' } });
+    expect(earliest.status).toBe(201);
+  });
+
   it('allows the current month and an end equal to the start [PF2]', async () => {
     const freelancer = await makeFreelancer();
     const current = monthFromNow(0);

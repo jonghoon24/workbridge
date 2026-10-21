@@ -15,8 +15,13 @@ export default function RecommendedFreelancers({ projectId, limit = 10 }) {
     api.get(`/api/projects/${projectId}/recommended-freelancers`, { params: { limit } })
       .then(({ data }) => setFreelancers(data.freelancers))
       .catch((err) => {
+        // 403/404를 빈 결과로 보이면 "조건에 맞는 사람이 없다"로 오해한다. 이유를 그대로 알린다.
         const status = err.response?.status;
-        setError(status === 403 || status === 404 ? '' : '추천 프리랜서를 불러오지 못했습니다');
+        setError(
+          status === 403 ? '이 프로젝트의 의뢰인만 추천 프리랜서를 볼 수 있습니다.'
+            : status === 404 ? '프로젝트를 찾을 수 없어 추천을 보여드릴 수 없습니다.'
+              : '추천 프리랜서를 불러오지 못했습니다',
+        );
         setFreelancers([]);
       });
   }, [projectId, limit]);
