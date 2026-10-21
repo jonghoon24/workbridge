@@ -54,6 +54,7 @@ ALLOW_PAYMENT_BYPASS=true
 CLIENT_URL=http://localhost:3000
 SUPABASE_URL=https://dummy.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_dummy
+TRUST_PROXY=loopback
 EOF
 
 # 3. Client env (.env.local)
