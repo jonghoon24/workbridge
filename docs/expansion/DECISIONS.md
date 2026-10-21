@@ -34,3 +34,32 @@
 - 반복 작업 다음 회차 enqueue 실패는 경고만 남기고 작업은 계속 실행한다. 작업 하나의 장부 쓰기 실패는 error 로그 후 그 작업만 stale 회수에 맡기고 배치는 계속한다. 러너가 남기는 로그도 작업 컨텍스트(`jobId`, `requestId`=traceId) 안에서 찍는다.
 - 개발 워커는 매 폴링마다 `ensureRecurringJobs`를 부른다. `db:seed`가 Job을 모두 지워도 스케줄이 다시 생긴다.
 - **P4 메모:** `RateLimitCounter` 만료 행은 작업 러너(`maintenance.cleanup`)가 돌 때만 지워진다. 운영에는 아직 러너가 없으므로 DEPLOYMENT.md에 "외부 스케줄러가 붙기 전까지 카운터 행이 쌓인다(로그인/분석 요청 수에 비례해 유한)"를 적는다.
+
+## P1 (명세)
+
+- 규칙 식별자 체계: 확장 절의 불릿마다 `M`(금액·마일스톤 상수), `CT`(계약), `PY`(결제), `MS`(마일스톤), `S`(정산), `PA`(지급 계좌), `J`(작업 핸들러) + 번호를 붙이고, 테스트 이름에 `[MS14]`처럼 단다. 번호는 바꾸지 않는다.
+- P1이 더하는 알림 type은 PLAN §1.6의 "14개"가 아니라 15개다(§2.1.6 표를 세면 15). 전체 19종(+P3의 다이제스트 = 20).
+- C10(공개 프로필)은 §4.1에서 P2B 몫이라 채우지 않았다. C9는 P1 몫(type 목록 확장, `notify()`)만 적고 설정·이메일은 P3에서 고친다.
+- Phase 1 알림 지점은 모두 소프트 삭제된 수신자를 건너뛴다(PLAN은 자동 승인만 언급). 상태 변경은 그대로 일어난다. 규칙 5에 적었다.
+- 수락 시 계약 `endDate`는 지금처럼 프로젝트 마감일로 둔다. 계획 교체 때만 마지막 기한으로 바뀐다(C2 범위를 마일스톤 생성 하나로 유지).
+- 신규 목록(`GET /api/contracts`, `GET /api/settlements`)의 `limit`은 기본 20, 50 초과는 기존 목록처럼 50으로 자른다(400 아님). 0·음수·소수·반복은 400.
+- 계획 교체의 기한 검사(오늘 이전 불가, 감소 불가)는 입력 검증 단계라 404보다 먼저다. 합계 검사는 계약을 읽어야 하므로 404 → 403 → 409 다음에 400.
+- 서명 시 계획 유효성 검사는 PENDING 계약에서만 한다. ACTIVE 재서명은 기존처럼 멱등이다. 개수 상한·최소 금액·기한은 서명 때 다시 보지 않는다.
+- 제출 첨부는 존재·소유권·상태 검사를 통과한 뒤, 트랜잭션 전에 Storage에 올린다. 트랜잭션이 경합에서 409로 지면 올린 객체는 참조 없이 남는다.
+- 제출은 파일이 없으면 JSON 본문도 받는다. `links` 단일 값은 1개짜리 목록으로 본다. 링크는 2,000자 이하. 제목 1~100자, 설명 2,000자 이하. 길이는 trim 후 JS `length`.
+- 자동 승인 시각은 제출 시각 + N×24시간(KST 날짜 경계 아님). `MILESTONE_AUTO_APPROVE_DAYS`가 없거나 양의 정수가 아니면 7.
+- 승인·반려는 대기 중인 자동 승인/리마인더 작업을 취소하지 않는다. 핸들러가 상태와 round를 다시 보고 no-op 성공으로 끝난다. 작업 payload의 row가 없으면 `PermanentJobError`.
+- `MILESTONE_PLAN_UPDATED`는 PLAN 엔드포인트 표대로 교체 전에 서명이 하나라도 있었을 때만 보낸다.
+- 신규 상태 충돌 메시지: 제출 `Milestone is not awaiting a submission`, 승인·반려 `Milestone is not awaiting review`, 계획 잠금은 COMPLETED에도 같은 `Milestone plan is locked once the contract is active`.
+- dev-complete도 순서 규칙(M13)과 `Milestone is already funded`를 지킨다. 키는 `dev_bypass_<milestoneId>`. REFUNDED 메시지는 `… for a refunded milestone`, `POST /` REFUNDED는 `Payment cannot be created for this milestone`.
+- confirm의 금액 불일치 메시지 `Payment amount does not match the contract amount`는 기존 테스트가 단언하므로 그대로 둔다.
+- `POST /api/payments`는 기존 컨트롤러라 zod를 붙이지 않는다. `{ milestoneId: 12345 }`는 계속 500이고 D14·C7 로깅 테스트의 벡터로 남는다.
+- 주간 배치의 정산 기간은 작업의 `runAt`에서 계산한다(P0 반복 작업은 payload가 없다). 늦게 돌아도 원래 주를 정산한다.
+- 같은 기간 Settlement에 항목이 더 붙어도 `SETTLEMENT_SCHEDULED`를 다시 보내지 않는다. 재시도가 남은 지급 실패는 알림 없이 재예약하고, 마지막 실패만 `SETTLEMENT_FAILED`.
+- 지급 시도는 총 3회(최초 + 재시도 2회). ON_HOLD → SCHEDULED 때 `payoutAttempts`는 유지하고 `failureReason`은 지운다. 재시도 시점에 계좌가 없으면 FAILED → ON_HOLD(PLAN 표에 없던 전이).
+- PROCESSING에서 멈춘 정산(이체 중 러너 종료)은 자동 재시도하지 않는다. 이체 여부를 알 수 없어 이중 지급 위험이 있으므로 운영자 몫이고, 그동안 계좌 변경·삭제는 409.
+- 소프트 삭제된 프리랜서의 정산은 계좌가 있어도 ON_HOLD(알림 없음).
+- 정산 요약에 `onHold`, `failed` 버킷을 더해 모든 정산이 `scheduled`/`onHold`/`failed`/`paidTotal` 중 정확히 하나에 들어가게 했다.
+- 지급 계좌번호는 하이픈과 공백을 모두 제거한 뒤 10~14자리. 예금주 비교는 모든 공백 제거 + 대소문자 무시. 계좌 응답은 `{ payoutAccount }`로 감싸고, PUT은 재예약 건수 `rescheduledCount`를 함께 준다.
+- 지급 계좌 DELETE는 계좌가 없어도 200(북마크 DELETE와 같은 멱등 관례).
+- 마일스톤 상세의 `payoutPreview`는 승인 후에는 정산 항목의 저장값(요율 스냅샷), 그 전에는 현재 요율로 계산한다.
