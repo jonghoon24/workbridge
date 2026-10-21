@@ -187,3 +187,23 @@
 | `PUBLIC_ROUTES`(라우트 / 핸들러) | 11 / 10 | 0 | +2 / +2(PF16, PF17) | 13 / 12 |
 
 `Ids` 인터페이스와 `MISSING`에는 2A가 `conversationId`, `messageId`를, 2B가 `portfolioItemId`, `careerId`를 더한다.
+
+## P3-S (명세)
+
+- 규칙 식별자: 알림 채널 `NC`(NC1~NC16), 이메일 발송 핸들러는 `J`를 이어 `J9`. 새 절 `Notification channels — /api/notifications/preferences`는 PLAN §4.1 자리(RC 절 다음, Background jobs 앞)에 넣었다. J9는 Background jobs의 "Email handler rule (Phase 3)" 소절에 둔다.
+- 이름은 오케스트레이터 지시를 따른다: 작업 type `notification.email`(dedupe `notification.email:<deliveryId>`), env `MAIL_PROVIDER`(기본 log)·`MAIL_FROM`, 기본 provider `LogMailProvider`, 상태 `PENDING`. PLAN §2.0·§2.4의 `email.send`, `EMAIL_PROVIDER`/`EMAIL_FROM`, `LogEmailSender`, `QUEUED`를 대체한다. P1의 `LogPayoutProvider`/`setPayoutProvider()`와 짝이 맞는다.
+- `EmailDeliveryStatus`에 `SKIPPED`를 둔다(지시는 PENDING → SENT/FAILED). 발송 전에 탈퇴한 수신자는 실패가 아니라 "보내지 않음"이고, 감사 기록에서 provider 장애와 구분돼야 한다.
+- 설정의 채널 컬럼(`inApp`, `email`)은 nullable이고 `null`이 "정책 기본값을 따른다"이다(PLAN §2.4.1의 non-null 대체). 한 채널만 바꾼 사용자의 다른 채널이 그 시점 기본값으로 굳지 않아서, 나중에 기본값을 바꾸면 손대지 않은 사용자 모두에게 반영된다. 기본값과 같은 값과 잠긴 채널 값은 `null`로 저장하고, 둘 다 `null`이면 row를 지운다.
+- 정책 표는 PLAN §2.4.2 그대로다(거래·돈 알림은 인앱 필수, 자동 승인 임박·지급 보류·지급 실패는 이메일도 필수). 카테고리 코드는 `APPLICATION`/`CONTRACT`/`MILESTONE`/`SETTLEMENT`/`MESSAGE`이고 `MILESTONE_PLAN_UPDATED`는 `MILESTONE`, `PROJECT_STATUS_CHANGED`는 `APPLICATION`이다.
+- `GET` 응답에서 PLAN의 `label`을 뺐다. 한국어 라벨은 클라이언트가 붙인다(PF21 완성도 items와 같은 결정). 목록은 토큰이 아니라 DB row의 역할 기준(PF21과 같다)으로 CLIENT 8종, FREELANCER 17종. 다이제스트는 인앱이 없어서 `inApp: null`, `inAppLocked: true`.
+- `PUT` 검증은 두 단계다. 모양(배열 1~20개, type, boolean)을 먼저 보고, 모양이 다 맞으면 항목 규칙(채널 하나 이상, 중복 type, 다이제스트의 inApp, 잠긴 채널 끄기)을 배열 순서대로 본다. zod parse 뒤 refine이 도는 순서와 같다. 잠긴 채널에 `true`는 허용(no-op), `null`은 400("기본값으로 되돌리기"는 기본값을 보내면 된다). 다른 역할 전용 type도 저장한다(PLAN §2.4.3). 실패하면 한 항목도 쓰지 않는다.
+- `PUT` 쓰기는 사용자 row `FOR UPDATE`(PA7·PF8과 같은 잠금) 아래에서 읽고 create/update/delete 한다. upsert를 쓰지 않으므로 트랜잭션 안 P2002가 없다. 잠금은 그 하나뿐이다.
+- `notify()`는 호출자의 `now`를 받아 `EmailDelivery.createdAt`과 `notification.email`의 `runAt`에 쓴다(작업에서는 `ctx.now`). 다이제스트 throttle(J8 3단계)이 그 `createdAt`을 읽으므로 `runDueJobs({ now })`만으로 결정적이다. `Notification.createdAt`은 지금처럼 DB 기본값이다.
+- 설정은 `notify()` 시점에 한 번만 읽는다. 이미 만든 PENDING 발송은 나중에 이메일을 꺼도 나간다. 받는 주소도 생성 시점 스냅샷(`toAddress`)이다.
+- 기존 4종의 인앱 알림은 소프트 삭제된 수신자에게도 지금처럼 만든다(`applications.test.ts`의 Q11 핀). 이메일은 어떤 type이든 소프트 삭제된 수신자에게 만들지 않고, 만든 뒤 탈퇴했으면 J9가 SKIPPED로 둔다. 설정 row는 탈퇴 후에도 남아 복구되면 다시 적용된다.
+- J9는 한 트랜잭션이 아니다(provider 호출은 롤백할 수 없다). 모든 쓰기가 `status = PENDING` 조건부 단일 문장이고, `attempts`는 provider 호출 직전에 올린다. 발송은 at-least-once이며 deliveryId를 provider에 멱등 키로 넘긴다. 마지막 시도(`job.attempts >= maxAttempts`)의 실패만 FAILED로 두고 나머지는 큐 재시도에 맡긴다. 프로젝트 소프트 삭제는 보지 않는다.
+- `MAIL_PROVIDER`가 `log`(또는 비어 있음)가 아니면 부팅이 아니라 첫 발송에서 delivery FAILED + `PermanentJobError`다(`src/env.ts`의 지연 원칙). 로그 provider는 `info` `mail.sent` 한 줄에 받는 주소와 본문을 그대로 남긴다(개발용, Q24).
+- 메일 본문은 PLAN §2.4.3의 렌더링(제목 `[WorkBridge] <title>`, 본문 + 바로가기 + 알림 설정 링크)을 그대로 쓰고 `notify()`가 한 번 렌더링해 row에 저장한다. 테스트는 문구를 단언하지 않는다.
+- 다이제스트 완성(NC16): throttle은 상태와 무관하게 가장 최근 다이제스트 delivery의 `createdAt`으로 판단하고, 정확히 60분이 지나면 보낸다(J8의 "after"와 같은 경계). 수신자가 다이제스트 이메일을 껐으면 아무것도 만들지 않고 끝난다. href는 `/messages/<conversationId>`(P2A의 스레드 경로). 메일은 다이제스트 작업이 아니라 그 delivery의 `notification.email` 작업이 다음 러너 패스에서 보낸다.
+- 구독 해지 링크는 없다(모두 거래성 메일, 설정 페이지만). 열린 질문 **Q25**로 남겼다. 실제 메일 서비스 미연결, 로그에 주소·본문이 남는 점, delivery 보존 기간, 반송 처리는 **Q24**다. Q 번호는 P2 병렬 워커가 Q를 더하지 않았다는 전제로 이어 붙였다. 머지 때 겹치면 머지 담당이 번호를 다시 매긴다.
+- 배달 기록을 읽는 API는 두지 않는다(감사 기록 전용). `maintenance.cleanup`도 지우지 않는다(Q24).

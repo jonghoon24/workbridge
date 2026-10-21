@@ -20,7 +20,8 @@ milestones, **S** settlements, **PA** payout account, **J** job handlers (`M3`, 
 test that pins a rule carries the identifier in brackets in its name — `it('… [MS14]')` — the
 same way D/Q/C tags are used. Identifiers are never renumbered; a withdrawn rule leaves a gap.
 Phase 2 adds **MG** conversations and messages, **PF** portfolio, careers and profile completion,
-and **RC** recommendations; its job handler continues the **J** series (`J8`).
+and **RC** recommendations; its job handler continues the **J** series (`J8`). Phase 3 adds
+**NC** notification channels (preferences and email); its email handler is `J9`.
 
 Scope: the `workbridge-server` HTTP API. The Next.js client is out of scope. Written in English
 (unlike the rest of `docs/`) because it is consumed as a test specification.
@@ -96,6 +97,8 @@ Expansion resources follow their contract's project:
 - Conversations follow their contract's project the same way: 404 on every route, left out of
   lists and unread totals (MG10). Portfolio items and career entries follow their owner: they are
   invisible while the owner is soft-deleted and are themselves hard-deleted, never soft (PF20).
+- Email is never addressed to a soft-deleted user: `notify()` creates no delivery for one, and a
+  delivery whose recipient is soft-deleted before it is sent ends `SKIPPED` (NC10, J9).
 
 ### 6. Atomicity
 Any operation that changes more than one row must be a single `prisma.$transaction`. If any step
@@ -110,6 +113,9 @@ Notifications and jobs caused by a change are written in that change's transacti
 Phase 2 adds: accepting also creates the conversation (MG3); every system message is written in
 the transaction of the event it records (MG6); sending a message (message, attachments, digest
 job, MG15); and creating a portfolio item or career entry or reordering the portfolio (PF8).
+Phase 3 adds: every `notify()` call writes its in-app row, its email delivery and that delivery's
+`notification.email` job in the caller's transaction (NC9); and updating notification
+preferences (NC7).
 
 ### 7. Project lifecycle: lazy sweep on read paths and a scheduled sweep
 `closeExpiredOpenProjects(now)` runs on read paths and:
@@ -158,6 +164,11 @@ worker, so the lazy sweep on read paths remains the guarantee. **[C6]**
 - A job enqueued while serving a request records that request's id as its `traceId`; lines
   logged while a job runs — by its handler or by the runner about it — carry its `jobId` and, as
   `requestId`, that `traceId`.
+- **Email (Phase 3).** The log mail provider writes each email as one `info` line `mail.sent`
+  (NC14), with the recipient address and the full text — which is why it is a development
+  provider (Q24). A send that will be retried leaves the queue's `warn` line, and a delivery that
+  ends `FAILED` is reported only by the queue's `job failed` error line; the email handler logs
+  nothing at error level itself.
 
 ### 10. Rate limiting
 - A limited request → **429** with the standard envelope
@@ -688,9 +699,12 @@ user rather than 404.
 ## Notifications — `/api/notifications`
 
 All routes are authenticated and **strictly scoped to the caller** — no endpoint may read or
-mutate another user's notifications. `type` is one of the 19 values below. Every notification is
-an in-app row today; per-user preferences and email arrive in Phase 3. The four pre-existing
-types keep their inline wording; the Phase 1 types are created through `notify()` and never for a
+mutate another user's notifications. `type` is one of the 19 in-app values below; the twentieth
+type, the email-only `MESSAGE_UNREAD_DIGEST`, never creates a row here. Every notification is
+created through `notify()`, which decides per recipient and type whether it becomes an in-app
+row, an email, or both, from the policy table and the recipient's preferences
+([Notification channels](#notification-channels--apinotificationspreferences), NC2–NC3). The four
+pre-existing types keep their inline wording; the Phase 1 types are never addressed to a
 soft-deleted recipient (rule 5). Tests assert `type`, recipient and `href`, not the Korean
 `title`/`message` text. **[C9]**
 
@@ -1601,6 +1615,227 @@ they must never read `req.user`.
 
 ---
 
+## Notification channels — `/api/notifications/preferences`
+
+A notification reaches its recipient over up to two channels: **in-app** (a `Notification` row,
+see [Notifications](#notifications--apinotifications)) and **email** (an `EmailDelivery` row that
+the `notification.email` job sends, J9). Which channels one notification uses is decided per
+recipient and per type inside `notify()`, from a fixed policy and the recipient's preferences. No
+external account is involved: the default mail provider writes each email to the log. Both routes
+are expansion routes (rule 12) open to either role. **[C9]**
+
+### Constants
+- **NC1** — Every notification-channel constant, stated once:
+
+  | Constant | Value |
+  |---|---|
+  | notification types | the 20 of NC2: the 19 in-app types of the Notifications table and the email-only `MESSAGE_UNREAD_DIGEST` |
+  | `PUT` body | `preferences`: 1–20 entries |
+  | mail provider | `MAIL_PROVIDER`, read at every send: unset, empty or `log` → the log provider (NC14); any other value is unsupported |
+  | sender | `MAIL_FROM`, default `WorkBridge <no-reply@workbridge.local>` |
+  | link base | `CLIENT_URL` without a trailing `/`, default `http://localhost:3000` |
+  | send attempts | the job's default `maxAttempts` (5), retried with the queue's backoff ([Job states](#job-states)) |
+  | stored `error` | at most 2,000 characters |
+  | digest delay and throttle | MG1 |
+
+### Policy and preferences
+- **NC2** — **Policy.** Each type's category, recipient, and per channel its default and whether
+  the recipient may turn it off. A channel that cannot be turned off is **locked** (mandatory).
+  Trade and money notifications are locked in-app — nobody may miss an acceptance, a signature, a
+  funding, a submission, a decision or a payout — and the three that announce automatic money
+  movement or a payout problem (the auto-approval reminder, a held and a failed payout) are
+  locked by email too.
+
+  | `type` | Category | Recipient | In-app | Email |
+  |---|---|---|---|---|
+  | `APPLICATION_CREATED` | `APPLICATION` | client | on | on |
+  | `APPLICATION_ACCEPTED` | `APPLICATION` | freelancer | on, **locked** | on |
+  | `APPLICATION_REJECTED` | `APPLICATION` | freelancer | on | off |
+  | `PROJECT_STATUS_CHANGED` | `APPLICATION` | freelancer | on | off |
+  | `CONTRACT_ACTIVATED` | `CONTRACT` | both | on, **locked** | on |
+  | `MILESTONE_PLAN_UPDATED` | `MILESTONE` | freelancer | on, **locked** | on |
+  | `MILESTONE_FUNDED` | `MILESTONE` | freelancer | on, **locked** | on |
+  | `MILESTONE_SUBMITTED` | `MILESTONE` | client | on, **locked** | on |
+  | `MILESTONE_REVISION_REQUESTED` | `MILESTONE` | freelancer | on, **locked** | on |
+  | `MILESTONE_APPROVED` | `MILESTONE` | freelancer | on, **locked** | on |
+  | `MILESTONE_AUTO_APPROVED` | `MILESTONE` | both | on, **locked** | on |
+  | `MILESTONE_AUTO_APPROVE_REMINDER` | `MILESTONE` | client | on, **locked** | on, **locked** |
+  | `MILESTONE_DUE_SOON` | `MILESTONE` | freelancer | on | on |
+  | `MILESTONE_OVERDUE` | `MILESTONE` | both | on | on |
+  | `CONTRACT_COMPLETED` | `CONTRACT` | both | on, **locked** | on |
+  | `SETTLEMENT_SCHEDULED` | `SETTLEMENT` | freelancer | on | off |
+  | `SETTLEMENT_PAID` | `SETTLEMENT` | freelancer | on, **locked** | on |
+  | `SETTLEMENT_ON_HOLD` | `SETTLEMENT` | freelancer | on, **locked** | on, **locked** |
+  | `SETTLEMENT_FAILED` | `SETTLEMENT` | freelancer | on, **locked** | on, **locked** |
+  | `MESSAGE_UNREAD_DIGEST` | `MESSAGE` | both | none | on |
+
+  "both" means either party of a contract, whichever the event addresses. "none" means the type
+  has no in-app channel at all.
+- **NC3** — **Effective channels** of one notification for its recipient: a locked channel is
+  always on; an unlocked channel is the recipient's stored choice (NC4) when there is one, else
+  the NC2 default; `MESSAGE_UNREAD_DIGEST` never creates an in-app row. A stored value for a
+  locked channel (reachable only by editing the database) is ignored. The recipient's role plays
+  no part here.
+- **NC4** — **Sparse storage.** A `NotificationPreference` row (`userId`, `type`, `inApp`,
+  `email`; unique per `(userId, type)`) exists only while at least one of its channels departs
+  from the default. Both channel columns are nullable and `null` means "follow the NC2 default",
+  so a default changed later reaches everyone who never touched that channel. A write stores a
+  value equal to the default, or any value for a locked channel, as `null`, and deletes a row
+  whose two columns are both `null`. A user without rows gets the defaults; the migration
+  backfills nothing. A row for a type the user's role does not receive may be stored and is kept,
+  so a role change keeps it.
+
+### `GET /api/notifications/preferences` — either role
+- **NC5** — Responds **200** `{ preferences }`: one entry per NC2 type that the caller's role
+  receives — the role of the caller's stored row, not the token's (as PF21) — in NC2 order. That
+  is 8 types for a `CLIENT` and 17 for a `FREELANCER`, both counts including the five "both"
+  types. Each entry is exactly `{ type, category, inApp, email, inAppLocked, emailLocked }`:
+
+  | Field | Value |
+  |---|---|
+  | `type` | the NC2 type |
+  | `category` | its NC2 category: `APPLICATION`, `CONTRACT`, `MILESTONE`, `SETTLEMENT` or `MESSAGE` |
+  | `inApp` | the effective in-app channel (NC3), a boolean; `null` for `MESSAGE_UNREAD_DIGEST` |
+  | `email` | the effective email channel (NC3), a boolean |
+  | `inAppLocked` | `true` when in-app is locked or absent (`MESSAGE_UNREAD_DIGEST`) |
+  | `emailLocked` | `true` when email is locked |
+
+  The client supplies the Korean labels. Stored rows for types the caller's role does not receive
+  are not listed. The route writes nothing.
+
+### `PUT /api/notifications/preferences` — either role
+- **NC6** — Body `{ preferences: [{ type, inApp?, email? }] }`, a **partial** update: a type not
+  listed, and a channel left out of an entry, keep their current setting. Check order — every
+  failure is **400**, and a failing request writes nothing at all:
+  1. **shape**, reported for the first failing field (rule 12), entries in array order and `type`
+     → `inApp` → `email` within an entry (`<i>` is the zero-based index):
+     - `preferences` missing, not an array, empty, or longer than 20 →
+       `preferences: Expected 1 to 20 entries`
+     - an entry that is not an object → `preferences.<i>: Expected an object`
+     - `type` not one of NC2's 20 → `preferences.<i>.type: Unknown notification type`
+     - `inApp` present but not a boolean (`"false"`, `0`, `null`) →
+       `preferences.<i>.inApp: Expected a boolean`; `email` likewise
+
+     Other keys are ignored.
+  2. **entry rules**, once the whole shape is valid, entries in array order, the first failure
+     reported:
+     1. neither `inApp` nor `email` given → `preferences.<i>: Specify inApp or email`
+     2. `type` repeats an earlier entry's → `preferences.<i>.type: Duplicate notification type`
+     3. `inApp` given for `MESSAGE_UNREAD_DIGEST` →
+        `preferences.<i>.inApp: MESSAGE_UNREAD_DIGEST has no in-app notifications`
+     4. `inApp: false` for a locked in-app channel →
+        `preferences.<i>.inApp: <type> in-app notifications cannot be disabled`
+     5. `email: false` for a locked email channel →
+        `preferences.<i>.email: <type> email notifications cannot be disabled`
+
+  `true` for a locked channel passes and changes nothing. A type the caller's role does not
+  receive is accepted and stored (NC4). There is no 404, 403 or 409.
+- **NC7** — The write is **one transaction** whose first statement locks the caller's `User` row
+  (`SELECT id FROM "User" WHERE id = $1 FOR UPDATE`, raw SQL — the lock of PA7 and PF8), and it
+  takes no other lock. Every preference write goes through this lock, so two `PUT`s of one user
+  serialize and no insert can collide on `(userId, type)`: no `upsert`, no P2002 inside the
+  transaction. Under the lock it reads the caller's rows for the listed types, merges each entry
+  into its row (a given channel replaces the stored value, an omitted one keeps it), normalizes
+  per NC4, and per type deletes the row (both columns `null`), updates it, or creates it.
+  `notify()` reads preferences without a lock and sees a `PUT` entirely or not at all.
+- **NC8** — Responds **200** `{ preferences }`, exactly NC5's body after the write. Sending the same
+  body twice leaves the same rows and returns the same response.
+
+### Delivery through `notify()`
+- **NC9** — `notify()` (one recipient) and `notifyMany()` (several, with one query per table
+  rather than per recipient) are the only way notifications are created. Phase 3 routes the four
+  pre-existing types through them too — applying, accepting and rejecting an application, closing
+  a project by hand — keeping their inline Korean wording, so preferences and email apply to
+  every type. **[C9]** Input: the caller's transaction client, `{ userId, type, title, message,
+  href?, contextKey? }`, and the caller's `now` (default the server clock; a job passes
+  `ctx.now`). Inside the caller's transaction:
+  1. read the recipient's `email` and `deletedAt` and their preference row for the type;
+  2. when in-app is on (NC3), create the `Notification` row, as before;
+  3. when email is on (NC3), the recipient is **not** soft-deleted and their `email` is not empty
+     after trimming, create an `EmailDelivery` (NC11) — `status: PENDING`, `createdAt = now`,
+     `notificationId` = the row of step 2 or `null`, subject and body rendered per NC13, the
+     given `contextKey` — and enqueue its `notification.email` job (J9).
+
+  A rolled-back state change therefore leaves no notification, no delivery and no job: no email
+  goes out for a change that did not happen. Preferences are read once, here: changing them later
+  neither cancels a `PENDING` delivery nor creates a missed one.
+- **NC10** — **Soft-deleted recipients.** `notify()` never creates an `EmailDelivery` for a
+  soft-deleted user, and J9 skips a delivery whose recipient was soft-deleted after it was
+  created. The in-app rule is unchanged: Phase 1 and later callers leave soft-deleted recipients
+  out (rule 5), while the four pre-existing types still create the in-app row — the pinned Q11
+  behavior of applying to a project whose client is soft-deleted. Preference rows outlive a soft
+  deletion and apply again after a restore.
+
+### Email deliveries
+- **NC11** — An `EmailDelivery` row is `{ id, userId, notificationId, type, toAddress, subject,
+  body, contextKey, status, attempts, provider, providerMessageId, error, sentAt, createdAt,
+  updatedAt }`. `toAddress` is the recipient's address when the row was created; a later change
+  does not redirect it. `contextKey` is `null` except for the digest (NC16). `attempts` is
+  incremented just before every provider call. `provider` is the `MAIL_PROVIDER` value of the
+  last send (`log` by default). No route reads or lists deliveries: they are the audit trail of
+  what was sent, and nothing deletes them (Q24).
+- **NC12** — **States.** Every transition is a write conditional on `status = 'PENDING'`, so a
+  delivery leaves `PENDING` exactly once:
+
+  | From | To | When |
+  |---|---|---|
+  | — | `PENDING` | `notify()` (NC9); `attempts` 0 |
+  | `PENDING` | `SENT` | the provider accepted the email: `sentAt` = the job's `now`; `provider` and `providerMessageId` set; `error` cleared |
+  | `PENDING` | `PENDING` | the provider threw and the job has attempts left: `error` recorded; the job retries with backoff |
+  | `PENDING` | `FAILED` | the provider threw on the job's last attempt, or `MAIL_PROVIDER` is unsupported (no provider call): `error` recorded |
+  | `PENDING` | `SKIPPED` | the recipient was soft-deleted before the send: `error` = `Recipient is no longer active`; no provider call |
+
+  `SENT`, `FAILED` and `SKIPPED` are final. Delivery is **at least once**: if the provider accepts
+  an email but the `SENT` write fails, the retry sends it again. The provider receives the
+  delivery `id` as an idempotency key, so that a real provider can drop such a duplicate.
+- **NC13** — **Rendering**, done once by `notify()` and stored on the row. Plain text, Korean:
+  subject `[WorkBridge] <title>`; body `<message>`, a blank line, `바로가기: <base><href>` (left
+  out when `href` is `null`), a blank line, `알림 설정: <base>/my/notifications/settings`, where
+  `<base>` is NC1's link base and `title`, `message`, `href` are the values `notify()` received.
+  Tests assert `type`, `userId`, `toAddress`, `contextKey`, `status` and `notificationId`, never
+  the wording.
+- **NC14** — **Mail provider.** A provider takes `{ deliveryId, from, to, subject, text }` and
+  returns a `providerMessageId`, or throws. `MAIL_PROVIDER` is read at each send, never at boot,
+  so a bad value fails the send that needs it and not the server (the lazy-env principle of
+  `src/env.ts`):
+  - unset, empty or `log` → the **log provider**: one `info` line `mail.sent` with `deliveryId`,
+    `from`, `to`, `subject`, `text` and the returned id `log-<uuid>`. It needs no account and no
+    network, and never fails;
+  - any other value → the delivery becomes `FAILED` with `error`
+    `Unsupported MAIL_PROVIDER "<value>"`, and the job `FAILED` without retry.
+
+  No real provider is connected. **[Q24]**
+- **NC15** — **No unsubscribe link.** Every email is transactional — caused by an event on the
+  recipient's own account — so there is no unsubscribe link, token or `List-Unsubscribe` header.
+  The body's last line points to the preferences page, which requires signing in; optional types
+  are turned off there (NC6), and locked ones cannot be turned off short of deleting the account.
+  **[Q25]**
+
+### Unread-message digest (J8 steps 3–4)
+- **NC16** — Phase 3 completes J8 after its step 2, in the same transaction and under the same
+  participant lock:
+  3. **throttle** — take the newest `EmailDelivery` with this `userId`,
+     `type = 'MESSAGE_UNREAD_DIGEST'` and `contextKey = 'conversation:<conversationId>'`, in any
+     status. When its `createdAt` is later than `ctx.now` minus MG1's throttle, nothing is sent:
+     unless another `PENDING` `message.unreadDigest` job exists for the pair (the running job is
+     `RUNNING` and does not count), one is enqueued at that `createdAt` plus the throttle, and the
+     job ends `SUCCEEDED`. Exactly one throttle period after the last digest, it sends.
+  4. **send** — `notify()` with `userId` = the recipient, `type: 'MESSAGE_UNREAD_DIGEST'`,
+     `contextKey: 'conversation:<conversationId>'`, `href: '/messages/<conversationId>'`, a
+     message naming the project and MG8's unread count from step 2, and `ctx.now`. The delivery's
+     `createdAt` is therefore `ctx.now`, which the next step 3 reads, so the throttle is exact
+     under `runDueJobs({ now })`.
+
+  The digest is email-only (NC2). When the recipient has turned it off, step 4 creates nothing,
+  step 3 never finds a delivery, and each later message schedules its own job as usual. The email
+  itself is sent by the delivery's `notification.email` job, which a **later** runner pass claims
+  (`runDueJobs` claims once, at its start). Example with no reads: message A at t0 → digest
+  delivery at t0 + 10 min; message B at t0 + 20 min schedules a job for t0 + 30 min, which finds
+  the delivery 20 minutes old and re-enqueues for t0 + 70 min; at t0 + 70 min the delivery is
+  exactly 60 minutes old, so one digest covering both messages is created.
+
+---
+
 ## Background jobs
 
 Postgres-backed queue (`Job` table) used by the scheduled sweeps, milestone auto-approval and
@@ -1659,11 +1894,13 @@ endpoint is not decided yet. Until one does, recurring jobs only run where a run
 | `settlement.weeklyBatch` | recurring | the next Monday 03:00 KST strictly after `now` (M19) | `settlement.weeklyBatch:<periodStart ISO-8601>`, where `periodStart` = the slot's `runAt − 7 days − 3 h`, fixed when the slot is enqueued (e.g. `settlement.weeklyBatch:2026-10-18T15:00:00.000Z` for the slot at `2026-10-25T18:00:00.000Z`) | J6 | the weekly batch (S4–S6) |
 | `settlement.payout` | the batch (S4), payout-account registration (PA4), a failed transfer with attempts left (S11) | the settlement's `scheduledPayoutAt` | `settlement.payout:<settlementId>:<scheduledPayoutAt ISO-8601>` | J7 | the payout (S7–S11) |
 | `message.unreadDigest` | a text message (MG15), unless a `PENDING` one exists for the same conversation and recipient; a re-check (J8 step 2); a throttled run (J8 step 3, Phase 3) | the message's `createdAt` + 10 min; a re-check at the oldest unread message's `createdAt` + 10 min; a throttled re-run at the last digest's time + 60 min | none | J8 | the unread-message digest email (MG21) |
+| `notification.email` | `notify()` when email is on for the recipient (NC9) | the `now` given to `notify()` | `notification.email:<deliveryId>` | J9 | sends one `EmailDelivery` (NC12) |
 
 Payloads: `milestone.autoApprove` and `milestone.autoApproveReminder` carry
 `{ milestoneId, round }`; `milestone.dueSoon` and `milestone.overdue` carry `{ milestoneId }`;
 `settlement.payout` carries `{ settlementId, scheduledPayoutAt }` (ISO-8601 string);
-`message.unreadDigest` carries `{ conversationId, recipientId }` and has no `dedupeKey` (J8); the recurring
+`message.unreadDigest` carries `{ conversationId, recipientId }` and has no `dedupeKey` (J8);
+`notification.email` carries `{ deliveryId }` (J9); the recurring
 types carry `{}`. All use the default `maxAttempts` of 5. Because the payout key contains
 `scheduledPayoutAt`, a rescheduled payout (PA4, S11) is a new job and never collides with the one
 it replaces.
@@ -1725,6 +1962,25 @@ it replaces.
   enqueues a job for t0 + 10 min; the recipient reads at t0 + 2; message B at t0 + 9 enqueues
   nothing (A's job is pending); at t0 + 10 the job finds B unread but only 1 minute old, so it
   re-enqueues for t0 + 19 and sends nothing. Tests drive it with `runDueJobs({ now })` alone.
+  Steps 3–4 are specified in full by NC16.
+
+### Email handler rule (Phase 3)
+- **J9** — `notification.email`, payload `{ deliveryId }`, `dedupeKey`
+  `notification.email:<deliveryId>`, the default `maxAttempts`, enqueued by `notify()` (NC9). The
+  provider call cannot be rolled back, so the handler does **not** run in one transaction; each
+  write is one statement conditional on `status = 'PENDING'` (NC12):
+  1. read the delivery; none → `PermanentJobError`. Not `PENDING` → no-op, `SUCCEEDED`;
+  2. the recipient is soft-deleted → `SKIPPED`, `SUCCEEDED`;
+  3. `MAIL_PROVIDER` unsupported (NC14) → `FAILED` with its `error`, then `PermanentJobError`;
+  4. `attempts` + 1 — when this write matches nothing (the delivery left `PENDING` meanwhile) the
+     job ends `SUCCEEDED` without sending;
+  5. call the provider with `from` = `MAIL_FROM`, `to` = `toAddress` and the stored subject and
+     body. On success → `SENT`. On a throw → record `error` and `provider`, and on the job's last
+     attempt (its `attempts` has reached `maxAttempts`) also `FAILED`; then rethrow, so the queue
+     retries with backoff or marks the job `FAILED` with its error-level line (rule 9).
+
+  The project's soft deletion plays no part: a delivery created by an event that rule 5 allowed
+  is still sent.
 
 ---
 
@@ -1760,7 +2016,7 @@ Changed bullets end with **[C*n*]**, and so do the names of the tests that pin t
 | **C6** | Lifecycle | lazy sweep only ("there is no cron") | lazy sweep plus a scheduled sweep every 10 minutes when a runner is active (rule 7) | `jobs.test.ts` |
 | **C7** | Logging | `console.error` on 500 | structured JSON logger, same rule: error level only for a 500, exactly once (rules 1, 9) | `payments.test.ts` (logging block), `request-id.test.ts` |
 | **C8** | Login / analyze | unlimited | 429 with `Retry-After` (rule 10) | `rate-limit.test.ts` |
-| **C9** | Notifications | 4 types, always an in-app row | 19 types (Phase 1 adds 15, created through `notify()`, skipped for soft-deleted recipients); per-user preferences and email follow in Phase 3 | `notifications.test.ts` |
+| **C9** | Notifications | 4 types, always an in-app row | 20 types: 19 in-app (Phase 1 adds 15, skipped for soft-deleted recipients) and the email-only `MESSAGE_UNREAD_DIGEST` (Phase 3). Every type, the four pre-existing ones included, goes through `notify()`, which applies the per-type policy and the recipient's preferences — optional in-app rows can be turned off (NC2–NC8) — and sends email through a log-only provider (NC9–NC16, J9) | `notifications.test.ts`, `notification-preferences.test.ts`, `email.test.ts`, `message-digest.test.ts` |
 | **C10** | Public profile (`GET /api/users/:id`) | profile fields, `receivedReviews`, `avgRating`, `reviewCount` | the same plus `portfolioItems`, `careers` and `careerSummary` (PF18) — additive | `users.test.ts` |
 
 ---
@@ -1875,6 +2131,8 @@ obviously a bug.
 | **Q21** | Message attachments (MG4, MG15) and milestone deliverables (MS2, MS13) live in the existing **public** Supabase bucket under unguessable `<folder>/<uuid>.<ext>` keys and are returned as plain public URLs. Anyone who obtains a URL — a forwarded link, a log line, a former participant — can download the file without authenticating, and nothing revokes it: deleting the message (MG17) or the user removes neither the object nor its reachability. This is the current, deliberate intent (signed URLs need a private bucket and a download endpoint), so it is not a divergence. Should attachments move to a private bucket served through short-lived signed URLs, and should deleting a message delete its files? |
 | **Q22** | Payout account numbers are **stored in plaintext** (`PayoutAccount.accountNumber`) and only masked in responses (M23, PA1). There is no encryption at rest and no bank-side verification that the account belongs to the member — the holder-name rule compares against the profile name only. This is the current, deliberate intent (encryption and real-name verification carry cost and regulatory work), so it is not a divergence. Should account numbers be encrypted at rest, and under what key management? Should holder verification go through a bank API before the first payout? |
 | **Q23** | The rate-limit client IP comes from `X-Forwarded-For` when `TRUST_PROXY` is set, and the Next.js proxies forward that header as received (rule 10). Behind Vercel's edge the header is rewritten, but a self-hosted Next reachable by untrusted clients lets them pick their own IP: rotating it bypasses the per-IP login limit, makes the email + IP failure limit effectively unlimited per account, and lets anyone exhaust a chosen IP's quota. Should the deployment put a header-rewriting proxy in front of Next, should self-hosted setups leave `TRUST_PROXY` unset, or should the failure limit also key on email alone? |
+| **Q24** | **No real mail provider is connected** (NC14). The default `log` provider writes each email's recipient address and full text to the application log at `info`, and `EmailDelivery` rows keep the address, subject and body indefinitely — `maintenance.cleanup` does not touch them. Production has no resident job runner either (Background jobs), so today no email leaves the system anywhere. This is the deliberate scope of Phase 3 (the brief excludes a real mail service), so it is not a divergence. Which provider, with what sender-domain authentication (SPF, DKIM)? How should bounces and complaints be handled — there is no suppression list, so an address that bounces is tried again for every new delivery? How long should deliveries, which are personal data, be kept? |
+| **Q25** | **Optional emails have no one-click opt-out** (NC15). Turning off the unread digest or the `APPLICATION_CREATED` email requires signing in to the preferences page; nothing in the email itself stops it. All mail is transactional today, so rules aimed at advertising mail and mailbox providers' one-click requirement for bulk marketing mail do not clearly apply — but a recipient who no longer wants the digest has no low-effort way out. Should optional types carry a signed one-click link (and `List-Unsubscribe`) that turns that one type's email off without signing in? |
 | **Q13** | An **empty** query value is treated inconsistently. `GET /api/projects` 400s on `?status=`, `?sort=`, `?page=`, `?limit=` but ignores `?search=`, `?category=`, `?skills=`, `?minBudget=`; `GET /api/notifications` treats `?limit=` as absent and falls back to its default of 20. Reading `''` as "absent → default" is at least as defensible as "non-integer → 400". Both behaviors are currently pinned by tests; the spec should pick one. |
 
 ### Note on `validTransitions`
