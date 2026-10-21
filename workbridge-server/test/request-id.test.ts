@@ -122,9 +122,9 @@ describe('access log', () => {
   it('a 500 is access-logged at info and error-logged exactly once by errorHandler [C7]', async () => {
     const client = await makeClient();
 
-    // A non-string `contractId` makes Prisma reject the lookup — the suite's standing 500 vector.
+    // A non-string `milestoneId` makes Prisma reject the lookup — the suite's standing 500 vector.
     const { result: res, out, err } = await captureLogs('info', () =>
-      authed(client).post('/api/payments').set('X-Request-Id', 'trace-500').send({ contractId: 12345 }));
+      authed(client).post('/api/payments').set('X-Request-Id', 'trace-500').send({ milestoneId: 12345 }));
 
     expect(res.status).toBe(500);
     expect(out.find((line) => line.msg === 'request')).toMatchObject({ level: 'info', status: 500, requestId: 'trace-500' });

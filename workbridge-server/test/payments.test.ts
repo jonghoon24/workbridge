@@ -9,6 +9,7 @@ import {
   makeContract,
   makeContractScenario,
   makeFreelancer,
+  makeMilestone,
   makePayment,
   makeProject,
 } from './helpers/factories';
@@ -61,13 +62,13 @@ function activeScenario(contract: Partial<Prisma.ContractUncheckedCreateInput> =
 }
 
 /**
- * A second (or third) active contract for an existing pair. `Payment.contractId` is unique,
- * so a client with several payments needs several contracts.
+ * A second (or third) active contract for an existing pair, with its default milestone. Used
+ * where a test needs payments on unrelated contracts.
  */
 async function extraActiveContract(client: User, freelancer: User) {
   const project = await makeProject(client.id, { status: 'CLOSED' });
   const application = await makeApplication(project.id, freelancer.id, { status: 'ACCEPTED' });
-  return makeContract(
+  const contract = await makeContract(
     {
       projectId: project.id,
       applicationId: application.id,
@@ -76,6 +77,8 @@ async function extraActiveContract(client: User, freelancer: User) {
     },
     { status: 'ACTIVE' },
   );
+  const milestone = await makeMilestone(contract.id, { amount: CONTRACT_AMOUNT });
+  return { contract, milestone };
 }
 
 /**
@@ -125,7 +128,7 @@ const INTERNALS_MARKERS: Array<[label: string, pattern: RegExp]> = [
   ['a source excerpt', /→\s*\d+/],
   ['a Prisma client invocation', /prisma\.\w+\.\w+\(\)/],
   ['a database constraint detail', /[Uu]nique constraint failed/],
-  ['a raw column reference', /`contractId`/],
+  ['a raw column reference', /`(contractId|milestoneId)`/],
   ['a SQL statement', /\b(SELECT\s|INSERT\s+INTO\s|UPDATE\s+"|DELETE\s+FROM\s)/],
 ];
 
@@ -141,74 +144,145 @@ function assertNoInternalsLeak(message: unknown) {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/payments', () => {
-  it('rejects a missing contractId with 400 and writes nothing', async () => {
+  it('rejects a missing milestoneId with 400 and writes nothing [PY1] [C1]', async () => {
     const { client } = await activeScenario();
 
     const res = await authed(client).post('/api/payments').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Contract ID is required' } });
+    expect(res.body).toEqual({ error: { message: 'Milestone ID is required' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
-  it('returns 404 for a contract that does not exist', async () => {
+  it('ignores a contractId: a body with only contractId is the same 400 [PY1] [C1]', async () => {
+    const { client, contract } = await activeScenario();
+
+    const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'Milestone ID is required' } });
+    expect(await prisma.payment.count()).toBe(0);
+  });
+
+  it('returns 404 for a milestone that does not exist [PY1]', async () => {
     const client = await makeClient();
 
     const res = await authed(client)
       .post('/api/payments')
-      .send({ contractId: '00000000-0000-0000-0000-000000000000' });
+      .send({ milestoneId: '00000000-0000-0000-0000-000000000000' });
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect(res.body).toEqual({ error: { message: 'Milestone not found' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
-  it("returns 403 when the caller is the contract's freelancer, not the paying client", async () => {
-    const { freelancer, contract } = await activeScenario();
+  it("returns 404 when the milestone's project is soft-deleted [PY1]", async () => {
+    const { client, project, milestone } = await activeScenario();
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 
-    const res = await authed(freelancer).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Milestone not found' } });
+    expect(await prisma.payment.count()).toBe(0);
+  });
+
+  it("returns 403 when the caller is the contract's freelancer, not the paying client [PY1]", async () => {
+    const { freelancer, milestone } = await activeScenario();
+
+    const res = await authed(freelancer).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: { message: 'Not authorized' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
-  it('returns 403 for an unrelated client', async () => {
-    const { contract } = await activeScenario();
+  it('returns 403 for an unrelated client [PY1]', async () => {
+    const { milestone } = await activeScenario();
     const outsider = await makeClient();
 
-    const res = await authed(outsider).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(outsider).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(403);
     expect(res.body.error.message).toBe('Not authorized');
     expect(await prisma.payment.count()).toBe(0);
   });
 
-  it('returns 400 for a PENDING (unsigned) contract', async () => {
-    const { client, contract } = await makeContractScenario();
+  it('returns 400 for a PENDING (unsigned) contract [PY1]', async () => {
+    const { client, contract, milestone } = await makeContractScenario();
     expect(contract.status).toBe('PENDING');
 
-    const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(400);
     expect(res.body.error.message).toBe('Contract must be active to proceed with payment');
     expect(await prisma.payment.count()).toBe(0);
   });
 
-  it('returns 400 for a COMPLETED contract', async () => {
-    const { client, contract } = await activeScenario({ status: 'COMPLETED' });
+  it('returns 400 for a COMPLETED contract [PY1]', async () => {
+    const { client, milestone } = await activeScenario({ status: 'COMPLETED' });
 
-    const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(400);
     expect(res.body.error.message).toBe('Contract must be active to proceed with payment');
     expect(await prisma.payment.count()).toBe(0);
   });
 
-  it('creates a PENDING payment with a fresh orderId and 201 when none exists', async () => {
+  it('refuses a milestone while an earlier one is still PENDING [PY1] [M13]', async () => {
     const { client, contract } = await activeScenario();
+    const second = await makeMilestone(contract.id, { amount: 1_000_000 });
 
-    const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: second.id });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'Earlier milestones must be funded first' } });
+    expect(await prisma.payment.count()).toBe(0);
+  });
+
+  it('allows the next milestone once every earlier one is funded [M13]', async () => {
+    const { client, contract, milestone } = await activeScenario();
+    await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'FUNDED' } });
+    const second = await makeMilestone(contract.id, { amount: 1_000_000 });
+
+    const res = await authed(client).post('/api/payments').send({ milestoneId: second.id });
+
+    expect(res.status).toBe(201);
+    expect(res.body.amount).toBe(1_000_000);
+  });
+
+  it('checks the order before the funded state: an earlier PENDING milestone wins over 409 [PY1]', async () => {
+    const { client, contract } = await activeScenario();
+    const second = await makeMilestone(contract.id, { amount: 1_000_000, status: 'FUNDED' });
+
+    const res = await authed(client).post('/api/payments').send({ milestoneId: second.id });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toBe('Earlier milestones must be funded first');
+  });
+
+  it('returns 409 Milestone is already funded for a funded milestone, leaving its payment untouched [PY1] [C1]', async () => {
+    const { client, milestone } = await activeScenario();
+    await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'FUNDED' } });
+    const completed = await makePayment(milestone.id, client.id, {
+      status: 'COMPLETED',
+      paymentKey: 'pk_settled',
+    });
+
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'Milestone is already funded' } });
+
+    const after = await prisma.payment.findUniqueOrThrow({ where: { id: completed.id } });
+    expect(after).toMatchObject({ status: 'COMPLETED', orderId: completed.orderId, paymentKey: 'pk_settled' });
+    expect(await prisma.payment.count()).toBe(1);
+  });
+
+  it('creates a PENDING payment with a fresh orderId and 201 when none exists [PY2] [PY3] [PY4]', async () => {
+    const { client, contract, milestone } = await activeScenario();
+
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(201);
     expect(res.body).toEqual({
@@ -223,6 +297,7 @@ describe('POST /api/payments', () => {
       id: res.body.paymentId,
       orderId: res.body.orderId,
       contractId: contract.id,
+      milestoneId: milestone.id,
       clientId: client.id,
       amount: CONTRACT_AMOUNT,
       status: 'PENDING',
@@ -230,25 +305,27 @@ describe('POST /api/payments', () => {
     });
   });
 
-  it('takes the amount from the contract and ignores an amount in the request body', async () => {
-    const { client, contract } = await activeScenario({ amount: 7_500_000 });
+  it('takes the amount from the milestone, not the contract or the request body [PY3] [C1]', async () => {
+    const { client, contract, milestone } = await activeScenario();
+    await prisma.milestone.update({ where: { id: milestone.id }, data: { amount: 1_500_000 } });
+    await makeMilestone(contract.id, { amount: 2_500_000 });
 
     const res = await authed(client)
       .post('/api/payments')
-      .send({ contractId: contract.id, amount: 1 });
+      .send({ milestoneId: milestone.id, amount: 1 });
 
     expect(res.status).toBe(201);
-    expect(res.body.amount).toBe(7_500_000);
+    expect(res.body.amount).toBe(1_500_000);
 
-    const payment = await prisma.payment.findUniqueOrThrow({ where: { contractId: contract.id } });
-    expect(payment.amount).toBe(7_500_000);
+    const payment = await prisma.payment.findUniqueOrThrow({ where: { milestoneId: milestone.id } });
+    expect(payment.amount).toBe(1_500_000);
   });
 
-  it('resumes an existing PENDING payment: same orderId, 200, no second row', async () => {
-    const { client, contract } = await activeScenario();
-    const existing = await makePayment(contract.id, client.id, { status: 'PENDING' });
+  it('resumes an existing PENDING payment: same orderId, 200, no second row [PY2]', async () => {
+    const { client, milestone } = await activeScenario();
+    const existing = await makePayment(milestone.id, client.id, { status: 'PENDING' });
 
-    const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -263,15 +340,15 @@ describe('POST /api/payments', () => {
     expect(after.status).toBe('PENDING');
   });
 
-  it('retries a FAILED payment: resets to PENDING with a new orderId and cleared paymentKey', async () => {
-    const { client, contract } = await activeScenario();
-    const failed = await makePayment(contract.id, client.id, {
+  it('retries a FAILED payment: resets to PENDING with a new orderId and cleared paymentKey [PY2]', async () => {
+    const { client, milestone } = await activeScenario();
+    const failed = await makePayment(milestone.id, client.id, {
       status: 'FAILED',
       paymentKey: 'pk_from_failed_attempt',
-      amount: 1, // must be re-derived from the contract on retry
+      amount: 1, // must be re-derived from the milestone on retry
     });
 
-    const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(200);
     expect(res.body.paymentId).toBe(failed.id);
@@ -289,67 +366,63 @@ describe('POST /api/payments', () => {
     expect(after.orderId).not.toBe(failed.orderId);
   });
 
-  it('returns 409 when the payment is already COMPLETED, leaving it untouched', async () => {
-    const { client, contract } = await activeScenario();
-    const completed = await makePayment(contract.id, client.id, {
+  it('returns 409 for a COMPLETED payment on a still-PENDING milestone (inconsistent state) [PY2]', async () => {
+    const { client, milestone } = await activeScenario();
+    const completed = await makePayment(milestone.id, client.id, {
       status: 'COMPLETED',
       paymentKey: 'pk_settled',
     });
 
-    const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({
-      error: { message: 'Payment already completed for this contract' },
+      error: { message: 'Payment already completed for this milestone' },
     });
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: completed.id } });
-    expect(after).toMatchObject({
-      status: 'COMPLETED',
-      orderId: completed.orderId,
-      paymentKey: 'pk_settled',
-    });
+    expect(after).toMatchObject({ status: 'COMPLETED', orderId: completed.orderId, paymentKey: 'pk_settled' });
     expect(await prisma.payment.count()).toBe(1);
   });
 
-  it('returns 409 when the payment is REFUNDED, leaving it untouched', async () => {
-    const { client, contract } = await activeScenario();
-    const refunded = await makePayment(contract.id, client.id, {
+  it('returns 409 when the payment is REFUNDED, leaving it untouched [PY2]', async () => {
+    const { client, milestone } = await activeScenario();
+    const refunded = await makePayment(milestone.id, client.id, {
       status: 'REFUNDED',
       paymentKey: 'pk_refunded',
     });
 
-    const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(409);
-    expect(typeof res.body.error.message).toBe('string');
+    expect(res.body).toEqual({ error: { message: 'Payment cannot be created for this milestone' } });
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: refunded.id } });
     expect(after).toMatchObject({ status: 'REFUNDED', orderId: refunded.orderId });
     expect(await prisma.payment.count()).toBe(1);
   });
 
-  // [D13] `Payment.contractId` is unique and `createPayment` never catches P2002, so when two
-  // requests both read `contract.payment === null` the loser's `prisma.payment.create` rejects
-  // and reaches `errorHandler` without a `statusCode`.
+  // [D13] `Payment.milestoneId` is unique and `createPayment` never catches P2002, so when two
+  // requests both read "no payment yet" the loser's `prisma.payment.create` rejects and reaches
+  // `errorHandler` without a `statusCode`.
   //
-  // Verified today: one **201** and one **500**. Cross-cutting rule 8 requires a
-  // unique-constraint collision to be a **409** — the same defect class as D4, which was fixed
-  // for `Contract.projectId` but never for the money path. Either request may legitimately win,
-  // so the assertion is on the set of acceptable statuses (create → 201, resume → 200,
+  // Verified: one **201** and one **500**. Cross-cutting rule 8 requires a unique-constraint
+  // collision to be a **409** — the same defect class as D4, which was fixed for
+  // `Contract.projectId` but never for the money path. Either request may legitimately win, so
+  // the assertion is on the set of acceptable statuses (create → 201, resume → 200,
   // collision → 409) rather than on which one each request got.
   it.fails(
-    'never returns 5xx when two concurrent creates collide on the unique contractId [D13]',
+    'never returns 5xx when two concurrent creates collide on the unique milestoneId [D13]',
     async () => {
-      const { client, contract } = await activeScenario();
+      const { client, milestone } = await activeScenario();
       await warmConnectionPool(client);
       // The 500 is logged by `errorHandler`; silence it so the intended failure is readable.
       const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
         const responses = await Promise.all([
-          authed(client).post('/api/payments').send({ contractId: contract.id }),
-          authed(client).post('/api/payments').send({ contractId: contract.id }),
+          authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
+          authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
         ]);
 
         for (const res of responses) {
@@ -366,27 +439,20 @@ describe('POST /api/payments', () => {
   );
 
   // [D14] `errorHandler` renders `err.message` verbatim, and Prisma formats its errors with the
-  // **absolute source path**, a source excerpt and the offending argument. Verified today, this
-  // request returns 500 with:
-  //
-  //   Invalid `prisma.contract.findUnique()` invocation in
-  //   /Users/…/workbridge-server/src/controllers/payments.controller.ts:20:44
-  //     …
-  //   → 20 const contract = await prisma.contract.findUnique({
-  //          where: { id: 12345
-  //   Argument `id`: Invalid value provided. Expected String, provided Int.
+  // **absolute source path**, a source excerpt and the offending argument. A non-string
+  // `milestoneId` survives `!milestoneId` and makes Prisma reject the milestone lookup.
   //
   // Deliberately status-agnostic: rule 8 says a malformed value should be a 400 rather than a
   // 500, but *no* status may expose internals, so fixing either defect independently still
   // leaves this test meaningful.
   it.fails(
-    'does not expose file paths or source excerpts when Prisma rejects a malformed contractId [D14]',
+    'does not expose file paths or source excerpts when Prisma rejects a malformed milestoneId [D14]',
     async () => {
       const { client } = await activeScenario();
       const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
-        const res = await authed(client).post('/api/payments').send({ contractId: 12345 });
+        const res = await authed(client).post('/api/payments').send({ milestoneId: 12345 });
 
         expect(res.body).toHaveProperty('error.message');
         assertNoInternalsLeak(res.body.error.message);
@@ -398,8 +464,8 @@ describe('POST /api/payments', () => {
 
   // [D14] The same leak on the money path specifically: the D13 collision's 500 body carries
   // `Invalid \`prisma.payment.create()\` invocation in /Users/…/src/controllers/
-  // payments.controller.ts:70:42`, the surrounding source lines, and
-  // ``Unique constraint failed on the fields: (`contractId`)`` — i.e. the schema's column name.
+  // payments.controller.ts:…`, the surrounding source lines, and
+  // ``Unique constraint failed on the fields: (`milestoneId`)`` — i.e. the schema's column name.
   //
   // Several rounds are run because the collision is a real race and a serialized pair produces
   // no 500 at all. The assertion itself never requires a 500 to have happened: it is the
@@ -407,19 +473,19 @@ describe('POST /api/payments', () => {
   it.fails('does not leak Prisma internals in the 500 body from a create collision [D14]', async () => {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
-    const contracts = [
-      await extraActiveContract(client, freelancer),
-      await extraActiveContract(client, freelancer),
-      await extraActiveContract(client, freelancer),
+    const milestones = [
+      (await extraActiveContract(client, freelancer)).milestone,
+      (await extraActiveContract(client, freelancer)).milestone,
+      (await extraActiveContract(client, freelancer)).milestone,
     ];
     await warmConnectionPool(client);
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     try {
-      for (const contract of contracts) {
+      for (const milestone of milestones) {
         const responses = await Promise.all([
-          authed(client).post('/api/payments').send({ contractId: contract.id }),
-          authed(client).post('/api/payments').send({ contractId: contract.id }),
+          authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
+          authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
         ]);
 
         for (const res of responses) {
@@ -440,7 +506,7 @@ describe('POST /api/payments/confirm', () => {
   /** An ACTIVE contract with a PENDING payment ready to be confirmed. */
   async function pendingPayment(amount: number = CONTRACT_AMOUNT) {
     const scenario = await activeScenario({ amount });
-    const payment = await makePayment(scenario.contract.id, scenario.client.id, {
+    const payment = await makePayment(scenario.milestone.id, scenario.client.id, {
       status: 'PENDING',
       amount,
     });
@@ -558,8 +624,8 @@ describe('POST /api/payments/confirm', () => {
   });
 
   it('returns 409 for an already COMPLETED payment, so confirmation is not replayable', async () => {
-    const { client, contract } = await activeScenario();
-    const payment = await makePayment(contract.id, client.id, {
+    const { client, milestone } = await activeScenario();
+    const payment = await makePayment(milestone.id, client.id, {
       status: 'COMPLETED',
       paymentKey: 'pk_original',
     });
@@ -577,8 +643,8 @@ describe('POST /api/payments/confirm', () => {
   });
 
   it('returns 409 for a FAILED payment (it must be re-created via POST / first)', async () => {
-    const { client, contract } = await activeScenario();
-    const payment = await makePayment(contract.id, client.id, { status: 'FAILED' });
+    const { client, milestone } = await activeScenario();
+    const payment = await makePayment(milestone.id, client.id, { status: 'FAILED' });
 
     const res = await authed(client)
       .post('/api/payments/confirm')
@@ -593,8 +659,8 @@ describe('POST /api/payments/confirm', () => {
   });
 
   it('returns 409 for a REFUNDED payment', async () => {
-    const { client, contract } = await activeScenario();
-    const payment = await makePayment(contract.id, client.id, { status: 'REFUNDED' });
+    const { client, milestone } = await activeScenario();
+    const payment = await makePayment(milestone.id, client.id, { status: 'REFUNDED' });
 
     const res = await authed(client)
       .post('/api/payments/confirm')
@@ -748,12 +814,12 @@ describe('POST /api/payments/confirm', () => {
   });
 
   it('a FAILED confirmation can be retried after POST / mints a new orderId', async () => {
-    const { client, contract, payment } = await pendingPayment();
+    const { client, milestone, payment } = await pendingPayment();
     tossPost.mockRejectedValue(new Error('gateway timeout'));
 
     await authed(client).post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
 
-    const resume = await authed(client).post('/api/payments').send({ contractId: contract.id });
+    const resume = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
     expect(resume.status).toBe(200);
     expect(resume.body.orderId).not.toBe(payment.orderId);
 
@@ -825,6 +891,163 @@ describe('POST /api/payments/confirm', () => {
       expect(after).toMatchObject({ status: 'COMPLETED', paymentKey: 'pk_test_123' });
     },
   );
+
+  it("returns 404 before any provider call when the payment's project is soft-deleted [PY5] [C1]", async () => {
+    const { client, project, payment } = await pendingPayment();
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(client)
+      .post('/api/payments/confirm')
+      .send(body(payment.orderId, CONTRACT_AMOUNT));
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Payment not found' } });
+    expect(tossPost).not.toHaveBeenCalled();
+    const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe('PENDING');
+  });
+
+  it('funds the milestone in the same transaction: FUNDED, notification, due-date jobs [PY6] [PY7] [C1]', async () => {
+    const { client, freelancer, milestone, payment } = await pendingPayment();
+    tossPost.mockResolvedValue(tossDone());
+
+    const res = await authed(client)
+      .post('/api/payments/confirm')
+      .send(body(payment.orderId, CONTRACT_AMOUNT));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: payment.id, status: 'COMPLETED' });
+
+    const after = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+    expect(after.status).toBe('FUNDED');
+    expect(after.fundedAt).not.toBeNull();
+
+    const notifications = await prisma.notification.findMany({ where: { type: 'MILESTONE_FUNDED' } });
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      userId: freelancer.id,
+      href: `/contracts/${milestone.contractId}/milestones/${milestone.id}`,
+    });
+
+    const jobs = await prisma.job.findMany({ orderBy: { runAt: 'asc' } });
+    expect(jobs.map((j) => j.type)).toEqual(['milestone.dueSoon', 'milestone.overdue']);
+    expect(jobs[0].runAt.getTime()).toBe(milestone.dueDate.getTime() - 24 * 3600_000);
+    expect(jobs[1].runAt.getTime()).toBe(milestone.dueDate.getTime());
+    expect(jobs.map((j) => j.dedupeKey)).toEqual([
+      `milestone.dueSoon:${milestone.id}`,
+      `milestone.overdue:${milestone.id}`,
+    ]);
+  });
+
+  it('skips the due-soon job when that moment has already passed [PY7] [M16]', async () => {
+    const { client, milestone, payment } = await pendingPayment();
+    await prisma.milestone.update({
+      where: { id: milestone.id },
+      data: { dueDate: new Date(Date.now() + 3600_000) },
+    });
+    tossPost.mockResolvedValue(tossDone());
+
+    const res = await authed(client)
+      .post('/api/payments/confirm')
+      .send(body(payment.orderId, CONTRACT_AMOUNT));
+
+    expect(res.status).toBe(200);
+    const jobs = await prisma.job.findMany();
+    expect(jobs.map((j) => j.type)).toEqual(['milestone.overdue']);
+  });
+
+  /**
+   * PY9, variant 1: the provider accepts both calls (D18 lets both through). The second
+   * funding step finds the milestone FUNDED and is a no-op instead of throwing — which the
+   * catch-all would otherwise turn into a FAILED payment.
+   */
+  it('two concurrent confirms leave one COMPLETED payment, one FUNDED milestone, one notification [PY9] [PY7]', async () => {
+    const { client, milestone, payment } = await pendingPayment();
+    tossPost.mockResolvedValue(tossDone());
+    await warmConnectionPool(client);
+
+    const payload = body(payment.orderId, CONTRACT_AMOUNT);
+    await Promise.all([
+      authed(client).post('/api/payments/confirm').send(payload),
+      authed(client).post('/api/payments/confirm').send(payload),
+    ]);
+
+    const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe('COMPLETED');
+    const milestoneAfter = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+    expect(milestoneAfter.status).toBe('FUNDED');
+    expect(await prisma.notification.count({ where: { type: 'MILESTONE_FUNDED' } })).toBe(1);
+    expect(await prisma.job.count({ where: { type: 'milestone.dueSoon' } })).toBe(1);
+    expect(await prisma.job.count({ where: { type: 'milestone.overdue' } })).toBe(1);
+  });
+
+  /**
+   * PY9, variant 2: the real provider rejects the second confirmation of one payment. The
+   * loser's FAILED write is conditional on PENDING (PY8), so it cannot overwrite the winner.
+   */
+  it('a losing confirm whose provider call rejects never turns the COMPLETED payment FAILED [PY9] [PY8]', async () => {
+    const { client, milestone, payment } = await pendingPayment();
+    let calls = 0;
+    tossPost.mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) return tossDone();
+      throw new Error('ALREADY_PROCESSED_PAYMENT');
+    });
+    await warmConnectionPool(client);
+
+    const payload = body(payment.orderId, CONTRACT_AMOUNT);
+    const responses = await Promise.all([
+      authed(client).post('/api/payments/confirm').send(payload),
+      authed(client).post('/api/payments/confirm').send(payload),
+    ]);
+
+    expect(responses.map((r) => r.status)).toContain(200);
+    const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe('COMPLETED');
+    const milestoneAfter = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+    expect(milestoneAfter.status).toBe('FUNDED');
+    expect(await prisma.notification.count({ where: { type: 'MILESTONE_FUNDED' } })).toBe(1);
+  });
+
+  it('the FAILED write is conditional on PENDING: a sequential late failure leaves COMPLETED alone [PY8]', async () => {
+    const { client, payment } = await pendingPayment();
+    tossPost.mockResolvedValue(tossDone());
+    const first = await authed(client)
+      .post('/api/payments/confirm')
+      .send(body(payment.orderId, CONTRACT_AMOUNT));
+    expect(first.status).toBe(200);
+
+    // A replay is stopped by the 409 guard before the provider; the payment stays COMPLETED.
+    const replay = await authed(client)
+      .post('/api/payments/confirm')
+      .send(body(payment.orderId, CONTRACT_AMOUNT));
+    expect(replay.status).toBe(409);
+    const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe('COMPLETED');
+  });
+
+  it('a database failure after capture marks the payment FAILED and answers 400 [PY8]', async () => {
+    const { client, milestone, payment } = await pendingPayment();
+    tossPost.mockResolvedValue(tossDone());
+    // Make the funding step's notification insert fail with a temporary CHECK constraint.
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "Notification" ADD CONSTRAINT "tmp_no_funded" CHECK ("type" <> 'MILESTONE_FUNDED')`,
+    );
+    try {
+      const res = await authed(client)
+        .post('/api/payments/confirm')
+        .send(body(payment.orderId, CONTRACT_AMOUNT));
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'Payment verification failed' } });
+      const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+      expect(after.status).toBe('FAILED');
+      const milestoneAfter = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+      expect(milestoneAfter.status).toBe('PENDING');
+    } finally {
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Notification" DROP CONSTRAINT "tmp_no_funded"`);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -833,31 +1056,33 @@ describe('POST /api/payments/confirm', () => {
 
 describe('POST /api/payments/dev-complete', () => {
   describe('when the bypass is disabled', () => {
-    it("returns 403 with ALLOW_PAYMENT_BYPASS='false' and writes nothing", async () => {
-      expect(process.env.ALLOW_PAYMENT_BYPASS).toBe('false');
-      const { client, contract } = await activeScenario();
+    it("returns 403 with ALLOW_PAYMENT_BYPASS='false' and writes nothing [PY10]", async () => {
+      const { client, milestone } = await activeScenario();
 
       const res = await authed(client)
         .post('/api/payments/dev-complete')
-        .send({ contractId: contract.id });
+        .send({ milestoneId: milestone.id });
 
       expect(res.status).toBe(403);
       expect(res.body).toEqual({ error: { message: 'Payment bypass is disabled' } });
       expect(await prisma.payment.count()).toBe(0);
+      const after = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+      expect(after.status).toBe('PENDING');
     });
 
     it('returns 403 when ALLOW_PAYMENT_BYPASS is unset', async () => {
       const previous = process.env.ALLOW_PAYMENT_BYPASS;
       delete process.env.ALLOW_PAYMENT_BYPASS;
       try {
-        const { client, contract } = await activeScenario();
+        const { client, milestone } = await activeScenario();
 
         const res = await authed(client)
           .post('/api/payments/dev-complete')
-          .send({ contractId: contract.id });
+          .send({ milestoneId: milestone.id });
 
         expect(res.status).toBe(403);
         expect(res.body.error.message).toBe('Payment bypass is disabled');
+        expect(await prisma.payment.count()).toBe(0);
       } finally {
         if (previous === undefined) delete process.env.ALLOW_PAYMENT_BYPASS;
         else process.env.ALLOW_PAYMENT_BYPASS = previous;
@@ -868,20 +1093,21 @@ describe('POST /api/payments/dev-complete', () => {
       const previous = process.env.ALLOW_PAYMENT_BYPASS;
       process.env.ALLOW_PAYMENT_BYPASS = '1';
       try {
-        const { client, contract } = await activeScenario();
+        const { client, milestone } = await activeScenario();
 
         const res = await authed(client)
           .post('/api/payments/dev-complete')
-          .send({ contractId: contract.id });
+          .send({ milestoneId: milestone.id });
 
         expect(res.status).toBe(403);
+        expect(await prisma.payment.count()).toBe(0);
       } finally {
         if (previous === undefined) delete process.env.ALLOW_PAYMENT_BYPASS;
         else process.env.ALLOW_PAYMENT_BYPASS = previous;
       }
     });
 
-    it('is checked before anything else — a missing contractId still returns 403, not 400', async () => {
+    it('is checked before anything else — a missing milestoneId still returns 403, not 400 [PY10]', async () => {
       const { client } = await activeScenario();
 
       const res = await authed(client).post('/api/payments/dev-complete').send({});
@@ -891,10 +1117,10 @@ describe('POST /api/payments/dev-complete', () => {
     });
 
     it('leaves a completed payment path unreachable: an existing PENDING payment is untouched', async () => {
-      const { client, contract } = await activeScenario();
-      const payment = await makePayment(contract.id, client.id, { status: 'PENDING' });
+      const { client, milestone } = await activeScenario();
+      const payment = await makePayment(milestone.id, client.id, { status: 'PENDING' });
 
-      await authed(client).post('/api/payments/dev-complete').send({ contractId: contract.id });
+      await authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id });
 
       const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
       expect(after).toMatchObject({ status: 'PENDING', paymentKey: null });
@@ -902,7 +1128,7 @@ describe('POST /api/payments/dev-complete', () => {
   });
 
   describe('when the bypass is enabled', () => {
-    it('rejects a missing contractId with 400', async () => {
+    it('rejects a missing milestoneId with 400 [PY10]', async () => {
       const { client } = await activeScenario();
 
       const res = await withBypassEnabled(() =>
@@ -910,26 +1136,38 @@ describe('POST /api/payments/dev-complete', () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'Contract ID is required' } });
+      expect(res.body).toEqual({ error: { message: 'Milestone ID is required' } });
       expect(await prisma.payment.count()).toBe(0);
     });
 
-    it('returns 404 for a contract that does not exist', async () => {
+    it('returns 404 for a milestone that does not exist [PY10]', async () => {
       const client = await makeClient();
 
       const res = await withBypassEnabled(() =>
-        authed(client).post('/api/payments/dev-complete').send({ contractId: 'nope' }),
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: 'nope' }),
       );
 
       expect(res.status).toBe(404);
-      expect(res.body.error.message).toBe('Contract not found');
+      expect(res.body.error.message).toBe('Milestone not found');
     });
 
-    it('returns 403 for the freelancer on the contract', async () => {
-      const { freelancer, contract } = await activeScenario();
+    it("returns 404 when the milestone's project is soft-deleted [PY10]", async () => {
+      const { client, project, milestone } = await activeScenario();
+      await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 
       const res = await withBypassEnabled(() =>
-        authed(freelancer).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+      );
+
+      expect(res.status).toBe(404);
+      expect(await prisma.payment.count()).toBe(0);
+    });
+
+    it('returns 403 for the freelancer on the contract [PY10]', async () => {
+      const { freelancer, milestone } = await activeScenario();
+
+      const res = await withBypassEnabled(() =>
+        authed(freelancer).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
       expect(res.status).toBe(403);
@@ -938,22 +1176,22 @@ describe('POST /api/payments/dev-complete', () => {
     });
 
     it('returns 403 for an unrelated client', async () => {
-      const { contract } = await activeScenario();
+      const { milestone } = await activeScenario();
       const outsider = await makeClient();
 
       const res = await withBypassEnabled(() =>
-        authed(outsider).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+        authed(outsider).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
       expect(res.status).toBe(403);
       expect(await prisma.payment.count()).toBe(0);
     });
 
-    it('returns 400 for a contract that is not ACTIVE', async () => {
-      const { client, contract } = await makeContractScenario();
+    it('returns 400 for a contract that is not ACTIVE [PY10]', async () => {
+      const { client, milestone } = await makeContractScenario();
 
       const res = await withBypassEnabled(() =>
-        authed(client).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
       expect(res.status).toBe(400);
@@ -961,127 +1199,153 @@ describe('POST /api/payments/dev-complete', () => {
       expect(await prisma.payment.count()).toBe(0);
     });
 
-    it('creates a COMPLETED payment with paymentKey dev_bypass_<contractId> and 201', async () => {
+    it('refuses a milestone while an earlier one is still PENDING [PY10] [M13]', async () => {
       const { client, contract } = await activeScenario();
+      const second = await makeMilestone(contract.id, { amount: 1_000_000 });
 
       const res = await withBypassEnabled(() =>
-        authed(client).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: second.id }),
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toBe('Earlier milestones must be funded first');
+      expect(await prisma.payment.count()).toBe(0);
+    });
+
+    it('creates a COMPLETED payment with paymentKey dev_bypass_<milestoneId>, 201, and funds the milestone [PY11] [C1]', async () => {
+      const { client, freelancer, contract, milestone } = await activeScenario();
+
+      const res = await withBypassEnabled(() =>
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
       expect(res.status).toBe(201);
       expect(res.body).toMatchObject({
         contractId: contract.id,
+        milestoneId: milestone.id,
         clientId: client.id,
         amount: CONTRACT_AMOUNT,
         status: 'COMPLETED',
-        paymentKey: `dev_bypass_${contract.id}`,
+        paymentKey: `dev_bypass_${milestone.id}`,
       });
       expect(res.body.orderId).toMatch(/^dev-/);
 
-      const payments = await prisma.payment.findMany();
-      expect(payments).toHaveLength(1);
-      expect(payments[0]).toMatchObject({
-        id: res.body.id,
-        status: 'COMPLETED',
-        paymentKey: `dev_bypass_${contract.id}`,
-        amount: CONTRACT_AMOUNT,
-      });
+      const after = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+      expect(after.status).toBe('FUNDED');
+      expect(after.fundedAt).not.toBeNull();
+      expect(await prisma.notification.count({ where: { userId: freelancer.id, type: 'MILESTONE_FUNDED' } })).toBe(1);
+      expect(await prisma.job.count({ where: { type: 'milestone.overdue' } })).toBe(1);
     });
 
-    it('completes an existing PENDING payment in place, keeping its orderId and row', async () => {
-      const { client, contract } = await activeScenario();
-      const pending = await makePayment(contract.id, client.id, {
+    it('completes an existing PENDING payment in place, keeping its orderId and row [PY11]', async () => {
+      const { client, milestone } = await activeScenario();
+      const pending = await makePayment(milestone.id, client.id, {
         status: 'PENDING',
-        amount: 1, // re-derived from the contract
+        amount: 1, // re-derived from the milestone
       });
 
       const res = await withBypassEnabled(() =>
-        authed(client).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
       expect(res.status).toBe(200);
-      expect(res.body.id).toBe(pending.id);
-      expect(res.body.orderId).toBe(pending.orderId);
-
       expect(await prisma.payment.count()).toBe(1);
       const after = await prisma.payment.findUniqueOrThrow({ where: { id: pending.id } });
       expect(after).toMatchObject({
-        status: 'COMPLETED',
-        paymentKey: `dev_bypass_${contract.id}`,
-        amount: CONTRACT_AMOUNT,
         orderId: pending.orderId,
+        status: 'COMPLETED',
+        amount: CONTRACT_AMOUNT,
+        paymentKey: `dev_bypass_${milestone.id}`,
       });
     });
 
-    it('completes an existing FAILED payment in place', async () => {
-      const { client, contract } = await activeScenario();
-      const failed = await makePayment(contract.id, client.id, {
+    it('completes an existing FAILED payment in place [PY11]', async () => {
+      const { client, milestone } = await activeScenario();
+      const failed = await makePayment(milestone.id, client.id, {
         status: 'FAILED',
-        paymentKey: 'pk_stale',
+        paymentKey: 'pk_failed',
       });
 
       const res = await withBypassEnabled(() =>
-        authed(client).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
       expect(res.status).toBe(200);
       const after = await prisma.payment.findUniqueOrThrow({ where: { id: failed.id } });
-      expect(after).toMatchObject({
-        status: 'COMPLETED',
-        paymentKey: `dev_bypass_${contract.id}`,
-      });
+      expect(after).toMatchObject({ status: 'COMPLETED', paymentKey: `dev_bypass_${milestone.id}` });
     });
 
-    it('is idempotent: an already COMPLETED payment is returned unchanged', async () => {
-      const { client, contract } = await activeScenario();
-      const completed = await makePayment(contract.id, client.id, {
+    it('is idempotent: a funded milestone with a COMPLETED payment is returned unchanged [PY10]', async () => {
+      const { client, milestone } = await activeScenario();
+      await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'FUNDED' } });
+      const completed = await makePayment(milestone.id, client.id, {
         status: 'COMPLETED',
-        paymentKey: 'pk_real_toss_key',
+        paymentKey: 'pk_real_capture',
       });
 
       const res = await withBypassEnabled(() =>
-        authed(client).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({
-        id: completed.id,
-        orderId: completed.orderId,
-        status: 'COMPLETED',
-        paymentKey: 'pk_real_toss_key',
-      });
-
-      // The real provider key must not be overwritten with the bypass marker.
+      expect(res.body).toMatchObject({ id: completed.id, paymentKey: 'pk_real_capture' });
       const after = await prisma.payment.findUniqueOrThrow({ where: { id: completed.id } });
-      expect(after).toMatchObject({ status: 'COMPLETED', paymentKey: 'pk_real_toss_key' });
-      expect(await prisma.payment.count()).toBe(1);
+      expect(after.paymentKey).toBe('pk_real_capture');
+      expect(await prisma.notification.count()).toBe(0);
     });
 
-    it('returns 409 for a REFUNDED payment and leaves it refunded', async () => {
-      const { client, contract } = await activeScenario();
-      const refunded = await makePayment(contract.id, client.id, { status: 'REFUNDED' });
+    it('returns 409 Milestone is already funded for a funded milestone without a completed payment [PY10]', async () => {
+      const { client, milestone } = await activeScenario();
+      await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'FUNDED' } });
 
       const res = await withBypassEnabled(() =>
-        authed(client).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
       expect(res.status).toBe(409);
-      expect(res.body.error.message).toBe(
-        'Payment cannot be completed for a refunded contract',
+      expect(res.body).toEqual({ error: { message: 'Milestone is already funded' } });
+    });
+
+    it('repairs a PENDING milestone whose payment is already COMPLETED: funds it, 200 [PY11]', async () => {
+      const { client, milestone } = await activeScenario();
+      const completed = await makePayment(milestone.id, client.id, { status: 'COMPLETED', amount: 1 });
+
+      const res = await withBypassEnabled(() =>
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
+
+      expect(res.status).toBe(200);
+      const after = await prisma.payment.findUniqueOrThrow({ where: { id: completed.id } });
+      expect(after.amount).toBe(CONTRACT_AMOUNT);
+      const milestoneAfter = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+      expect(milestoneAfter.status).toBe('FUNDED');
+    });
+
+    it('returns 409 for a REFUNDED payment and leaves it refunded [PY10]', async () => {
+      const { client, milestone } = await activeScenario();
+      const refunded = await makePayment(milestone.id, client.id, { status: 'REFUNDED' });
+
+      const res = await withBypassEnabled(() =>
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+      );
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.message).toBe('Payment cannot be completed for a refunded milestone');
 
       const after = await prisma.payment.findUniqueOrThrow({ where: { id: refunded.id } });
       expect(after.status).toBe('REFUNDED');
     });
 
     it('never contacts TossPayments', async () => {
-      const { client, contract } = await activeScenario();
+      const { client, milestone } = await activeScenario();
 
-      await withBypassEnabled(() =>
-        authed(client).post('/api/payments/dev-complete').send({ contractId: contract.id }),
+      const res = await withBypassEnabled(() =>
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
       );
 
+      expect(res.status).toBe(201);
       expect(tossPost).not.toHaveBeenCalled();
+      expect(tossGet).not.toHaveBeenCalled();
     });
   });
 });
@@ -1101,8 +1365,8 @@ describe('GET /api/payments', () => {
   });
 
   it('returns the payment with its contract, project, and freelancer', async () => {
-    const { client, freelancer, project, contract } = await activeScenario();
-    const payment = await makePayment(contract.id, client.id, { status: 'COMPLETED' });
+    const { client, freelancer, project, contract, milestone } = await activeScenario();
+    const payment = await makePayment(milestone.id, client.id, { status: 'COMPLETED' });
 
     const res = await authed(client).get('/api/payments');
 
@@ -1118,7 +1382,9 @@ describe('GET /api/payments', () => {
         project: { id: project.id, title: project.title },
         freelancer: { id: freelancer.id, name: freelancer.name },
       },
+      milestone: { id: milestone.id, sequence: 1, title: milestone.title },
     });
+    expect(Object.keys(res.body[0].milestone).sort()).toEqual(['id', 'sequence', 'title']);
     // The nested selects are narrow on purpose — no freelancer email leaks through.
     expect(Object.keys(res.body[0].contract.freelancer).sort()).toEqual(['id', 'name']);
     expect(Object.keys(res.body[0].contract.project).sort()).toEqual(['id', 'title']);
@@ -1131,25 +1397,25 @@ describe('GET /api/payments', () => {
     const middle = await extraActiveContract(client, freelancer);
     const newer = await extraActiveContract(client, freelancer);
 
-    await makePayment(older.id, client.id, { createdAt: new Date('2026-01-01T00:00:00Z') });
-    await makePayment(newer.id, client.id, { createdAt: new Date('2026-03-01T00:00:00Z') });
-    await makePayment(middle.id, client.id, { createdAt: new Date('2026-02-01T00:00:00Z') });
+    await makePayment(older.milestone.id, client.id, { createdAt: new Date('2026-01-01T00:00:00Z') });
+    await makePayment(newer.milestone.id, client.id, { createdAt: new Date('2026-03-01T00:00:00Z') });
+    await makePayment(middle.milestone.id, client.id, { createdAt: new Date('2026-02-01T00:00:00Z') });
 
     const res = await authed(client).get('/api/payments');
 
     expect(res.status).toBe(200);
     expect(res.body.map((p: { contractId: string }) => p.contractId)).toEqual([
-      newer.id,
-      middle.id,
-      older.id,
+      newer.contract.id,
+      middle.contract.id,
+      older.contract.id,
     ]);
   });
 
   it("does not expose another client's payments", async () => {
     const mine = await activeScenario();
     const theirs = await activeScenario();
-    const myPayment = await makePayment(mine.contract.id, mine.client.id);
-    await makePayment(theirs.contract.id, theirs.client.id);
+    const myPayment = await makePayment(mine.milestone.id, mine.client.id);
+    await makePayment(theirs.milestone.id, theirs.client.id);
 
     const res = await authed(mine.client).get('/api/payments');
 
@@ -1160,8 +1426,8 @@ describe('GET /api/payments', () => {
   });
 
   it('returns nothing for a freelancer, since payments are scoped by clientId', async () => {
-    const { freelancer, client, contract } = await activeScenario();
-    await makePayment(contract.id, client.id);
+    const { freelancer, client, milestone } = await activeScenario();
+    await makePayment(milestone.id, client.id);
 
     const res = await authed(freelancer).get('/api/payments');
 
@@ -1185,22 +1451,23 @@ describe('GET /api/payments', () => {
  */
 describe('errorHandler logging (cross-cutting rule 1)', () => {
   it('logs nothing for 400, 403, 404 and 409 responses [C7]', async () => {
-    const { client, freelancer, contract } = await activeScenario();
+    const { client, freelancer, milestone } = await activeScenario();
     const settled = await activeScenario();
-    await makePayment(settled.contract.id, settled.client.id, { status: 'COMPLETED' });
+    await prisma.milestone.update({ where: { id: settled.milestone.id }, data: { status: 'FUNDED' } });
+    await makePayment(settled.milestone.id, settled.client.id, { status: 'COMPLETED' });
 
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const badRequest = await authed(client).post('/api/payments').send({});
       const forbidden = await authed(freelancer)
         .post('/api/payments')
-        .send({ contractId: contract.id });
+        .send({ milestoneId: milestone.id });
       const notFound = await authed(client)
         .post('/api/payments')
-        .send({ contractId: '00000000-0000-0000-0000-000000000000' });
+        .send({ milestoneId: '00000000-0000-0000-0000-000000000000' });
       const conflict = await authed(settled.client)
         .post('/api/payments')
-        .send({ contractId: settled.contract.id });
+        .send({ milestoneId: settled.milestone.id });
 
       // Guards the test itself: each request must actually reach the status it is named for,
       // otherwise "nothing was logged" would be vacuously true.
@@ -1219,9 +1486,9 @@ describe('errorHandler logging (cross-cutting rule 1)', () => {
 
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      // A non-string `contractId` survives `!contractId` and makes Prisma reject the
-      // `findUnique` — the same vector as the deterministic [D14] test.
-      const res = await authed(client).post('/api/payments').send({ contractId: 12345 });
+      // A non-string `milestoneId` survives `!milestoneId` and makes Prisma reject the
+      // milestone lookup — the same vector as the deterministic [D14] test.
+      const res = await authed(client).post('/api/payments').send({ milestoneId: 12345 });
 
       // Rule 1 ties logging to the status, so assert the pairing rather than the status alone:
       // rule 8 says this malformed value ought to be a 400, and that fix must not turn this
