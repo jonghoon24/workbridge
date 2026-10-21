@@ -46,3 +46,25 @@ export async function notifyMany(client: PrismaTransactionClient, inputs: readon
   });
   return count;
 }
+
+/** A notification recipient as loaded alongside the state change: id and soft-delete marker. */
+export interface Recipient {
+  id: string;
+  deletedAt: Date | null;
+}
+
+/**
+ * Notifies every recipient that is **not soft-deleted** (BEHAVIOR.md rule 5: Phase 1
+ * notifications are never addressed to a deleted user; the state change still happens).
+ * Returns how many rows were written.
+ */
+export async function notifyRecipients(
+  client: PrismaTransactionClient,
+  recipients: readonly Recipient[],
+  input: Omit<NotifyInput, 'userId'>,
+): Promise<number> {
+  return notifyMany(
+    client,
+    recipients.filter((r) => r.deletedAt === null).map((r) => ({ ...input, userId: r.id })),
+  );
+}

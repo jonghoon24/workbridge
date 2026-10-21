@@ -4,6 +4,7 @@ import type { Notification, Prisma, User } from '@prisma/client';
 import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer } from './helpers/factories';
+import { renderTemplate } from '../src/lib/notifications/templates';
 
 /**
  * Local factory — there is no notification factory in `test/helpers`, and every test here
@@ -490,5 +491,36 @@ describe('PATCH /api/notifications/read-all', () => {
     expect(afterSecond.map((n) => n.readAt!.toISOString())).toEqual(
       Array.from({ length: 3 }, () => rewound.toISOString()),
     );
+  });
+});
+
+describe('Phase 1 notification types [C9]', () => {
+  it('renders all 15 new types with the links BEHAVIOR.md lists', () => {
+    const v = { projectTitle: 'P', contractId: 'c1', milestoneId: 'm1', milestoneTitle: 'M', settlementId: 's1', amount: 1_000, reason: 'r' };
+    const milestone = '/contracts/c1/milestones/m1';
+    const expected: Record<string, string> = {
+      CONTRACT_ACTIVATED: '/contracts/c1',
+      MILESTONE_PLAN_UPDATED: '/contracts/c1',
+      MILESTONE_FUNDED: milestone,
+      MILESTONE_SUBMITTED: milestone,
+      MILESTONE_REVISION_REQUESTED: milestone,
+      MILESTONE_APPROVED: milestone,
+      MILESTONE_AUTO_APPROVED: milestone,
+      MILESTONE_AUTO_APPROVE_REMINDER: milestone,
+      MILESTONE_DUE_SOON: milestone,
+      MILESTONE_OVERDUE: milestone,
+      CONTRACT_COMPLETED: '/contracts/c1#review',
+      SETTLEMENT_SCHEDULED: '/settlements/s1',
+      SETTLEMENT_PAID: '/settlements/s1',
+      SETTLEMENT_ON_HOLD: '/settlements/account',
+      SETTLEMENT_FAILED: '/settlements/s1',
+    };
+    expect(Object.keys(expected)).toHaveLength(15);
+    for (const [type, href] of Object.entries(expected)) {
+      const rendered = renderTemplate(type as Parameters<typeof renderTemplate>[0], v);
+      expect(rendered.href, type).toBe(href);
+      expect(rendered.title.length, type).toBeGreaterThan(0);
+      expect(rendered.message.length, type).toBeGreaterThan(0);
+    }
   });
 });

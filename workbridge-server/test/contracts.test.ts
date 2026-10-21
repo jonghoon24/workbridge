@@ -6,7 +6,9 @@ import {
   makeClient,
   makeContractScenario,
   makeFreelancer,
+  makeMilestone,
   makePayment,
+  makeSubmission,
 } from './helpers/factories';
 
 /**
@@ -138,9 +140,14 @@ describe('GET /api/contracts/:id', () => {
     });
   });
 
-  it('includes the project, both parties and the payment', async () => {
-    const { client, freelancer, project, contract } = await makeContractScenario();
-    const payment = await makePayment(contract.id, client.id, { status: 'COMPLETED' });
+  it('includes the project, both parties and the milestones with their payments [CT5] [C4]', async () => {
+    const { client, freelancer, project, contract, milestone } = await makeContractScenario({
+      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
+      milestone: { status: 'SUBMITTED', amount: 3_000_000 },
+    });
+    const second = await makeMilestone(contract.id, { amount: 1_000_000 });
+    const payment = await makePayment(milestone.id, client.id, { status: 'COMPLETED' });
+    const submission = await makeSubmission(milestone.id);
 
     const res = await authed(client).get(`/api/contracts/${contract.id}`);
 
@@ -152,17 +159,54 @@ describe('GET /api/contracts/:id', () => {
     });
     expect(res.body.client).toMatchObject({ id: client.id, name: client.name });
     expect(res.body.freelancer).toMatchObject({ id: freelancer.id, name: freelancer.name });
-    expect(res.body.payment).toMatchObject({ id: payment.id, status: 'COMPLETED' });
+    expect(res.body).not.toHaveProperty('payment');
+    expect(res.body.milestones.map((m: { id: string }) => m.id)).toEqual([milestone.id, second.id]);
+    expect(res.body.milestones[0]).toMatchObject({
+      id: milestone.id,
+      sequence: 1,
+      status: 'SUBMITTED',
+      payment: { id: payment.id, status: 'COMPLETED' },
+      latestSubmission: { id: submission.id, round: 1, attachments: [] },
+      payoutPreview: { gross: 3_000_000, fee: 300_000, vat: 30_000, net: 2_670_000 },
+    });
+    expect(res.body.milestones[0]).not.toHaveProperty('submissions');
+    expect(res.body.milestones[1]).toMatchObject({ payment: null, latestSubmission: null });
   });
 
-  it('reports a null payment when none has been created', async () => {
+  it('reports the milestone summary, and empty reviews, for a fresh contract [CT6]', async () => {
     const { client, contract } = await makeContractScenario();
 
     const res = await authed(client).get(`/api/contracts/${contract.id}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.payment).toBeNull();
+    expect(res.body.milestoneSummary).toEqual({
+      count: 1,
+      contractAmount: 4_000_000,
+      fundedAmount: 0,
+      approvedAmount: 0,
+      approvedCount: 0,
+    });
     expect(res.body.reviews).toEqual([]);
+  });
+
+  it('counts funded and approved milestones in the summary; contractAmount is whole won [CT6] [M7]', async () => {
+    const { client, contract, milestone } = await makeContractScenario({
+      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true, amount: 4_000_000.5 },
+      milestone: { status: 'APPROVED', amount: 1_000_000 },
+    });
+    expect(milestone.status).toBe('APPROVED');
+    await makeMilestone(contract.id, { status: 'SUBMITTED', amount: 2_000_000 });
+    await makeMilestone(contract.id, { status: 'PENDING', amount: 1_000_001 });
+
+    const res = await authed(client).get(`/api/contracts/${contract.id}`);
+
+    expect(res.body.milestoneSummary).toEqual({
+      count: 3,
+      contractAmount: 4_000_001,
+      fundedAmount: 3_000_000,
+      approvedAmount: 1_000_000,
+      approvedCount: 1,
+    });
   });
 
   it('returns reviews newest first', async () => {
@@ -322,8 +366,8 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(after.status).toBe('ACTIVE');
   });
 
-  it('returns the full contract with its relations on activation', async () => {
-    const { client, freelancer, project, contract } = await makeContractScenario();
+  it('returns the full contract with its relations on activation [CT5] [C4]', async () => {
+    const { client, freelancer, project, contract, milestone } = await makeContractScenario();
 
     await authed(client).post(`/api/contracts/${contract.id}/sign`);
     const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
@@ -332,7 +376,9 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(res.body.project).toMatchObject({ id: project.id, title: project.title });
     expect(res.body.client).toMatchObject({ id: client.id });
     expect(res.body.freelancer).toMatchObject({ id: freelancer.id });
-    expect(res.body.payment).toBeNull();
+    expect(res.body).not.toHaveProperty('payment');
+    expect(res.body.milestones).toMatchObject([{ id: milestone.id, status: 'PENDING', payment: null }]);
+    expect(res.body.milestoneSummary.count).toBe(1);
     expect(res.body.reviews).toEqual([]);
   });
 
@@ -489,7 +535,7 @@ describe('POST /api/contracts/:id/sign', () => {
 
   /**
    * Q9, continued: `POST /:id/sign` returns the same `contractInclude` as `GET /:id`, so the
-   * email exposure is not confined to one endpoint. `PATCH /:id` shares it as well. Recorded here
+   * email exposure is not confined to one endpoint. Recorded here
    * so a decision on Q9 covers every response shape rather than only the one it was raised about.
    */
   it("exposes both parties' email addresses on the sign response too (Q9)", async () => {
@@ -501,293 +547,250 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(res.body.client.email).toBe(client.email);
     expect(res.body.freelancer.email).toBe(freelancer.email);
   });
+
+  it('refuses to sign a PENDING contract whose plan does not add up, recording no signature [CT7] [C5]', async () => {
+    const { client, contract, milestone } = await makeContractScenario();
+    await prisma.milestone.update({ where: { id: milestone.id }, data: { amount: 3_999_999 } });
+
+    const res = await authed(client).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(400);
+    expectErrorEnvelope(res.body, 'Cannot sign a contract without a valid milestone plan');
+    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(after).toMatchObject({ clientSigned: false, freelancerSigned: false, status: 'PENDING' });
+  });
+
+  it.each([
+    ['no milestones at all', async (contractId: string) => prisma.milestone.deleteMany({ where: { contractId } })],
+    ['a milestone that is not PENDING', async (contractId: string) => prisma.milestone.updateMany({ where: { contractId }, data: { status: 'FUNDED' } })],
+  ])('refuses to sign with %s [CT7]', async (_label, corrupt) => {
+    const { freelancer, contract } = await makeContractScenario();
+    await corrupt(contract.id);
+
+    const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(400);
+    expectErrorEnvelope(res.body, 'Cannot sign a contract without a valid milestone plan');
+  });
+
+  it('accepts a plan that adds up to the rounded contract amount [CT7] [M7]', async () => {
+    const { client, contract } = await makeContractScenario({ contract: { amount: 2_500_000.5 } });
+    // The factory's default milestone is Math.round(amount) = 2,500,001.
+
+    const res = await authed(client).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.clientSigned).toBe(true);
+  });
+
+  it('does not re-check the plan of an ACTIVE contract: re-signing stays idempotent [CT7]', async () => {
+    const { client, contract } = await makeContractScenario({
+      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
+      milestone: { status: 'FUNDED' },
+    });
+
+    const res = await authed(client).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ACTIVE');
+  });
+
+  it('notifies each party once with CONTRACT_ACTIVATED on activation [CT8] [C5]', async () => {
+    const { client, freelancer, contract } = await makeContractScenario();
+
+    await authed(client).post(`/api/contracts/${contract.id}/sign`);
+    expect(await prisma.notification.count({ where: { type: 'CONTRACT_ACTIVATED' } })).toBe(0);
+    await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+    await authed(freelancer).post(`/api/contracts/${contract.id}/sign`); // idempotent re-sign
+
+    const notifications = await prisma.notification.findMany({ where: { type: 'CONTRACT_ACTIVATED' } });
+    expect(notifications.map((n) => n.userId).sort()).toEqual([client.id, freelancer.id].sort());
+    for (const n of notifications) expect(n.href).toBe(`/contracts/${contract.id}`);
+  });
+
+  it('skips the activation notice for a soft-deleted party (rule 5) [CT8]', async () => {
+    const { client, freelancer, contract } = await makeContractScenario();
+    await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+    await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
+
+    await authed(client).post(`/api/contracts/${contract.id}/sign`);
+
+    const notifications = await prisma.notification.findMany({ where: { type: 'CONTRACT_ACTIVATED' } });
+    expect(notifications.map((n) => n.userId)).toEqual([client.id]);
+  });
+
+  it('creates exactly two activation notices when both parties sign concurrently [CT9]', async () => {
+    for (let iteration = 0; iteration < 5; iteration += 1) {
+      const { client, freelancer, contract } = await makeContractScenario();
+
+      await Promise.all([
+        authed(client).post(`/api/contracts/${contract.id}/sign`),
+        authed(freelancer).post(`/api/contracts/${contract.id}/sign`),
+      ]);
+
+      expect(
+        await prisma.notification.count({ where: { type: 'CONTRACT_ACTIVATED', href: `/contracts/${contract.id}` } }),
+        `iteration ${iteration}`,
+      ).toBe(2);
+    }
+  });
 });
 
 describe('PATCH /api/contracts/:id', () => {
-  /** An ACTIVE contract with a COMPLETED payment — the only state that may be completed. */
-  async function completable() {
-    const scenario = await makeContractScenario({
+  const GONE = 'Contracts are completed automatically when every milestone is approved';
+
+  it('is 410 for the client of an ACTIVE, fully paid contract, and writes nothing [CT11] [C3]', async () => {
+    const { client, contract, milestone, project } = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
+      milestone: { status: 'FUNDED' },
     });
-    const payment = await makePayment(scenario.contract.id, scenario.client.id, {
-      status: 'COMPLETED',
-      paymentKey: 'test_payment_key',
-    });
-    return { ...scenario, payment };
-  }
+    await makePayment(milestone.id, client.id, { status: 'COMPLETED' });
 
-  it('returns 400 when status is missing', async () => {
-    const { client, contract } = await completable();
+    const res = await authed(client).patch(`/api/contracts/${contract.id}`).send({ status: 'COMPLETED' });
 
-    const res = await authed(client).patch(`/api/contracts/${contract.id}`).send({});
-
-    expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Status must be COMPLETED');
+    expect(res.status).toBe(410);
+    expectErrorEnvelope(res.body, GONE);
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after.status).toBe('ACTIVE');
+    const projectAfter = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(projectAfter.status).toBe('CLOSED');
   });
 
-  it('returns 400 when status is any value other than COMPLETED', async () => {
-    const { client, contract } = await completable();
+  it.each([
+    ['an empty body', {}],
+    ['an invalid status', { status: 'BOGUS' }],
+  ])('is 410 whatever the body — %s [CT11]', async (_label, payload) => {
+    const { client, contract } = await makeContractScenario();
 
-    for (const status of ['ACTIVE', 'PENDING', 'completed', 'CANCELLED', '', null, 1]) {
-      const res = await authed(client).patch(`/api/contracts/${contract.id}`).send({ status });
+    const res = await authed(client).patch(`/api/contracts/${contract.id}`).send(payload);
 
-      expect(res.status, `status=${JSON.stringify(status)}`).toBe(400);
-      expectErrorEnvelope(res.body, 'Status must be COMPLETED');
+    expect(res.status).toBe(410);
+    expectErrorEnvelope(res.body, GONE);
+  });
+
+  it('is 410 for a contract that does not exist and for a third party [CT11]', async () => {
+    const { contract } = await makeContractScenario();
+    const outsider = await makeClient();
+
+    const missing = await authed(outsider)
+      .patch('/api/contracts/00000000-0000-0000-0000-000000000000')
+      .send({ status: 'COMPLETED' });
+    const foreign = await authed(outsider).patch(`/api/contracts/${contract.id}`).send({ status: 'COMPLETED' });
+
+    expect([missing.status, foreign.status]).toEqual([410, 410]);
+  });
+
+  it('still requires a token: 401 without one [CT11]', async () => {
+    const { contract } = await makeContractScenario();
+
+    const res = await api().patch(`/api/contracts/${contract.id}`).send({ status: 'COMPLETED' });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('GET /api/contracts (list)', () => {
+  it("lists the caller's contracts on either side, newest first, with counterpart and summary [CT1] [CT3]", async () => {
+    const asClient = await makeContractScenario({ contract: { createdAt: new Date('2026-01-01T00:00:00Z') } });
+    const freelancer = asClient.freelancer;
+    const other = await makeContractScenario({ contract: { createdAt: new Date('2026-02-01T00:00:00Z') } });
+    // Make the first scenario's freelancer the client side of nothing, and check both views.
+    await makeContractScenario(); // unrelated
+
+    const clientView = await authed(asClient.client).get('/api/contracts');
+    expect(clientView.status).toBe(200);
+    expect(clientView.body.meta).toEqual({ total: 1, page: 1, limit: 20, totalPages: 1 });
+    expect(clientView.body.contracts).toHaveLength(1);
+    expect(clientView.body.contracts[0]).toMatchObject({
+      id: asClient.contract.id,
+      status: 'PENDING',
+      myRole: 'CLIENT',
+      project: { id: asClient.project.id, title: asClient.project.title, status: 'CLOSED' },
+      counterpart: { id: freelancer.id, name: freelancer.name },
+      milestoneSummary: { count: 1, contractAmount: 4_000_000, fundedAmount: 0, approvedAmount: 0, approvedCount: 0 },
+    });
+    expect(Object.keys(clientView.body.contracts[0].counterpart).sort()).toEqual(['id', 'name', 'profileImage']);
+    expect(JSON.stringify(clientView.body)).not.toContain('@');
+
+    const freelancerView = await authed(other.freelancer).get('/api/contracts');
+    expect(freelancerView.body.contracts[0]).toMatchObject({
+      id: other.contract.id,
+      myRole: 'FREELANCER',
+      counterpart: { id: other.client.id },
+    });
+  });
+
+  it('orders newest first and paginates [CT1] [CT2]', async () => {
+    const first = await makeContractScenario({ contract: { createdAt: new Date('2026-01-01T00:00:00Z') } });
+    const client = first.client;
+    const ids: string[] = [first.contract.id];
+    for (const month of [2, 3]) {
+      const s = await makeContractScenario({ contract: { createdAt: new Date(`2026-0${month}-01T00:00:00Z`) } });
+      await prisma.contract.update({ where: { id: s.contract.id }, data: { clientId: client.id } });
+      ids.push(s.contract.id);
     }
 
-    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(after.status).toBe('ACTIVE');
+    const page1 = await authed(client).get('/api/contracts?limit=2');
+    const page2 = await authed(client).get('/api/contracts?limit=2&page=2');
+
+    expect(page1.body.contracts.map((c: { id: string }) => c.id)).toEqual([ids[2], ids[1]]);
+    expect(page1.body.meta).toEqual({ total: 3, page: 1, limit: 2, totalPages: 2 });
+    expect(page2.body.contracts.map((c: { id: string }) => c.id)).toEqual([ids[0]]);
   });
 
-  it('returns 403 for a third party', async () => {
-    const { contract } = await completable();
-    const stranger = await makeClient();
+  it('filters by status and caps limit at 50 [CT2]', async () => {
+    const pending = await makeContractScenario();
+    const active = await makeContractScenario({ contract: { status: 'ACTIVE' } });
+    await prisma.contract.update({ where: { id: active.contract.id }, data: { clientId: pending.client.id } });
 
-    const res = await authed(stranger)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(403);
-    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(after.status).toBe('ACTIVE');
-  });
-
-  it('returns 400 when the contract is still PENDING', async () => {
-    const { client, project, contract } = await makeContractScenario();
-    await makePayment(contract.id, client.id, { status: 'COMPLETED' });
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Only active contracts can be completed');
-    const afterContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    const afterProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(afterContract.status).toBe('PENDING');
-    expect(afterProject.status).toBe('CLOSED');
-  });
-
-  it('returns 400 when the contract is already COMPLETED', async () => {
-    const { client, contract } = await makeContractScenario({
-      contract: { status: 'COMPLETED', clientSigned: true, freelancerSigned: true },
-    });
-    await makePayment(contract.id, client.id, { status: 'COMPLETED' });
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Only active contracts can be completed');
-  });
-
-  it('returns 400 when the contract has no payment at all', async () => {
-    const { client, project, contract } = await makeContractScenario({
-      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
-    });
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Payment must be completed before completing the contract');
-    const afterContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    const afterProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(afterContract.status).toBe('ACTIVE');
-    expect(afterProject.status).toBe('CLOSED');
-  });
-
-  it('returns 400 when the payment is still PENDING', async () => {
-    const { client, project, contract } = await makeContractScenario({
-      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
-    });
-    const payment = await makePayment(contract.id, client.id, { status: 'PENDING' });
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Payment must be completed before completing the contract');
-    const afterPayment = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    const afterContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    const afterProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(afterPayment.status).toBe('PENDING');
-    expect(afterContract.status).toBe('ACTIVE');
-    expect(afterProject.status).toBe('CLOSED');
-  });
-
-  it('returns 400 when the payment FAILED', async () => {
-    const { client, contract } = await makeContractScenario({
-      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
-    });
-    await makePayment(contract.id, client.id, { status: 'FAILED' });
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Payment must be completed before completing the contract');
-  });
-
-  it('returns 400 when the payment was REFUNDED', async () => {
-    const { client, contract } = await makeContractScenario({
-      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
-    });
-    await makePayment(contract.id, client.id, { status: 'REFUNDED' });
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Payment must be completed before completing the contract');
-  });
-
-  it('completes the contract and returns it with its relations', async () => {
-    const { client, freelancer, project, payment, contract } = await completable();
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
+    const res = await authed(pending.client).get('/api/contracts?status=ACTIVE&limit=500');
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ id: contract.id, status: 'COMPLETED' });
-    expect(res.body.project).toMatchObject({ id: project.id, status: 'COMPLETED' });
-    expect(res.body.client).toMatchObject({ id: client.id });
-    expect(res.body.freelancer).toMatchObject({ id: freelancer.id });
-    expect(res.body.payment).toMatchObject({ id: payment.id, status: 'COMPLETED' });
-    expect(res.body.reviews).toEqual([]);
+    expect(res.body.contracts.map((c: { id: string }) => c.id)).toEqual([active.contract.id]);
+    expect(res.body.meta.limit).toBe(50);
   });
 
-  it('sets both the contract and the project to COMPLETED in one transaction', async () => {
-    const { client, project, contract } = await completable();
+  it.each([
+    ['an unknown status', '?status=CANCELLED'],
+    ['a zero page', '?page=0'],
+    ['a negative limit', '?limit=-1'],
+    ['a fractional limit', '?limit=1.5'],
+    ['trailing garbage', '?page=2abc'],
+    ['a repeated parameter', '?limit=1&limit=2'],
+  ])('rejects %s with 400 [CT2]', async (_label, query) => {
+    const { client } = await makeContractScenario();
 
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
+    const res = await authed(client).get(`/api/contracts${query}`);
+
+    expect(res.status).toBe(400);
+    expectErrorEnvelope(res.body);
+  });
+
+  it('treats empty values as absent [CT2]', async () => {
+    const { client } = await makeContractScenario();
+
+    const res = await authed(client).get('/api/contracts?status=&page=&limit=');
 
     expect(res.status).toBe(200);
-    const afterContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    const afterProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(afterContract.status).toBe('COMPLETED');
-    expect(afterProject.status).toBe('COMPLETED');
+    expect(res.body.meta).toMatchObject({ page: 1, limit: 20 });
   });
 
-  /**
-   * `validTransitions` lists CLOSED as terminal, but that table governs only manual
-   * `PATCH /api/projects/:id/status` changes — see the note in BEHAVIOR.md. Completing a
-   * contract is a system transition and moves the project straight from CLOSED to COMPLETED.
-   * Pinned as current behavior while Q5 (what `IN_PROGRESS` is for) is still open.
-   */
-  it('moves the project directly from CLOSED to COMPLETED, bypassing validTransitions (Q5)', async () => {
-    const { client, project, contract } = await completable();
-    expect(project.status).toBe('CLOSED');
+  it("leaves out contracts whose project is soft-deleted [CT1]", async () => {
+    const { client, project } = await makeContractScenario();
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
+    const res = await authed(client).get('/api/contracts');
 
-    expect(res.status).toBe(200);
-    const afterProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(afterProject.status).toBe('COMPLETED');
-    // Q5's proposal would have signing set the project to IN_PROGRESS first; nothing assigns
-    // that state today, so the project never passes through it.
-    expect(await prisma.project.count({ where: { status: 'IN_PROGRESS' } })).toBe(0);
+    expect(res.body.contracts).toEqual([]);
+    expect(res.body.meta.total).toBe(0);
   });
 
-  it('leaves the application and the payment untouched when completing', async () => {
-    const { client, application, payment, contract } = await completable();
+  it('shows a soft-deleted counterpart as stored (Q11) [CT3]', async () => {
+    const { client, freelancer } = await makeContractScenario();
+    await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
 
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
+    const res = await authed(client).get('/api/contracts');
 
-    expect(res.status).toBe(200);
-    const afterApplication = await prisma.application.findUniqueOrThrow({
-      where: { id: application.id },
-    });
-    const afterPayment = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    expect(afterApplication.status).toBe('ACCEPTED');
-    expect(afterPayment.status).toBe('COMPLETED');
-  });
-
-  /**
-   * Atomicity (cross-cutting rule 6) — the transaction sets the project `COMPLETED` and then the
-   * contract `COMPLETED`. Failing the contract write must roll the project back.
-   *
-   * A project reading `COMPLETED` while its contract is still `ACTIVE` is exactly the
-   * inconsistency the transaction exists to prevent: the work looks finished to everyone reading
-   * the project, but reviews are still refused (`POST /api/reviews` requires a `COMPLETED`
-   * contract), and the client cannot walk the project back either, because
-   * `PATCH /api/projects/:id/status` treats `COMPLETED` as terminal. Only re-completing the
-   * contract would reconcile the two rows, and the caller was told the request failed.
-   */
-  it('rolls the project back when the contract update fails', async () => {
-    const { client, project, contract, payment } = await completable();
-
-    const beforeProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    const injection = failTransactionStep({
-      model: 'contract',
-      method: 'update',
-      observe: (tx) => tx.project.findUnique({ where: { id: project.id } }),
-    });
-
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(res.status).toBe(500);
-    expectErrorEnvelope(res.body, INJECTED);
-    // The project write ran first and inside the same transaction; the failure landed on the
-    // contract update that follows it.
-    expect(injection.steps).toEqual(['project.update', 'contract.update']);
-    // Read from inside the transaction just before it failed: the project *was* COMPLETED there.
-    // That is what makes the CLOSED assertion below evidence of a rollback rather than of a write
-    // that never ran.
-    expect(injection.observed()).toMatchObject({ status: 'COMPLETED' });
-
-    const afterProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    const afterContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    const afterPayment = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-    expect(afterProject.status).toBe('CLOSED');
-    expect(afterContract.status).toBe('ACTIVE');
-    expect(afterPayment.status).toBe('COMPLETED');
-    // Whole row: the project's `COMPLETED` write was rolled back, not merely overwritten later.
-    expect(afterProject).toEqual(beforeProject);
-
-    // Retryable once the failure is removed — both rows move together, as they should have.
-    vi.restoreAllMocks();
-    const retry = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(retry.status).toBe(200);
-    const finalProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    const finalContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(finalProject.status).toBe('COMPLETED');
-    expect(finalContract.status).toBe('COMPLETED');
-  });
-
-  it('is not repeatable — a second completion returns 400', async () => {
-    const { client, contract } = await completable();
-
-    const first = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-    const second = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(400);
-    expectErrorEnvelope(second.body, 'Only active contracts can be completed');
-    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(after.status).toBe('COMPLETED');
+    expect(res.body.contracts[0].counterpart).toMatchObject({ id: freelancer.id, name: freelancer.name });
   });
 });

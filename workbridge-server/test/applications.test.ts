@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { app, authed } from './helpers/api';
+import { DAY_MS, kstDateString, kstDateToEndOfDay } from '../src/lib/time';
 import { prisma } from './helpers/db';
 import {
   daysFromNow,
@@ -126,6 +127,35 @@ describe('POST /api/projects/:id/applications', () => {
     expectErrorEnvelope(res.body);
     expect(res.body.error.message).toBe('expectedRate must be a positive number');
     expect(await prisma.application.count()).toBe(0);
+  });
+
+  it.each([
+    ['0.4', 0.4],
+    ['the string "0.99"', '0.99'],
+  ])('400s on a positive expectedRate below 1 (%s) [C2] [M7]', async (_label, expectedRate) => {
+    const client = await makeClient();
+    const project = await makeProject(client.id);
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer)
+      .post(`/api/projects/${project.id}/applications`)
+      .send({ ...validApplyBody, expectedRate });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'expectedRate must be at least 1' } });
+    expect(await prisma.application.count()).toBe(0);
+  });
+
+  it('accepts an expectedRate of exactly 1 [C2]', async () => {
+    const client = await makeClient();
+    const project = await makeProject(client.id);
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer)
+      .post(`/api/projects/${project.id}/applications`)
+      .send({ ...validApplyBody, expectedRate: 1 });
+
+    expect(res.status).toBe(201);
   });
 
   /**
@@ -804,13 +834,27 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       });
       expect(contract.startDate.getTime()).toBeGreaterThanOrEqual(before - 1_000);
       expect(contract.startDate.getTime()).toBeLessThanOrEqual(Date.now() + 1_000);
-      expect(contract.endDate.getTime()).toBe(s.project.deadline.getTime());
+      // [C2] endDate is the default milestone's due date, not the recruitment deadline.
+      const dueDate = kstDateToEndOfDay(kstDateString(new Date(before + 30 * DAY_MS)));
+      expect(contract.endDate.getTime()).toBe(dueDate.getTime());
 
-      // 4. the project closes
+      // 4. the default milestone [M9] [C2]
+      const milestones = await prisma.milestone.findMany({ where: { contractId: contract.id } });
+      expect(milestones).toHaveLength(1);
+      expect(milestones[0]).toMatchObject({
+        sequence: 1,
+        title: '전체 작업',
+        description: null,
+        amount: 3_300_000,
+        status: 'PENDING',
+      });
+      expect(milestones[0].dueDate.getTime()).toBe(dueDate.getTime());
+
+      // 5. the project closes
       const project = await prisma.project.findUniqueOrThrow({ where: { id: s.project.id } });
       expect(project.status).toBe('CLOSED');
 
-      // 5. one acceptance notification and one rejection notification per loser
+      // 6. one acceptance notification and one rejection notification per loser
       const accepted = await prisma.notification.findMany({
         where: { type: 'APPLICATION_ACCEPTED' },
       });
@@ -848,7 +892,23 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
         amount: 3_300_000,
         status: 'PENDING',
       });
-      expect(new Date(res.body.contract.endDate).getTime()).toBe(s.project.deadline.getTime());
+      const milestone = await prisma.milestone.findFirstOrThrow();
+      expect(new Date(res.body.contract.endDate).getTime()).toBe(milestone.dueDate.getTime());
+      expect(res.body.contract).not.toHaveProperty('milestones');
+    });
+
+    it('rounds a fractional contract amount to whole won for the default milestone [M7] [M9]', async () => {
+      const client = await makeClient();
+      const project = await makeProject(client.id);
+      const freelancer = await makeFreelancer();
+      const only = await makeApplication(project.id, freelancer.id, { expectedRate: 2_500_000.5 });
+
+      const res = await authed(client).patch(url(project.id, only.id)).send({ status: 'ACCEPTED' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.contract.amount).toBe(2_500_000.5);
+      const milestone = await prisma.milestone.findFirstOrThrow();
+      expect(milestone.amount).toBe(2_500_001);
     });
 
     it('creates no rejection notifications when there are no rival applications', async () => {
@@ -1044,7 +1104,33 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(after.status).toBe('OPEN');
       expect(await prisma.contract.count()).toBe(1);
+      expect(await prisma.milestone.count()).toBe(0);
       expect(await prisma.notification.count()).toBe(0);
+    });
+
+    it('rolls the whole accept back when creating the default milestone fails [C2]', async () => {
+      const s = await scenario();
+      await prisma.$executeRawUnsafe(
+        `ALTER TABLE "Milestone" ADD CONSTRAINT "tmp_no_default" CHECK ("title" <> '전체 작업')`,
+      );
+      const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const res = await authed(s.client)
+          .patch(url(s.project.id, s.chosen.id))
+          .send({ status: 'ACCEPTED' });
+
+        expect(res.status).toBe(500);
+        expect(await prisma.contract.count()).toBe(0);
+        expect(await prisma.milestone.count()).toBe(0);
+        const chosen = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
+        expect(chosen.status).toBe('PENDING');
+        const project = await prisma.project.findUniqueOrThrow({ where: { id: s.project.id } });
+        expect(project.status).not.toBe('CLOSED');
+        expect(await prisma.notification.count()).toBe(0);
+      } finally {
+        logs.mockRestore();
+        await prisma.$executeRawUnsafe(`ALTER TABLE "Milestone" DROP CONSTRAINT "tmp_no_default"`);
+      }
     });
 
     it('never leaves a project with two contracts after a burst of accepts', async () => {

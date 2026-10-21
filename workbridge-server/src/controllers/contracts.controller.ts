@@ -3,27 +3,15 @@ import type { Prisma } from '@prisma/client';
 
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
+import { notifyRecipients } from '../lib/notifications/notify';
+import { renderTemplate } from '../lib/notifications/templates';
+import { contractInclude, serializeContract } from '../services/contracts.service';
+import { isValidPlan } from '../services/milestones.service';
 import type { AuthedRequest } from '../types/index';
-
-// `satisfies` (rather than a plain annotation) keeps the literal types Prisma needs —
-// e.g. `orderBy: { createdAt: 'desc' }` must stay `'desc'`, not widen to `string` —
-// while still letting each query infer its own result payload from this shape.
-const contractInclude = {
-  project: { select: { id: true, title: true, description: true, category: true, status: true } },
-  client: { select: { id: true, name: true, email: true, companyName: true, profileImage: true } },
-  freelancer: { select: { id: true, name: true, email: true, skills: true, profileImage: true } },
-  payment: true,
-  reviews: {
-    include: {
-      reviewer: { select: { id: true, name: true, profileImage: true } },
-      reviewee: { select: { id: true, name: true, profileImage: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  },
-} satisfies Prisma.ContractInclude;
 
 export async function getContract(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
+    // D21: no soft-delete filter on this pre-existing route (BEHAVIOR.md).
     const contract = await prisma.contract.findUnique({
       where: { id: req.params.id },
       include: contractInclude,
@@ -37,7 +25,7 @@ export async function getContract(req: AuthedRequest, res: Response, next: NextF
       throw new AppError('Not authorized', 403);
     }
 
-    res.json(contract);
+    res.json(serializeContract(contract));
   } catch (err) {
     next(err);
   }
@@ -47,6 +35,7 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
   try {
     const contract = await prisma.contract.findUnique({
       where: { id: req.params.id },
+      include: { milestones: { select: { status: true, amount: true } } },
     });
 
     if (!contract) {
@@ -61,87 +50,58 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
       throw new AppError('A completed contract cannot be signed again', 400);
     }
 
+    // CT7: a PENDING contract needs a valid plan, or the signature is not recorded at all.
+    if (contract.status === 'PENDING' && !isValidPlan(contract.milestones, contract.amount)) {
+      throw new AppError('Cannot sign a contract without a valid milestone plan', 400);
+    }
+
     const isClient = contract.clientId === req.user.id;
     const updateData: Prisma.ContractUpdateInput = isClient
       ? { clientSigned: true }
       : { freelancerSigned: true };
 
-    // Both writes in one transaction. Postgres already serializes the two parties on the row
-    // lock its UPDATE takes — verified: 15 concurrent sign pairs all activated correctly — so
-    // this is not fixing a live race. It closes the window where a failure between the two
-    // statements leaves a contract signed-but-inactive, and matches the repo convention that
-    // multi-step state changes are transactional.
+    // Both writes in one transaction. Postgres serializes the two parties on the row lock the
+    // UPDATE takes — verified: 15 concurrent sign pairs all activated correctly — so this is not
+    // fixing a live race. It closes the window where a failure between the two statements leaves
+    // a contract signed-but-inactive, and keeps activation and its notifications atomic (CT8).
     const updated = await prisma.$transaction(async (tx) => {
       const signed = await tx.contract.update({
         where: { id: contract.id },
         data: updateData,
+        include: {
+          project: { select: { title: true } },
+          client: { select: { id: true, deletedAt: true } },
+          freelancer: { select: { id: true, deletedAt: true } },
+        },
       });
 
       // Guarded on PENDING so activation can never overwrite a later status.
       if (signed.clientSigned && signed.freelancerSigned && signed.status === 'PENDING') {
-        return tx.contract.update({
+        const activated = await tx.contract.update({
           where: { id: contract.id },
           data: { status: 'ACTIVE' },
           include: contractInclude,
         });
+        await notifyRecipients(tx, [signed.client, signed.freelancer], {
+          type: 'CONTRACT_ACTIVATED',
+          ...renderTemplate('CONTRACT_ACTIVATED', { projectTitle: signed.project.title, contractId: contract.id }),
+        });
+        return activated;
       }
 
-      return tx.contract.findUnique({
+      return tx.contract.findUniqueOrThrow({
         where: { id: contract.id },
         include: contractInclude,
       });
     });
 
-    res.json(updated);
+    res.json(serializeContract(updated));
   } catch (err) {
     next(err);
   }
 }
 
-export async function completeContract(req: AuthedRequest, res: Response, next: NextFunction) {
-  try {
-    const { status } = req.body;
-
-    if (status !== 'COMPLETED') {
-      throw new AppError('Status must be COMPLETED', 400);
-    }
-
-    const contract = await prisma.contract.findUnique({
-      where: { id: req.params.id },
-      include: { payment: true },
-    });
-
-    if (!contract) {
-      throw new AppError('Contract not found', 404);
-    }
-
-    if (contract.clientId !== req.user.id) {
-      throw new AppError('Only the client can complete the contract', 403);
-    }
-
-    if (contract.status !== 'ACTIVE') {
-      throw new AppError('Only active contracts can be completed', 400);
-    }
-
-    if (contract.payment?.status !== 'COMPLETED') {
-      throw new AppError('Payment must be completed before completing the contract', 400);
-    }
-
-    const updated = await prisma.$transaction(async (tx) => {
-      await tx.project.update({
-        where: { id: contract.projectId },
-        data: { status: 'COMPLETED' },
-      });
-
-      return tx.contract.update({
-        where: { id: contract.id },
-        data: { status: 'COMPLETED' },
-        include: contractInclude,
-      });
-    });
-
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
+/** CT11: completion is automatic now (MS17); the route stays so callers get the envelope. */
+export async function completeContract(_req: AuthedRequest, _res: Response, next: NextFunction) {
+  next(new AppError('Contracts are completed automatically when every milestone is approved', 410));
 }

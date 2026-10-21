@@ -8,6 +8,7 @@ import {
   closeExpiredOpenProjects,
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle';
+import { createDefaultMilestone, defaultMilestoneDueDate } from '../services/milestones.service';
 import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -24,6 +25,11 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
     const parsedExpectedRate = Number.parseFloat(expectedRate);
     if (!Number.isFinite(parsedExpectedRate) || parsedExpectedRate <= 0) {
       throw new AppError('expectedRate must be a positive number', 400);
+    }
+
+    // A rate that rounds to 0 won would create a milestone that can never be paid (M7, [C2]).
+    if (parsedExpectedRate < 1) {
+      throw new AppError('expectedRate must be at least 1', 400);
     }
 
     const project = await prisma.project.findFirst({
@@ -177,7 +183,10 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
     }
 
     if (status === 'ACCEPTED') {
-      // Atomic transaction: accept application, reject others, create contract, close recruitment
+      // Atomic transaction: accept application, reject others, create contract and its default
+      // milestone, close recruitment, notify (BEHAVIOR.md accept steps 1–6).
+      const now = new Date();
+      const milestoneDueDate = defaultMilestoneDueDate(now);
       let result;
       try {
         result = await prisma.$transaction(async (tx) => {
@@ -203,11 +212,15 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
               clientId: project.clientId,
               freelancerId: application.freelancerId,
               amount: application.expectedRate,
-              startDate: new Date(),
-              endDate: project.deadline,
+              startDate: now,
+              // The last milestone's due date — not the recruitment deadline, which may have
+              // passed already ([C2]).
+              endDate: milestoneDueDate,
               status: 'PENDING',
             },
           });
+
+          await createDefaultMilestone(tx, contract, milestoneDueDate);
 
           await tx.project.update({
             where: { id: projectId },

@@ -1,0 +1,669 @@
+import { Prisma } from '@prisma/client';
+import type { ApprovalType, Milestone, MilestoneStatus } from '@prisma/client';
+
+import prisma from '../lib/prisma';
+import { AppError } from '../lib/errors';
+import { env } from '../env';
+import { DAY_MS, HOUR_MS, kstDateString, kstDateToEndOfDay } from '../lib/time';
+import { PLATFORM_FEE_RATE_BPS, payoutBreakdown, wholeWon } from '../lib/money';
+import type { PayoutBreakdown } from '../lib/money';
+import { notifyRecipients } from '../lib/notifications/notify';
+import type { Recipient } from '../lib/notifications/notify';
+import { renderTemplate } from '../lib/notifications/templates';
+import type { TemplateType, TemplateVars } from '../lib/notifications/templates';
+import { enqueueJob } from '../jobs/queue';
+import { storeUploadedFile } from '../middlewares/attachmentUpload';
+import type { StoredFile } from '../middlewares/attachmentUpload';
+import type { PrismaTransactionClient } from '../types/index';
+
+/**
+ * Milestones: plan, funding, submission, review and automatic approval (BEHAVIOR.md
+ * "Milestones", MS1–MS22). Controllers and job handlers both call into this file; the
+ * transactional order of each operation is part of the spec and is commented where it matters.
+ */
+
+// ---------------------------------------------------------------------------
+// Constants and small helpers
+// ---------------------------------------------------------------------------
+
+/** M9: the default milestone is due 30 KST days after acceptance. */
+export const DEFAULT_MILESTONE_DAYS = 30;
+export const DEFAULT_MILESTONE_TITLE = '전체 작업';
+/** M15: the client is reminded this long before auto-approval. */
+export const AUTO_APPROVE_REMINDER_MS = 48 * HOUR_MS;
+/** M16: the freelancer is told this long before the due date. */
+export const DUE_SOON_MS = 24 * HOUR_MS;
+
+const FUNDED_STATUSES: readonly MilestoneStatus[] = ['FUNDED', 'SUBMITTED', 'REVISION_REQUESTED', 'APPROVED'];
+const SUBMITTABLE: MilestoneStatus[] = ['FUNDED', 'REVISION_REQUESTED'];
+
+const NOT_AWAITING_SUBMISSION = 'Milestone is not awaiting a submission';
+const NOT_AWAITING_REVIEW = 'Milestone is not awaiting review';
+export const PLAN_LOCKED = 'Milestone plan is locked once the contract is active';
+
+/** M14: a positive integer number of days; anything else falls back to 7. */
+export function autoApproveDays(): number {
+  const raw = env.MILESTONE_AUTO_APPROVE_DAYS.trim();
+  const days = /^\d+$/.test(raw) ? Number(raw) : NaN;
+  return Number.isSafeInteger(days) && days >= 1 ? days : 7;
+}
+
+/** M9: end of the KST day 30 days after `now`'s KST date. */
+export function defaultMilestoneDueDate(now: Date): Date {
+  return kstDateToEndOfDay(kstDateString(new Date(now.getTime() + DEFAULT_MILESTONE_DAYS * DAY_MS)));
+}
+
+// ---------------------------------------------------------------------------
+// Serialization (MS1, CT6)
+// ---------------------------------------------------------------------------
+
+export const milestoneInclude = {
+  payment: true,
+  settlementItem: true,
+  submissions: {
+    orderBy: { round: 'desc' },
+    take: 1,
+    include: { attachments: { orderBy: { createdAt: 'asc' } } },
+  },
+} satisfies Prisma.MilestoneInclude;
+
+export type MilestoneWithRelations = Prisma.MilestoneGetPayload<{ include: typeof milestoneInclude }>;
+
+/** MS1: the settlement item's stored values once approved, else M3 at the current rate. */
+export function payoutPreviewFor(
+  milestone: Pick<Milestone, 'amount'> & {
+    settlementItem: { grossAmount: number; feeAmount: number; feeVatAmount: number; netAmount: number } | null;
+  },
+): PayoutBreakdown {
+  const item = milestone.settlementItem;
+  if (item) {
+    return { gross: item.grossAmount, fee: item.feeAmount, vat: item.feeVatAmount, net: item.netAmount };
+  }
+  return payoutBreakdown(wholeWon(milestone.amount), PLATFORM_FEE_RATE_BPS);
+}
+
+/** MS1: the milestone row plus `payment`, `latestSubmission` and `payoutPreview`. */
+export function serializeMilestone(milestone: MilestoneWithRelations) {
+  const { submissions, settlementItem, ...row } = milestone;
+  return {
+    ...row,
+    latestSubmission: submissions[0] ?? null,
+    payoutPreview: payoutPreviewFor(milestone),
+  };
+}
+
+export interface MilestoneSummary {
+  count: number;
+  contractAmount: number;
+  fundedAmount: number;
+  approvedAmount: number;
+  approvedCount: number;
+}
+
+/** CT6. */
+export function milestoneSummary(
+  milestones: readonly Pick<Milestone, 'status' | 'amount'>[],
+  contractAmount: number,
+): MilestoneSummary {
+  let fundedAmount = 0;
+  let approvedAmount = 0;
+  let approvedCount = 0;
+  for (const m of milestones) {
+    if (FUNDED_STATUSES.includes(m.status)) fundedAmount += m.amount;
+    if (m.status === 'APPROVED') {
+      approvedAmount += m.amount;
+      approvedCount += 1;
+    }
+  }
+  return {
+    count: milestones.length,
+    contractAmount: wholeWon(contractAmount),
+    fundedAmount,
+    approvedAmount,
+    approvedCount,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Loading
+// ---------------------------------------------------------------------------
+
+const partySelect = { select: { id: true, deletedAt: true } } as const;
+
+const milestoneContextInclude = {
+  contract: {
+    include: {
+      project: { select: { id: true, title: true, deletedAt: true } },
+      client: partySelect,
+      freelancer: partySelect,
+    },
+  },
+} satisfies Prisma.MilestoneInclude;
+
+type MilestoneWithContext = Prisma.MilestoneGetPayload<{ include: typeof milestoneContextInclude }>;
+
+/** MS5: missing, or the contract's project soft-deleted → 404 `Milestone not found`. */
+async function findMilestoneForRoute(milestoneId: string): Promise<MilestoneWithContext> {
+  const milestone = await prisma.milestone.findFirst({
+    where: { id: milestoneId, contract: { project: { deletedAt: null } } },
+    include: milestoneContextInclude,
+  });
+  if (!milestone) throw new AppError('Milestone not found', 404);
+  return milestone;
+}
+
+function assertParty(milestone: MilestoneWithContext, userId: string): void {
+  const { contract } = milestone;
+  if (contract.clientId !== userId && contract.freelancerId !== userId) {
+    throw new AppError('Not authorized', 403);
+  }
+}
+
+/** Contract routes of the plan (MS6, MS7): missing or project soft-deleted → 404. */
+async function findContractForRoute(contractId: string) {
+  const contract = await prisma.contract.findFirst({
+    where: { id: contractId, project: { deletedAt: null } },
+    include: {
+      project: { select: { id: true, title: true } },
+      freelancer: partySelect,
+    },
+  });
+  if (!contract) throw new AppError('Contract not found', 404);
+  return contract;
+}
+
+function varsFor(milestone: MilestoneWithContext, extra: TemplateVars = {}): TemplateVars {
+  return {
+    projectTitle: milestone.contract.project.title,
+    contractId: milestone.contractId,
+    milestoneId: milestone.id,
+    milestoneTitle: milestone.title,
+    ...extra,
+  };
+}
+
+async function notifyTemplate(
+  tx: PrismaTransactionClient,
+  recipients: readonly Recipient[],
+  type: TemplateType,
+  vars: TemplateVars,
+): Promise<void> {
+  await notifyRecipients(tx, recipients, { type, ...renderTemplate(type, vars) });
+}
+
+// ---------------------------------------------------------------------------
+// Default milestone (M9) and plan (MS6–MS10)
+// ---------------------------------------------------------------------------
+
+/** Accept-application step 4 (C2): the contract's single default milestone. */
+export function createDefaultMilestone(
+  tx: PrismaTransactionClient,
+  contract: { id: string; amount: number },
+  dueDate: Date,
+): Promise<Milestone> {
+  return tx.milestone.create({
+    data: {
+      contractId: contract.id,
+      sequence: 1,
+      title: DEFAULT_MILESTONE_TITLE,
+      amount: wholeWon(contract.amount),
+      dueDate,
+    },
+  });
+}
+
+/** MS6. */
+export async function listContractMilestones(contractId: string, userId: string) {
+  const contract = await findContractForRoute(contractId);
+  if (contract.clientId !== userId && contract.freelancerId !== userId) {
+    throw new AppError('Not authorized', 403);
+  }
+  const milestones = await prisma.milestone.findMany({
+    where: { contractId },
+    include: milestoneInclude,
+    orderBy: { sequence: 'asc' },
+  });
+  return {
+    milestones: milestones.map(serializeMilestone),
+    milestoneSummary: milestoneSummary(milestones, contract.amount),
+  };
+}
+
+export interface PlanItem {
+  title: string;
+  description: string | null;
+  amount: number;
+  /** `YYYY-MM-DD`, already validated (M12). */
+  dueDate: string;
+}
+
+/** MS7–MS10: replace the whole plan of a PENDING contract. */
+export async function replacePlan(contractId: string, actorId: string, items: readonly PlanItem[], now: Date = new Date()) {
+  const contract = await findContractForRoute(contractId);
+  if (contract.clientId !== actorId) throw new AppError('Not authorized', 403);
+  if (contract.status !== 'PENDING') throw new AppError(PLAN_LOCKED, 409);
+
+  const expected = wholeWon(contract.amount);
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+  if (total !== expected) {
+    throw new AppError(`Milestone amounts must add up to the contract amount (${expected})`, 400);
+  }
+
+  const dueDates = items.map((item) => kstDateToEndOfDay(item.dueDate));
+  const endDate = dueDates[dueDates.length - 1];
+
+  return prisma.$transaction(async (tx) => {
+    // MS9: lock the contract row and read its pre-image first. A concurrent signature serializes
+    // on this lock, and "was a signature present" comes from the locked row, not a stale read.
+    const [locked] = await tx.$queryRaw<{ status: string; clientSigned: boolean; freelancerSigned: boolean }[]>`
+      SELECT "status", "clientSigned", "freelancerSigned" FROM "Contract" WHERE "id" = ${contractId} FOR UPDATE`;
+    if (!locked || locked.status !== 'PENDING') throw new AppError(PLAN_LOCKED, 409);
+
+    const updated = await tx.contract.update({
+      where: { id: contractId },
+      data: { clientSigned: false, freelancerSigned: false, endDate },
+      select: { id: true, status: true, amount: true, endDate: true, clientSigned: true, freelancerSigned: true },
+    });
+
+    // Every milestone of a PENDING contract is PENDING and has no payment (payments need ACTIVE).
+    await tx.milestone.deleteMany({ where: { contractId } });
+    await tx.milestone.createMany({
+      data: items.map((item, index) => ({
+        contractId,
+        sequence: index + 1,
+        title: item.title,
+        description: item.description,
+        amount: item.amount,
+        dueDate: dueDates[index],
+      })),
+    });
+
+    if (locked.clientSigned || locked.freelancerSigned) {
+      await notifyTemplate(tx, [contract.freelancer], 'MILESTONE_PLAN_UPDATED', {
+        projectTitle: contract.project.title,
+        contractId,
+      });
+    }
+
+    const milestones = await tx.milestone.findMany({
+      where: { contractId },
+      include: milestoneInclude,
+      orderBy: { sequence: 'asc' },
+    });
+    return { contract: updated, milestones: milestones.map(serializeMilestone) };
+  }, { timeout: 15_000 });
+}
+
+/** CT7: the plan a PENDING contract must have before it can be signed. */
+export function isValidPlan(milestones: readonly Pick<Milestone, 'status' | 'amount'>[], contractAmount: number): boolean {
+  if (milestones.length === 0) return false;
+  if (milestones.some((m) => m.status !== 'PENDING')) return false;
+  const total = milestones.reduce((sum, m) => sum + m.amount, 0);
+  return total === wholeWon(contractAmount);
+}
+
+// ---------------------------------------------------------------------------
+// Detail (MS11)
+// ---------------------------------------------------------------------------
+
+export async function getMilestoneDetail(milestoneId: string, userId: string) {
+  const context = await findMilestoneForRoute(milestoneId);
+  assertParty(context, userId);
+
+  const milestone = await prisma.milestone.findUniqueOrThrow({
+    where: { id: milestoneId },
+    include: {
+      ...milestoneInclude,
+      contract: {
+        select: {
+          id: true,
+          status: true,
+          amount: true,
+          clientId: true,
+          freelancerId: true,
+          project: { select: { id: true, title: true } },
+        },
+      },
+    },
+  });
+  const submissions = await prisma.milestoneSubmission.findMany({
+    where: { milestoneId },
+    orderBy: { round: 'desc' },
+    include: { attachments: { orderBy: { createdAt: 'asc' } } },
+  });
+
+  const { contract, ...rest } = milestone;
+  return { ...serializeMilestone(rest), submissions, contract };
+}
+
+// ---------------------------------------------------------------------------
+// Funding (PY7)
+// ---------------------------------------------------------------------------
+
+/**
+ * PY7: `PENDING → FUNDED`. A **no-op when the milestone is no longer PENDING** — it must not
+ * throw, because the confirm path's verification catch-all would turn the error into a FAILED
+ * payment and overwrite a concurrent winner's COMPLETED one.
+ */
+export async function markFunded(
+  tx: PrismaTransactionClient,
+  milestoneId: string,
+  now: Date,
+): Promise<{ funded: boolean }> {
+  const { count } = await tx.milestone.updateMany({
+    where: { id: milestoneId, status: 'PENDING' },
+    data: { status: 'FUNDED', fundedAt: now },
+  });
+  if (count === 0) return { funded: false };
+
+  const milestone = await tx.milestone.findUniqueOrThrow({
+    where: { id: milestoneId },
+    include: milestoneContextInclude,
+  });
+
+  await notifyTemplate(tx, [milestone.contract.freelancer], 'MILESTONE_FUNDED', varsFor(milestone, { amount: milestone.amount }));
+
+  const dueSoonAt = new Date(milestone.dueDate.getTime() - DUE_SOON_MS);
+  if (dueSoonAt > now) {
+    await enqueueJob(tx, {
+      type: 'milestone.dueSoon',
+      payload: { milestoneId },
+      runAt: dueSoonAt,
+      dedupeKey: `milestone.dueSoon:${milestoneId}`,
+    });
+  }
+  await enqueueJob(tx, {
+    type: 'milestone.overdue',
+    payload: { milestoneId },
+    runAt: milestone.dueDate,
+    dedupeKey: `milestone.overdue:${milestoneId}`,
+  });
+
+  return { funded: true };
+}
+
+// ---------------------------------------------------------------------------
+// Submission (MS12–MS14)
+// ---------------------------------------------------------------------------
+
+export interface SubmissionInput {
+  message: string;
+  links: string[];
+}
+
+export async function submitMilestone(
+  milestoneId: string,
+  actorId: string,
+  input: SubmissionInput,
+  files: readonly Express.Multer.File[],
+  now: Date = new Date(),
+) {
+  const milestone = await findMilestoneForRoute(milestoneId);
+  if (milestone.contract.freelancerId !== actorId) throw new AppError('Not authorized', 403);
+  if (!SUBMITTABLE.includes(milestone.status)) throw new AppError(NOT_AWAITING_SUBMISSION, 409);
+
+  // MS13: store files before the transaction; a 409 below leaves them unreferenced.
+  const stored: StoredFile[] = [];
+  for (const file of files) {
+    stored.push(await storeUploadedFile(file, `milestones/${milestoneId}`));
+  }
+
+  const autoApproveAt = new Date(now.getTime() + autoApproveDays() * DAY_MS);
+
+  return prisma.$transaction(async (tx) => {
+    // MS13: the conditional status write comes first and holds the milestone's row lock, so
+    // the round below is computed by one submission at a time (never a P2002 → 500).
+    const { count } = await tx.milestone.updateMany({
+      where: { id: milestoneId, status: { in: SUBMITTABLE } },
+      data: { status: 'SUBMITTED', submittedAt: now, autoApproveAt },
+    });
+    if (count === 0) throw new AppError(NOT_AWAITING_SUBMISSION, 409);
+
+    const last = await tx.milestoneSubmission.findFirst({
+      where: { milestoneId },
+      orderBy: { round: 'desc' },
+      select: { round: true },
+    });
+    const round = (last?.round ?? 0) + 1;
+
+    const submission = await tx.milestoneSubmission.create({
+      data: {
+        milestoneId,
+        round,
+        message: input.message,
+        links: input.links,
+        submittedAt: now,
+        attachments: {
+          create: stored.map((file) => ({
+            url: file.url,
+            fileName: file.fileName,
+            mimeType: file.mimeType,
+            size: file.size,
+          })),
+        },
+      },
+      include: { attachments: { orderBy: { createdAt: 'asc' } } },
+    });
+
+    await enqueueJob(tx, {
+      type: 'milestone.autoApprove',
+      payload: { milestoneId, round },
+      runAt: autoApproveAt,
+      dedupeKey: `milestone.autoApprove:${milestoneId}:${round}`,
+    });
+    const reminderAt = new Date(autoApproveAt.getTime() - AUTO_APPROVE_REMINDER_MS);
+    if (reminderAt > now) {
+      await enqueueJob(tx, {
+        type: 'milestone.autoApproveReminder',
+        payload: { milestoneId, round },
+        runAt: reminderAt,
+        dedupeKey: `milestone.autoApproveReminder:${milestoneId}:${round}`,
+      });
+    }
+
+    await notifyTemplate(tx, [milestone.contract.client], 'MILESTONE_SUBMITTED', varsFor(milestone));
+
+    const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
+    return { milestone: serializeMilestone(updated), submission };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Approval (MS15–MS17, MS20–MS22)
+// ---------------------------------------------------------------------------
+
+export interface ApproveOptions {
+  kind: ApprovalType;
+  /** Required for MANUAL (must be the contract's client); null for AUTO. */
+  actorId: string | null;
+  now: Date;
+}
+
+export interface ApproveResult {
+  milestone: ReturnType<typeof serializeMilestone>;
+  contract: { id: string; status: string; completedAt: Date | null };
+}
+
+/**
+ * The single approval path for the client (MANUAL) and the auto-approval job (AUTO).
+ *
+ * MANUAL runs MS5's checks (404 for a deleted project, 403, 409). AUTO skips them — the job
+ * has already re-read the state (J2) — and proceeds even when the project is soft-deleted
+ * (MS17's deleted-project case). An AUTO approval that loses its conditional write returns
+ * `null` instead of throwing.
+ */
+export async function approveMilestone(milestoneId: string, opts: ApproveOptions): Promise<ApproveResult | null> {
+  const { kind, actorId, now } = opts;
+
+  let contractId: string;
+  if (kind === 'MANUAL') {
+    if (!actorId) throw new Error('approveMilestone: MANUAL approval needs an actorId');
+    const milestone = await findMilestoneForRoute(milestoneId);
+    if (milestone.contract.clientId !== actorId) throw new AppError('Not authorized', 403);
+    if (milestone.status !== 'SUBMITTED') throw new AppError(NOT_AWAITING_REVIEW, 409);
+    contractId = milestone.contractId;
+  } else {
+    const milestone = await prisma.milestone.findUnique({ where: { id: milestoneId }, select: { contractId: true } });
+    if (!milestone) return null;
+    contractId = milestone.contractId;
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // MS16: lock the contract row first, so approvals of different milestones of one contract
+    // serialize and the completion count below sees the other's committed approval (MS22).
+    await tx.$queryRaw`SELECT "id" FROM "Contract" WHERE "id" = ${contractId} FOR UPDATE`;
+
+    const { count } = await tx.milestone.updateMany({
+      where: {
+        id: milestoneId,
+        status: 'SUBMITTED',
+        // MS20: a job for an earlier round must not approve a fresh resubmission.
+        ...(kind === 'AUTO' ? { autoApproveAt: { lte: now } } : {}),
+      },
+      data: { status: 'APPROVED', approvedAt: now, approvalType: kind, autoApproveAt: null },
+    });
+    if (count === 0) {
+      if (kind === 'MANUAL') throw new AppError(NOT_AWAITING_REVIEW, 409);
+      return null;
+    }
+
+    const milestone = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneContextInclude });
+    const { contract } = milestone;
+    const projectDeleted = contract.project.deletedAt !== null;
+
+    const latest = await tx.milestoneSubmission.findFirst({
+      where: { milestoneId },
+      orderBy: { round: 'desc' },
+      select: { id: true },
+    });
+    if (latest) {
+      await tx.milestoneSubmission.update({
+        where: { id: latest.id },
+        data: { decision: 'APPROVED', decidedAt: now, decidedById: actorId, autoDecided: kind === 'AUTO' },
+      });
+    }
+
+    // S3: the settlement item, with the fee rate snapshotted (M4).
+    const breakdown = payoutBreakdown(wholeWon(milestone.amount), PLATFORM_FEE_RATE_BPS);
+    await tx.settlementItem.create({
+      data: {
+        milestoneId,
+        contractId,
+        freelancerId: contract.freelancerId,
+        grossAmount: breakdown.gross,
+        feeRateBps: PLATFORM_FEE_RATE_BPS,
+        feeAmount: breakdown.fee,
+        feeVatAmount: breakdown.vat,
+        netAmount: breakdown.net,
+        approvedAt: now,
+      },
+    });
+
+    // MS17: a fresh statement, after the milestone write.
+    const remaining = await tx.milestone.count({ where: { contractId, status: { not: 'APPROVED' } } });
+    let completed = false;
+    if (remaining === 0) {
+      const done = await tx.contract.updateMany({
+        where: { id: contractId, status: 'ACTIVE' },
+        data: { status: 'COMPLETED', completedAt: now },
+      });
+      completed = done.count === 1;
+      if (completed && !projectDeleted) {
+        await tx.project.updateMany({ where: { id: contract.projectId, deletedAt: null }, data: { status: 'COMPLETED' } });
+      }
+    }
+
+    // MS17: a deleted project's approval notifies nobody — the pages are gone.
+    if (!projectDeleted) {
+      const vars = varsFor(milestone);
+      if (kind === 'MANUAL') {
+        await notifyTemplate(tx, [contract.freelancer], 'MILESTONE_APPROVED', vars);
+      } else {
+        await notifyTemplate(tx, [contract.client, contract.freelancer], 'MILESTONE_AUTO_APPROVED', vars);
+      }
+      if (completed) {
+        await notifyTemplate(tx, [contract.client, contract.freelancer], 'CONTRACT_COMPLETED', vars);
+      }
+    }
+
+    const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
+    const contractAfter = await tx.contract.findUniqueOrThrow({
+      where: { id: contractId },
+      select: { id: true, status: true, completedAt: true },
+    });
+    return { milestone: serializeMilestone(updated), contract: contractAfter };
+  }, { timeout: 15_000 });
+}
+
+// ---------------------------------------------------------------------------
+// Rejection (MS18–MS19)
+// ---------------------------------------------------------------------------
+
+export async function rejectMilestone(
+  milestoneId: string,
+  opts: { actorId: string; reason: string; now: Date },
+) {
+  const { actorId, reason, now } = opts;
+  const milestone = await findMilestoneForRoute(milestoneId);
+  if (milestone.contract.clientId !== actorId) throw new AppError('Not authorized', 403);
+  if (milestone.status !== 'SUBMITTED') throw new AppError(NOT_AWAITING_REVIEW, 409);
+
+  return prisma.$transaction(async (tx) => {
+    // MS19: the conditional write first; the latest submission is read after it.
+    const { count } = await tx.milestone.updateMany({
+      where: { id: milestoneId, status: 'SUBMITTED' },
+      data: { status: 'REVISION_REQUESTED', revisionCount: { increment: 1 }, autoApproveAt: null },
+    });
+    if (count === 0) throw new AppError(NOT_AWAITING_REVIEW, 409);
+
+    const latest = await tx.milestoneSubmission.findFirst({
+      where: { milestoneId },
+      orderBy: { round: 'desc' },
+      select: { id: true },
+    });
+    if (latest) {
+      await tx.milestoneSubmission.update({
+        where: { id: latest.id },
+        data: { decision: 'REJECTED', decisionReason: reason, decidedAt: now, decidedById: actorId },
+      });
+    }
+
+    await notifyTemplate(tx, [milestone.contract.freelancer], 'MILESTONE_REVISION_REQUESTED', varsFor(milestone, { reason }));
+
+    const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
+    return { milestone: serializeMilestone(updated) };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Scheduled notices (J3–J5)
+// ---------------------------------------------------------------------------
+
+/** Loads a milestone with its context for a job handler; `null` when it does not exist. */
+export function findMilestoneForJob(milestoneId: string): Promise<MilestoneWithContext | null> {
+  return prisma.milestone.findUnique({ where: { id: milestoneId }, include: milestoneContextInclude });
+}
+
+export async function latestRound(milestoneId: string): Promise<number | null> {
+  const last = await prisma.milestoneSubmission.findFirst({
+    where: { milestoneId },
+    orderBy: { round: 'desc' },
+    select: { round: true },
+  });
+  return last?.round ?? null;
+}
+
+export async function sendMilestoneNotice(
+  milestone: MilestoneWithContext,
+  type: 'MILESTONE_AUTO_APPROVE_REMINDER' | 'MILESTONE_DUE_SOON' | 'MILESTONE_OVERDUE',
+): Promise<void> {
+  const { client, freelancer } = milestone.contract;
+  const recipients = type === 'MILESTONE_AUTO_APPROVE_REMINDER'
+    ? [client]
+    : type === 'MILESTONE_DUE_SOON'
+      ? [freelancer]
+      : [client, freelancer];
+  await notifyTemplate(prisma, recipients, type, varsFor(milestone));
+}
+
+export type { MilestoneWithContext };

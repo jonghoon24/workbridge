@@ -71,6 +71,13 @@ export const env = {
   get LOG_LEVEL(): string {
     return withDefault('LOG_LEVEL', 'info');
   },
+  /**
+   * Days a submitted milestone waits for review before it is approved automatically (M14).
+   * Raw string; `milestoneAutoApproveDays()` in the milestones service interprets it.
+   */
+  get MILESTONE_AUTO_APPROVE_DAYS(): string {
+    return withDefault('MILESTONE_AUTO_APPROVE_DAYS', '7');
+  },
   /** Poll interval of the development job worker, in milliseconds. */
   get JOB_POLL_INTERVAL_MS(): string {
     return withDefault('JOB_POLL_INTERVAL_MS', '5000');
