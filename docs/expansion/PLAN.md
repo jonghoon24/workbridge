@@ -971,6 +971,8 @@ model EmailDelivery {
 
 #### 2.4.3 동작
 
+> **P3 워커 주의:** 미확인 다이제스트의 enqueue와 핸들러 1~2단계는 P2A가 이미 구현한다. 아래 다이제스트 문단과 §2.4.6, §2.2.1/§2.3.1/§3.2(마이그레이션 두 개), §2.2.2(읽음 워터마크)는 `DECISIONS.md` "P2-S (명세)"·"P2-S (명세 검토 반영)"과 BEHAVIOR.md J8이 대체한다. P3는 J8의 3~4단계만 채운다.
+
 - `notify(tx, input)`(P0 최소판을 확장, `input`에 선택 필드 `contextKey`를 추가해 `EmailDelivery.contextKey`로 저장): (1) 정책과 사용자 설정을 합쳐 `inApp`/`email`을 정한다. (2) inApp이면 `Notification` row를 만든다. (3) email이고 수신자가 소프트 삭제되지 않았으면 `EmailDelivery(QUEUED)`를 만들고 `email.send`를 enqueue한다(dedupe `email.send:<deliveryId>`). 셋 다 호출자의 트랜잭션 안에서 일어나서 상태 변경이 롤백되면 메일도 나가지 않는다. `notifyMany`는 수신자별 설정을 한 번의 `findMany`로 읽는다.
 - **기존 생성 지점 연결**: `applications.controller.ts`의 `apply`(`APPLICATION_CREATED`), 수락(`ACCEPTED` + `REJECTED` 일괄), 거절, `projects.controller.ts`의 `updateProjectStatus`(`PROJECT_STATUS_CHANGED` 일괄)를 `tx.notification.create/createMany`에서 `notify/notifyMany`로 바꾼다. 제목/본문 문자열은 **그 컨트롤러에 인라인으로 남긴다**. 신규 도메인만 `templates.ts`를 쓴다. BRIEF가 말한 "일부만 옮겨진" 상태가 바로 이것이고, 동작(설정 반영, 이메일)은 모든 지점에서 같다.
 - `email.send` 핸들러: delivery를 읽어 QUEUED가 아니면 no-op. 수신자가 소프트 삭제됐으면 SKIPPED. `EmailSender.send({ to, from, subject, text })`를 부르고 성공하면 SENT(`sentAt`, `providerMessageId`), 예외가 나면 작업 재시도(최대 5회)에 맡기고 마지막 실패에서 FAILED(`error`)로 둔다.

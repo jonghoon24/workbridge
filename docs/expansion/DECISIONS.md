@@ -143,3 +143,47 @@
 - 점수 반올림은 `Math.round(x × 100) / 100`이고 정렬도 반올림한 점수로 한다. 카테고리 비교는 양쪽 trim 후 정확히 일치.
 - `makeContractScenario`는 수락이 만드는 것과 같게 대화방과 참여자 둘도 만든다. `seed.js`는 시연 메시지 없이 대화방이 없는 모든 계약에 대화방과 참여자를 만든다(P4 전에도 "계약마다 대화방" 불변식 유지).
 - `src/index.ts`에 빈 라우터 두 개(`conversations.routes.ts`를 `/api/conversations`에, `profile.routes.ts`를 `/api/users`의 `userRoutes` 다음에)를 미리 마운트했다(PLAN §3.2). 2A와 2B는 `index.ts`를 고치지 않는다. 빈 라우터는 매칭되지 않는 경로를 그대로 흘려보내므로 Q10 동작이 바뀌지 않는다.
+
+## P2-S (명세 검토 반영, reviews/P2S_SPEC_REVIEW_1.md)
+
+- J8 2단계에 재확인을 더했다. 미확인 메시지가 남아 있어도 가장 오래된 미확인 메시지가 `ctx.now − 10분`보다 새것이면 보내지 않고 그 메시지 시각 + 10분에 다시 enqueue한다(같은 쌍의 PENDING이 없을 때만, 실행 중인 자기 자신은 RUNNING이라 세지 않는다). "10분 안에 읽으면 메일이 가지 않는다"를 실제로 지키게 한다(검토 1).
+- 포트폴리오 DELETE도 사용자 row 잠금을 먼저 잡는다(PF8, PF11). 순서 변경이 잠금 아래에서 읽은 항목을 동시 삭제가 지워 P2025 500이 나는 경합을 막는다. 경력 삭제와 수정은 여전히 잠그지 않는다(검토 2).
+- 대화방이 없는 계약(데이터 복구 상황, `makeContract`만 쓴 테스트 픽스처)에서는 시스템 메시지를 남기지 않고 `warn` 로그만 남기며 이벤트는 그대로 진행한다(MG7). P1의 D22 dev-complete 경합 테스트가 엉뚱한 이유로 실패하지 않게 한다(검토 3).
+- 잠금 순서에 이벤트의 다른 쓰기(Project 등)를 넣고, 시스템 메시지는 항상 이벤트 트랜잭션의 마지막 쓰기라고 적었다(MG7, 검토 6).
+- 추천의 카테고리 비교는 trim 없이 저장값 그대로 정확히 일치로 통일한다(RC4, RC6, RC7). prefilter(DB)와 점수가 같은 비교를 쓴다. 앞의 "P2-S (명세)"의 "양쪽 trim 후" 결정을 대체한다(검토 7).
+- 새 라우터 두 개(`conversations.routes.ts`, `profile.routes.ts`)는 가드를 라우트마다 붙이고 `router.use`를 쓰지 않는다. `/api/users`에는 Q10 벡터(`GET /api/users`, `DELETE /api/users/me`)와 공개 GET(PF16, PF17)이 있다. P1 settlements와 같은 결정(검토 4).
+- `Message.sender`의 `onDelete: Restrict`는 의도다(기본 SetNull이면 TEXT 메시지가 발신자 없는 가짜 시스템 메시지가 된다). 스키마 주석으로 남겼고 마이그레이션 변화는 없다(검토 10).
+- PLAN §2.4.3 머리에 P3 워커용 한 줄을 달아 다이제스트 분담과 대체된 PLAN 문단을 이 문서로 안내한다. PLAN 본문은 고치지 않는다(검토 9).
+
+## P2-S (핸드오프)
+
+2A(메시지)와 2B(프로필) 워커가 병렬로 일할 때의 파일 소유권. 머지 담당은 이 표로 충돌을 판단한다(PLAN §3.4와 함께 읽는다).
+
+| 파일 | 규칙 |
+|---|---|
+| `prisma/schema.prisma`, `prisma/migrations/`, `test/helpers/db.ts`, `src/index.ts` | 아무도 고치지 않는다(P2-S가 끝냈다). 필요하면 오케스트레이터에게 올린다 |
+| `test/helpers/factories.ts`, `test/helpers/api.ts` | 읽기 전용. 필요한 로컬 헬퍼는 각 테스트 파일 안에 둔다 |
+| `src/schemas/common.ts`, `src/schemas/pagination.ts` | 읽기 전용. 각자의 한도·커서·월 헬퍼는 자기 `src/schemas/<domain>.ts`에 둔다 |
+| `src/lib/time.ts` | 2B만(PF2의 KST 월 헬퍼) |
+| `test/lib.test.ts` | 2B만. 2A의 순수 함수 테스트는 자기 테스트 파일에 둔다 |
+| `src/routes/conversations.routes.ts`, `src/routes/contracts.routes.ts`(MG18), `src/controllers/applications.controller.ts`(수락 7단계), `src/controllers/contracts.controller.ts`(서명), `src/controllers/payments.controller.ts`, `src/services/milestones.service.ts`, `src/services/contracts.service.ts`(MG19), `src/jobs/types.ts`, `src/jobs/registry.ts`, `src/lib/notifications/templates.ts`(필요할 때만) | 2A만 |
+| 신규 `src/services/messaging.service.ts`, `src/controllers/conversations.controller.ts`, `src/schemas/conversations.ts`, `src/jobs/handlers/messageDigest.ts`, `test/conversations.test.ts`, `test/messages.test.ts`, `test/message-read.test.ts` | 2A |
+| `test/applications.test.ts`, `test/contracts.test.ts`, `test/milestones.test.ts`, `test/payments.test.ts`(시스템 메시지 단언) | 2A만 |
+| `src/routes/profile.routes.ts`, `src/routes/projects.routes.ts`(RC3), `src/controllers/users.controller.ts`(C10), `src/lib/profileCompletion.ts` | 2B만 |
+| 신규 `src/lib/recommendations.ts`, `src/services/portfolio.service.ts`, `src/services/careers.service.ts`, `src/controllers/profile.controller.ts`, `src/controllers/recommendations.controller.ts`, `src/schemas/profile.ts`, `test/portfolio.test.ts`, `test/careers.test.ts`, `test/recommendations.test.ts`, `test/profile-completion.test.ts` | 2B |
+| `test/users.test.ts` | 2B만 |
+| 클라이언트 `components/layout/Header.jsx`, `middleware.js`(`/messages`), `components/messages/`, `/messages` 페이지 | 2A만 |
+| 클라이언트 `components/profile/`, `/profile/*`, `/users/[id]`, `/my/recommendations` 페이지 | 2B만(`/my`는 이미 보호됨) |
+| 클라이언트 `lib/format.js`, `components/ui/*` | 읽기 전용 |
+| `test/authorization.test.ts`, `test/soft-delete.test.ts`(신규 행은 `guardedMutations`에만), `src/types/index.ts`(공개 라우트 주석), `docs/BEHAVIOR.md`(D 임시 태그 `D-2A-n`/`D-2B-n`), `docs/expansion/DECISIONS.md`, `PROGRESS.md` | 공유. 둘 다 살리고 머지 담당이 손으로 합친다 |
+
+`authorization.test.ts`의 개수(머지 후 기대값, 현재 → 2A → 2B 합계):
+
+| 단언 | 현재 | 2A | 2B | 합계 |
+|---|---|---|---|---|
+| `PROTECTED_ROUTES` | 43 | +8(대화방 7 + `GET /api/contracts/:id/conversation`) | +10(포트폴리오 4, 경력 3, 완성도 1, 추천 2) | 61 |
+| `ROLE_GATED_ROUTES` | 24 | 0 | +9 | 33 |
+| CLIENT / FREELANCER 분할 | 11 / 13 | 0 / 0 | +1(RC3) / +8 | 12 / 21 |
+| `PUBLIC_ROUTES`(라우트 / 핸들러) | 11 / 10 | 0 | +2 / +2(PF16, PF17) | 13 / 12 |
+
+`Ids` 인터페이스와 `MISSING`에는 2A가 `conversationId`, `messageId`를, 2B가 `portfolioItemId`, `careerId`를 더한다.

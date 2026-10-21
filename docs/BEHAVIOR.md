@@ -1229,10 +1229,14 @@ expansion routes (rule 12) open to either role; the only authorization is being 
   watermark was taken. `createdAt` is deliberately the server clock, never a `now` handed in by the
   caller — an exception to rule 11, so that a system message written by a job run with a future
   `now` still sorts by when it was written.
-  **Lock order:** `Contract` → `Milestone` → `Conversation`. Event transactions that hold a
-  contract or milestone row lock take the conversation lock last; nothing that holds a conversation
-  lock goes on to lock a contract or milestone. The participant row is only ever locked on its own
-  (MG16, J8).
+  A contract **without a conversation** (impossible after MG3 — a data-repair case, or a test
+  fixture made with `makeContract` alone) posts nothing: the routine logs a `warn` line and returns,
+  and the event it would have recorded proceeds unchanged. It never throws for this.
+  **Lock order:** `Contract` → `Milestone` → the event's other writes (`Project`, payment,
+  submission, …) → `Conversation`. A system message is always the **last** write of its event
+  transaction (`CONTRACT_COMPLETED` after `MILESTONE_APPROVED`), so the conversation lock is taken
+  last; nothing that holds a conversation lock goes on to lock a contract, milestone or project.
+  The participant row is only ever locked on its own (MG16, J8).
 
 ### Unread state and who may post
 - **MG8** — **Unread count** of a conversation for a participant: its messages with `kind = TEXT`,
@@ -1304,7 +1308,8 @@ expansion routes (rule 12) open to either role; the only authorization is being 
      `The other participant is no longer active`;
   4. the files are stored (MG1 keys); a storage failure → **502** and nothing is written;
   5. **in one transaction**: the message is posted per MG7 (`kind: TEXT`, `body` trimmed, one
-     attachment row per file) and the unread digest is scheduled for the other participant (J8).
+     attachment row per file) and the unread digest is scheduled for the other participant under
+     J8's enqueue rule (skipped while one is already pending; J8 step 2 re-checks the timing).
 
   Steps 2–3 are not repeated inside the transaction: a counterpart soft-deleted in between does not
   undo the send. Files stored by a request whose transaction fails stay in the bucket unreferenced.
@@ -1408,9 +1413,10 @@ they must never read `req.user`.
 - **PF8** — **Serialization.** Creating a portfolio item or career entry, and reordering the
   portfolio, run in a transaction whose **first statement locks the caller's `User` row** (`SELECT
   id FROM "User" WHERE id = $1 FOR UPDATE`, raw SQL — the lock PA7 and S17 take), and only then
-  count, compute `sortOrder` and write. Two creates racing at 19 items end with 20 items and one
-  409, never 21; a reorder never interleaves with a create or delete. Updates and deletes take no
-  lock: they change neither the count nor the order.
+  count, compute `sortOrder` and write. **Deleting a portfolio item takes the same lock first**
+  (PF11). Two creates racing at 19 items end with 20 items and one 409, never 21; a reorder never
+  interleaves with a create or delete, so it never writes a row deleted under it. Updates and
+  career deletes take no lock: they change neither the count nor the portfolio order.
 
 ### `POST /api/users/me/portfolio` — FREELANCER
 - **PF9** — `multipart/form-data` with an optional `image`, or a JSON body when there is no image.
@@ -1443,8 +1449,10 @@ they must never read `req.user`.
   404). A replaced or removed image file is not deleted from storage. Responds **200** `{ item }`.
 
 ### `DELETE /api/users/me/portfolio/:itemId` — FREELANCER, the owner
-- **PF11** — Hard delete; 404 / 403 per PF7. The other items keep their `sortOrder` (gaps are
-  fine) and the image file is not removed. Responds **200** `{ id, deleted: true }`.
+- **PF11** — Hard delete, in a transaction whose first statement is PF8's `User`-row lock, so it
+  serializes with a reorder (PF12); 404 / 403 per PF7 (an item deleted by a concurrent request
+  while waiting → 404). The other items keep their `sortOrder` (gaps are fine) and the image file
+  is not removed. Responds **200** `{ id, deleted: true }`.
 
 ### `PUT /api/users/me/portfolio/order` — FREELANCER
 - **PF12** — Body `{ ids }`, an array of strings (otherwise **400**). Then, under PF8's lock:
@@ -1551,7 +1559,7 @@ they must never read `req.user`.
   |---|---|
   | skills | `|matched| / |required| × 50` |
   | portfolio | `|required skills found in the skills of any of the candidate's portfolio items| / |required| × 10` |
-  | category | 15 when the trimmed `activityCategory` equals the trimmed project `category` |
+  | category | 15 when `activityCategory` equals the project's `category` exactly (stored values, no trimming — as RC6's prefilter compares them) |
   | rating | `avgRating / 5 × 15`; 9 (= 0.6 × 15) with no reviews |
   | experience | `min(experienceYears, 10) / 10 × 10` |
 
@@ -1580,7 +1588,7 @@ they must never read `req.user`.
   |---|---|
   | coverage | `|matched| / |project's required skills| × 50` |
   | utilization | `|matched| / |caller's skills| × 10` |
-  | category | 20 when the trimmed values are equal |
+  | category | 20 when `category` equals the caller's `activityCategory` exactly — the same comparison as the prefilter |
   | freshness | 10 while `age ≤ 7 days`; `10 × (30 days − age) / 23 days` between 7 and 30 days; 0 from 30 days |
   | deadline room | 10 when `deadline − now ≥ 3 × 24 h`, else 0 |
 
@@ -1596,7 +1604,8 @@ they must never read `req.user`.
 ## Background jobs
 
 Postgres-backed queue (`Job` table) used by the scheduled sweeps, milestone auto-approval and
-due-date notices, the weekly settlement batch and payouts, and (Phase 3) email delivery.
+due-date notices, the weekly settlement batch and payouts, the unread-message digest (scheduled
+from Phase 2A, sending from Phase 3, J8), and (Phase 3) email delivery.
 
 ### Job states
 
@@ -1649,11 +1658,12 @@ endpoint is not decided yet. Until one does, recurring jobs only run where a run
 | `milestone.overdue` | funding (PY7) | `dueDate` | `milestone.overdue:<milestoneId>` | J5 | `MILESTONE_OVERDUE` to both parties |
 | `settlement.weeklyBatch` | recurring | the next Monday 03:00 KST strictly after `now` (M19) | `settlement.weeklyBatch:<periodStart ISO-8601>`, where `periodStart` = the slot's `runAt − 7 days − 3 h`, fixed when the slot is enqueued (e.g. `settlement.weeklyBatch:2026-10-18T15:00:00.000Z` for the slot at `2026-10-25T18:00:00.000Z`) | J6 | the weekly batch (S4–S6) |
 | `settlement.payout` | the batch (S4), payout-account registration (PA4), a failed transfer with attempts left (S11) | the settlement's `scheduledPayoutAt` | `settlement.payout:<settlementId>:<scheduledPayoutAt ISO-8601>` | J7 | the payout (S7–S11) |
-| `message.unreadDigest` | a text message (MG15), unless a `PENDING` one exists for the same conversation and recipient; a throttled run (J8 step 3, Phase 3) | the message's `createdAt` + 10 min; a throttled re-run at the last digest's time + 60 min | none | J8 | the unread-message digest email (MG21) |
+| `message.unreadDigest` | a text message (MG15), unless a `PENDING` one exists for the same conversation and recipient; a re-check (J8 step 2); a throttled run (J8 step 3, Phase 3) | the message's `createdAt` + 10 min; a re-check at the oldest unread message's `createdAt` + 10 min; a throttled re-run at the last digest's time + 60 min | none | J8 | the unread-message digest email (MG21) |
 
 Payloads: `milestone.autoApprove` and `milestone.autoApproveReminder` carry
 `{ milestoneId, round }`; `milestone.dueSoon` and `milestone.overdue` carry `{ milestoneId }`;
-`settlement.payout` carries `{ settlementId, scheduledPayoutAt }` (ISO-8601 string); the recurring
+`settlement.payout` carries `{ settlementId, scheduledPayoutAt }` (ISO-8601 string);
+`message.unreadDigest` carries `{ conversationId, recipientId }` and has no `dedupeKey` (J8); the recurring
 types carry `{}`. All use the default `maxAttempts` of 5. Because the payout key contains
 `scheduledPayoutAt`, a rescheduled payout (PA4, S11) is a new job and never collides with the one
 it replaces.
@@ -1694,7 +1704,12 @@ it replaces.
      `PermanentJobError`. `POST …/read` (MG16) writes the same row, so a read and a digest
      serialize;
   2. no-op (`SUCCEEDED`) when the conversation's project is soft-deleted, the recipient is
-     soft-deleted, or MG8's unread count for the recipient is 0;
+     soft-deleted, or MG8's unread count for the recipient is 0. Otherwise, when the **oldest**
+     unread message (MG8) has `createdAt > ctx.now − 10 min` — the messages this job was enqueued
+     for were read and newer ones arrived while it was pending, so the enqueue rule skipped them —
+     enqueue a new job at that message's `createdAt + 10 min` (unless a `PENDING` one exists for
+     the pair; the running job is `RUNNING` and does not count) and end `SUCCEEDED` without
+     sending;
   3. *(Phase 3)* when a `MESSAGE_UNREAD_DIGEST` `EmailDelivery` for this recipient with
      `contextKey = 'conversation:<conversationId>'` was created after `ctx.now − 60 min`, send
      nothing; instead, unless another `PENDING` job for the pair exists, enqueue one at that
@@ -1706,7 +1721,10 @@ it replaces.
   complete: a message read within 10 minutes never causes an email; a conversation sends a
   recipient at most one digest per 60 minutes; unread messages that pile up in between go out
   together 60 minutes after the last digest. A duplicate `PENDING` job (a send racing step 3's
-  re-enqueue) is harmless — step 3 throttles it. Tests drive it with `runDueJobs({ now })` alone.
+  re-enqueue) is harmless — step 3 throttles it. Example of step 2's re-check: message A at t0
+  enqueues a job for t0 + 10 min; the recipient reads at t0 + 2; message B at t0 + 9 enqueues
+  nothing (A's job is pending); at t0 + 10 the job finds B unread but only 1 minute old, so it
+  re-enqueues for t0 + 19 and sends nothing. Tests drive it with `runDueJobs({ now })` alone.
 
 ---
 
@@ -1876,7 +1894,7 @@ Ordered by risk, not by convenience:
 1. **Milestone approval races and settlement arithmetic** — MS21's "exactly one winner, one
    settlement item", MS22's concurrent approval of the last two milestones completing the
    contract, the fee/VAT/net table and M5's item sums, and the batch's idempotence (S5). Money moves automatically here, so a bug pays the wrong amount or pays twice.
-2. **The accept-application transaction** — six coupled writes, the most complex state change in
+2. **The accept-application transaction** — seven coupled writes, the most complex state change in
    the system. Assert every effect, then assert a forced failure rolls all of it back.
 3. **The auth matrix** — every protected route 401s without a token, and 403s for the wrong role.
    This is the compensating control for `Express.Request.user` being typed non-optional: the

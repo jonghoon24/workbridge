@@ -368,6 +368,8 @@ model Message {
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   /// null for SYSTEM messages
   senderId       String?
+  /// `onDelete: Restrict` on purpose: the default SetNull would turn a TEXT message into a
+  /// sender-less pseudo-system message (MG2). Users are only ever soft-deleted.
   sender         User?        @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
   kind           MessageKind  @default(TEXT)
   /// SYSTEM only: `CONTRACT_CREATED`, `MILESTONE_FUNDED`, … (MG6). A bare String like `Notification.type`.
