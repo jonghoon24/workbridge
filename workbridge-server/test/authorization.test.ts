@@ -136,11 +136,12 @@ const GHOST: Principal = { id: 'ghost-user-id', email: 'ghost@test.local', role:
 
 /**
  * Every route that mounts `authenticate`, transcribed from `src/routes/*.ts`.
- * 61 routes: auth 2, users 8 (incl. payout account 3), projects 8, applications 3,
+ * 63 routes: auth 2, users 8 (incl. payout account 3), projects 8, applications 3,
  * contracts 7 (incl. list, milestone plan 3 and conversation 1), milestones 4, payments 4,
  * settlements 3, reviews 1, notifications 4, conversations 7 (Phase 2A, +8),
  * profile.routes.ts 9 (portfolio 4, careers 3, profile completion 1, recommended projects 1)
- * and projects.routes.ts recommended freelancers 1 (Phase 2B, +10).
+ * and projects.routes.ts recommended freelancers 1 (Phase 2B, +10), and notification
+ * preferences 2 (Phase 3, +2: GET/PUT /api/notifications/preferences, either role).
  */
 const PROTECTED_ROUTES: RouteSpec[] = [
   // auth.routes.ts
@@ -544,6 +545,22 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     role: null,
     gate: null,
   },
+  // Phase 3 (NC5–NC8)
+  {
+    label: 'GET /api/notifications/preferences',
+    method: 'get',
+    path: () => '/api/notifications/preferences',
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'PUT /api/notifications/preferences',
+    method: 'put',
+    path: () => '/api/notifications/preferences',
+    body: () => ({ preferences: [{ type: 'MILESTONE_DUE_SOON', email: false }] }),
+    role: null,
+    gate: null,
+  },
 
   // conversations.routes.ts
   { label: 'GET /api/conversations', method: 'get', path: () => '/api/conversations', role: null, gate: null },
@@ -624,7 +641,7 @@ function expectErrorEnvelope(res: ApiResponse, status: number) {
 
 describe('the route table itself', () => {
   it('covers every protected route in src/routes, and none twice', () => {
-    expect(PROTECTED_ROUTES).toHaveLength(61);
+    expect(PROTECTED_ROUTES).toHaveLength(63);
     expect(new Set(PROTECTED_ROUTES.map((r) => r.label)).size).toBe(PROTECTED_ROUTES.length);
   });
 
