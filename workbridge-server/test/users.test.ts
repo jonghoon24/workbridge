@@ -7,9 +7,11 @@ import { prisma } from './helpers/db';
 import {
   daysFromNow,
   makeApplication,
+  makeCareer,
   makeClient,
   makeContract,
   makeFreelancer,
+  makePortfolioItem,
   makeProject,
 } from './helpers/factories';
 
@@ -745,6 +747,56 @@ describe('GET /api/users/:id', () => {
     expect(res.body).toEqual({ error: { message: 'User not found' } });
   });
 
+  it('adds portfolioItems, careers and careerSummary exactly as the public routes return them [C10] [PF18]', async () => {
+    const freelancer = await makeFreelancer();
+    await makePortfolioItem(freelancer.id, { sortOrder: 1, title: 'Second' });
+    await makePortfolioItem(freelancer.id, { sortOrder: 0, title: 'First', startedAt: new Date('2025-02-28T15:00:00.000Z') });
+    await makeCareer(freelancer.id); // 2020-01 … 2021-12
+    await makeCareer(freelancer.id, {
+      startDate: new Date('2021-05-31T15:00:00.000Z'), // 2021-06
+      endDate: new Date('2022-05-31T15:00:00.000Z'), // 2022-06
+    });
+
+    const [profile, portfolio, careers] = await Promise.all([
+      api().get(`/api/users/${freelancer.id}`),
+      api().get(`/api/users/${freelancer.id}/portfolio`),
+      api().get(`/api/users/${freelancer.id}/careers`),
+    ]);
+
+    expect(profile.status).toBe(200);
+    expect(profile.body.portfolioItems).toEqual(portfolio.body.items);
+    expect(profile.body.portfolioItems.map((item: { title: string }) => item.title)).toEqual(['First', 'Second']);
+    expect(profile.body.portfolioItems[0].startedAt).toBe('2025-03');
+    expect(profile.body.careers).toEqual(careers.body.careers);
+    expect(profile.body.careers.map((c: { startDate: string }) => c.startDate)).toEqual(['2021-06', '2020-01']);
+    expect(profile.body.careerSummary).toEqual({ totalMonths: 30, years: 2, months: 6 });
+    // Additive: the pre-existing fields are still there.
+    expect(profile.body).toMatchObject({ id: freelancer.id, avgRating: null, reviewCount: 0, receivedReviews: [] });
+  });
+
+  it('gives a CLIENT empty lists and a zero summary [C10] [PF18]', async () => {
+    const client = await makeClient();
+
+    const res = await api().get(`/api/users/${client.id}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      portfolioItems: [],
+      careers: [],
+      careerSummary: { totalMonths: 0, years: 0, months: 0 },
+    });
+  });
+
+  it('404s a soft-deleted user even with portfolio and careers kept [C10] [PF20]', async () => {
+    const freelancer = await makeFreelancer({ deletedAt: new Date() });
+    await makePortfolioItem(freelancer.id);
+    await makeCareer(freelancer.id);
+
+    const res = await api().get(`/api/users/${freelancer.id}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'User not found' } });
+  });
 });
 
 describe('GET /api/users/me/applications', () => {

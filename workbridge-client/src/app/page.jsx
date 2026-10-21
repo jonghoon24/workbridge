@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import ProjectCard from '@/components/projects/ProjectCard';
 import HeroActions from '@/components/home/HeroActions';
 import ProjectDiscovery from '@/components/home/ProjectDiscovery';
+import HomeRecommendedProjects from '@/components/profile/HomeRecommendedProjects';
 
 async function getRecentProjects() {
   try {
@@ -35,6 +36,8 @@ export default async function HomePage() {
       </section>
 
       <ProjectDiscovery />
+
+      <HomeRecommendedProjects />
 
       {/* Features Section */}
       <section className="py-16 bg-white">

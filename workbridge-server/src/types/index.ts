@@ -36,10 +36,11 @@ declare global {
        * mounted behind `authenticate`, so in practice it is always present, and this
        * keeps the ~43 `req.user.id` reads free of `!` assertions.
        *
-       * The tradeoff: on the 10 public handlers (`signup`, `login`, `refresh`, `googleAuth`,
+       * The tradeoff: on the 12 public handlers (`signup`, `login`, `refresh`, `googleAuth`,
        * `googleCallback`, `getProjects`, `getProjectById`, `getUserById`, `getUserReviews` —
-       * mounted twice — and `runJobs`, the internal job endpoint, which is guarded by
-       * `requireInternalToken` instead of a JWT) `req.user` is actually `undefined` at runtime,
+       * mounted twice — `getUserPortfolio`, `getUserCareers`, and `runJobs`, the internal job
+       * endpoint, which is guarded by `requireInternalToken` instead of a JWT; 13 public routes)
+       * `req.user` is actually `undefined` at runtime,
        * and the type will not warn you. Middleware that runs on every route (`accessLog`) must
        * read it as optional. **Do not read `req.user` in a handler that is not behind
        * `authenticate`.**
@@ -104,6 +105,33 @@ export type ProfileCompletionInput = Pick<
   | 'experienceYears'
   | 'hourlyRate'
 >;
+
+/**
+ * The fields `getProfileCompletion` scores (BEHAVIOR.md PF21): the gate's seven plus the optional
+ * profile fields of both roles.
+ */
+export type ProfileScoreInput = ProfileCompletionInput & Pick<User, 'bio' | 'profileImage' | 'website'>;
+
+/** What PF21 counts outside the `User` row. */
+export interface ProfileCompletionCounts {
+  portfolioItems: number;
+  careers: number;
+  hasPayoutAccount: boolean;
+}
+
+/** One PF21 checklist entry. The client supplies the Korean label for `key`. */
+export interface ProfileCompletionItem {
+  key: string;
+  weight: number;
+  done: boolean;
+}
+
+/** `GET /api/users/me/profile-completion` (PF21). `isComplete` and `percent` are independent. */
+export interface ProfileCompletion {
+  isComplete: boolean;
+  percent: number;
+  items: ProfileCompletionItem[];
+}
 
 /** Allowed manual project status transitions. Partial — not every status has a target. */
 export type ProjectStatusTransitions = Partial<Record<ProjectStatus, readonly ProjectStatus[]>>;

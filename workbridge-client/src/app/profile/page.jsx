@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
@@ -8,6 +9,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import CheckboxChips from '@/components/ui/CheckboxChips';
+import ProfileCompletionCard from '@/components/profile/ProfileCompletionCard';
 import {
   BUSINESS_FIELD_OPTIONS,
   FREELANCER_ACTIVITY_CATEGORIES,
@@ -31,6 +33,7 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [imageFile, setImageFile] = useState(null);
+  const [completionKey, setCompletionKey] = useState(0);
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
@@ -124,6 +127,7 @@ export default function ProfilePage() {
       setProfile(data);
       setAuth(data, useAuthStore.getState().accessToken);
       setSuccess('프로필이 저장되었습니다');
+      setCompletionKey((key) => key + 1);
     } catch (err) {
       setError(err.response?.data?.error?.message || '저장에 실패했습니다');
     } finally {
@@ -137,7 +141,30 @@ export default function ProfilePage() {
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">내 프로필</h1>
 
-      <Card className="p-6">
+      <div className="mb-6">
+        <ProfileCompletionCard refreshKey={completionKey} />
+      </div>
+
+      {profile?.role === 'FREELANCER' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+          <Link
+            href="/profile/portfolio"
+            className="rounded-lg border border-gray-200 bg-white p-4 hover:border-primary-300 hover:bg-primary-50"
+          >
+            <p className="font-medium text-gray-900">포트폴리오 관리 →</p>
+            <p className="text-xs text-gray-500 mt-1">대표 작업을 이미지와 함께 보여주세요</p>
+          </Link>
+          <Link
+            href="/profile/careers"
+            className="rounded-lg border border-gray-200 bg-white p-4 hover:border-primary-300 hover:bg-primary-50"
+          >
+            <p className="font-medium text-gray-900">경력 관리 →</p>
+            <p className="text-xs text-gray-500 mt-1">회사, 직책, 기간을 정리해 신뢰를 높이세요</p>
+          </Link>
+        </div>
+      )}
+
+      <Card className="p-6" id="profile-form">
         <form onSubmit={handleSubmit} className="space-y-5">
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
           {success && <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{success}</div>}

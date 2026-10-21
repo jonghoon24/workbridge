@@ -68,3 +68,52 @@ export function nextKstWeekday(now: Date, weekday: number, hour = 0, minute = 0)
   const candidate = new Date(dayStart.getTime() + daysAhead * DAY_MS + hour * HOUR_MS + minute * MINUTE_MS);
   return candidate > now ? candidate : new Date(candidate.getTime() + 7 * DAY_MS);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Calendar months (BEHAVIOR.md PF2): portfolio and career periods are `YYYY-MM` months, stored
+// as the first instant of that month in KST and returned as `YYYY-MM` again.
+// ---------------------------------------------------------------------------------------------
+
+const MONTH_PATTERN = /^(\d{4})-(0[1-9]|1[0-2])$/;
+
+/** True for a `YYYY-MM` string with a month from `01` to `12`. */
+export function isKstMonth(value: string): boolean {
+  return MONTH_PATTERN.test(value);
+}
+
+/**
+ * The first instant of a `YYYY-MM` month in KST (`2025-03` → `2025-02-28T15:00:00.000Z`).
+ * Throws a `RangeError` for anything else.
+ */
+export function kstMonthToDate(month: string): Date {
+  const match = MONTH_PATTERN.exec(month);
+  if (!match) {
+    throw new RangeError(`Expected a YYYY-MM month, got "${month}"`);
+  }
+  // `setUTCFullYear` rather than `Date.UTC`, which maps years 0–99 onto 1900–1999.
+  const start = new Date(0);
+  start.setUTCFullYear(Number(match[1]), Number(match[2]) - 1, 1);
+  return new Date(start.getTime() - KST_OFFSET_MS);
+}
+
+/** The KST month containing `instant`, as `YYYY-MM`. */
+export function kstMonthString(instant: Date): string {
+  return new Date(instant.getTime() + KST_OFFSET_MS).toISOString().slice(0, 7);
+}
+
+/** `kstMonthString`, passing `null` through — for optional month columns. */
+export function kstMonthOrNull(instant: Date | null): string | null {
+  return instant ? kstMonthString(instant) : null;
+}
+
+/**
+ * A month as a running count (`year × 12 + month − 1`), so month arithmetic is plain integer
+ * arithmetic: `kstMonthIndex('2022-02') − kstMonthIndex('2020-01') + 1` = 26 months inclusive.
+ */
+export function kstMonthIndex(month: string): number {
+  const match = MONTH_PATTERN.exec(month);
+  if (!match) {
+    throw new RangeError(`Expected a YYYY-MM month, got "${month}"`);
+  }
+  return Number(match[1]) * 12 + Number(match[2]) - 1;
+}

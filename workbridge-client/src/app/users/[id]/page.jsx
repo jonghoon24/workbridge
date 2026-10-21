@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import api from '@/lib/api';
 import Card from '@/components/ui/Card';
+import PortfolioGrid from '@/components/profile/PortfolioGrid';
+import CareerTimeline from '@/components/profile/CareerTimeline';
+import { formatCareerSummary } from '@/components/profile/profileFormat';
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -100,6 +103,26 @@ export default function UserProfilePage() {
           </div>
         )}
       </Card>
+
+      {/* Portfolio and careers (BEHAVIOR.md PF18, C10) */}
+      {user.portfolioItems?.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">포트폴리오</h2>
+          <PortfolioGrid items={user.portfolioItems} />
+        </div>
+      )}
+
+      {user.careers?.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-baseline justify-between mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">경력</h2>
+            <span className="text-sm text-gray-600">{formatCareerSummary(user.careerSummary)}</span>
+          </div>
+          <Card className="p-6">
+            <CareerTimeline careers={user.careers} />
+          </Card>
+        </div>
+      )}
 
       {/* Reviews */}
       {user.receivedReviews?.length > 0 && (

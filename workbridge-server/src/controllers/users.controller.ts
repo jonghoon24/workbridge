@@ -9,6 +9,8 @@ import {
 } from '../lib/projectLifecycle';
 import { normalizeSkillList } from '../lib/skills';
 import { uploadToSupabase } from '../middlewares/upload';
+import { listCareers } from '../services/careers.service';
+import { listPortfolioItems } from '../services/portfolio.service';
 import { v4 as uuidv4 } from 'uuid';
 
 export async function getMe(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -157,7 +159,20 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
       ? user.receivedReviews.reduce((sum, r) => sum + r.rating, 0) / user.receivedReviews.length
       : null;
 
-    res.json({ ...user, avgRating, reviewCount: user.receivedReviews.length });
+    // C10 (PF18): the public portfolio and career lists, exactly as PF16 and PF17 return them.
+    const [portfolioItems, { careers, careerSummary }] = await Promise.all([
+      listPortfolioItems(user.id),
+      listCareers(user.id),
+    ]);
+
+    res.json({
+      ...user,
+      avgRating,
+      reviewCount: user.receivedReviews.length,
+      portfolioItems,
+      careers,
+      careerSummary,
+    });
   } catch (err) {
     next(err);
   }
