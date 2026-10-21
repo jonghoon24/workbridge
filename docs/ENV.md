@@ -6,6 +6,8 @@
 | --- | --- |
 | `PORT` | 서버 포트 (기본 4000) |
 | `DATABASE_URL` | PostgreSQL 연결 문자열 (Supabase Transaction mode 포트 6543 권장) |
+| `DIRECT_URL` | pgbouncer를 거치지 않는 직접 연결 문자열. `prisma migrate`가 쓴다(`schema.prisma`의 `directUrl`). 로컬에서는 `DATABASE_URL`과 같게 둔다 |
+| `NODE_ENV` | `production`이면 `app.listen()`과 개발 작업 워커를 시작하지 않고(Vercel), CORS 기본 허용 목록에서 `http://localhost:3000`을 뺀다. 테스트는 `test` |
 | `JWT_ACCESS_SECRET` | Access Token 서명 시크릿 |
 | `JWT_REFRESH_SECRET` | Refresh Token 서명 시크릿 |
 | `JWT_ACCESS_EXPIRES_IN` | Access Token 만료 시간 (기본 15m) |
@@ -16,7 +18,8 @@
 | `OPENAI_API_KEY` | OpenAI API 키 |
 | `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키 (test_sk_...) |
 | `ALLOW_PAYMENT_BYPASS` | 데모/로컬에서 `true`로 설정하면 토스 결제창 없이 결제 완료 처리 가능. 실제 운영 서비스에서는 `false` 유지 |
-| `CLIENT_URL` | 프론트엔드 URL (기본 http://localhost:3000) |
+| `CLIENT_URL` | 프론트엔드 URL. CORS 허용 출처이자 OAuth 리디렉션 대상이고, 쉼표로 여러 개를 줄 수 있다. 메일 본문 링크의 기준 주소는 **첫 항목**에서 끝의 `/`를 뗀 값이다(비어 있으면 `http://localhost:3000`, BEHAVIOR.md NC1·NC13). 비어 있으면 OAuth 리디렉션이 `undefined/…`가 된다(Q20) |
+| `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 개발 환경에서는 `http://localhost:3000`이 항상 허용된다 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL |
 | `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...) |
 | `LOG_LEVEL` | 로그 레벨 `debug`/`info`/`warn`/`error`/`silent` (기본 `info`). JSON 한 줄씩 출력하며 `error`만 stderr로 간다. 테스트는 `error` |
@@ -36,6 +39,7 @@
 | 변수 | 설명 |
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | 백엔드 API URL (기본 http://localhost:4000) |
+| `API_URL` | 서버 쪽(Next 프록시 라우트와 SSR)에서만 쓰는 백엔드 URL. 있으면 `NEXT_PUBLIC_API_URL`보다 먼저 쓴다(선택) |
 | `NEXT_PUBLIC_TOSS_CLIENT_KEY` | 토스페이먼츠 클라이언트 키 (test_ck_...) |
 | `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` | 데모/로컬에서 `true`로 설정하면 결제 페이지에 개발용 결제 완료 버튼 표시. 실제 운영 서비스에서는 `false` 유지 |
 
@@ -60,7 +64,7 @@
 
 ### 결제 우회 테스트
 
-실제 결제창을 사용할 수 없는 데모/로컬 환경에서는 서버 `.env`의 `ALLOW_PAYMENT_BYPASS=true`와 클라이언트 `.env.local`의 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true`를 함께 설정합니다. 결제 페이지에서 "개발용 결제 완료 처리"를 누르면 서버가 개발용 완료 결제 레코드를 만들고, 이후 계약 상세 화면에서 기존 "프로젝트 완료 처리" 버튼을 눌러 리뷰 작성 플로우를 확인할 수 있습니다. 실제 운영 서비스에서는 두 값을 모두 `false`로 유지합니다.
+실제 결제창을 사용할 수 없는 데모/로컬 환경에서는 서버 `.env`의 `ALLOW_PAYMENT_BYPASS=true`와 클라이언트 `.env.local`의 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true`를 함께 설정합니다. 결제 페이지에서 "개발용 결제 완료 처리"를 누르면 서버가 그 마일스톤의 개발용 완료 결제 레코드를 만들고 마일스톤을 결제 완료(`FUNDED`)로 바꿉니다(`POST /api/payments/dev-complete`, 마일스톤 순서대로). 이후 프리랜서가 산출물을 제출하고 의뢰인이 승인하면, 마지막 마일스톤 승인 때 계약이 자동으로 완료되어 리뷰를 쓸 수 있습니다. 실제 운영 서비스에서는 두 값을 모두 `false`로 유지합니다.
 
 ### OpenAI
 
