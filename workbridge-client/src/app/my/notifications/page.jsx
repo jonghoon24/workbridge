@@ -17,6 +17,38 @@ function formatDate(value) {
   });
 }
 
+// 알림 type별 분류 라벨(BEHAVIOR.md Notifications 표, 19종). 이동할 화면은 서버가 준 href를 그대로 쓴다.
+const TYPE_CATEGORIES = {
+  APPLICATION_CREATED: '지원',
+  APPLICATION_ACCEPTED: '지원',
+  APPLICATION_REJECTED: '지원',
+  PROJECT_STATUS_CHANGED: '프로젝트',
+  CONTRACT_ACTIVATED: '계약',
+  CONTRACT_COMPLETED: '계약',
+  MILESTONE_PLAN_UPDATED: '마일스톤',
+  MILESTONE_FUNDED: '마일스톤',
+  MILESTONE_SUBMITTED: '마일스톤',
+  MILESTONE_REVISION_REQUESTED: '마일스톤',
+  MILESTONE_APPROVED: '마일스톤',
+  MILESTONE_AUTO_APPROVED: '마일스톤',
+  MILESTONE_AUTO_APPROVE_REMINDER: '마일스톤',
+  MILESTONE_DUE_SOON: '마일스톤',
+  MILESTONE_OVERDUE: '마일스톤',
+  SETTLEMENT_SCHEDULED: '정산',
+  SETTLEMENT_PAID: '정산',
+  SETTLEMENT_ON_HOLD: '정산',
+  SETTLEMENT_FAILED: '정산',
+};
+
+// 놓치면 돈이나 기한에 영향이 있는 알림은 강조한다.
+const URGENT_TYPES = new Set([
+  'MILESTONE_AUTO_APPROVE_REMINDER',
+  'MILESTONE_OVERDUE',
+  'MILESTONE_REVISION_REQUESTED',
+  'SETTLEMENT_ON_HOLD',
+  'SETTLEMENT_FAILED',
+]);
+
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -79,7 +111,7 @@ export default function NotificationsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">알림</h1>
-          <p className="text-gray-600 mt-1">지원 현황과 프로젝트 변경 사항을 확인하세요</p>
+          <p className="text-gray-600 mt-1">지원, 계약, 마일스톤, 정산 소식을 확인하세요</p>
         </div>
         <Button
           variant="secondary"
@@ -116,6 +148,17 @@ export default function NotificationsPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       {unread && <span className="h-2 w-2 rounded-full bg-primary-600" />}
+                      {TYPE_CATEGORIES[notification.type] && (
+                        <span
+                          className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            URGENT_TYPES.has(notification.type)
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {TYPE_CATEGORIES[notification.type]}
+                        </span>
+                      )}
                       <h2 className="font-semibold text-gray-900">{notification.title}</h2>
                     </div>
                     <p className="text-sm text-gray-700">{notification.message}</p>

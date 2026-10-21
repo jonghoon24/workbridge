@@ -10,6 +10,9 @@ const variants = {
   PENDING: 'bg-yellow-100 text-yellow-800',
   ACCEPTED: 'bg-green-100 text-green-800',
   REJECTED: 'bg-red-100 text-red-800',
+  ACTIVE: 'bg-blue-100 text-blue-800',
+  FAILED: 'bg-red-100 text-red-800',
+  REFUNDED: 'bg-gray-100 text-gray-800',
   default: 'bg-gray-100 text-gray-700',
 };
 
@@ -23,6 +26,9 @@ const statusLabels = {
   PENDING: '검토중',
   ACCEPTED: '수락됨',
   REJECTED: '거절됨',
+  ACTIVE: '진행중',
+  FAILED: '실패',
+  REFUNDED: '환불됨',
 };
 
 export default function Badge({ children, variant = 'default', className = '' }) {

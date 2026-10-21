@@ -121,8 +121,22 @@ export default function Header() {
                         />
                       )}
                     </Link>
+                    <Link
+                      href="/my/contracts"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      내 계약
+                    </Link>
                     {user.role === 'FREELANCER' && (
                       <>
+                        <Link
+                          href="/settlements"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          정산
+                        </Link>
                         <Link
                           href="/my/bookmarks"
                           className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
