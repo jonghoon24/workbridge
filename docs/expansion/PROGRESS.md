@@ -6,7 +6,7 @@
 |---|---|---|
 | 계획 | 완료 | PLAN.md 1차 검토(reviews/PLAN_REVIEW_1.md) 24건 반영 |
 | P0 인프라 | 완료 | c9d04b4. 검증 1차 반영(reviews/P0_REVIEW_1.md). 서버 테스트 1151 통과, it.fails 63(변화 없음), todo 1. 결정은 DECISIONS.md "P0" |
-| P1 마일스톤과 정산 | 대기 | |
+| P1 마일스톤과 정산 | 서버 완료 (f1c3e09), 클라이언트 진행 중 | 명세 1c560e1·29a8a1a, 스키마 f10f7af, 서버 91e8f3a·ed9d7e4·f1c3e09. 서버 테스트 1465 통과, it.fails 61(63에서 D12 PATCH 행과 D21 completeContract 행이 PLAN §1.6대로 빠짐), todo 1. 결정은 DECISIONS.md "P1 (구현)" |
 | P2-S 메시지·프로필 명세와 스키마 | 대기 | |
 | P2A 메시지 | 대기 | P2B와 병렬 |
 | P2B 프로필 확장 | 대기 | P2A와 병렬 |

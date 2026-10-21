@@ -87,3 +87,17 @@
 - 기한 지난 뒤 결제된 마일스톤의 즉시 `MILESTONE_OVERDUE`는 의도된 동작이다(M16). 지급 재시도 간격 24시간은 ON_HOLD 재예약이 끼면 길어질 수 있다고 적었다(M22). 목록의 `counterpart`는 소프트 삭제돼도 그대로 보인다(Q11 범위, CT3).
 - authorization 테스트의 Q10 벡터 `GET /api/contracts`는 `GET /api/users`로 바꾼다(PLAN §1.6). 같은 "마운트된 라우터, 인덱스 라우트 없음" 범주다.
 - 새 규칙 식별자는 번호를 이어 붙인다: `MS22`, `S17`, `PA7`. 기존 번호는 바꾸지 않았다.
+
+## P1 (구현)
+
+- 마이그레이션 이름은 오케스트레이터 지시대로 `expansion_milestones_settlement`(PLAN의 `…settlements`가 아님). 비대화형 환경에서는 `migrate dev`가 데이터 손실 경고에서 멈춰서 `prisma migrate diff --from-migrations … --to-schema-datamodel … --shadow-database-url …`로 SQL을 만든 뒤 백필을 손으로 넣었다. 적용 후 같은 diff가 drift 0을 확인한다.
+- 백필 검증은 개발 DB 사본에 소수 금액(2500000.5) PENDING 계약, FAILED 결제, 결제 없는 ACTIVE 계약을 더해 했다. 2500001로 반올림되고 FAILED 결제 금액도 맞춰진다.
+- 서비스 파일 하나(`milestones.service.ts`)가 계획·결제 반영·제출·승인을 모두 담아서 커밋을 단위별로 나누면 중간 커밋(f10f7af, 91e8f3a, ed9d7e4)은 단독으로 typecheck가 실패한다. 마지막 서버 커밋(f1c3e09)부터 green이다.
+- 계획 교체, 승인, 배치의 프리랜서별 트랜잭션은 `{ timeout: 15_000 }`을 준다(Prisma 기본 5초는 잠금 대기가 낀 동시성 테스트에서 빠듯하다).
+- 계약 row와 사용자 row 잠금은 명세 그대로 `FOR UPDATE`다. `FOR NO KEY UPDATE`가 더 가볍지만(FK 삽입을 막지 않는다) 동작 차이는 대기 시간뿐이라 명세 문구를 따랐다.
+- 배치가 새로 만든 정산에 붙일 항목이 경합으로 사라지면(다른 실행이 먼저 가져감) 빈 정산을 같은 트랜잭션에서 지운다.
+- 지급 provider는 `src/lib/payout/provider.ts`의 `setPayoutProvider()`로 바꾼다(테스트 주입). 기본 `LogPayoutProvider`는 마스킹된 계좌만 로그에 남긴다.
+- `/api/settlements` 라우터는 `router.use`가 아니라 라우트마다 가드를 붙인다. `router.use`면 매칭되지 않는 하위 경로도 401이 되어 Q10 동작(HTML 404)이 바뀐다.
+- Phase 1 알림의 한국어 제목·본문은 `src/lib/notifications/templates.ts`에 있고, 테스트는 type·수신자·href만 단언한다.
+- 로컬 실행 확인에서 개발 `.env`의 Supabase가 더미라 첨부 업로드가 502가 된다. `.env`는 그대로 두고 로컬 스텁 + `SUPABASE_URL` 환경 변수로 확인했고, 그 방법과 정산 작업을 미래 시각으로 돌리는 방법을 run-workbridge 스킬 Gotchas에 적었다.
+- PA4 재예약 테스트는 과거 주의 정산으로 만든다. 재예약 시각은 실제 시계 기준 "다음 수요일 10:00"이라, 고정된 미래 날짜의 정산이면 원래 지급 작업과 dedupeKey가 겹친다(실제 운영에서는 재예약이 항상 원래 지급 실행 이후라 겹치지 않는다).

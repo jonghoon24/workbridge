@@ -138,6 +138,21 @@ http://localhost:3000 and sign in with a seed account. `Ctrl-C` to stop each.
   browser to call `:4000` directly.
 - **Payment bypass is ON** here (`ALLOW_PAYMENT_BYPASS=true` both sides) so the
   contract→payment→review flow works without the Toss sandbox. Keep it `false` in prod.
+  Payments are per milestone: `POST /api/payments/dev-complete` takes `{ milestoneId }`,
+  and milestones must be funded in sequence order.
+- **Milestone file attachments 502 with the dummy Supabase keys.** Submissions upload to
+  Supabase Storage. To exercise uploads locally, run a stub that accepts any upload and
+  start the server with `SUPABASE_URL` pointing at it (env beats `.env`, which stays as is):
+  ```bash
+  node -e "require('http').createServer((q,r)=>{q.resume();q.on('end',()=>{r.writeHead(200,{'content-type':'application/json'});r.end('{\"Key\":\"stub\"}')})}).listen(54321)" &
+  (cd workbridge-server && SUPABASE_URL=http://localhost:54321 npm run dev)
+  ```
+  The stored URLs then point at the stub and do not load in the browser.
+- **Settlements only move when jobs run.** The dev worker runs due jobs every 5 s, but the
+  weekly batch is due Monday 03:00 KST and payouts Wednesday 10:00 KST. To see them now,
+  call `runDueJobs({ now: <future date>, types: ['settlement.weeklyBatch', 'settlement.payout'] })`
+  from a `tsx` one-off script (run it twice: the batch enqueues the payout). Limit `types`,
+  or the lifecycle sweep will close every project whose deadline precedes that date.
 
 ## Troubleshooting
 
