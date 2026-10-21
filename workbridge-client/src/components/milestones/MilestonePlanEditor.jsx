@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import api from '@/lib/api';
 import Button from '@/components/ui/Button';
 import { formatKRW, kstToday, toKstDateInput } from '@/lib/format';
+import { describeServerError } from '@/lib/serverErrors';
 import { MILESTONE_LIMITS } from '@/constants/milestones';
 
 let rowKey = 0;
@@ -30,9 +31,9 @@ const FIELD_LABELS = {
 };
 
 // 서버 검증 메시지 `milestones.2.amount: …`를 "3번 마일스톤 금액: …"으로 바꿔 보여준다.
-function describeServerError(message) {
-  const match = /^milestones\.(\d+)\.(\w+): (.*)$/.exec(message || '');
-  if (!match) return message;
+function describeMilestoneField(message) {
+  const match = /^milestones\.(\d+)\.(\w+): (.*)$/.exec(message);
+  if (!match) return null;
   const [, index, field, rest] = match;
   return `${Number(index) + 1}번 마일스톤 ${FIELD_LABELS[field] || field}: ${rest}`;
 }
@@ -143,7 +144,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
       });
       onSaved?.(data, { signaturesReset: hasSignature });
     } catch (err) {
-      setError(describeServerError(err.response?.data?.error?.message) || '마일스톤 계획 저장에 실패했습니다');
+      setError(describeServerError(err, '마일스톤 계획 저장에 실패했습니다', { rewrite: describeMilestoneField }));
     } finally {
       setSaving(false);
     }

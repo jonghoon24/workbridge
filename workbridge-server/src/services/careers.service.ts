@@ -3,9 +3,9 @@ import type { Career, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { kstMonthIndex, kstMonthOrNull, kstMonthString, kstMonthToDate } from '../lib/time';
+import { lockUserRow } from '../lib/locks';
 import { CAREER_LIMITS, monthRangeIssue } from '../schemas/profile';
 import type { CareerCreateInput, CareerPatchInput } from '../schemas/profile';
-import { lockUserRow } from './portfolio.service';
 
 /** BEHAVIOR.md "Portfolio and careers", PF4–PF6, PF13–PF15, PF17. */
 

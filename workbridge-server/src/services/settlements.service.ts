@@ -6,6 +6,7 @@ import { logger } from '../lib/logger';
 import { DAY_MS, HOUR_MS, nextKstWeekday } from '../lib/time';
 import { sumBreakdowns } from '../lib/money';
 import { bankName, maskAccountNumber } from '../lib/banks';
+import { lockUserRow } from '../lib/locks';
 import { notifyRecipients } from '../lib/notifications/notify';
 import { renderTemplate } from '../lib/notifications/templates';
 import type { TemplateType, TemplateVars } from '../lib/notifications/templates';
@@ -220,7 +221,7 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
 
   const decision = await prisma.$transaction(async (tx) => {
     // S17: serialize with payout-account writes on the freelancer's user row.
-    await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${settlement.freelancerId} FOR UPDATE`;
+    await lockUserRow(tx, settlement.freelancerId);
     const freelancer = await tx.user.findUniqueOrThrow({
       where: { id: settlement.freelancerId },
       select: { id: true, deletedAt: true },

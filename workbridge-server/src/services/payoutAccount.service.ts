@@ -3,6 +3,7 @@ import type { PayoutAccount } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { bankName, maskAccountNumber } from '../lib/banks';
+import { lockUserRow } from '../lib/locks';
 import type { PrismaTransactionClient } from '../types/index';
 import { rescheduleHeldSettlements } from './settlements.service';
 
@@ -31,7 +32,7 @@ export function holderMatches(holderName: string, userName: string): boolean {
 
 /** PA7: the user-row lock shared with the payout decision (S17), then PA3/PA5's check. */
 async function lockAndAssertNotProcessing(tx: PrismaTransactionClient, userId: string): Promise<void> {
-  await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+  await lockUserRow(tx, userId);
   const processing = await tx.settlement.count({ where: { freelancerId: userId, status: 'PROCESSING' } });
   if (processing > 0) throw new AppError(LOCKED, 409);
 }

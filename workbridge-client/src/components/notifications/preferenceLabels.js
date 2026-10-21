@@ -1,4 +1,5 @@
 // 알림 설정(BEHAVIOR.md NC2, NC5)의 한국어 라벨. 서버는 type과 category 코드만 준다.
+import { describeServerError } from '@/lib/serverErrors';
 
 export const CATEGORY_LABELS = {
   APPLICATION: '지원',
@@ -48,8 +49,5 @@ const SERVER_ERROR_PATTERNS = [
 ];
 
 export function describePreferenceError(err, fallback) {
-  const message = err.response?.data?.error?.message;
-  if (!message) return fallback;
-  const match = SERVER_ERROR_PATTERNS.find(([pattern]) => pattern.test(message));
-  return match ? match[1] : fallback;
+  return describeServerError(err, fallback, { patterns: SERVER_ERROR_PATTERNS, passthrough: false });
 }

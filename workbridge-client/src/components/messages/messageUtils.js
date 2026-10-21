@@ -1,5 +1,6 @@
 // 메시지 화면 전용 상수와 헬퍼. 공용 lib/format.js는 읽기만 한다(P2 소유권 규칙).
 import { formatDate, toKstDateInput } from '@/lib/format';
+import { describeServerError } from '@/lib/serverErrors';
 
 // BEHAVIOR.md MG1. 화면 검사는 안내용이고 최종 판단은 서버가 한다.
 export const MESSAGE_LIMITS = {
@@ -43,14 +44,11 @@ const ERROR_TEXT = {
 };
 
 export function messageErrorText(err, fallback) {
-  const status = err?.response?.status;
-  const message = err?.response?.data?.error?.message;
-  if (status === 413) return '파일은 개당 10MB 이하여야 합니다.';
-  if (message && ERROR_TEXT[message]) return ERROR_TEXT[message];
-  if (message?.startsWith('Unsupported file type')) {
-    return '지원하지 않는 파일 형식입니다. 이미지, PDF, ZIP, 텍스트, 오피스 문서, HWP만 보낼 수 있습니다.';
-  }
-  return message || fallback;
+  return describeServerError(err, fallback, {
+    status: { 413: '파일은 개당 10MB 이하여야 합니다.' },
+    messages: ERROR_TEXT,
+    patterns: [[/^Unsupported file type/, '지원하지 않는 파일 형식입니다. 이미지, PDF, ZIP, 텍스트, 오피스 문서, HWP만 보낼 수 있습니다.']],
+  });
 }
 
 // 메시지 옆 시각: 오늘이면 "오후 3:05", 아니면 날짜까지.

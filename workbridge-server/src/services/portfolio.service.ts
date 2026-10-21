@@ -3,10 +3,10 @@ import type { PortfolioItem, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { kstMonthOrNull, kstMonthToDate } from '../lib/time';
+import { lockUserRow } from '../lib/locks';
 import { storeUploadedFile } from '../middlewares/attachmentUpload';
 import { monthRangeIssue, PORTFOLIO_LIMITS } from '../schemas/profile';
 import type { PortfolioCreateInput, PortfolioPatchInput } from '../schemas/profile';
-import type { PrismaTransactionClient } from '../types/index';
 
 /** BEHAVIOR.md "Portfolio and careers", PF1–PF12, PF16. */
 
@@ -38,14 +38,6 @@ export function serializePortfolioItem(item: PortfolioItem) {
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
-}
-
-/**
- * PF8: the caller's `User` row lock (the one PA7 and S17 take), always a transaction's first
- * statement. Serializes this user's portfolio creates, reorders and deletes, and career creates.
- */
-export async function lockUserRow(tx: PrismaTransactionClient, userId: string): Promise<void> {
-  await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
 }
 
 /** `YYYY-MM` (validated) → the stored instant; `null` stays `null`. */

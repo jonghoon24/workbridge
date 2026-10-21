@@ -1,11 +1,10 @@
-// 포트폴리오·경력 화면의 표시 헬퍼와 서버 오류 번역. lib/format.js는 P2에서 읽기 전용이라
-// 프로필 확장에 필요한 것만 여기에 둔다.
-
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+// 포트폴리오·경력 화면의 표시 헬퍼와 서버 오류 번역.
+import { kstToday } from '@/lib/format';
+import { describeServerError } from '@/lib/serverErrors';
 
 // 서버가 "이번 달"을 KST로 판정하므로(BEHAVIOR.md PF2) 월 입력의 max도 KST 기준이다.
 export function currentKstMonth() {
-  return new Date(Date.now() + KST_OFFSET_MS).toISOString().slice(0, 7);
+  return kstToday().slice(0, 7);
 }
 
 // '2025-03' → '2025.03'
@@ -71,9 +70,8 @@ const SERVER_ERROR_MESSAGES = {
 };
 
 export function describeProfileError(err, fallback) {
-  const message = err?.response?.data?.error?.message;
-  if (!message) return fallback;
-  const bare = message.replace(/^[A-Za-z.0-9]+: /, '');
-  if (bare.startsWith('Unsupported file type')) return '이미지 파일만 올릴 수 있습니다.';
-  return SERVER_ERROR_MESSAGES[bare] || SERVER_ERROR_MESSAGES[message] || message;
+  return describeServerError(err, fallback, {
+    messages: SERVER_ERROR_MESSAGES,
+    patterns: [[/^Unsupported file type/, '이미지 파일만 올릴 수 있습니다.']],
+  });
 }
