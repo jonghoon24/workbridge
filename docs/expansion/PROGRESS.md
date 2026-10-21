@@ -1,5 +1,17 @@
 # 확장 진행 상태
 
+## 결과
+
+- **무엇을 만들었나**: 기존 프리랜서 매칭 플랫폼에 네 도메인을 더했다. P1 마일스톤 단위 결제·자동 승인·주간 정산과 지급 계좌, P2A 계약별 대화방(첨부, 읽음, 미확인 다이제스트), P2B 포트폴리오·경력·스킬 기반 추천·프로필 완성도, P3 알림 설정과 로그 전용 이메일. 인프라(P0)로 Postgres 작업 큐, 구조화 로깅과 요청 ID, zod 검증(신규 도메인만), 레이트 리밋을 넣었다.
+- **규모**: 제품 코드 7,464줄 → 19,231줄(서버 `src` 9,355, 클라이언트 `src` 9,876). 테스트 22,893줄, 시드 1,709줄. 모델 9 → 25개, 엔드포인트 40 → 76개(+`/health`).
+- **테스트**: 서버 2019 통과 / `it.fails` 62 / todo 1(두 번 동일). 클라이언트는 build·lint(기존 경고 3개)가 검사다.
+- **명세**: `docs/BEHAVIOR.md`가 기준. 알려진 불일치 D1–D22는 표에 남기고 `it.fails`로 고정했다(D20은 `it.todo`). 사람이 정할 열린 질문은 Q5–Q26.
+- **의도적으로 남긴 부채**: 금액 `Float`, 스킬 `String[]`, GET이 쓰는 지연 스윕, 서비스 레이어·zod·`requireActiveUser`가 신규 도메인에만 있는 혼재, 기존 알림 문구 인라인(CLAUDE.md "Expansion rules").
+- **과정**: 7a96fcd 이후 커밋 67개(병합 포함). 단계마다 계획 → 검토 → 구현 → 검증 → 지적 반영. 검증 기록은 `reviews/`, 결정은 `DECISIONS.md`. 최종 검증(reviews/FINAL_REVIEW_1.md) 판정 "고친 뒤 준비 완료", 지적 12건 모두 반영.
+- **운영 주의**: 운영(Vercel)에는 작업 큐 워커가 없어 외부 스케줄러가 붙기 전까지 자동 승인·정산·이메일이 돌지 않는다(`docs/DEPLOYMENT.md`). 실제 메일 서비스도 연결돼 있지 않다.
+
+## 단계
+
 단계는 PLAN.md §3을 따른다. 각 단계는 계획 → 계획 검토 → 구현 → 검증 → 지적 반영 → 커밋 순으로 간다. 완료한 단계는 마지막 커밋 해시를 적는다.
 
 | 단계 | 상태 | 비고 |
@@ -11,8 +23,8 @@
 | P2A 메시지 | 완료 | cfa2824. P2B 뒤에 병합. P2 검증 1차(reviews/P2_REVIEW_1.md, 병합 트리 bc1d263): 판정 "P3 시작 가능", 블로커 없음, 1901 통과 / 62 핀 / 1 todo(두 번 동일) |
 | P2B 프로필 확장 | 완료 | 559a1ba. 서버·클라이언트 모두 worktree에서 구현, 2A보다 먼저 병합. 병합 트리 1716 통과 / 62 핀 / 1 todo. 통합 검증은 2A 병합 뒤 P2 전체로. P2 검증 1차(reviews/P2_REVIEW_1.md)의 지적 1·2·3·4·6·7 반영, 5는 후속 과제 |
 | P3 알림 채널 | 완료 | 9e0f462. 명세·스키마(P3-S)는 P2 구현과 병렬로 작성·검토 후 bc1d263에 병합, 구현은 5242573에 병합. 검증 1차 반영(reviews/P3_REVIEW_1.md: 판정 "P4 시작 가능", 블로커 없음). 병합 직후 2014는 `guardedMutations` 중복 행 1개를 센 수라 실제는 2013 통과 / 62 핀 / 1 todo. 지적 반영 뒤 2015(+NC13 링크 기준 테스트, +`guardedMutations` 라벨 중복 검사) |
-| P4 마무리 | 진행 중 | 코드 정리(main checkout): P3 지적 1–4 9e0f462, 헬퍼 통합 d1f5fec(서버 `lib/locks.ts` `lockUserRow`, 클라이언트 `lib/serverErrors.js` `describeServerError`, `profileFormat.js`가 `lib/format.js`의 `kstToday` 사용), D13 flake 32b2042(Payment 테이블 SHARE 잠금으로 경합 고정, payments.test.ts 10회 중 10회 통과), 헤더 "추천 프로젝트"·`/payments` 보호 dffa804. 서버 테스트 2015 통과 / 62 핀 / 1 todo(두 번 동일). 시드·문서는 별도 worktree(p4)에서 진행, 그 뒤 최종 검증(PLAN §5.3) |
+| P4 마무리 | 완료 | 시드·문서 병합 2877404, 최종 검증 반영 5f6855f·0b6f8b1·2fa4c51·150b5a4와 이 기록. 코드 정리: P3 지적 1–4 9e0f462, 헬퍼 통합 d1f5fec(`lib/locks.ts` `lockUserRow`, 클라이언트 `lib/serverErrors.js`), D13 flake 32b2042(Payment 테이블 SHARE 잠금으로 경합 고정, 10회 중 10회 통과), 헤더 "추천 프로젝트"·`/payments` 보호 dffa804. 최종 검증 1차(reviews/FINAL_REVIEW_1.md, 2877404 기준 2015 / 62 / 1, 로컬과 UTC 동일) 지적 12건 반영 뒤 2019 통과 / 62 핀 / 1 todo(두 번 동일, +S17·MS9·PY8 경합 테스트, +NC15). 줄 수(PLAN §5.3-4): 위 "결과" |
 
 ## 후속 과제
 
-- P3 검증 1차 지적 2의 문서 절반: `docs/ENV.md`의 `CLIENT_URL`에 "쉼표 목록이면 첫 항목을 메일 링크 기준으로 쓴다"를 더한다. ENV.md는 P4 시드·문서 워커 소유라 코드 정리에서 손대지 않았다.
+없다. 남은 경합 테스트 공백(S5, S9, PA7)은 BEHAVIOR.md "Suggested test priority"에 적었다.
