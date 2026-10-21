@@ -25,6 +25,7 @@ import { errorHandler } from './middlewares/errorHandler';
 import { accessLog } from './middlewares/accessLog';
 import { bindRequestContext, requestId } from './middlewares/requestId';
 import { startJobWorker } from './jobs/worker';
+import { warnIfUnsupportedMailProvider } from './lib/mail/provider';
 
 const app = express();
 
@@ -61,6 +62,9 @@ const hasAllowedOrigins = allowedOrigins.size > 0;
 if (isProduction && !hasAllowedOrigins) {
   logger.warn('CLIENT_URL or CORS_ORIGINS must be set for browser CORS requests.');
 }
+
+// NC14: a set but unsupported MAIL_PROVIDER is a `warn` line once per process, never a throw.
+warnIfUnsupportedMailProvider();
 
 // First, so every response — CORS rejections and body-parse errors included — carries
 // `X-Request-Id` and gets an access-log line.

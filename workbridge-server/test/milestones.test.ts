@@ -171,7 +171,8 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect(stored.submittedAt!.getTime()).toBeGreaterThanOrEqual(before);
     expect(stored.submittedAt!.getTime()).toBeLessThanOrEqual(after);
 
-    const jobs = await prisma.job.findMany({ orderBy: { runAt: 'asc' } });
+    // The client's MILESTONE_SUBMITTED email job is asserted in email.test.ts (NC9).
+    const jobs = await prisma.job.findMany({ where: { type: { not: 'notification.email' } }, orderBy: { runAt: 'asc' } });
     expect(jobs.map((j) => [j.type, j.dedupeKey, j.payload])).toEqual([
       ['milestone.autoApproveReminder', `milestone.autoApproveReminder:${milestone.id}:1`, { milestoneId: milestone.id, round: 1 }],
       ['milestone.autoApprove', `milestone.autoApprove:${milestone.id}:1`, { milestoneId: milestone.id, round: 1 }],
@@ -228,7 +229,7 @@ describe('POST /api/milestones/:id/submissions', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.submission.round).toBe(2);
-    const keys = (await prisma.job.findMany()).map((j) => j.dedupeKey).sort();
+    const keys = (await prisma.job.findMany({ where: { type: { not: 'notification.email' } } })).map((j) => j.dedupeKey).sort();
     expect(keys).toEqual([
       `milestone.autoApprove:${milestone.id}:2`,
       `milestone.autoApproveReminder:${milestone.id}:2`,
@@ -307,7 +308,7 @@ describe('POST /api/milestones/:id/submissions', () => {
 
     const stored = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
     expect(stored.autoApproveAt!.getTime() - stored.submittedAt!.getTime()).toBe(2 * DAY_MS);
-    expect((await prisma.job.findMany()).map((j) => j.type)).toEqual(['milestone.autoApprove']);
+    expect((await prisma.job.findMany({ where: { type: { not: 'notification.email' } } })).map((j) => j.type)).toEqual(['milestone.autoApprove']);
   });
 
   it.each(['0', '-3', '1.5', 'seven'])('falls back to 7 days for MILESTONE_AUTO_APPROVE_DAYS=%s [M14]', async (value) => {

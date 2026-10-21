@@ -82,6 +82,10 @@ export const env = {
   get JOB_POLL_INTERVAL_MS(): string {
     return withDefault('JOB_POLL_INTERVAL_MS', '5000');
   },
+  /** The `From` of every email (NC1). */
+  get MAIL_FROM(): string {
+    return withDefault('MAIL_FROM', 'WorkBridge <no-reply@workbridge.local>');
+  },
 
   // --- Optional passthrough: these call sites tolerate `undefined` ----------
   get NODE_ENV(): string | undefined {
@@ -113,6 +117,13 @@ export const env = {
   /** Shared secret for `POST /api/internal/jobs/run`. Unset → the endpoint 404s. */
   get INTERNAL_JOB_TOKEN(): string | undefined {
     return process.env.INTERNAL_JOB_TOKEN;
+  },
+  /**
+   * Which mail provider sends email (NC14). Unset, empty or `log` → the log provider; any other
+   * value is unsupported and fails the sends that need it. Read at every send.
+   */
+  get MAIL_PROVIDER(): string | undefined {
+    return process.env.MAIL_PROVIDER;
   },
   /** The development worker starts unless this is exactly `'false'`. */
   get JOB_WORKER_ENABLED(): string | undefined {

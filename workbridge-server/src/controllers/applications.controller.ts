@@ -10,6 +10,7 @@ import {
 } from '../lib/projectLifecycle';
 import { createDefaultMilestone, defaultMilestoneDueDate } from '../services/milestones.service';
 import { openContractConversation } from '../services/messaging.service';
+import { notify, notifyMany } from '../lib/notifications/notify';
 import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -76,14 +77,14 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
           },
         });
 
-        await tx.notification.create({
-          data: {
-            userId: project.clientId,
-            type: 'APPLICATION_CREATED',
-            title: '새 지원자가 도착했습니다',
-            message: `${applicantName}님이 '${project.title}' 프로젝트에 지원했습니다.`,
-            href: `/projects/${projectId}/applications`,
-          },
+        // The wording stays inline here (pre-existing type); `notify()` applies the channel
+        // policy and preferences (NC9). The client is notified even when soft-deleted (Q11).
+        await notify(tx, {
+          userId: project.clientId,
+          type: 'APPLICATION_CREATED',
+          title: '새 지원자가 도착했습니다',
+          message: `${applicantName}님이 '${project.title}' 프로젝트에 지원했습니다.`,
+          href: `/projects/${projectId}/applications`,
         });
 
         return created;
@@ -228,27 +229,21 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
             data: { status: 'CLOSED' },
           });
 
-          await tx.notification.create({
-            data: {
-              userId: application.freelancerId,
-              type: 'APPLICATION_ACCEPTED',
-              title: '지원이 수락되었습니다',
-              message: `'${project.title}' 프로젝트 지원이 수락되었습니다. 계약서를 확인해주세요.`,
-              href: `/contracts/${contract.id}`,
-            },
-          });
+          await notify(tx, {
+            userId: application.freelancerId,
+            type: 'APPLICATION_ACCEPTED',
+            title: '지원이 수락되었습니다',
+            message: `'${project.title}' 프로젝트 지원이 수락되었습니다. 계약서를 확인해주세요.`,
+            href: `/contracts/${contract.id}`,
+          }, now);
 
-          if (rejectedApplications.length > 0) {
-            await tx.notification.createMany({
-              data: rejectedApplications.map((rejected) => ({
-                userId: rejected.freelancerId,
-                type: 'APPLICATION_REJECTED',
-                title: '지원 결과가 업데이트되었습니다',
-                message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
-                href: '/my/applications',
-              })),
-            });
-          }
+          await notifyMany(tx, rejectedApplications.map((rejected) => ({
+            userId: rejected.freelancerId,
+            type: 'APPLICATION_REJECTED' as const,
+            title: '지원 결과가 업데이트되었습니다',
+            message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
+            href: '/my/applications',
+          })), now);
 
           // 7. The conversation, its participants and `CONTRACT_CREATED` — last, so the
           // conversation lock is the last one taken (MG3, MG7).
@@ -275,14 +270,12 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
           data: { status: 'REJECTED' },
         });
 
-        await tx.notification.create({
-          data: {
-            userId: application.freelancerId,
-            type: 'APPLICATION_REJECTED',
-            title: '지원 결과가 업데이트되었습니다',
-            message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
-            href: '/my/applications',
-          },
+        await notify(tx, {
+          userId: application.freelancerId,
+          type: 'APPLICATION_REJECTED',
+          title: '지원 결과가 업데이트되었습니다',
+          message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
+          href: '/my/applications',
         });
 
         return rejected;

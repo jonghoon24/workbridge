@@ -1,7 +1,9 @@
+import { env } from '../../env';
 import type { NotificationType } from './types';
 
 /**
- * Wording and links of the Phase 1 notification types (BEHAVIOR.md "Notifications" table).
+ * Wording and links of the Phase 1 notification types (BEHAVIOR.md "Notifications" table) and of
+ * the Phase 3 email-only digest (NC16), plus the email rendering every type shares (NC13).
  * The four pre-existing types keep their strings inline in the old controllers — intended debt.
  */
 
@@ -19,6 +21,9 @@ export interface TemplateVars {
   /** Whole won, pre-formatted by the caller is not required — formatted here. */
   amount?: number;
   reason?: string;
+  conversationId?: string;
+  /** MG8's unread count, for the digest. */
+  unreadCount?: number;
 }
 
 export interface RenderedNotification {
@@ -109,8 +114,39 @@ const TEMPLATES: Record<TemplateType, (v: TemplateVars) => RenderedNotification>
     message: `${won(v.amount)} 지급이 반복해서 실패했습니다. 고객센터로 문의해주세요.`,
     href: settlementHref(v),
   }),
+  MESSAGE_UNREAD_DIGEST: (v) => ({
+    title: '읽지 않은 메시지가 있습니다',
+    message: `'${v.projectTitle}' 대화방에 읽지 않은 메시지가 ${v.unreadCount ?? 0}개 있습니다.`,
+    href: `/messages/${v.conversationId}`,
+  }),
 };
 
 export function renderTemplate(type: TemplateType, vars: TemplateVars): RenderedNotification {
   return TEMPLATES[type](vars);
+}
+
+export interface RenderedEmail {
+  subject: string;
+  body: string;
+}
+
+/**
+ * NC1: `CLIENT_URL` without a trailing `/`. `index.ts` also accepts a comma-separated list there
+ * (CORS origins); links use the first entry.
+ */
+function linkBase(): string {
+  const first = (env.CLIENT_URL ?? '').split(',')[0].trim();
+  return (first || 'http://localhost:3000').replace(/\/+$/, '');
+}
+
+/**
+ * NC13 — plain-text Korean email for one notification, rendered once by `notify()` and stored on
+ * the `EmailDelivery`. Tests assert the delivery's type, recipient and context, never this text.
+ */
+export function renderEmail(input: { title: string; message: string; href?: string | null }): RenderedEmail {
+  const base = linkBase();
+  const lines = [input.message, ''];
+  if (input.href) lines.push(`바로가기: ${base}${input.href}`, '');
+  lines.push(`알림 설정: ${base}/my/notifications/settings`);
+  return { subject: `[WorkBridge] ${input.title}`, body: lines.join('\n') };
 }

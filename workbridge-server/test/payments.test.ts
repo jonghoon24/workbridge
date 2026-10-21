@@ -929,7 +929,8 @@ describe('POST /api/payments/confirm', () => {
       href: `/contracts/${milestone.contractId}/milestones/${milestone.id}`,
     });
 
-    const jobs = await prisma.job.findMany({ orderBy: { runAt: 'asc' } });
+    // The freelancer's MILESTONE_FUNDED email job is asserted in email.test.ts (NC9).
+    const jobs = await prisma.job.findMany({ where: { type: { not: 'notification.email' } }, orderBy: { runAt: 'asc' } });
     expect(jobs.map((j) => j.type)).toEqual(['milestone.dueSoon', 'milestone.overdue']);
     expect(jobs[0].runAt.getTime()).toBe(milestone.dueDate.getTime() - 24 * 3600_000);
     expect(jobs[1].runAt.getTime()).toBe(milestone.dueDate.getTime());
@@ -952,7 +953,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, CONTRACT_AMOUNT));
 
     expect(res.status).toBe(200);
-    const jobs = await prisma.job.findMany();
+    const jobs = await prisma.job.findMany({ where: { type: { not: 'notification.email' } } });
     expect(jobs.map((j) => j.type)).toEqual(['milestone.overdue']);
   });
 

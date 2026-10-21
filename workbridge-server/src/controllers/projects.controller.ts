@@ -4,6 +4,7 @@ import type { Prisma, ProjectStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import openai from '../lib/openai';
 import { AppError } from '../lib/errors';
+import { notifyMany } from '../lib/notifications/notify';
 import {
   closeExpiredOpenProjects,
   getProjectStatusForRecruitmentStart,
@@ -450,15 +451,15 @@ export async function updateProjectStatus(req: AuthedRequest, res: Response, nex
 
       const recipientIds = [...new Set(project.applications.map((application) => application.freelancerId))];
       if (status === 'CLOSED' && recipientIds.length > 0) {
-        await tx.notification.createMany({
-          data: recipientIds.map((userId) => ({
-            userId,
-            type: 'PROJECT_STATUS_CHANGED',
-            title: '프로젝트 모집이 마감되었습니다',
-            message: `'${project.title}' 프로젝트 모집이 마감되었습니다.`,
-            href: '/my/applications',
-          })),
-        });
+        // Inline wording (pre-existing type), routed through `notifyMany()` for preferences and
+        // email (NC9).
+        await notifyMany(tx, recipientIds.map((userId) => ({
+          userId,
+          type: 'PROJECT_STATUS_CHANGED' as const,
+          title: '프로젝트 모집이 마감되었습니다',
+          message: `'${project.title}' 프로젝트 모집이 마감되었습니다.`,
+          href: '/my/applications',
+        })));
       }
 
       return changedProject;

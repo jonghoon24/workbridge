@@ -21,6 +21,8 @@ export interface JobPayloads {
   'settlement.payout': { settlementId: string; scheduledPayoutAt: string };
   // Phase 2A (BEHAVIOR.md J8). No dedupeKey: the enqueue rule matches PENDING jobs on the payload.
   'message.unreadDigest': { conversationId: string; recipientId: string };
+  // Phase 3 (BEHAVIOR.md J9). dedupeKey `notification.email:<deliveryId>`, enqueued by notify().
+  'notification.email': { deliveryId: string };
 }
 
 export type JobType = keyof JobPayloads;

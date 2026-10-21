@@ -38,21 +38,21 @@ export const milestoneAutoApproveReminder: JobHandler<'milestone.autoApproveRemi
   if (milestone.status !== 'SUBMITTED') return;
   if ((await latestRound(milestone.id)) !== payload.round) return;
   if (!milestone.autoApproveAt || milestone.autoApproveAt <= now) return;
-  await sendMilestoneNotice(milestone, 'MILESTONE_AUTO_APPROVE_REMINDER');
+  await sendMilestoneNotice(milestone, 'MILESTONE_AUTO_APPROVE_REMINDER', now);
 };
 
 const IN_PROGRESS = new Set(['FUNDED', 'REVISION_REQUESTED']);
 
 /** J4. */
-export const milestoneDueSoon: JobHandler<'milestone.dueSoon'> = async ({ payload }) => {
+export const milestoneDueSoon: JobHandler<'milestone.dueSoon'> = async ({ payload, now }) => {
   const milestone = await load(payload.milestoneId);
   if (milestone.contract.project.deletedAt || !IN_PROGRESS.has(milestone.status)) return;
-  await sendMilestoneNotice(milestone, 'MILESTONE_DUE_SOON');
+  await sendMilestoneNotice(milestone, 'MILESTONE_DUE_SOON', now);
 };
 
 /** J5. */
-export const milestoneOverdue: JobHandler<'milestone.overdue'> = async ({ payload }) => {
+export const milestoneOverdue: JobHandler<'milestone.overdue'> = async ({ payload, now }) => {
   const milestone = await load(payload.milestoneId);
   if (milestone.contract.project.deletedAt || !IN_PROGRESS.has(milestone.status)) return;
-  await sendMilestoneNotice(milestone, 'MILESTONE_OVERDUE');
+  await sendMilestoneNotice(milestone, 'MILESTONE_OVERDUE', now);
 };

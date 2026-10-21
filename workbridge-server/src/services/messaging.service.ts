@@ -7,6 +7,8 @@ import { logger } from '../lib/logger';
 import { DAY_MS, MINUTE_MS } from '../lib/time';
 import { PermanentJobError } from '../jobs/errors';
 import { enqueueJob } from '../jobs/queue';
+import { notify } from '../lib/notifications/notify';
+import { renderTemplate } from '../lib/notifications/templates';
 import { storeUploadedFile } from '../middlewares/attachmentUpload';
 import type { StoredFile } from '../middlewares/attachmentUpload';
 import type { PrismaTransactionClient } from '../types/index';
@@ -33,6 +35,8 @@ export const POST_COMPLETION_WINDOW_MS = 30 * DAY_MS;
 export const DELETE_WINDOW_MS = 5 * MINUTE_MS;
 /** J8: the unread digest runs this long after the message that schedules it. */
 export const UNREAD_DIGEST_DELAY_MS = 10 * MINUTE_MS;
+/** MG1: at most one digest email per conversation and recipient per this period (NC16). */
+export const UNREAD_DIGEST_THROTTLE_MS = 60 * MINUTE_MS;
 
 const CONVERSATION_NOT_FOUND = 'Conversation not found';
 const NOT_AUTHORIZED = 'Not authorized';
@@ -350,12 +354,18 @@ async function scheduleUnreadDigest(
   return enqueueJob(tx, { type: 'message.unreadDigest', payload: { conversationId, recipientId }, runAt });
 }
 
-export type UnreadDigestOutcome = 'not-applicable' | 'nothing-unread' | 'rescheduled' | 'due';
+export type UnreadDigestOutcome = 'not-applicable' | 'nothing-unread' | 'rescheduled' | 'throttled' | 'notified';
+
+/** NC16: the digest delivery's `contextKey`, which step 3's throttle looks up. */
+export function digestContextKey(conversationId: string): string {
+  return `conversation:${conversationId}`;
+}
 
 /**
- * J8 steps 1–2 (Phase 2A). One transaction: lock the recipient's participant row (a concurrent
- * `POST …/read` writes the same row), then decide. `due` means a digest should be sent — steps
- * 3–4 (throttle, email) arrive with Phase 3; until then the job ends without sending.
+ * J8 (steps 1–2 Phase 2A, steps 3–4 Phase 3, NC16). One transaction: lock the recipient's
+ * participant row (a concurrent `POST …/read` writes the same row), then decide. `throttled`
+ * re-enqueues for one throttle period after the last digest; `notified` handed the digest to
+ * `notify()`, which creates the email (or nothing, when the recipient turned the digest off).
  * A payload naming a participant row that does not exist is a `PermanentJobError` (J1, J8).
  */
 export async function runUnreadDigest(
@@ -373,7 +383,7 @@ export async function runUnreadDigest(
 
     const context = await tx.conversation.findUniqueOrThrow({
       where: { id: conversationId },
-      select: { contract: { select: { project: { select: { deletedAt: true } } } } },
+      select: { contract: { select: { project: { select: { deletedAt: true, title: true } } } } },
     });
     const recipient = await tx.user.findUniqueOrThrow({ where: { id: recipientId }, select: { deletedAt: true } });
     if (context.contract.project.deletedAt || recipient.deletedAt) {
@@ -402,8 +412,33 @@ export async function runUnreadDigest(
       return { outcome: 'rescheduled' as const, unreadCount, nextRunAt };
     }
 
-    // Phase 3: steps 3–4 (60-minute throttle, email-only MESSAGE_UNREAD_DIGEST via notify()).
-    return { outcome: 'due' as const, unreadCount };
+    // 3. NC16 throttle: the newest digest delivery for the pair, in any status. `createdAt` is
+    // the `ctx.now` of the run that created it, so this is exact under `runDueJobs({ now })`.
+    const contextKey = digestContextKey(conversationId);
+    const last = await tx.emailDelivery.findFirst({
+      where: { userId: recipientId, type: 'MESSAGE_UNREAD_DIGEST', contextKey },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    if (last && last.createdAt.getTime() > now.getTime() - UNREAD_DIGEST_THROTTLE_MS) {
+      const nextRunAt = new Date(last.createdAt.getTime() + UNREAD_DIGEST_THROTTLE_MS);
+      await scheduleUnreadDigest(tx, conversationId, recipientId, nextRunAt);
+      return { outcome: 'throttled' as const, unreadCount, nextRunAt };
+    }
+
+    // 4. The email-only digest (NC2): no in-app row; its `notification.email` job sends it on a
+    // later runner pass.
+    await notify(tx, {
+      userId: recipientId,
+      type: 'MESSAGE_UNREAD_DIGEST',
+      ...renderTemplate('MESSAGE_UNREAD_DIGEST', {
+        projectTitle: context.contract.project.title,
+        conversationId,
+        unreadCount,
+      }),
+      contextKey,
+    }, now);
+    return { outcome: 'notified' as const, unreadCount };
   });
 }
 
