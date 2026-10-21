@@ -19,14 +19,19 @@ const supabase = createClient(
   env.SUPABASE_SECRET_KEY
 );
 
+/**
+ * Uploads to the `workbridge` bucket at `<folder>/<filename>` and returns the public URL.
+ * `folder` defaults to `profiles`, the only folder the pre-existing profile upload uses.
+ */
 export async function uploadToSupabase(
   buffer: Buffer,
   mimetype: string,
-  filename: string
+  filename: string,
+  folder = 'profiles',
 ): Promise<string> {
   const { data, error } = await supabase.storage
     .from('workbridge')
-    .upload(`profiles/${filename}`, buffer, {
+    .upload(`${folder}/${filename}`, buffer, {
       contentType: mimetype,
       upsert: true,
     });

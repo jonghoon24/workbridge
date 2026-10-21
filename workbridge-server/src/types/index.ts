@@ -36,10 +36,13 @@ declare global {
        * mounted behind `authenticate`, so in practice it is always present, and this
        * keeps the ~43 `req.user.id` reads free of `!` assertions.
        *
-       * The tradeoff: on the 9 public routes (`signup`, `login`, `refresh`, `googleAuth`,
-       * `googleCallback`, `getProjects`, `getProjectById`, `getUserById`, `getUserReviews`)
-       * `req.user` is actually `undefined` at runtime, and the type will not warn you.
-       * **Do not read `req.user` in a handler that is not behind `authenticate`.**
+       * The tradeoff: on the 10 public handlers (`signup`, `login`, `refresh`, `googleAuth`,
+       * `googleCallback`, `getProjects`, `getProjectById`, `getUserById`, `getUserReviews` —
+       * mounted twice — and `runJobs`, the internal job endpoint, which is guarded by
+       * `requireInternalToken` instead of a JWT) `req.user` is actually `undefined` at runtime,
+       * and the type will not warn you. Middleware that runs on every route (`accessLog`) must
+       * read it as optional. **Do not read `req.user` in a handler that is not behind
+       * `authenticate`.**
        */
       user: JwtUserPayload;
     }
@@ -105,12 +108,25 @@ export type ProfileCompletionInput = Pick<
 /** Allowed manual project status transitions. Partial — not every status has a target. */
 export type ProjectStatusTransitions = Partial<Record<ProjectStatus, readonly ProjectStatus[]>>;
 
-/** `Notification.type` is a bare `String` in the schema; only these four are ever written. */
-export type NotificationType =
-  | 'APPLICATION_CREATED'
-  | 'APPLICATION_ACCEPTED'
-  | 'APPLICATION_REJECTED'
-  | 'PROJECT_STATUS_CHANGED';
+/** `Notification.type` values. Defined next to `notify()`; re-exported here. */
+export type { NotificationType } from '../lib/notifications/types';
+
+// ---------------------------------------------------------------------------
+// Infrastructure
+// ---------------------------------------------------------------------------
+
+/** Job queue types. Defined in `src/jobs/types.ts` alongside the payload map; re-exported here. */
+export type { JobHandler, JobType } from '../jobs/types';
+
+/** One fixed-window rate-limit rule (BEHAVIOR.md rule 10). */
+export interface RateLimitRule {
+  /** Prefix of the counter key, e.g. `login.ip`. */
+  name: string;
+  windowMs: number;
+  limit: number;
+  /** The per-caller part of the key; `null` skips the rule for this request. */
+  key(req: Request): string | null;
+}
 
 // ---------------------------------------------------------------------------
 // AI pricing analysis

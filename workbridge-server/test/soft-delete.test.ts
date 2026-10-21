@@ -41,6 +41,11 @@ import {
   TEST_PASSWORD,
 } from './helpers/factories';
 import { generateRefreshToken } from '../src/lib/jwt';
+import express from 'express';
+import request from 'supertest';
+import { requireActiveUser } from '../src/middlewares/activeUser';
+import { authenticate } from '../src/middlewares/auth';
+import { errorHandler } from '../src/middlewares/errorHandler';
 
 // ---------------------------------------------------------------------------------------------
 // Local helpers (kept in this file on purpose — the shared harness is off limits)
@@ -510,6 +515,64 @@ describe('a soft-deleted principal must not be able to write anything (D12)', ()
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
     expect(stored.role).toBe('FREELANCER');
     expect(stored.roleSelected).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// §5 / rule 12 — expansion routes mount `requireActiveUser`, so D12 must not reproduce on them
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The counterpart of `mutations` for routes added by the platform expansion. Same row shape,
+ * but run with a plain `it.each`: these routes put `requireActiveUser` behind `authenticate`,
+ * so a soft-deleted caller is refused with 401 and nothing lands.
+ *
+ * Every expansion phase adds a row here for each new mutating route. **Never add an expansion
+ * route to `mutations`** — that table is `it.fails`, and a guarded route would break it with an
+ * unexpected pass. Empty in Phase 0, which adds the guard but no user-facing route.
+ */
+const guardedMutations: Mutation[] = [];
+
+describe('expansion routes refuse a soft-deleted principal (requireActiveUser)', () => {
+  it.each(guardedMutations)('$label → 401 and writes nothing', async (mutation) => {
+    const { actor, send, assertUnchanged } = await mutation.setup();
+    const token = tokenFor(actor);
+
+    await softDelete(actor.id);
+    const res = await send(token);
+
+    await assertUnchanged();
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { message: 'Account is no longer active' } });
+  });
+
+  // The guard itself, on a probe route, so it is pinned before any expansion route uses it.
+  const probe = express();
+  probe.post('/probe', authenticate, requireActiveUser, (req, res) => res.json({ ok: true }));
+  probe.use(errorHandler);
+
+  it('requireActiveUser: 401 for a soft-deleted caller, pass-through once restored', async () => {
+    const actor = await makeFreelancer();
+    const token = tokenFor(actor);
+    const send = () => request(probe).post('/probe').set('Authorization', `Bearer ${token}`);
+
+    expect((await send()).status).toBe(200);
+
+    await softDelete(actor.id);
+    const refused = await send();
+    expect(refused.status).toBe(401);
+    expect(refused.body).toEqual({ error: { message: 'Account is no longer active' } });
+
+    await restore(actor.id);
+    expect((await send()).status).toBe(200);
+  });
+
+  it('requireActiveUser: 401 for a token whose user no longer exists at all', async () => {
+    const ghost: Principal = { id: 'missing-user-id', email: 'ghost@test.local', role: 'CLIENT' };
+
+    const res = await request(probe).post('/probe').set('Authorization', `Bearer ${tokenFor(ghost)}`);
+
+    expect(res.status).toBe(401);
   });
 });
 

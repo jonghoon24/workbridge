@@ -5,6 +5,7 @@ import type { User } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
 import { AppError } from '../lib/errors';
+import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
 import { env } from '../env';
 import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index';
 import jwt from 'jsonwebtoken';
@@ -79,14 +80,20 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     // `findFirst`, not `findUnique`: soft-deleted users must not be able to log in, and
     // `deletedAt` is not part of a unique constraint.
     const user = await prisma.user.findFirst({ where: { email, deletedAt: null } });
+    // Every `Invalid credentials` outcome counts toward the email + IP failure limit — unknown
+    // emails included, so the limiter cannot be used to tell accounts apart (rule 10).
     if (!user || !user.password) {
+      await recordLoginFailure(req);
       throw new AppError('Invalid credentials', 401);
     }
 
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
+      await recordLoginFailure(req);
       throw new AppError('Invalid credentials', 401);
     }
+
+    await clearLoginFailures(req);
 
     const { accessToken, refreshToken } = issueTokens(user);
     setRefreshTokenCookie(res, refreshToken);
