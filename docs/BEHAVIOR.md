@@ -107,14 +107,18 @@ worker, so the lazy sweep on read paths remains the guarantee. **[C6]**
 - **Access log:** one `info` line per request when the response finishes, with `method`, `path`
   (query string removed), `status`, `durationMs`, `ip` (rule 10's client IP) and `userId` when the
   request was authenticated. A 500 is access-logged at `info` like any other status.
-- **Error level is reserved.** Within the request path only `errorHandler` logs at `error`, and
-  only for a 500 (rule 1). Outside it, the job runner logs at `error` when a job ends `FAILED`
-  (rule 11). The one pre-existing exception is `GET /api/auth/google/callback`, which logs the
+- **Error level is reserved.** For a request's own outcome only `errorHandler` logs at `error`,
+  and only for a 500 (rule 1). The queue also logs at `error`: when a job ends `FAILED` (in the
+  handler or in stale-lock recovery), when a job's bookkeeping write fails, and when a worker
+  poll fails. Those lines can appear during a request that still answers 200 — a job failing
+  inside `POST /api/internal/jobs/run` — and they carry the job's `jobId`, not the request's
+  outcome. The one pre-existing exception is `GET /api/auth/google/callback`, which logs the
   failure it swallows into a redirect.
 - An `Error` placed in a log field is serialized explicitly as
   `{ name, message, stack, code?, statusCode?, meta? }` — never as `{}`.
 - A job enqueued while serving a request records that request's id as its `traceId`; lines
-  logged while a job runs carry its `jobId` and, as `requestId`, that `traceId`.
+  logged while a job runs — by its handler or by the runner about it — carry its `jobId` and, as
+  `requestId`, that `traceId`.
 
 ### 10. Rate limiting
 - A limited request → **429** with the standard envelope
@@ -128,10 +132,20 @@ worker, so the lazy sweep on read paths remains the guarantee. **[C6]**
   the order listed, and a request refused by one rule is not counted by the rules after it.
 - **Client IP** is Express's `req.ip`. With `TRUST_PROXY` set it is the client address taken from
   `X-Forwarded-For` after discarding the trusted proxies; unset, it is the socket address and
-  `X-Forwarded-For` is ignored. Both Next.js proxies (the `/api/*` catch-all and the auth
-  routes) append the browser address to `X-Forwarded-For`, forward `X-Request-Id`, and copy
-  `X-Request-Id` and `Retry-After` back to the browser, so locally (`TRUST_PROXY=loopback`)
-  each browser is counted separately rather than everyone sharing the Next server's address.
+  `X-Forwarded-For` is ignored.
+- Both Next.js proxies (the `/api/*` catch-all and the auth routes) forward `X-Forwarded-For`
+  **exactly as Next received it**, forward `X-Request-Id`, and copy `X-Request-Id` and
+  `Retry-After` back to the browser. They cannot append the browser's address: self-hosted Next
+  does not expose it to route handlers. Next's server fills `X-Forwarded-For` with the socket
+  address only when the client sent none, and on Vercel the edge overwrites it with the real
+  client address. Consequences:
+  - With `TRUST_PROXY=loopback`, a client that can reach a self-hosted Next directly chooses its
+    own rate-limit IP by sending `X-Forwarded-For`. That setting is safe only while the Next
+    port is reachable solely by trusted clients. **[Q23]**
+  - Locally, the browser, Next and scripts all connect over loopback, so every local login
+    without its own `X-Forwarded-For` is counted under one address (`::1`): the whole machine
+    shares 20 logins per 15 minutes. Local tooling that drives many logins sets
+    `RATE_LIMIT_ENABLED=false`.
 - `RATE_LIMIT_ENABLED=false` disables every limit; the value is read per request. Default on.
 
   | Rule | Key | Window | Limit | What counts |
@@ -548,7 +562,8 @@ milestone auto-approval, the settlement batch and email delivery.
 | `RUNNING` | `SUCCEEDED` | the handler returned; `completedAt` set |
 | `RUNNING` | `PENDING` | the handler threw and `attempts < maxAttempts`: `runAt = now + min(30 s × 2^(attempts − 1), 1 h)`, `lastError` recorded |
 | `RUNNING` | `FAILED` | the handler threw a `PermanentJobError`, the type has no handler, or `attempts` reached `maxAttempts`; `lastError` recorded and an error-level log line written |
-| `RUNNING` | `PENDING` | stale-lock recovery: `lockedAt` older than 10 minutes (the runner died). `attempts` is not refunded |
+| `RUNNING` | `PENDING` | stale-lock recovery: `lockedAt` older than 10 minutes (the runner died) and `attempts < maxAttempts`. `attempts` is not refunded |
+| `RUNNING` | `FAILED` | stale-lock recovery when `attempts >= maxAttempts`: `lastError` = `stale lock, attempts exhausted` and an error-level log line, so a job that kills its runner every time does not return forever |
 | `PENDING` | `CANCELLED` | by domain code that makes a job moot (none in Phase 0) |
 
 ### Recurring jobs
@@ -561,12 +576,15 @@ milestone auto-approval, the settlement batch and email delivery.
 
 ### Runners
 `runDueJobs({ now, limit = 50, types? })` claims up to `limit` due jobs, runs them one after
-another, and returns `{ claimed, succeeded, retried, failed }`. It does **not** call
-`ensureRecurringJobs`; every production-style entry point does so first:
+another, and returns `{ claimed, succeeded, retried, failed, skipped }`. Before running each job
+it re-asserts its lock; a job whose lock another runner has taken over in the meantime (a batch
+that outlived the 10-minute stale window) is **skipped**, never run twice. A failed bookkeeping
+write is logged and leaves that one job to stale-lock recovery; the rest of the batch still runs.
+It does **not** call `ensureRecurringJobs`; every production-style entry point does so first:
 
 | Runner | Where it runs | Order |
 |---|---|---|
-| development worker | started by the server in development (not in production, not under test) unless `JOB_WORKER_ENABLED=false` | `ensureRecurringJobs` once at start, then every `JOB_POLL_INTERVAL_MS` (default 5000): `recoverStaleJobs` → `runDueJobs`. SIGINT/SIGTERM finish the current batch, then exit |
+| development worker | started by the server in development (not in production, not under test) unless `JOB_WORKER_ENABLED=false` | immediately, then every `JOB_POLL_INTERVAL_MS` (default 5000): `ensureRecurringJobs` → `recoverStaleJobs` → `runDueJobs` (ensuring every poll keeps the schedule alive after a re-seed deletes all jobs). SIGINT/SIGTERM finish the current batch, then exit |
 | `npm run jobs:run` | one-shot CLI | `ensureRecurringJobs` → `recoverStaleJobs` → `runDueJobs`, prints the result |
 | `npm run jobs:worker` | standalone worker CLI | same loop as the development worker |
 | `POST /api/internal/jobs/run` | see [Internal endpoints](#internal-endpoints--apiinternal) | `ensureRecurringJobs` → `recoverStaleJobs` → `runDueJobs` |
@@ -595,7 +613,7 @@ endpoint is not decided yet. Until one does, recurring jobs only run where a run
 - Body `{ limit? }` — an integer from 1 to 500, default 50 → else **400** (rule 12 format). Checked
   after the token.
 - Runs `ensureRecurringJobs(now)` → `recoverStaleJobs(now)` → `runDueJobs({ now, limit })` and
-  responds **200** with `{ claimed, succeeded, retried, failed }`.
+  responds **200** with `{ claimed, succeeded, retried, failed, skipped }`.
 
 ---
 
@@ -719,6 +737,7 @@ obviously a bug.
 | **Q18** | `POST /logout` sits behind `authenticate`, so a client whose 15-minute access token has already expired **cannot clear its own 7-day `httpOnly` refresh cookie** — logout only works while you still hold a live access token. Given the endpoint's purpose is to drop the long-lived credential, should it be public (or tolerate an expired token)? |
 | **Q19** | Google identity matching by `googleId` never refreshes `email` or `name` from the profile, so a Google-side email change leaves WorkBridge permanently stale. Should the profile be re-synced on each login? |
 | **Q20** | `CLIENT_URL` is an optional passthrough in `src/env.ts`, so if it is **unset** every OAuth redirect becomes the literal string `undefined/login?error=oauth_failed` or `undefined/auth/callback?…` rather than failing. The spec documents these targets as `${CLIENT_URL}/…` but never says what an absent value should do. Should `CLIENT_URL` be promoted to a required var — noting that would make it a boot-time failure, which is the tradeoff `src/env.ts`'s lazy getters were designed to avoid? |
+| **Q23** | The rate-limit client IP comes from `X-Forwarded-For` when `TRUST_PROXY` is set, and the Next.js proxies forward that header as received (rule 10). Behind Vercel's edge the header is rewritten, but a self-hosted Next reachable by untrusted clients lets them pick their own IP: rotating it bypasses the per-IP login limit, makes the email + IP failure limit effectively unlimited per account, and lets anyone exhaust a chosen IP's quota. Should the deployment put a header-rewriting proxy in front of Next, should self-hosted setups leave `TRUST_PROXY` unset, or should the failure limit also key on email alone? |
 | **Q13** | An **empty** query value is treated inconsistently. `GET /api/projects` 400s on `?status=`, `?sort=`, `?page=`, `?limit=` but ignores `?search=`, `?category=`, `?skills=`, `?minBudget=`; `GET /api/notifications` treats `?limit=` as absent and falls back to its default of 20. Reading `''` as "absent → default" is at least as defensible as "non-integer → 400". Both behaviors are currently pinned by tests; the spec should pick one. |
 
 ### Note on `validTransitions`

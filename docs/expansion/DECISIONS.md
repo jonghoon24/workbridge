@@ -25,3 +25,12 @@
 - 클라이언트에 ESLint 설정이 한 번도 없어서 `npm run lint`가 대화형 질문에서 멈췄다. Next가 권장하는 `next/core-web-vitals` 설정(`.eslintrc.json`)을 추가했다. 기존 코드의 경고 3건(img, exhaustive-deps)은 손대지 않는다.
 - `googleCallback`의 `console.error`는 기존 코드라 그대로 두고, BEHAVIOR.md 규칙 9에 "error 레벨은 errorHandler만"의 유일한 기존 예외로 적었다.
 - 테스트 헬퍼 `authed()`에 `put`을 추가했다. P1부터 PUT 라우트가 생긴다.
+
+### P0 검증 1차 반영 (reviews/P0_REVIEW_1.md)
+
+- Next 프록시는 받은 `X-Forwarded-For`를 그대로 넘긴다(자체 호스팅 Next 14는 브라우저 주소를 라우트 핸들러에 주지 않는다). 그래서 `TRUST_PROXY=loopback`은 Next 포트에 신뢰하는 클라이언트만 닿을 때만 안전하다. 남은 위험은 BEHAVIOR.md **Q23**으로 적었다(Q21, Q22는 P1·P2A용으로 예약돼 있어 다음 번호를 썼다).
+- 로컬에서는 브라우저, Next, 스크립트가 모두 루프백으로 붙어 모든 로그인이 `::1` 하나로 세어진다(머신 전체 15분 20회). `run-workbridge` 템플릿은 `RATE_LIMIT_ENABLED=false`를 두고, 막히면 `RateLimitCounter`를 비우는 방법을 스킬에 적었다. 레이트 리밋 동작은 테스트(`RATE_LIMIT_ENABLED=true`)가 지킨다.
+- stale lock 회수는 `attempts >= maxAttempts`인 작업을 FAILED(`stale lock, attempts exhausted`)로 둔다. 러너는 각 작업 실행 직전에 조건부 `updateMany`로 잠금을 다시 확인하고, 다른 러너가 가져갔으면 건너뛴다. 그래서 `runDueJobs` 결과와 내부 엔드포인트 응답에 `skipped`가 추가됐다.
+- 반복 작업 다음 회차 enqueue 실패는 경고만 남기고 작업은 계속 실행한다. 작업 하나의 장부 쓰기 실패는 error 로그 후 그 작업만 stale 회수에 맡기고 배치는 계속한다. 러너가 남기는 로그도 작업 컨텍스트(`jobId`, `requestId`=traceId) 안에서 찍는다.
+- 개발 워커는 매 폴링마다 `ensureRecurringJobs`를 부른다. `db:seed`가 Job을 모두 지워도 스케줄이 다시 생긴다.
+- **P4 메모:** `RateLimitCounter` 만료 행은 작업 러너(`maintenance.cleanup`)가 돌 때만 지워진다. 운영에는 아직 러너가 없으므로 DEPLOYMENT.md에 "외부 스케줄러가 붙기 전까지 카운터 행이 쌓인다(로그인/분석 요청 수에 비례해 유한)"를 적는다.

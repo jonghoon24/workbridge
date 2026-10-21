@@ -55,6 +55,8 @@ CLIENT_URL=http://localhost:3000
 SUPABASE_URL=https://dummy.supabase.co
 SUPABASE_SECRET_KEY=sb_secret_dummy
 TRUST_PROXY=loopback
+# Every local login comes from loopback and would share one 20-per-15-min login limit.
+RATE_LIMIT_ENABLED=false
 EOF
 
 # 3. Client env (.env.local)
@@ -147,6 +149,10 @@ http://localhost:3000 and sign in with a seed account. `Ctrl-C` to stop each.
   `(cd workbridge-server && npx prisma migrate deploy)`.
 - **`EADDRINUSE` on 3000/4000** → a previous run is still up:
   `lsof -ti:4000 -ti:3000 | xargs kill`.
+- **429 `Too many requests` on login** → the rate limit counts every local login under one
+  loopback address. Set `RATE_LIMIT_ENABLED=false` in `workbridge-server/.env` and restart
+  the server (dotenv loads `.env` once at boot), or clear the counters without restarting:
+  `psql "postgresql://$(whoami)@localhost:5432/workbridge" -c 'DELETE FROM "RateLimitCounter"'`.
 - **CORS error in browser** → `CLIENT_URL` in `workbridge-server/.env` must be
   `http://localhost:3000`.
 - **Screenshots blank / `drive.sh` browser step skipped** → Chrome not at the

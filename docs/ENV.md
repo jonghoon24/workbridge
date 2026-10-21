@@ -20,8 +20,8 @@
 | `SUPABASE_URL` | Supabase 프로젝트 URL |
 | `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...) |
 | `LOG_LEVEL` | 로그 레벨 `debug`/`info`/`warn`/`error`/`silent` (기본 `info`). JSON 한 줄씩 출력하며 `error`만 stderr로 간다. 테스트는 `error` |
-| `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(레이트 리밋 키)로 쓴다. 로컬은 Next.js가 같은 머신에서 프록시하므로 `loopback`. 비우면 소켓 주소를 쓰고 `X-Forwarded-For`는 무시 |
-| `RATE_LIMIT_ENABLED` | `false`면 레이트 리밋(로그인, AI 단가 분석)을 끈다. 기본 켜짐. 요청마다 읽는다 |
+| `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(레이트 리밋 키)로 쓴다. 비우면 소켓 주소를 쓰고 `X-Forwarded-For`는 무시. Next.js 프록시는 받은 `X-Forwarded-For`를 그대로 넘기므로 `loopback`은 **Next 포트(:3000)에 신뢰하는 클라이언트만 닿을 때만 안전하다**. 그렇지 않으면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다(BEHAVIOR.md Q23). 로컬 로그인은 어차피 전부 루프백 한 주소로 세어진다 |
+| `RATE_LIMIT_ENABLED` | `false`면 레이트 리밋(로그인, AI 단가 분석)을 끈다. 기본 켜짐. 요청마다 읽는다. 로컬에서 로그인을 여러 번 하는 시연·스크립트는 `false`로 둔다(머신 전체가 15분에 20회를 나눠 쓴다) |
 | `INTERNAL_JOB_TOKEN` | `POST /api/internal/jobs/run`의 `X-Internal-Token` 값. 비우면 엔드포인트가 404(존재를 숨김) |
 | `JOB_WORKER_ENABLED` | `false`면 개발 서버(`npm run dev`)가 작업 큐 워커를 띄우지 않는다. 기본 켜짐. 운영과 테스트에서는 어차피 뜨지 않는다 |
 | `JOB_POLL_INTERVAL_MS` | 개발 워커의 폴링 간격(ms, 기본 5000) |
