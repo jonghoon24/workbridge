@@ -296,3 +296,10 @@ P3 구현 워커에게 주는 지시. P3 서버 작업은 2A·2B 머지 뒤에 �
 - 테스트: `email.test.ts`(J9·NC9~NC14, J5 트랜잭션은 EmailDelivery INSERT 트리거로 실패를 주입해 인앱 row까지 롤백됨을 확인), `message-digest.test.ts`(NC16 두 경로, 60분 경계, 상태 무관 throttle), `notification-policy.test.ts`(NC2~NC4, 기존 4종 경로), `notification-preferences.test.ts`(NC5~NC8). `message-read.test.ts`의 2A 테스트 둘은 3단계 이후 동작(다이제스트 delivery 1건, 다이제스트 작업 수만 셈)으로 바꿨다. 지원하지 않는 provider의 warn 테스트는 `vi.resetModules()` 뒤 `import('…/provider.js')`로 새 모듈을 읽는다.
 - 클라이언트: 라벨과 오류 번역은 `components/notifications/preferenceLabels.js`. 잠긴 채널 안내는 "필수 알림"(켜진 채 고정), "이메일 전용"(다이제스트 인앱). 화면이 보내지 않는 모양 오류는 기본 문구로 대신한다. 저장은 화면 배열 전체(`type`, `inApp`, `email`)를 PUT하고 응답으로 상태를 바꾼다.
 - 실행 확인(:4003/:3003, `workbridge_dev_p3`): 프리랜서로 설정 화면에서 "기한 임박" 이메일을 끄고 저장 → 새로고침 뒤 꺼짐 유지, 잠긴 토글 비활성 확인. dev-complete로 `MILESTONE_FUNDED` → 워커가 `notification.email` 작업을 돌려 `mail.sent` 한 줄. 의뢰인 메시지 후 `runDueJobs({ now: +11분 })` 두 번 → 다이제스트 delivery SENT 1건, 두 번째 메시지 후 +25분 실행 → `throttled`, 마지막 다이제스트 + 60분에 재예약. D-P3 핀은 없다.
+
+## P4 (시드·문서)
+
+- 시드의 모든 날짜는 시드 시각 기준 상대값이다. 정산 주차는 "배치가 이미 돈 가장 최근 주"를 기준으로 계산해 어느 요일에 돌려도 미정산·정산 경계가 실제 동작과 맞는다. 시드 시각이 그 주 수요일 10:00을 지났으면 한도윤의 지급 예정 정산은 다음 수요일 10:00으로 잡는다(시연용 SCHEDULED 1건 유지, SEED_DATA.md에 적음).
+- 시드 상태가 만들었을 이벤트 작업(자동 승인·리마인더, 기한 알림, 지급)은 실행 시각이 미래인 것만 `PENDING`으로 넣고 반복 작업은 넣지 않는다(PLAN §5.1, §5.3-3). 시드 직후 `now + 8일`로 `runDueJobs`를 두 번 돌려 넣은 작업 9개가 모두 성공함을 확인했다.
+- `IN_PROGRESS` 프로젝트는 시드하지 않는다. 시스템이 쓰지 않는 값(Q5)이라 화면에 앱이 만들 수 없는 상태가 보이게 된다. 계약 진행 중 프로젝트는 실제 동작대로 `CLOSED`이고 상태 분포는 `CANCELLED` 1건으로 채웠다.
+- 알림은 이벤트마다 빠짐없이가 아니라 계정마다 대표 알림만, 이메일 발송 기록은 8건만 넣는다. 시스템 메시지는 MG6대로 모든 계약·마일스톤 이벤트마다 넣는다. 자리표시 이미지는 `placehold.co`(버킷 불필요).
