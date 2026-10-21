@@ -215,3 +215,35 @@
 - `EmailDelivery.notificationId`는 `Notification`으로의 FK다(선택 관계라 Prisma 기본 `ON DELETE SET NULL`). `provider`는 PLAN과 달리 nullable이고 발송 시점에 쓴다(생성 시에는 어떤 provider가 보낼지 모른다).
 - `seed.js`는 `emailDelivery` → `notificationPreference` → `notification` 순으로 지운다(delivery가 notification을 참조한다). `TABLES`에도 같은 순서로 넣었다.
 - 팩토리 `makeNotificationPreference(userId, type, overrides)`, `makeEmailDelivery(user, overrides)`는 2A/2B 머지가 깨끗하도록 `factories.ts` 맨 끝에만 더했다(상단 type import를 건드리지 않으려고 반환 타입은 추론에 맡긴다). `makeEmailDelivery`는 작업을 enqueue하지 않는다.
+
+## P3-S (명세 검토 반영, reviews/P3S_SPEC_REVIEW_1.md)
+
+- 다이제스트의 인앱 채널은 "잠긴 off"다(오케스트레이터 결정, 검토 4). GET은 `inApp: false, inAppLocked: true`, PUT은 `inApp: false`를 no-op으로 받고 `true`만 400이다. GET 배열을 그대로 PUT해도 통과한다. 앞의 "P3-S (명세)"의 `inApp: null` 결정을 대체한다(NC2, NC3, NC5, NC6).
+- 지원하지 않는 `MAIL_PROVIDER`는 프로세스 시작(서버, `jobs:run`, `jobs:worker`)에서 `warn` 한 줄로 한 번 알리고 throw하지 않는다(오케스트레이터 결정, 검토 8). 그 FAILED delivery의 `provider`는 설정값 그대로, `attempts`는 그대로다(NC12, NC14, 규칙 9).
+- 작업이 최종 쓰기 전에 FAILED로 끝나면(마지막 시도 뒤 stale 회수, 마지막 시도의 attempts/SENT 쓰기 DB 오류) delivery가 PENDING으로 남을 수 있음을 NC12와 Q24에 적었다. 그때는 작업의 FAILED row가 기록이고 다시 보내지 않는다(검토 6).
+- J8 3~4단계 본문을 지우고 NC16을 가리키는 한 줄로 줄였다. MG20의 "19"는 "in-app 19"로 고쳤다(검토 7). J8의 결과 문단과 작업 타입 표의 "60 min"은 2A와 겹치는 문단이라 손대지 않았다.
+- `notify()` 시그니처를 NC9에 고정했다. 트랜잭션 없는 호출자는 하나 연다(검토 2, 3). 자세한 지시는 아래 핸드오프.
+
+## P3-S (핸드오프)
+
+P3 구현 워커에게 주는 지시. P3 서버 작업은 2A·2B 머지 뒤에 시작한다(`templates.ts`, `jobs/types.ts`, `jobs/registry.ts`, `handlers/messageDigest.ts`, `milestones.test.ts`, `payments.test.ts`는 P2 동안 2A 소유다).
+
+1. **깨지는 기존 단언 5개(검토 1).** NC2 기본값에서 `MILESTONE_SUBMITTED`, `MILESTONE_FUNDED`가 이메일을 만들어 같은 트랜잭션에 `notification.email` 작업이 생긴다. `Job` 테이블 전체를 단언하는 다음 5곳을 고친다: `test/milestones.test.ts:174`, `:231`, `:310`, `test/payments.test.ts:932`, `:955`(P3-S 기준 줄 번호, 2A 머지 뒤 다시 찾는다). 방법: `prisma.job.findMany({ where: { type: { not: 'notification.email' } } })`로 거르거나 `test/helpers/jobs.ts`의 `jobsOf(type)`으로 type별로 단언한다. 이메일 작업 자체는 `email.test.ts`에서 단언한다.
+2. **J3~J5 알림의 트랜잭션(검토 2).** `src/services/milestones.service.ts`의 `sendMilestoneNotice`는 `notifyTemplate(prisma, …)`로 트랜잭션 없이 부른다. P3에서는 수신자마다 Notification + EmailDelivery + Job 세 쓰기가 되므로 `prisma.$transaction(async (tx) => …)`로 감싸 `tx`와 `ctx.now`를 넘긴다. 부분 실패 후 재시도가 인앱 row를 중복시키지 않게 한다(NC9).
+3. **시그니처(검토 3, NC9).** `notify(client, input, now = new Date()): Promise<Notification | null>`(인앱이 꺼졌으면 `null`), `notifyMany(client, inputs, now = new Date()): Promise<number>`(쓴 인앱 row 수), `notifyRecipients(client, recipients, input, now = new Date())`. `notifyTemplate`, `notifyFreelancer`와 J2·J6·J7 경로도 `ctx.now`를 끝까지 넘긴다. `notifyMany`는 `notificationId`를 얻으려고 `createManyAndReturn`(Prisma 5.22에 있다)을 쓴다. `test/notify.test.ts:13-21`은 새 반환값에 맞춘다.
+4. **테스트 행렬(검토 9).** `authorization.test.ts`의 `PROTECTED_ROUTES`는 2A·2B 머지 후 61 → 63(GET/PUT `/api/notifications/preferences`), `ROLE_GATED_ROUTES`와 CLIENT/FREELANCER 분할은 변화 없음, `PUBLIC_ROUTES` 변화 없음. `soft-delete.test.ts`의 `guardedMutations`에 PUT preferences 1행.
+5. **env(검토 9).** `src/env.ts`에 `MAIL_PROVIDER`(선택, 비었거나 `log`면 로그 provider)와 `MAIL_FROM`(기본 `WorkBridge <no-reply@workbridge.local>`)을 더하고 `docs/ENV.md`, `.env.example`에 적는다. 링크 기준 주소는 기존 `CLIENT_URL`. 시작 시 `warn`은 서버(`index.ts`)와 `jobs/cli.ts`·`jobs/worker.ts` 진입점에서 한 번.
+6. **Q 번호.** Q24·Q25는 2A·2B가 Q를 더하지 않았다는 전제다. 겹치면 머지 담당이 다시 매긴다.
+
+**머지 담당이 손으로 합칠 BEHAVIOR.md 문단(검토 5).** P3-S가 고친 곳 중 2A·2B가 같은 자리나 바로 옆을 고칠 수 있는 곳이다. 양쪽을 모두 살린다.
+- 머리말 규칙 식별자 문단(Phase 3 문장 추가)
+- 규칙 5의 마지막 불릿 뒤(Conversations/PF20 불릿 다음에 이메일 불릿)
+- 규칙 6의 "Phase 2 adds" 문장 뒤(Phase 3 문장)
+- 규칙 9의 마지막 불릿 뒤(Email 불릿)
+- Notifications 절 첫 문단(19종 문장 교체)
+- MG20 첫 줄("in-app" 한 단어, 2A)
+- RC 절 끝의 `---` 바로 뒤에 넣은 Notification channels 절 전체(2B가 RC 끝을 고치면 인접)
+- 작업 타입 표의 `message.unreadDigest` 행 다음 `notification.email` 행, Payloads 문단의 `message.unreadDigest` 줄(줄바꿈이 바뀌었다)
+- J8의 3~4단계(한 줄 포인터로 교체, 2A가 J8을 구현하며 고칠 수 있다)와 J8 바로 뒤의 "Email handler rule (Phase 3)" 소절(J9)
+- C 표의 C9 행(C10 행과 인접, 2B)
+- Still open 표의 Q23 다음 Q24·Q25

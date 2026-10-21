@@ -166,7 +166,8 @@ worker, so the lazy sweep on read paths remains the guarantee. **[C6]**
   `requestId`, that `traceId`.
 - **Email (Phase 3).** The log mail provider writes each email as one `info` line `mail.sent`
   (NC14), with the recipient address and the full text — which is why it is a development
-  provider (Q24). A send that will be retried leaves the queue's `warn` line, and a delivery that
+  provider (Q24). An unsupported `MAIL_PROVIDER` is reported once per process, as a `warn` line
+  at start (NC14). A send that will be retried leaves the queue's `warn` line, and a delivery that
   ends `FAILED` is reported only by the queue's `job failed` error line; the email handler logs
   nothing at error level itself.
 
@@ -1359,7 +1360,7 @@ expansion routes (rule 12) open to either role; the only authorization is being 
   the caller (0 when the conversation is missing).
 
 ### Notifications, polling and the unread digest
-- **MG20** — Messages create **no** in-app `Notification` row; the notification types stay the 19
+- **MG20** — Messages create **no** in-app `Notification` row; the in-app notification types stay the 19
   of the Notifications table. Clients poll: an open thread calls `GET …/messages?after=<newest
   id>` every 5 s while the page is visible and `POST …/read` once new counterpart messages are on
   screen; the unread badge calls `GET /api/conversations/unread-count` every 30 s and after a
@@ -1640,7 +1641,8 @@ are expansion routes (rule 12) open to either role. **[C9]**
 
 ### Policy and preferences
 - **NC2** — **Policy.** Each type's category, recipient, and per channel its default and whether
-  the recipient may turn it off. A channel that cannot be turned off is **locked** (mandatory).
+  the recipient may change it. A channel the recipient cannot change is **locked** — mandatory
+  when on.
   Trade and money notifications are locked in-app — nobody may miss an acceptance, a signature, a
   funding, a submission, a decision or a payout — and the three that announce automatic money
   movement or a payout problem (the auto-approval reminder, a held and a failed payout) are
@@ -1667,14 +1669,16 @@ are expansion routes (rule 12) open to either role. **[C9]**
   | `SETTLEMENT_PAID` | `SETTLEMENT` | freelancer | on, **locked** | on |
   | `SETTLEMENT_ON_HOLD` | `SETTLEMENT` | freelancer | on, **locked** | on, **locked** |
   | `SETTLEMENT_FAILED` | `SETTLEMENT` | freelancer | on, **locked** | on, **locked** |
-  | `MESSAGE_UNREAD_DIGEST` | `MESSAGE` | both | none | on |
+  | `MESSAGE_UNREAD_DIGEST` | `MESSAGE` | both | off, **locked** | on |
 
-  "both" means either party of a contract, whichever the event addresses. "none" means the type
-  has no in-app channel at all.
+  "both" means either party of a contract, whichever the event addresses. The digest's in-app
+  channel is **locked off**: messages are seen in the conversation itself (MG20), so the digest
+  never creates an in-app row.
 - **NC3** — **Effective channels** of one notification for its recipient: a locked channel is
-  always on; an unlocked channel is the recipient's stored choice (NC4) when there is one, else
-  the NC2 default; `MESSAGE_UNREAD_DIGEST` never creates an in-app row. A stored value for a
-  locked channel (reachable only by editing the database) is ignored. The recipient's role plays
+  always its NC2 default — on, except the digest's in-app channel, which is always off; an
+  unlocked channel is the recipient's stored choice (NC4) when there is one, else the NC2
+  default. A stored value for a locked channel (reachable only by editing the database) is
+  ignored. The recipient's role plays
   no part here.
 - **NC4** — **Sparse storage.** A `NotificationPreference` row (`userId`, `type`, `inApp`,
   `email`; unique per `(userId, type)`) exists only while at least one of its channels departs
@@ -1695,9 +1699,9 @@ are expansion routes (rule 12) open to either role. **[C9]**
   |---|---|
   | `type` | the NC2 type |
   | `category` | its NC2 category: `APPLICATION`, `CONTRACT`, `MILESTONE`, `SETTLEMENT` or `MESSAGE` |
-  | `inApp` | the effective in-app channel (NC3), a boolean; `null` for `MESSAGE_UNREAD_DIGEST` |
+  | `inApp` | the effective in-app channel (NC3), a boolean — always `false` for `MESSAGE_UNREAD_DIGEST` |
   | `email` | the effective email channel (NC3), a boolean |
-  | `inAppLocked` | `true` when in-app is locked or absent (`MESSAGE_UNREAD_DIGEST`) |
+  | `inAppLocked` | `true` when in-app is locked (on or off) |
   | `emailLocked` | `true` when email is locked |
 
   The client supplies the Korean labels. Stored rows for types the caller's role does not receive
@@ -1721,14 +1725,15 @@ are expansion routes (rule 12) open to either role. **[C9]**
      reported:
      1. neither `inApp` nor `email` given → `preferences.<i>: Specify inApp or email`
      2. `type` repeats an earlier entry's → `preferences.<i>.type: Duplicate notification type`
-     3. `inApp` given for `MESSAGE_UNREAD_DIGEST` →
+     3. `inApp: true` for `MESSAGE_UNREAD_DIGEST` →
         `preferences.<i>.inApp: MESSAGE_UNREAD_DIGEST has no in-app notifications`
-     4. `inApp: false` for a locked in-app channel →
+     4. `inApp: false` for a locked-on in-app channel →
         `preferences.<i>.inApp: <type> in-app notifications cannot be disabled`
      5. `email: false` for a locked email channel →
         `preferences.<i>.email: <type> email notifications cannot be disabled`
 
-  `true` for a locked channel passes and changes nothing. A type the caller's role does not
+  A locked channel set to its own value (`true`; `inApp: false` for the digest) passes and changes
+  nothing, so a client may send GET's array back unchanged. A type the caller's role does not
   receive is accepted and stored (NC4). There is no 404, 403 or 409.
 - **NC7** — The write is **one transaction** whose first statement locks the caller's `User` row
   (`SELECT id FROM "User" WHERE id = $1 FOR UPDATE`, raw SQL — the lock of PA7 and PF8), and it
@@ -1746,9 +1751,14 @@ are expansion routes (rule 12) open to either role. **[C9]**
   rather than per recipient) are the only way notifications are created. Phase 3 routes the four
   pre-existing types through them too — applying, accepting and rejecting an application, closing
   a project by hand — keeping their inline Korean wording, so preferences and email apply to
-  every type. **[C9]** Input: the caller's transaction client, `{ userId, type, title, message,
-  href?, contextKey? }`, and the caller's `now` (default the server clock; a job passes
-  `ctx.now`). Inside the caller's transaction:
+  every type. **[C9]** The signatures are `notify(client, input, now = new Date()):
+  Promise<Notification | null>` — the in-app row, or `null` when in-app is off —
+  `notifyMany(client, inputs, now = new Date()): Promise<number>` — the number of in-app rows
+  written — and `notifyRecipients(client, recipients, input, now = new Date())`, where `input` is
+  `{ userId, type, title, message, href?, contextKey? }` and a job passes `ctx.now`. `client` is
+  the transaction of the state change; a caller that has none (the J3–J5 notices) opens one
+  around its `notify` calls, so one notice's rows and jobs commit together. Inside that
+  transaction:
   1. read the recipient's `email` and `deletedAt` and their preference row for the type;
   2. when in-app is on (NC3), create the `Notification` row, as before;
   3. when email is on (NC3), the recipient is **not** soft-deleted and their `email` is not empty
@@ -1772,7 +1782,7 @@ are expansion routes (rule 12) open to either role. **[C9]**
   updatedAt }`. `toAddress` is the recipient's address when the row was created; a later change
   does not redirect it. `contextKey` is `null` except for the digest (NC16). `attempts` is
   incremented just before every provider call. `provider` is the `MAIL_PROVIDER` value of the
-  last send (`log` by default). No route reads or lists deliveries: they are the audit trail of
+  last send (`log` by default), including an unsupported one (NC14). No route reads or lists deliveries: they are the audit trail of
   what was sent, and nothing deletes them (Q24).
 - **NC12** — **States.** Every transition is a write conditional on `status = 'PENDING'`, so a
   delivery leaves `PENDING` exactly once:
@@ -1782,12 +1792,16 @@ are expansion routes (rule 12) open to either role. **[C9]**
   | — | `PENDING` | `notify()` (NC9); `attempts` 0 |
   | `PENDING` | `SENT` | the provider accepted the email: `sentAt` = the job's `now`; `provider` and `providerMessageId` set; `error` cleared |
   | `PENDING` | `PENDING` | the provider threw and the job has attempts left: `error` recorded; the job retries with backoff |
-  | `PENDING` | `FAILED` | the provider threw on the job's last attempt, or `MAIL_PROVIDER` is unsupported (no provider call): `error` recorded |
+  | `PENDING` | `FAILED` | the provider threw on the job's last attempt: `error` recorded; or `MAIL_PROVIDER` is unsupported: no provider call, `attempts` stays as it was, `provider` = the configured value as given, `error` per NC14 |
   | `PENDING` | `SKIPPED` | the recipient was soft-deleted before the send: `error` = `Recipient is no longer active`; no provider call |
 
   `SENT`, `FAILED` and `SKIPPED` are final. Delivery is **at least once**: if the provider accepts
   an email but the `SENT` write fails, the retry sends it again. The provider receives the
-  delivery `id` as an idempotency key, so that a real provider can drop such a duplicate.
+  delivery `id` as an idempotency key, so that a real provider can drop such a duplicate. A
+  delivery can also **stay `PENDING` for good** when its job ends `FAILED` before the handler
+  writes a final state — stale-lock recovery after the last attempt, or a database error on the
+  last attempt's `attempts` or `SENT` write. The job's `FAILED` row (`lastError`) is then the
+  record; nothing sends that delivery again (Q24).
 - **NC13** — **Rendering**, done once by `notify()` and stored on the row. Plain text, Korean:
   subject `[WorkBridge] <title>`; body `<message>`, a blank line, `바로가기: <base><href>` (left
   out when `href` is `null`), a blank line, `알림 설정: <base>/my/notifications/settings`, where
@@ -1795,9 +1809,10 @@ are expansion routes (rule 12) open to either role. **[C9]**
   Tests assert `type`, `userId`, `toAddress`, `contextKey`, `status` and `notificationId`, never
   the wording.
 - **NC14** — **Mail provider.** A provider takes `{ deliveryId, from, to, subject, text }` and
-  returns a `providerMessageId`, or throws. `MAIL_PROVIDER` is read at each send, never at boot,
-  so a bad value fails the send that needs it and not the server (the lazy-env principle of
-  `src/env.ts`):
+  returns a `providerMessageId`, or throws. `MAIL_PROVIDER` is read at each send. At process
+  start (the server, `jobs:run`, `jobs:worker`) a set but unsupported value is reported once as a
+  `warn` line `unsupported MAIL_PROVIDER`, without throwing — a bad value fails the sends that
+  need it, not the process (the lazy-env principle of `src/env.ts`):
   - unset, empty or `log` → the **log provider**: one `info` line `mail.sent` with `deliveryId`,
     `from`, `to`, `subject`, `text` and the returned id `log-<uuid>`. It needs no account and no
     network, and never fails;
@@ -1947,12 +1962,7 @@ it replaces.
      enqueue a new job at that message's `createdAt + 10 min` (unless a `PENDING` one exists for
      the pair; the running job is `RUNNING` and does not count) and end `SUCCEEDED` without
      sending;
-  3. *(Phase 3)* when a `MESSAGE_UNREAD_DIGEST` `EmailDelivery` for this recipient with
-     `contextKey = 'conversation:<conversationId>'` was created after `ctx.now − 60 min`, send
-     nothing; instead, unless another `PENDING` job for the pair exists, enqueue one at that
-     delivery's `createdAt + 60 min` — a throttled digest is postponed, never dropped;
-  4. *(Phase 3)* `notify()` an email-only `MESSAGE_UNREAD_DIGEST` ("새 메시지 N개", N = MG8) with
-     that `contextKey`.
+  3. *(Phase 3)* the throttle, and 4. *(Phase 3)* the email — both specified once, in NC16.
 
   Until Phase 3, steps 3–4 do nothing and the job ends `SUCCEEDED` after step 2. Outcome once
   complete: a message read within 10 minutes never causes an email; a conversation sends a
@@ -1962,7 +1972,6 @@ it replaces.
   enqueues a job for t0 + 10 min; the recipient reads at t0 + 2; message B at t0 + 9 enqueues
   nothing (A's job is pending); at t0 + 10 the job finds B unread but only 1 minute old, so it
   re-enqueues for t0 + 19 and sends nothing. Tests drive it with `runDueJobs({ now })` alone.
-  Steps 3–4 are specified in full by NC16.
 
 ### Email handler rule (Phase 3)
 - **J9** — `notification.email`, payload `{ deliveryId }`, `dedupeKey`
@@ -2131,7 +2140,7 @@ obviously a bug.
 | **Q21** | Message attachments (MG4, MG15) and milestone deliverables (MS2, MS13) live in the existing **public** Supabase bucket under unguessable `<folder>/<uuid>.<ext>` keys and are returned as plain public URLs. Anyone who obtains a URL — a forwarded link, a log line, a former participant — can download the file without authenticating, and nothing revokes it: deleting the message (MG17) or the user removes neither the object nor its reachability. This is the current, deliberate intent (signed URLs need a private bucket and a download endpoint), so it is not a divergence. Should attachments move to a private bucket served through short-lived signed URLs, and should deleting a message delete its files? |
 | **Q22** | Payout account numbers are **stored in plaintext** (`PayoutAccount.accountNumber`) and only masked in responses (M23, PA1). There is no encryption at rest and no bank-side verification that the account belongs to the member — the holder-name rule compares against the profile name only. This is the current, deliberate intent (encryption and real-name verification carry cost and regulatory work), so it is not a divergence. Should account numbers be encrypted at rest, and under what key management? Should holder verification go through a bank API before the first payout? |
 | **Q23** | The rate-limit client IP comes from `X-Forwarded-For` when `TRUST_PROXY` is set, and the Next.js proxies forward that header as received (rule 10). Behind Vercel's edge the header is rewritten, but a self-hosted Next reachable by untrusted clients lets them pick their own IP: rotating it bypasses the per-IP login limit, makes the email + IP failure limit effectively unlimited per account, and lets anyone exhaust a chosen IP's quota. Should the deployment put a header-rewriting proxy in front of Next, should self-hosted setups leave `TRUST_PROXY` unset, or should the failure limit also key on email alone? |
-| **Q24** | **No real mail provider is connected** (NC14). The default `log` provider writes each email's recipient address and full text to the application log at `info`, and `EmailDelivery` rows keep the address, subject and body indefinitely — `maintenance.cleanup` does not touch them. Production has no resident job runner either (Background jobs), so today no email leaves the system anywhere. This is the deliberate scope of Phase 3 (the brief excludes a real mail service), so it is not a divergence. Which provider, with what sender-domain authentication (SPF, DKIM)? How should bounces and complaints be handled — there is no suppression list, so an address that bounces is tried again for every new delivery? How long should deliveries, which are personal data, be kept? |
+| **Q24** | **No real mail provider is connected** (NC14). The default `log` provider writes each email's recipient address and full text to the application log at `info`, and `EmailDelivery` rows keep the address, subject and body indefinitely — `maintenance.cleanup` does not touch them. Production has no resident job runner either (Background jobs), so today no email leaves the system anywhere. This is the deliberate scope of Phase 3 (the brief excludes a real mail service), so it is not a divergence. Which provider, with what sender-domain authentication (SPF, DKIM)? How should bounces and complaints be handled — there is no suppression list, so an address that bounces is tried again for every new delivery? How long should deliveries, which are personal data, be kept, and should a delivery stranded in `PENDING` by a failed job (NC12) be swept or re-sent? |
 | **Q25** | **Optional emails have no one-click opt-out** (NC15). Turning off the unread digest or the `APPLICATION_CREATED` email requires signing in to the preferences page; nothing in the email itself stops it. All mail is transactional today, so rules aimed at advertising mail and mailbox providers' one-click requirement for bulk marketing mail do not clearly apply — but a recipient who no longer wants the digest has no low-effort way out. Should optional types carry a signed one-click link (and `List-Unsubscribe`) that turns that one type's email off without signing in? |
 | **Q13** | An **empty** query value is treated inconsistently. `GET /api/projects` 400s on `?status=`, `?sort=`, `?page=`, `?limit=` but ignores `?search=`, `?category=`, `?skills=`, `?minBudget=`; `GET /api/notifications` treats `?limit=` as absent and falls back to its default of 20. Reading `''` as "absent → default" is at least as defensible as "non-integer → 400". Both behaviors are currently pinned by tests; the spec should pick one. |
 
