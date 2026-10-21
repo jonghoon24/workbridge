@@ -115,6 +115,52 @@ async function warmConnectionPool(user: User, concurrency = 4) {
 }
 
 /**
+ * Makes the D13 create collision deterministic. A warm pool alone is not enough: the pair still
+ * serializes now and then (one request inserts before the other reads), and the `it.fails` pin
+ * then passes unexpectedly. Here a separate transaction holds `LOCK TABLE "Payment" IN SHARE
+ * MODE`, which lets reads through but blocks every INSERT, while `send` fires the requests. Once
+ * `inserters` backends are queued on that lock — so each has already read "no payment yet" — the
+ * lock is released and the inserts collide on the unique `milestoneId`.
+ *
+ * If fewer than `inserters` ever queue (a fix that serializes the pair before the insert), the
+ * lock is released after `maxWaitMs` anyway and the requests finish on their own.
+ */
+async function collideOnPaymentInsert<T>(
+  inserters: number,
+  send: () => Promise<T>,
+  maxWaitMs = 3_000,
+): Promise<T> {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  let signalLocked!: () => void;
+  const locked = new Promise<void>((resolve) => { signalLocked = resolve; });
+
+  const holder = prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`LOCK TABLE "Payment" IN SHARE MODE`;
+    signalLocked();
+    await released;
+  }, { timeout: maxWaitMs + 5_000 });
+
+  try {
+    await locked;
+    const pending = send();
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline) {
+      const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+        SELECT count(*)::int AS waiting FROM pg_locks
+         WHERE locktype = 'relation' AND relation = '"Payment"'::regclass AND NOT granted`;
+      if (waiting >= inserters) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    release();
+    await holder;
+    return await pending;
+  } finally {
+    release();
+  }
+}
+
+/**
  * Markers that must never appear in an error body — see [D14]. Matched by *shape* rather than
  * by the exact text, so the tests survive a Prisma version bump or a controller edit that moves
  * the offending line: the file:line pattern is `\.ts:\d+:\d+`, not `payments.controller.ts:70:42`.
@@ -420,10 +466,11 @@ describe('POST /api/payments', () => {
       const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       try {
-        const responses = await Promise.all([
+        // Both requests read "no payment" before either inserts, every run (see the helper).
+        const responses = await collideOnPaymentInsert(2, () => Promise.all([
           authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
           authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
-        ]);
+        ]));
 
         for (const res of responses) {
           expect([200, 201, 409]).toContain(res.status);
@@ -483,10 +530,10 @@ describe('POST /api/payments', () => {
 
     try {
       for (const milestone of milestones) {
-        const responses = await Promise.all([
+        const responses = await collideOnPaymentInsert(2, () => Promise.all([
           authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
           authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
-        ]);
+        ]));
 
         for (const res of responses) {
           if (res.body?.error) assertNoInternalsLeak(res.body.error.message);
