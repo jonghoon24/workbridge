@@ -84,7 +84,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | Enum | 값과 흐름 |
 | --- | --- |
 | `Role` | `CLIENT`, `FREELANCER` |
-| `ProjectStatus` | `UPCOMING` → `OPEN` → `CLOSED` → `COMPLETED`. 모집 시작일·마감일에 따라 지연 스윕(GET 목록·상세)과 `project.lifecycleSweep` 작업이 `UPCOMING`→`OPEN`→`CLOSED`로 바꾸고, 지원 수락도 `CLOSED`로 만든다. 마지막 마일스톤 승인이 `CLOSED`에서 바로 `COMPLETED`로 바꾼다. `CANCELLED`는 의뢰인의 수동 전이. **`IN_PROGRESS`는 enum과 수동 전이 표에만 있고 아무것도 쓰지 않는다**(Q5) |
+| `ProjectStatus` | `UPCOMING` → `OPEN` → `CLOSED` → `COMPLETED`. 모집 시작일·마감일에 따라 지연 스윕(GET 목록·상세)과 `project.lifecycleSweep` 작업이 `UPCOMING`→`OPEN`→`CLOSED`로 바꾸고, 지원 수락도 `CLOSED`로 만든다. 마지막 마일스톤 승인이 `CLOSED`에서 바로 `COMPLETED`로 바꾼다. 의뢰인의 수동 전이(`PATCH /api/projects/:id/status`)는 `UPCOMING`→`OPEN`·`CLOSED`·`CANCELLED`, `OPEN`→`CLOSED`·`CANCELLED`다. **`IN_PROGRESS`는 enum과 수동 전이 표에만 있고 아무것도 쓰지 않는다**(Q5) |
 | `ApplicationStatus` | `PENDING` → `ACCEPTED` / `REJECTED`. 수락하면 같은 프로젝트의 다른 대기 지원은 거절된다. 마감된 프로젝트의 대기 지원도 거절된다 |
 | `ContractStatus` | `PENDING`(서명 대기) → `ACTIVE`(양측 서명, 유효한 계획 필요) → `COMPLETED`(마지막 마일스톤 승인 시 자동). 취소·해지 상태는 없다 |
 | `MilestoneStatus` | `PENDING` → `FUNDED`(결제) → `SUBMITTED`(제출) → `APPROVED`(최종) 또는 `REVISION_REQUESTED`(반려) → `SUBMITTED`(재제출). 계약이 `PENDING`인 동안 계획 교체가 `PENDING` 마일스톤을 지우고 새로 만든다 |
@@ -117,6 +117,13 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | Conversation ↔ ConversationParticipant | 1 : 정확히 2 | `(conversationId, userId)` unique. 계약의 의뢰인과 프리랜서이며 바뀌지 않는다 |
 | Contract ↔ Review | 1 : 0..2 | `(contractId, reviewerId)` unique, 계약 `COMPLETED` 뒤에만 |
 | User ↔ NotificationPreference | 1 : N | `(userId, type)` unique |
+| Conversation ↔ Message | 1 : N | `Message.conversationId`. 인덱스 `[conversationId, createdAt]` |
+| Message ↔ MessageAttachment | 1 : 0..5 | `MessageAttachment.messageId`. 개수는 업로드 미들웨어가 검사 |
+| MilestoneSubmission ↔ MilestoneAttachment | 1 : 0..5 | `MilestoneAttachment.submissionId`. 개수는 업로드 미들웨어가 검사 |
+| Notification ↔ EmailDelivery | 1 : 0..1 | `EmailDelivery.notificationId`(선택, `ON DELETE SET NULL`, unique는 아님 — `notify()`가 인앱 row마다 최대 1건 만든다). 이메일 전용 알림(다이제스트)이면 null |
+| User ↔ PortfolioItem | 1 : 0..20 | `PortfolioItem.userId`. 개수는 서비스가 검사 |
+| User ↔ Career | 1 : 0..30 | `Career.userId`. 개수는 서비스가 검사 |
+| Contract ↔ SettlementItem | 1 : N | `SettlementItem.contractId`. 승인된 마일스톤마다 1건 |
 
 그 밖의 불변식:
 

@@ -90,9 +90,9 @@
 | --- | --- | --- | --- |
 | GET | `/api/users/me` | 로그인 | 내 프로필 (email 포함) |
 | PATCH | `/api/users/me` | 로그인 | 내 프로필 수정 (multipart) |
-| GET | `/api/users/me/applications` | 로그인, FREELANCER | 내 지원 목록 |
-| GET | `/api/users/me/bookmarks` | 로그인, FREELANCER | 내 북마크 |
-| GET | `/api/users/me/projects` | 로그인, CLIENT | 내 프로젝트 |
+| GET | `/api/users/me/applications` | 로그인 | 내 지원 목록. 프리랜서가 아니면 핸들러가 403 `Only freelancers can view their applications` |
+| GET | `/api/users/me/bookmarks` | 로그인 | 내 북마크. 프리랜서가 아니면 핸들러가 403 `Only freelancers can view their bookmarks` |
+| GET | `/api/users/me/projects` | 로그인 | 내 프로젝트. 의뢰인이 아니면 핸들러가 403 `Only clients can view their projects` |
 | GET | `/api/users/me/payout-account` | 로그인·활성, FREELANCER | 지급 계좌 조회 |
 | PUT | `/api/users/me/payout-account` | 로그인·활성, FREELANCER | 지급 계좌 등록·변경 |
 | DELETE | `/api/users/me/payout-account` | 로그인·활성, FREELANCER | 지급 계좌 삭제 |
@@ -181,7 +181,7 @@
 - **`PATCH /:id`** — `title`, `description`, `category`, `requiredSkills`는 언제나 수정 가능. 지원이 하나라도 있으면 `budget`, `recruitmentStartDate`, `deadline` 변경은 400 `Cannot change budget or recruitment dates after applications have been submitted`. 응답 수정된 프로젝트. 404 → 403 `Not authorized`.
 - **`DELETE /:id`** — 소프트 삭제, `{ message: "Project deleted successfully" }`. 404 → 403. 진행 중 계약이 있으면 409여야 하지만 지금은 지워진다(D11).
 - **`PATCH /:id/status`** — 요청 `{ status }`. 허용 전이: `UPCOMING`→`OPEN|CANCELLED|CLOSED`, `OPEN`→`CANCELLED|CLOSED`, `IN_PROGRESS`→`COMPLETED|CANCELLED`(아무도 `IN_PROGRESS`를 쓰지 않음, Q5). 그 밖은 400 `Cannot transition from X to Y`. `CLOSED`로 바꾸면 한 트랜잭션에서 대기 지원을 거절하고 지원자마다 `PROJECT_STATUS_CHANGED` 알림. 404 → 403 → 400.
-- **`POST /:id/analyze`** — OpenAI `gpt-4o-mini`로 기능별 단가를 추정해 `PricingAnalysis`를 upsert하고 그 row를 돌려준다(`{ features: [{ name, description, estimatedCost, rationale, duration }], totalAmount, summary, marketReference }`, `totalAmount`는 남은 기능의 합). 오류 순서: 요청 제한 429 → 404 → 403 → 502 `AI analysis did not return a response` / `AI analysis did not return valid feature pricing`.
+- **`POST /:id/analyze`** — OpenAI `gpt-4o-mini`로 기능별 단가를 추정해 `PricingAnalysis`를 upsert하고 그 row를 돌려준다(`{ features: [{ name, description, estimatedCost, rationale, duration }], totalAmount, summary, marketReference }`, `totalAmount`는 남은 기능의 합). 오류 순서: 역할 403 `Insufficient permissions`(`requireRole`이 제한기 앞) → 요청 제한 429 → 404 → 소유권 403 → 502 `AI analysis did not return a response` / `AI analysis did not return valid feature pricing`.
 - **북마크** — `GET` `{ bookmarked }`, `POST` **201** `{ bookmarked: true }`(멱등, 프로젝트가 없거나 삭제되면 404 `Project not found`), `DELETE` `{ bookmarked: false }`(멱등). `GET`/`DELETE`는 프로젝트 존재를 확인하지 않는다(Q6, D19).
 - **`GET /:id/recommended-freelancers`** (RC3–RC5) — 쿼리 `limit`(기본 10, 최대 20). 응답 200 `{ freelancers: [{ id, name, profileImage, activityCategory, experienceYears, hourlyRate, skills, score, matchedSkills, avgRating, reviewCount, portfolioPreview: [{ id, title, imageUrl }] }] }`. 후보는 프로필을 완성했고 이 프로젝트에 지원한 적 없는 활성 프리랜서 중 요구 스킬이 겹치는 사람(요구 스킬이 없으면 전부). 점수(100점): 스킬 50 + 포트폴리오 스킬 10 + 카테고리 15 + 평점 15(리뷰 없으면 9) + 경력 연수 10. 프로젝트 상태와 무관하게 쓸 수 있고 읽기 전용이다. 오류 순서: 역할 403 → `limit` 400 → 404 `Project not found` → 남의 프로젝트 403 `Not authorized`.
 

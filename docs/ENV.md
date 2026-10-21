@@ -15,13 +15,13 @@
 | `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 |
 | `GOOGLE_CALLBACK_URL` | Google OAuth 콜백 URL. 프론트엔드 `/api/auth/google/callback` URL 사용 |
-| `OPENAI_API_KEY` | OpenAI API 키 |
+| `OPENAI_API_KEY` | OpenAI API 키. **모듈을 읽을 때 클라이언트를 만들므로 비어 있으면 서버가 뜨지 않는다**(테스트처럼 더미 값이면 된다) |
 | `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키 (test_sk_...) |
 | `ALLOW_PAYMENT_BYPASS` | 데모/로컬에서 `true`로 설정하면 토스 결제창 없이 결제 완료 처리 가능. 실제 운영 서비스에서는 `false` 유지 |
-| `CLIENT_URL` | 프론트엔드 URL. CORS 허용 출처이자 OAuth 리디렉션 대상이고, 쉼표로 여러 개를 줄 수 있다. 메일 본문 링크의 기준 주소는 **첫 항목**에서 끝의 `/`를 뗀 값이다(비어 있으면 `http://localhost:3000`, BEHAVIOR.md NC1·NC13). 비어 있으면 OAuth 리디렉션이 `undefined/…`가 된다(Q20) |
+| `CLIENT_URL` | 프론트엔드 URL. CORS 허용 출처이자 OAuth 리디렉션 대상이다. CORS와 메일 링크는 쉼표 목록을 받지만, **OAuth 리디렉션은 값을 그대로 이어 붙인다**(`${CLIENT_URL}/auth/callback…`). 그래서 쉼표 목록이면 OAuth 리디렉션이 깨진다(BEHAVIOR.md Q26) — 여러 출처가 필요하면 `CLIENT_URL`은 하나로 두고 나머지는 `CORS_ORIGINS`에 둔다. 메일 본문 링크의 기준 주소는 **첫 항목**에서 끝의 `/`를 뗀 값이다(비어 있으면 `http://localhost:3000`, BEHAVIOR.md NC1·NC13). 비어 있으면 OAuth 리디렉션이 `undefined/…`가 된다(Q20) |
 | `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 개발 환경에서는 `http://localhost:3000`이 항상 허용된다 |
-| `SUPABASE_URL` | Supabase 프로젝트 URL |
-| `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...) |
+| `SUPABASE_URL` | Supabase 프로젝트 URL. `OPENAI_API_KEY`처럼 모듈을 읽을 때 쓰이므로 서버를 띄우려면 필요하다(더미 값 가능) |
+| `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음) |
 | `LOG_LEVEL` | 로그 레벨 `debug`/`info`/`warn`/`error`/`silent` (기본 `info`). JSON 한 줄씩 출력하며 `error`만 stderr로 간다. 테스트는 `error` |
 | `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(레이트 리밋 키)로 쓴다. 비우면 소켓 주소를 쓰고 `X-Forwarded-For`는 무시. Next.js 프록시는 받은 `X-Forwarded-For`를 그대로 넘기므로 `loopback`은 **Next 포트(:3000)에 신뢰하는 클라이언트만 닿을 때만 안전하다**. 그렇지 않으면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다(BEHAVIOR.md Q23). 로컬 로그인은 어차피 전부 루프백 한 주소로 세어진다 |
 | `RATE_LIMIT_ENABLED` | `false`면 레이트 리밋(로그인, AI 단가 분석)을 끈다. 기본 켜짐. 요청마다 읽는다. 로컬에서 로그인을 여러 번 하는 시연·스크립트는 `false`로 둔다(머신 전체가 15분에 20회를 나눠 쓴다) |

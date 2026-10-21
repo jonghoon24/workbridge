@@ -34,7 +34,7 @@ declare global {
        *
        * Deliberately typed as **non-optional**. Every route that reads `req.user` is
        * mounted behind `authenticate`, so in practice it is always present, and this
-       * keeps the ~43 `req.user.id` reads free of `!` assertions.
+       * keeps the ~77 `req.user.id` reads free of `!` assertions.
        *
        * The tradeoff: on the 12 public handlers (`signup`, `login`, `refresh`, `googleAuth`,
        * `googleCallback`, `getProjects`, `getProjectById`, `getUserById`, `getUserReviews` —
