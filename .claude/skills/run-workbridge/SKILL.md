@@ -76,9 +76,10 @@ EOF
 (cd workbridge-server && npx prisma migrate deploy && npm run db:seed)
 ```
 
-Seed creates 8 users / 8 projects / contracts / payments / reviews. **All seed
+Seed creates 8 users, 16 projects (7 OPEN) and 6 contracts covering every milestone,
+settlement and conversation state, with dates relative to the moment it runs. **All seed
 account passwords are `password123`** (e.g. `kim@example.com` = CLIENT,
-`park@example.com` = FREELANCER; see `docs/SEED_DATA.md`).
+`park@example.com` = FREELANCER; `docs/SEED_DATA.md` lists who to log in as for each screen).
 
 ## Run
 
@@ -125,10 +126,11 @@ http://localhost:3000 and sign in with a seed account. `Ctrl-C` to stop each.
 
 ## Gotchas
 
-- **Only ~1 project shows as OPEN, not 8.** Not a bug. `lib/projectLifecycle.js`
-  auto-closes projects whose seeded deadlines have passed (seed dates are static and
-  now in the past), flipping them to CLOSED on list-read. Sign in to see fuller data,
-  or re-seed to refresh dates: `(cd workbridge-server && npm run db:seed)`.
+- **Seed dates are relative to when it ran.** OPEN deadlines are days to weeks out, so an
+  old seed slowly drifts: projects close on list-read once their deadline passes
+  (`lib/projectLifecycle.ts`) and recommendations thin out. Re-seed to refresh:
+  `(cd workbridge-server && npm run db:seed)`. `node prisma/seed.js` alone does not load
+  `.env` — use `npm run db:seed` or export `DATABASE_URL`/`DIRECT_URL` first.
 - **Frontend fetches data client-side.** A naive screenshot can fire before the
   fetch settles — `drive.sh` passes `--virtual-time-budget=8000` to let JS + network
   finish. Bump it if a page looks empty.
