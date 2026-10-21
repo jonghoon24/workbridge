@@ -7,6 +7,53 @@ export function getApiUrl() {
   return (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
 }
 
+// Response headers the browser needs from the backend besides content-type: the request id
+// for support/debugging, and Retry-After on a 429.
+const PASSTHROUGH_RESPONSE_HEADERS = ['x-request-id', 'retry-after'];
+
+/**
+ * The `X-Forwarded-For` chain to send to the backend: whatever arrived, plus the address this
+ * proxy saw. The backend rate-limits login by client IP and trusts this header from loopback
+ * (`TRUST_PROXY=loopback`); without it every browser would share the Next server's address.
+ */
+function forwardedFor(request) {
+  const incoming = request.headers.get('x-forwarded-for');
+  const ip = request.ip;
+
+  if (incoming && ip) return `${incoming}, ${ip}`;
+  return incoming || ip || null;
+}
+
+/** Headers every proxied request carries: content-type, authorization, X-Forwarded-For, X-Request-Id. */
+export function buildForwardHeaders(request) {
+  const headers = new Headers();
+  const contentType = request.headers.get('content-type');
+  const authorization = request.headers.get('authorization');
+  const requestId = request.headers.get('x-request-id');
+  const chain = forwardedFor(request);
+
+  if (contentType) headers.set('content-type', contentType);
+  if (authorization) headers.set('authorization', authorization);
+  if (requestId) headers.set('x-request-id', requestId);
+  if (chain) headers.set('x-forwarded-for', chain);
+
+  return headers;
+}
+
+/** Response headers for the browser: content-type plus the passthrough list above. */
+export function buildResponseHeaders(backendResponse) {
+  const headers = {
+    'content-type': backendResponse.headers.get('content-type') || 'application/json',
+  };
+
+  for (const name of PASSTHROUGH_RESPONSE_HEADERS) {
+    const value = backendResponse.headers.get(name);
+    if (value) headers[name] = value;
+  }
+
+  return headers;
+}
+
 function getRefreshTokenFromSetCookie(setCookie) {
   if (!setCookie) return null;
 
@@ -46,13 +93,9 @@ export function clearRefreshTokenCookie(response) {
 }
 
 export async function proxyAuthRequest(request, path, options = {}) {
-  const headers = new Headers();
-  const contentType = request.headers.get('content-type');
-  const authorization = request.headers.get('authorization');
+  const headers = buildForwardHeaders(request);
   const refreshToken = request.cookies.get(REFRESH_COOKIE_NAME)?.value;
 
-  if (contentType) headers.set('content-type', contentType);
-  if (authorization) headers.set('authorization', authorization);
   if (refreshToken) headers.set('cookie', `${REFRESH_COOKIE_NAME}=${refreshToken}`);
 
   const init = {
@@ -70,9 +113,7 @@ export async function proxyAuthRequest(request, path, options = {}) {
   const body = await backendResponse.text();
   const response = new NextResponse(body, {
     status: backendResponse.status,
-    headers: {
-      'content-type': backendResponse.headers.get('content-type') || 'application/json',
-    },
+    headers: buildResponseHeaders(backendResponse),
   });
 
   setRefreshTokenCookie(response, backendResponse);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getApiUrl } from '@/lib/server/authProxy';
+import { buildForwardHeaders, buildResponseHeaders, getApiUrl } from '@/lib/server/authProxy';
 
 function buildBackendUrl(request, path) {
   const backendPath = path.map(encodeURIComponent).join('/');
@@ -7,16 +7,9 @@ function buildBackendUrl(request, path) {
 }
 
 async function proxyApiRequest(request, { params }) {
-  const headers = new Headers();
-  const contentType = request.headers.get('content-type');
-  const authorization = request.headers.get('authorization');
-
-  if (contentType) headers.set('content-type', contentType);
-  if (authorization) headers.set('authorization', authorization);
-
   const init = {
     method: request.method,
-    headers,
+    headers: buildForwardHeaders(request),
     redirect: 'manual',
   };
 
@@ -30,17 +23,22 @@ async function proxyApiRequest(request, { params }) {
 
   return new NextResponse(body, {
     status: backendResponse.status,
-    headers: {
-      'content-type': backendResponse.headers.get('content-type') || 'application/json',
-    },
+    headers: buildResponseHeaders(backendResponse),
   });
 }
+
+// Every method the backend uses must be exported here, or Next answers 405 before the request
+// reaches the backend — and neither `npm run build` nor `lint` would notice.
 
 export async function GET(request, context) {
   return proxyApiRequest(request, context);
 }
 
 export async function POST(request, context) {
+  return proxyApiRequest(request, context);
+}
+
+export async function PUT(request, context) {
   return proxyApiRequest(request, context);
 }
 
