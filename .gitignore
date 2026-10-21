@@ -27,3 +27,6 @@ skills-lock.json
 # Planning/scaffolding docs (kept locally, not tracked)
 docs/PRD.md
 docs/TODO.md
+
+# Claude Code local settings
+.claude/settings.local.json
