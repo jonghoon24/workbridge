@@ -1074,6 +1074,22 @@ describe('POST /api/payments/confirm', () => {
     expect(after.status).toBe('COMPLETED');
   });
 
+  // Deterministic version of the race above: the "winner" commits COMPLETED while this confirm's
+  // provider call is in flight, then the provider rejects. Fails if the FAILED write is unconditional.
+  it('a provider rejection after a concurrent winner committed leaves COMPLETED and answers 400 [PY8]', async () => {
+    const { client, payment } = await pendingPayment();
+    tossPost.mockImplementation(async () => {
+      await prisma.payment.update({ where: { id: payment.id }, data: { status: 'COMPLETED', paymentKey: 'pk_winner' } });
+      throw new Error('ALREADY_PROCESSED_PAYMENT');
+    });
+
+    const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toBe('Payment verification failed');
+    expect(await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).toMatchObject({ status: 'COMPLETED', paymentKey: 'pk_winner' });
+  });
+
   it('a database failure after capture marks the payment FAILED and answers 400 [PY8]', async () => {
     const { client, milestone, payment } = await pendingPayment();
     tossPost.mockResolvedValue(tossDone());

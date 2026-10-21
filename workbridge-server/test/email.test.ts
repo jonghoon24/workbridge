@@ -125,6 +125,13 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
     expect(delivery.body).not.toContain('b.test');
   });
 
+  it('carries no unsubscribe link or token; the last line is the sign-in preferences page [NC15]', async () => {
+    const { delivery } = await oneDelivery();
+
+    expect(delivery.body).not.toMatch(/unsubscribe|token=/i);
+    expect(delivery.body.trimEnd().split('\n').at(-1)).toMatch(/\/my\/notifications\/settings$/);
+  });
+
   it('creates no delivery for a recipient without an address [NC9]', async () => {
     const user = await makeFreelancer({ email: '   ' });
 
@@ -163,7 +170,7 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
 });
 
 describe('notification.email (J9) [NC12]', () => {
-  it('sends: SENT, attempts 1, sentAt = the job\'s now, provider and id recorded [J9] [NC12]', async () => {
+  it('sends: SENT, attempts 1, sentAt = the job\'s now, provider and id recorded; no extra headers [J9] [NC12] [NC15]', async () => {
     const { user, delivery } = await oneDelivery();
     process.env.MAIL_FROM = 'WorkBridge <mail@test.local>';
     const runAt = new Date(T0.getTime() + 5 * MINUTE);

@@ -362,20 +362,20 @@ describe('GET /api/projects', () => {
     // No D-number: BEHAVIOR.md says "non-positive or non-integer → 400", but the code runs
     // `Number.parseInt`, which truncates "1.5" to 1 and then finds it a valid positive
     // integer. So a fractional page/limit is silently accepted instead of rejected.
-    it.fails('rejects a fractional page with 400 [undocumented divergence]', async () => {
+    it.fails('rejects a fractional page with 400 [unlisted]', async () => {
       const res = await api().get('/api/projects?page=1.5');
 
       expect(res.status).toBe(400);
     });
 
-    it.fails('rejects a fractional limit with 400 [undocumented divergence]', async () => {
+    it.fails('rejects a fractional limit with 400 [unlisted]', async () => {
       const res = await api().get('/api/projects?limit=2.7');
 
       expect(res.status).toBe(400);
     });
 
     // Same root cause: parseInt stops at the first non-digit, so "3abc" becomes 3.
-    it.fails('rejects a trailing-garbage page like 3abc with 400 [undocumented divergence]', async () => {
+    it.fails('rejects a trailing-garbage page like 3abc with 400 [unlisted]', async () => {
       const res = await api().get('/api/projects?page=3abc');
 
       expect(res.status).toBe(400);

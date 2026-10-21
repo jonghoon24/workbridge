@@ -441,6 +441,53 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect(outcomes.size).toBeGreaterThan(0);
   });
 
+  /**
+   * S17/PA7, deterministically: an account created while the payout decides must never leave the
+   * settlement ON_HOLD. The test holds the settlement row so the payout stops after reading "no
+   * account" and before writing ON_HOLD, then fires the PUT. With the user-row lock the PUT waits
+   * for the payout, sees ON_HOLD and reschedules it (PA4). Without it the PUT commits in the gap,
+   * finds nothing ON_HOLD to reschedule, and the payout then holds a settlement whose freelancer
+   * has an account.
+   */
+  it('an account created mid-decision is never left behind an ON_HOLD settlement [S17] [PA7]', async () => {
+    const freelancer = await makeFreelancer();
+    const settlement = await scheduled(freelancer);
+    await Promise.all([1, 2, 3].map(() => authed(freelancer).get('/api/users/me/payout-account')));
+    const waiting = async () => (await prisma.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`)[0].n;
+    const until = async (done: () => Promise<boolean> | boolean) => {
+      for (const deadline = Date.now() + 3_000; Date.now() < deadline && !(await done());) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+
+    let release!: () => void;
+    let holding!: () => void;
+    const held = new Promise<void>((resolve) => { holding = resolve; });
+    const holder = prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Settlement" WHERE id = ${settlement.id} FOR UPDATE`;
+      holding();
+      await new Promise<void>((resolve) => { release = resolve; });
+    }, { timeout: 10_000 });
+    await held;
+
+    const payout = runPayout(settlement.id, settlement.scheduledPayoutAt.toISOString(), PAYOUT_AT);
+    await until(async () => (await waiting()) >= 1); // the payout is parked on its ON_HOLD write
+    let putDone = false;
+    const put = authed(freelancer).put('/api/users/me/payout-account')
+      .send({ bankCode: '004', accountNumber: '110123456789', holderName: freelancer.name })
+      .then((res) => { putDone = true; return res; });
+    await until(async () => putDone || (await waiting()) >= 2); // committed, or queued on the user row
+    release();
+    await holder;
+    const [outcome, res] = await Promise.all([payout, put]);
+
+    expect(outcome).toBe('on_hold');
+    expect(res.status).toBe(200);
+    expect(await prisma.payoutAccount.count({ where: { userId: freelancer.id } })).toBe(1);
+    expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).status).toBe('SCHEDULED');
+  });
+
   it('transfers the netAmount of the settlement it moved to PROCESSING [S9]', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);

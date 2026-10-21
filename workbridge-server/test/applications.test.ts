@@ -176,11 +176,11 @@ describe('POST /api/projects/:id/applications', () => {
     }
   }
 
-  // [D-unlisted] Cross-cutting rule 8: a malformed value must be 400, never 500. `coverLetter` and
+  // [unlisted] Cross-cutting rule 8: a malformed value must be 400, never 500. `coverLetter` and
   // `expectedDuration` are only truthiness-checked, so any truthy non-string reaches
   // `tx.application.create` and Prisma rejects it — 500. Same defect class as D16/D17 (a
   // non-string inside an array reaching Prisma), on fields the divergence table does not list.
-  it.fails('400s on a non-string expectedDuration rather than 500 [D-unlisted, rule 8]', async () => {
+  it.fails('400s on a non-string expectedDuration rather than 500 [unlisted, rule 8]', async () => {
     const res = await applyWithNonStringDuration();
 
     expect(res.status).toBe(400);
@@ -297,7 +297,7 @@ describe('POST /api/projects/:id/applications', () => {
     // own `$transaction` — *not* `apply`'s in-handler `deadline < now` branch. That branch reads
     // the project after the sweep has already flipped it to CLOSED, so `status === 'OPEN'` is
     // false and the branch is unreachable; the request falls through to the not-OPEN guard.
-    // The [D-unlisted] test below asserts the message the unreachable branch would have produced,
+    // The [unlisted] test below asserts the message the unreachable branch would have produced,
     // and the sweep-before-validation test after it shows the writes happen even on a request
     // that 400s long before that branch.
     const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
@@ -309,13 +309,13 @@ describe('POST /api/projects/:id/applications', () => {
     expect(await prisma.application.count({ where: { freelancerId: applicant.id } })).toBe(0);
   });
 
-  // [D-unlisted] `apply` runs `closeExpiredOpenProjects()` before reading the project, so by the
+  // [unlisted] `apply` runs `closeExpiredOpenProjects()` before reading the project, so by the
   // time the `deadline < now` branch is evaluated the project is already CLOSED and its guard
   // (`project.status === 'OPEN' && project.deadline < new Date()`) cannot hold. That branch, its
   // in-handler transaction and its message are all dead code with zero coverage — nothing in this
   // file exercises them, and nothing can; the request falls through to the not-OPEN guard and
   // answers 'Project is not accepting applications'. Not in the divergence table; see report.
-  it.fails('reports "Project deadline has passed" for an expired OPEN project [D-unlisted]', async () => {
+  it.fails('reports "Project deadline has passed" for an expired OPEN project [unlisted]', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, {
       status: 'OPEN',
@@ -876,7 +876,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(await prisma.notification.count()).toBe(3);
     });
 
-    it('7. opens the conversation: both parties, nothing read, and the CONTRACT_CREATED system message [MG3] [MG6] [C2]', async () => {
+    it('7. opens the conversation: both parties, nothing read, and the CONTRACT_CREATED system message [MG2] [MG3] [MG6] [C2]', async () => {
       const s = await scenario();
 
       const res = await authed(s.client)

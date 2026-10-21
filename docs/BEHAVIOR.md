@@ -1247,8 +1247,10 @@ expansion routes (rule 12) open to either role; the only authorization is being 
   A contract **without a conversation** (impossible after MG3 — a data-repair case, or a test
   fixture made with `makeContract` alone) posts nothing: the routine logs a `warn` line and returns,
   and the event it would have recorded proceeds unchanged. It never throws for this.
-  **Lock order:** `Contract` → `Milestone` → the event's other writes (`Project`, payment,
-  submission, …) → `Conversation`. A system message is always the **last** write of its event
+  **Lock order:** `Contract` → `Milestone` → the event's other writes (`Project`, submission,
+  …) → `Conversation`. Payment funding is the exception: `POST /api/payments/confirm` and
+  `/dev-complete` write the `Payment` row **before** the `Milestone` (PY6, PY11), then the
+  conversation. A system message is always the **last** write of its event
   transaction (`CONTRACT_COMPLETED` after `MILESTONE_APPROVED`), so the conversation lock is taken
   last; nothing that holds a conversation lock goes on to lock a contract, milestone or project.
   The participant row is only ever locked on its own (MG16, J8).
@@ -2080,18 +2082,18 @@ not repairing a live race. The genuine defect was the missing status guard.
 ### Found by the suite, not yet numbered
 
 The table above is **not exhaustive**. Writing the tests surfaced these, each covered by an
-`it.fails` tagged `[unlisted]` at the cited location. They are recorded here rather than numbered
+`it.fails` tagged `[unlisted]` in the named test (names, not line numbers, so they survive edits). They are recorded here rather than numbered
 because they need triage first — several may be the same root cause, and a few may be acceptable.
 
 | Behavior | Where |
 |---|---|
-| `POST /:id/bookmark` losing the upsert's find-then-insert race → 500 with a Prisma leak. `prisma.upsert` on a compound unique is a find-then-`INSERT`, not `INSERT … ON CONFLICT`, so an insert blocked on an uncommitted duplicate wakes to P2002. Violates both "idempotent (upsert)" and rule 8 — and confirms **D14**'s leak is not specific to the payment path | `bookmarks.test.ts:368` |
-| Non-string `expectedDuration` on apply → 500 | `applications.test.ts:221` |
-| The `Project deadline has passed` branch in `apply` is **dead code** — the lazy sweep closes the project first, so it is unreachable | `applications.test.ts:394` |
-| Three `analyze` paths → 500 instead of 502: non-JSON content, a response with no `choices`, and the provider throwing | `projects-write.test.ts:1754, :1765, :1776` |
-| `GET /api/projects` accepts a fractional `page`/`limit` and a trailing-garbage `page` (`parseInt` truncates) rather than 400 | `projects-list.test.ts:365, :371, :378` |
-| `GET /api/notifications` same for fractional and trailing-garbage `limit` | `notifications.test.ts:263, :273` |
-| `SKILL_ALIASES` is a bare object literal, so a skill named `constructor`/`toString` resolves through `Object.prototype` | `lib.test.ts:111, :190` |
+| `POST /:id/bookmark` losing the upsert's find-then-insert race → 500 with a Prisma leak. `prisma.upsert` on a compound unique is a find-then-`INSERT`, not `INSERT … ON CONFLICT`, so an insert blocked on an uncommitted duplicate wakes to P2002. Violates both "idempotent (upsert)" and rule 8 — and confirms **D14**'s leak is not specific to the payment path | `bookmarks.test.ts` "is idempotent under concurrency: an insert that loses the race must not 500" |
+| Non-string `expectedDuration` on apply → 500 | `applications.test.ts` "400s on a non-string expectedDuration rather than 500" |
+| The `Project deadline has passed` branch in `apply` is **dead code** — the lazy sweep closes the project first, so it is unreachable | `applications.test.ts` "reports 'Project deadline has passed' for an expired OPEN project" |
+| Three `analyze` paths → 500 instead of 502: non-JSON content, a response with no `choices`, and the provider throwing | `projects-write.test.ts` "returns 502 rather than 500 when …" (non-JSON content, no choices, the provider call itself fails) |
+| `GET /api/projects` accepts a fractional `page`/`limit` and a trailing-garbage `page` (`parseInt` truncates) rather than 400 | `projects-list.test.ts` "rejects a fractional page / fractional limit / trailing-garbage page like 3abc with 400" |
+| `GET /api/notifications` same for fractional and trailing-garbage `limit` | `notifications.test.ts` "rejects a fractional limit / trailing-garbage limit with 400" |
+| `SKILL_ALIASES` is a bare object literal, so a skill named `constructor`/`toString` resolves through `Object.prototype` | `lib.test.ts` "passes a skill named like an Object.prototype member through unchanged", "returns only strings for a skill named like an Object.prototype member" |
 | A `requiredSkills` array containing SQL `NULL` (reachable only by raw SQL) makes `GET /api/projects` 500 with Prisma `P2032` — **one bad row takes down the whole public listing** | not tested (unreachable via the API) |
 
 ## Open questions
@@ -2142,6 +2144,7 @@ obviously a bug.
 | **Q23** | The rate-limit client IP comes from `X-Forwarded-For` when `TRUST_PROXY` is set, and the Next.js proxies forward that header as received (rule 10). Behind Vercel's edge the header is rewritten, but a self-hosted Next reachable by untrusted clients lets them pick their own IP: rotating it bypasses the per-IP login limit, makes the email + IP failure limit effectively unlimited per account, and lets anyone exhaust a chosen IP's quota. Should the deployment put a header-rewriting proxy in front of Next, should self-hosted setups leave `TRUST_PROXY` unset, or should the failure limit also key on email alone? |
 | **Q24** | **No real mail provider is connected** (NC14). The default `log` provider writes each email's recipient address and full text to the application log at `info`, and `EmailDelivery` rows keep the address, subject and body indefinitely — `maintenance.cleanup` does not touch them. Production has no resident job runner either (Background jobs), so today no email leaves the system anywhere. This is the deliberate scope of Phase 3 (the brief excludes a real mail service), so it is not a divergence. Which provider, with what sender-domain authentication (SPF, DKIM)? How should bounces and complaints be handled — there is no suppression list, so an address that bounces is tried again for every new delivery? How long should deliveries, which are personal data, be kept, and should a delivery stranded in `PENDING` by a failed job (NC12) be swept or re-sent? |
 | **Q25** | **Optional emails have no one-click opt-out** (NC15). Turning off the unread digest or the `APPLICATION_CREATED` email requires signing in to the preferences page; nothing in the email itself stops it. All mail is transactional today, so rules aimed at advertising mail and mailbox providers' one-click requirement for bulk marketing mail do not clearly apply — but a recipient who no longer wants the digest has no low-effort way out. Should optional types carry a signed one-click link (and `List-Unsubscribe`) that turns that one type's email off without signing in? |
+| **Q26** | `CLIENT_URL` is read two ways. CORS (`index.ts`) and email links (NC1, NC13) split it on commas and use the first entry, but the OAuth redirects (`GET /api/auth/google/callback`, and the failure redirect) interpolate the **raw** string, so a comma list produces `http://a.test, http://b.test/auth/callback?…`. Related to Q20 (unset value). Should OAuth also use the first entry (one shared `clientBaseUrl()`), or should `CLIENT_URL` be a single origin with extra CORS origins only in `CORS_ORIGINS`? Until decided, ENV.md says to keep it a single origin. |
 | **Q13** | An **empty** query value is treated inconsistently. `GET /api/projects` 400s on `?status=`, `?sort=`, `?page=`, `?limit=` but ignores `?search=`, `?category=`, `?skills=`, `?minBudget=`; `GET /api/notifications` treats `?limit=` as absent and falls back to its default of 20. Reading `''` as "absent → default" is at least as defensible as "non-integer → 400". Both behaviors are currently pinned by tests; the spec should pick one. |
 
 ### Note on `validTransitions`
@@ -2177,3 +2180,15 @@ Ordered by risk, not by convenience:
    `isProfileComplete`, `getProjectStatusForRecruitmentStart`, and the money and KST helpers
    (M3, M12, M19). Cheap and fast; do them last
    because they carry the least risk.
+
+**Concurrency coverage today.** These races have deterministic tests that fail if the lock or the
+conditional write is removed: S17 (the payout's user-row lock — an account created mid-decision is
+never left behind `ON_HOLD`), MS9 (the plan replacement decides from the locked pre-image), PY8 (the
+`FAILED` write is conditional on `PENDING`), and the D13 create collision. Known gaps, where the
+existing tests pass even without the protection: **S5** — two weekly batches are never run
+concurrently, so the conflict-ignoring insert and the conditional attach are exercised only
+sequentially; **S9** — the conditional `SCHEDULED | FAILED → PROCESSING` write and "transfer the
+returned `netAmount`" are tested only sequentially, never against a concurrent batch attaching an
+item; **PA7** — removing the account write's own user-row lock is not detected by the S17 test,
+because inserting the account already waits on the user row through its foreign-key check
+(`FOR KEY SHARE`); the `PROCESSING` check under the lock (PA3/PA5) has no race test.

@@ -296,7 +296,7 @@ describe('POST /api/projects/:id/bookmark', () => {
   // pairs of requests and hoping they overlap. The previous form ran 10 pairs and relied on most
   // of them genuinely racing; an unlucky all-serialized run would have reported a confusing
   // "unexpected pass" instead of the divergence.
-  it.fails('is idempotent under concurrency: an insert that loses the race must not 500 [undocumented divergence]', async () => {
+  it.fails('is idempotent under concurrency: an insert that loses the race must not 500 [unlisted]', async () => {
     const { freelancer, project } = await freelancerWithProject();
 
     const { res } = await postBookmarkLosingTheInsertRace(freelancer, project.id);

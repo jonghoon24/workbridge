@@ -259,6 +259,40 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
 
 describe('plan replacement racing a signature (MS9)', () => {
   /**
+   * Deterministic stale-read check: a signature lands (uncommitted, holding the contract row)
+   * after the replacement has read the contract but before its transaction locks it. "A signature
+   * was present" must come from the locked pre-image, so the freelancer is notified (MS8). A
+   * replacement deciding from its earlier read, or from an unlocked read, would see no signature.
+   */
+  it('decides "a signature was present" from the locked row, not an earlier read [MS9] [MS8]', async () => {
+    const { client, contract } = await makeContractScenario();
+    await Promise.all([1, 2, 3].map(() => authed(client).get('/api/contracts')));
+    let release!: () => void;
+    let signed!: () => void;
+    const signatureWritten = new Promise<void>((resolve) => { signed = resolve; });
+    const signer = prisma.$transaction(async (tx) => {
+      await tx.contract.update({ where: { id: contract.id }, data: { freelancerSigned: true } });
+      signed();
+      await new Promise<void>((resolve) => { release = resolve; });
+    }, { timeout: 10_000 });
+    await signatureWritten;
+
+    const replace = put(client, contract.id, twoStep()).then((res) => res);
+    for (const deadline = Date.now() + 3_000; Date.now() < deadline;) {
+      const [{ n }] = await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`;
+      if (n >= 1) break; // the replacement is queued on the contract row
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    release();
+    await signer;
+    const res = await replace;
+
+    expect(res.status).toBe(200);
+    expect(res.body.contract).toMatchObject({ clientSigned: false, freelancerSigned: false });
+    expect(await prisma.notification.count({ where: { type: 'MILESTONE_PLAN_UPDATED' } })).toBe(1);
+  });
+
+  /**
    * The client has signed; the freelancer signs while the client replaces the plan. Whichever
    * commits first, the outcome is one of exactly two consistent states — never an ACTIVE
    * contract on a plan that was replaced after the signatures.
