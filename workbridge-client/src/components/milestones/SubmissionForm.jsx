@@ -143,7 +143,7 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
                 placeholder="https://github.com/..."
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               />
-              <Button variant="ghost" size="sm" onClick={() => removeLink(index)}>삭제</Button>
+              <Button variant="ghost" size="sm" className="shrink-0 whitespace-nowrap" onClick={() => removeLink(index)}>삭제</Button>
             </div>
           ))}
         </div>

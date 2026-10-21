@@ -399,7 +399,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(after.status).toBe('ACTIVE');
   });
 
-  it('refuses to sign a COMPLETED contract and preserves its status [D2 fixed]', async () => {
+  it('refuses to sign a COMPLETED contract and preserves its status [D2 fixed] [CT10]', async () => {
     const { client, contract } = await makeContractScenario({
       contract: { status: 'COMPLETED', clientSigned: true, freelancerSigned: true },
     });
@@ -412,7 +412,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(after.status).toBe('COMPLETED');
   });
 
-  it('refuses to sign a COMPLETED contract for the freelancer too [D2 fixed]', async () => {
+  it('refuses to sign a COMPLETED contract for the freelancer too [D2 fixed] [CT10]', async () => {
     const { freelancer, contract } = await makeContractScenario({
       contract: { status: 'COMPLETED', clientSigned: true, freelancerSigned: true },
     });
@@ -757,6 +757,8 @@ describe('GET /api/contracts (list)', () => {
     ['a fractional limit', '?limit=1.5'],
     ['trailing garbage', '?page=2abc'],
     ['a repeated parameter', '?limit=1&limit=2'],
+    ['a page above 1,000,000', '?page=1000001'],
+    ['a page that would overflow skip', '?page=999999999999999999'],
   ])('rejects %s with 400 [CT2]', async (_label, query) => {
     const { client } = await makeContractScenario();
 
@@ -764,6 +766,15 @@ describe('GET /api/contracts (list)', () => {
 
     expect(res.status).toBe(400);
     expectErrorEnvelope(res.body);
+  });
+
+  it('accepts page 1,000,000 (the bound) with an empty page of results [CT2]', async () => {
+    const { client } = await makeContractScenario();
+
+    const res = await authed(client).get('/api/contracts?page=1000000&limit=50');
+
+    expect(res.status).toBe(200);
+    expect(res.body.contracts).toEqual([]);
   });
 
   it('treats empty values as absent [CT2]', async () => {

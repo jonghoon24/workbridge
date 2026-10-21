@@ -12,6 +12,17 @@ import { formatDateTime } from '@/lib/format';
 
 const EMPTY_FORM = { bankCode: '', accountNumber: '', holderName: '' };
 
+// 예측 가능한 서버 오류(BEHAVIOR.md PA3, PA5)는 한국어로 바꿔 보여준다. 나머지는 서버 문구 그대로다.
+const SERVER_ERROR_MESSAGES = {
+  'Account holder must match your name': '예금주가 회원 이름과 같아야 합니다. 본인 명의 계좌만 등록할 수 있습니다.',
+  'Payout account cannot be changed while a payout is processing': '지급이 처리되는 중에는 계좌를 바꾸거나 삭제할 수 없습니다. 잠시 후 다시 시도해주세요.',
+};
+
+function describeServerError(err, fallback) {
+  const message = err.response?.data?.error?.message;
+  return SERVER_ERROR_MESSAGES[message] || message || fallback;
+}
+
 // 지급 계좌(BEHAVIOR.md PA1–PA7). 응답에는 마스킹된 번호만 오므로 변경할 때는 번호를 새로 입력한다.
 export default function PayoutAccountPage() {
   const { user } = useAuthStore();
@@ -88,7 +99,7 @@ export default function PayoutAccountPage() {
         ? `지급 계좌를 저장했습니다. 보류된 정산 ${data.rescheduledCount}건이 다음 지급일에 다시 지급됩니다.`
         : '지급 계좌를 저장했습니다.');
     } catch (err) {
-      setError(err.response?.data?.error?.message || '지급 계좌 저장에 실패했습니다');
+      setError(describeServerError(err, '지급 계좌 저장에 실패했습니다'));
     } finally {
       setSaving(false);
     }
@@ -107,7 +118,7 @@ export default function PayoutAccountPage() {
       setEditing(true);
       setSuccess('지급 계좌를 삭제했습니다.');
     } catch (err) {
-      setError(err.response?.data?.error?.message || '지급 계좌 삭제에 실패했습니다');
+      setError(describeServerError(err, '지급 계좌 삭제에 실패했습니다'));
     } finally {
       setDeleting(false);
     }

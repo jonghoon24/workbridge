@@ -9,8 +9,8 @@ import Card from '@/components/ui/Card';
 import SettlementStatusBadge from '@/components/settlements/SettlementStatusBadge';
 import { formatPeriod } from '@/components/settlements/SettlementTable';
 import { formatDate, formatDateTime, formatKRW } from '@/lib/format';
+import { MAX_PAYOUT_ATTEMPTS } from '@/constants/milestones';
 
-const MAX_PAYOUT_ATTEMPTS = 3;
 
 export default function SettlementDetailPage() {
   const { id } = useParams();

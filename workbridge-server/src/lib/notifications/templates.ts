@@ -61,17 +61,17 @@ const TEMPLATES: Record<TemplateType, (v: TemplateVars) => RenderedNotification>
   }),
   MILESTONE_APPROVED: (v) => ({
     title: '마일스톤이 승인되었습니다',
-    message: `마일스톤 ${ms(v)}이 승인되었습니다. 다음 정산에 포함됩니다.`,
+    message: `${ms(v)} 마일스톤이 승인되었습니다. 다음 정산에 포함됩니다.`,
     href: milestoneHref(v),
   }),
   MILESTONE_AUTO_APPROVED: (v) => ({
     title: '마일스톤이 자동 승인되었습니다',
-    message: `검수 기간이 지나 마일스톤 ${ms(v)}이 자동으로 승인되었습니다.`,
+    message: `검수 기간이 지나 ${ms(v)} 마일스톤이 자동으로 승인되었습니다.`,
     href: milestoneHref(v),
   }),
   MILESTONE_AUTO_APPROVE_REMINDER: (v) => ({
     title: '곧 자동 승인됩니다',
-    message: `마일스톤 ${ms(v)}이 48시간 뒤 자동 승인됩니다. 그 전에 검수해주세요.`,
+    message: `${ms(v)} 마일스톤이 48시간 뒤 자동 승인됩니다. 그 전에 검수해주세요.`,
     href: milestoneHref(v),
   }),
   MILESTONE_DUE_SOON: (v) => ({

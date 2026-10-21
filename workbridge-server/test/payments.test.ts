@@ -1336,6 +1336,36 @@ describe('POST /api/payments/dev-complete', () => {
       expect(after.status).toBe('REFUNDED');
     });
 
+    // [D22] With no payment row yet, two concurrent dev-completes both read "no payment" and
+    // both `tx.payment.create` — the loser hits the unique `milestoneId` inside its transaction
+    // (P2002) and answers 500. Same class as D13, on the dev-only route. Several rounds, because
+    // a serialized pair produces 201 then 200 and no collision at all.
+    it.fails('never returns 5xx when two dev-completes race on a milestone with no payment [D22]', async () => {
+      const client = await makeClient();
+      const freelancer = await makeFreelancer();
+      const milestones = [
+        (await extraActiveContract(client, freelancer)).milestone,
+        (await extraActiveContract(client, freelancer)).milestone,
+        (await extraActiveContract(client, freelancer)).milestone,
+      ];
+      await warmConnectionPool(client);
+      const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        for (const milestone of milestones) {
+          const responses = await withBypassEnabled(() => Promise.all([
+            authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+            authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+          ]));
+          for (const res of responses) {
+            expect(res.status).toBeLessThan(500);
+          }
+        }
+      } finally {
+        logs.mockRestore();
+      }
+    });
+
     it('never contacts TossPayments', async () => {
       const { client, milestone } = await activeScenario();
 
@@ -1364,7 +1394,7 @@ describe('GET /api/payments', () => {
     expect(res.body).toEqual([]);
   });
 
-  it('returns the payment with its contract, project, and freelancer', async () => {
+  it('returns the payment with its contract, project, freelancer and milestone [PY12] [C1]', async () => {
     const { client, freelancer, project, contract, milestone } = await activeScenario();
     const payment = await makePayment(milestone.id, client.id, { status: 'COMPLETED' });
 
@@ -1390,7 +1420,7 @@ describe('GET /api/payments', () => {
     expect(Object.keys(res.body[0].contract.project).sort()).toEqual(['id', 'title']);
   });
 
-  it('orders payments newest first', async () => {
+  it('orders payments newest first [PY12]', async () => {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
     const older = await extraActiveContract(client, freelancer);
@@ -1411,7 +1441,7 @@ describe('GET /api/payments', () => {
     ]);
   });
 
-  it("does not expose another client's payments", async () => {
+  it("does not expose another client's payments [PY12]", async () => {
     const mine = await activeScenario();
     const theirs = await activeScenario();
     const myPayment = await makePayment(mine.milestone.id, mine.client.id);

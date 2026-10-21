@@ -129,7 +129,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     expect(auto.map((n) => n.userId)).toEqual([freelancer.id]);
   });
 
-  it('manual and automatic approval racing: exactly one wins, one item, one approval notice [MS21]', async () => {
+  it('manual and automatic approval racing: exactly one wins, one item, one approval notice [MS21] [MS4]', async () => {
     for (let iteration = 0; iteration < 5; iteration += 1) {
       const { client, milestone, autoApproveAt } = await submittedViaApi({ extraMilestone: true });
       // The job may run "now" if autoApproveAt has passed; make it due.

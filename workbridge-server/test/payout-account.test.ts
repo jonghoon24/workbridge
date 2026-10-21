@@ -174,6 +174,37 @@ describe('PUT /api/users/me/payout-account', () => {
   });
 });
 
+describe('PA4 reschedule never reuses the held payout\'s key', () => {
+  it('moves a hold whose date is the coming Wednesday to the Wednesday after, with a live job [PA4]', async () => {
+    const freelancer = await makeFreelancer();
+    // As a runner whose clock is ahead would leave it: held on the coming Wednesday, its
+    // payout job already SUCCEEDED under that key.
+    const coming = nextKstWeekday(new Date(), 3, 10);
+    const held = await settlementFor(freelancer, 'ON_HOLD', 0, { scheduledPayoutAt: coming });
+    await prisma.job.create({
+      data: {
+        type: 'settlement.payout',
+        payload: { settlementId: held.id, scheduledPayoutAt: coming.toISOString() },
+        runAt: coming,
+        status: 'SUCCEEDED',
+        dedupeKey: `settlement.payout:${held.id}:${coming.toISOString()}`,
+      },
+    });
+
+    const res = await put(freelancer, { bankCode: '004', accountNumber: '1234567890', holderName: freelancer.name });
+
+    expect(res.status).toBe(200);
+    expect(res.body.rescheduledCount).toBe(1);
+    const after = await prisma.settlement.findUniqueOrThrow({ where: { id: held.id } });
+    const nextWeek = new Date(coming.getTime() + 7 * 86_400_000);
+    expect(after.scheduledPayoutAt.toISOString()).toBe(nextWeek.toISOString());
+    const job = await prisma.job.findUniqueOrThrow({
+      where: { dedupeKey: `settlement.payout:${held.id}:${nextWeek.toISOString()}` },
+    });
+    expect(job.status).toBe('PENDING');
+  });
+});
+
 describe('DELETE /api/users/me/payout-account', () => {
   it('removes the account [PA5]', async () => {
     const freelancer = await makeFreelancer();

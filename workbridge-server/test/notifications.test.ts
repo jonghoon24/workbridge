@@ -516,6 +516,10 @@ describe('Phase 1 notification types [C9]', () => {
       SETTLEMENT_FAILED: '/settlements/s1',
     };
     expect(Object.keys(expected)).toHaveLength(15);
+    // No particle is glued to a quoted title: "'M' 마일스톤이", never "마일스톤 'M'이".
+    for (const type of ['MILESTONE_APPROVED', 'MILESTONE_AUTO_APPROVED', 'MILESTONE_AUTO_APPROVE_REMINDER'] as const) {
+      expect(renderTemplate(type, v).message, type).toContain("'M' 마일스톤이");
+    }
     for (const [type, href] of Object.entries(expected)) {
       const rendered = renderTemplate(type as Parameters<typeof renderTemplate>[0], v);
       expect(rendered.href, type).toBe(href);

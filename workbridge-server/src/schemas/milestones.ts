@@ -31,20 +31,28 @@ const planItem = z.object({
     .number()
     .int('Amount must be a whole number of won')
     .min(MIN_MILESTONE_AMOUNT, `Amount must be at least ${MIN_MILESTONE_AMOUNT}`),
-  dueDate: z.string().refine(isCalendarDate, 'Due date must be a YYYY-MM-DD date'),
+  // Format and "not before today" are per-item checks, so they are reported in array order with
+  // the other per-item checks (MS7). Today is the KST date at request time (M12).
+  dueDate: z.string().superRefine((value, ctx) => {
+    if (!isCalendarDate(value)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date must be a YYYY-MM-DD date' });
+    } else if (value < kstDateString(new Date())) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date cannot be in the past' });
+    }
+  }),
 });
 
-/** MS7. Due dates are checked against today in KST (M12), at request time. */
+/**
+ * MS7. The order check compares entries with each other, so it runs only once every entry has
+ * passed its own checks — a decreasing date is reported after any per-item failure.
+ */
 export const milestonePlanBody = z
   .object({
     milestones: z.array(planItem).min(MIN_MILESTONES, COUNT_MESSAGE).max(MAX_MILESTONES, COUNT_MESSAGE),
   })
   .superRefine((body, ctx) => {
-    const today = kstDateString(new Date());
     body.milestones.forEach((item, index) => {
-      if (item.dueDate < today) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['milestones', index, 'dueDate'], message: 'Due date cannot be in the past' });
-      } else if (index > 0 && item.dueDate < body.milestones[index - 1].dueDate) {
+      if (index > 0 && item.dueDate < body.milestones[index - 1].dueDate) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['milestones', index, 'dueDate'], message: 'Due dates must not decrease' });
       }
     });

@@ -46,7 +46,7 @@ export default function MyPaymentsPage() {
                         href={`/contracts/${payment.contractId}/milestones/${payment.milestone.id}`}
                         className="hover:text-primary-600"
                       >
-                        마일스톤 {payment.milestone.sequence}회차 · {payment.milestone.title}
+                        #{payment.milestone.sequence} {payment.milestone.title}
                       </Link>
                     </p>
                   )}

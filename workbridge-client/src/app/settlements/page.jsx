@@ -8,7 +8,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import SettlementSummaryCard from '@/components/settlements/SettlementSummaryCard';
 import SettlementTable from '@/components/settlements/SettlementTable';
-import { SETTLEMENT_STATUS_LABELS } from '@/components/settlements/SettlementStatusBadge';
+import { SETTLEMENT_STATUS_LABELS } from '@/constants/milestones';
 
 const PAGE_SIZE = 20;
 

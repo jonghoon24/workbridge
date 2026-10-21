@@ -69,7 +69,7 @@ const submit = (user: Parameters<typeof authed>[0], milestoneId: string) =>
 // ---------------------------------------------------------------------------------------------
 
 describe('GET /api/milestones/:id', () => {
-  it('returns the milestone with every submission newest first, its payment and contract summary [MS11]', async () => {
+  it('returns the milestone with every submission newest first, its payment and contract summary [MS11] [MS2]', async () => {
     const { client, freelancer, project, contract, milestone } = await submitted();
     await prisma.milestoneSubmission.updateMany({ where: { milestoneId: milestone.id }, data: { decision: 'REJECTED', decisionReason: 'Fix the header please' } });
     const second = await makeSubmission(milestone.id, { round: 2 });
@@ -99,6 +99,13 @@ describe('GET /api/milestones/:id', () => {
     });
     expect(asClient.body.submissions.map((s: { round: number }) => s.round)).toEqual([2, 1]);
     expect(asClient.body.submissions[0].attachments).toMatchObject([{ fileName: '보고서.pdf', size: 3 }]);
+    // MS2: exactly these keys — no submissionId.
+    expect(Object.keys(asClient.body.submissions[0].attachments[0]).sort())
+      .toEqual(['createdAt', 'fileName', 'id', 'mimeType', 'size', 'url']);
+    expect(Object.keys(asClient.body.submissions[0]).sort()).toEqual([
+      'attachments', 'autoDecided', 'decidedAt', 'decidedById', 'decision', 'decisionReason',
+      'id', 'links', 'message', 'milestoneId', 'round', 'submittedAt',
+    ]);
     expect(asClient.body.submissions[1]).toMatchObject({ decision: 'REJECTED', decisionReason: 'Fix the header please' });
   });
 
@@ -277,7 +284,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect(res.status).toBe(400);
   });
 
-  it('two concurrent submissions: one 201, one 409, one submission, never a 500 [MS13]', async () => {
+  it('two concurrent submissions: one 201, one 409, one submission, never a 500 [MS13] [MS4]', async () => {
     for (let iteration = 0; iteration < 5; iteration += 1) {
       const { freelancer, milestone } = await funded();
       await Promise.all([1, 2, 3].map(() => authed(freelancer).get(`/api/milestones/${milestone.id}`)));
@@ -452,7 +459,7 @@ describe('POST /api/milestones/:id/approve', () => {
     }
   });
 
-  it('two concurrent approvals of one milestone: one 200, one 409, one settlement item [MS21]', async () => {
+  it('two concurrent approvals of one milestone: one 200, one 409, one settlement item [MS21] [MS4]', async () => {
     const { client, milestone } = await submitted();
     await Promise.all([1, 2, 3].map(() => authed(client).get('/api/contracts')));
 
@@ -522,7 +529,7 @@ describe('POST /api/milestones/:id/reject', () => {
     expect(res.body).toEqual({ error: { message: 'Milestone is not awaiting review' } });
   });
 
-  it('has no cap on revisions: reject, resubmit, reject again, then approve [M17]', async () => {
+  it('has no cap on revisions: reject, resubmit, reject again, then approve [M17] [MS3]', async () => {
     const { client, freelancer, milestone } = await submitted({ milestones: 2 });
 
     for (let round = 2; round <= 3; round += 1) {

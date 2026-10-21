@@ -25,6 +25,7 @@
 | `INTERNAL_JOB_TOKEN` | `POST /api/internal/jobs/run`의 `X-Internal-Token` 값. 비우면 엔드포인트가 404(존재를 숨김) |
 | `JOB_WORKER_ENABLED` | `false`면 개발 서버(`npm run dev`)가 작업 큐 워커를 띄우지 않는다. 기본 켜짐. 운영과 테스트에서는 어차피 뜨지 않는다 |
 | `JOB_POLL_INTERVAL_MS` | 개발 워커의 폴링 간격(ms, 기본 5000) |
+| `MILESTONE_AUTO_APPROVE_DAYS` | 산출물 제출 후 자동 승인까지의 일수(양의 정수, 기본 7). 24시간 단위로 센다. 양의 정수가 아니면 7(BEHAVIOR.md M14) |
 
 작업 큐는 개발 서버 워커 외에 `npm run jobs:run`(한 번 실행)과 `npm run jobs:worker`(단독 워커)로도 돌릴 수 있다. 운영(Vercel)에는 상주 워커가 없고, 외부 스케줄러가 내부 엔드포인트를 부르는 방식은 아직 정하지 않았다.
 

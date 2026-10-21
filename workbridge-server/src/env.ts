@@ -73,7 +73,7 @@ export const env = {
   },
   /**
    * Days a submitted milestone waits for review before it is approved automatically (M14).
-   * Raw string; `milestoneAutoApproveDays()` in the milestones service interprets it.
+   * Raw string; `autoApproveDays()` in `services/milestones.service.ts` interprets it.
    */
   get MILESTONE_AUTO_APPROVE_DAYS(): string {
     return withDefault('MILESTONE_AUTO_APPROVE_DAYS', '7');

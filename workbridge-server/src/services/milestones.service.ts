@@ -57,13 +57,19 @@ export function defaultMilestoneDueDate(now: Date): Date {
 // Serialization (MS1, CT6)
 // ---------------------------------------------------------------------------
 
+/** MS2: an attachment is exactly `{ id, url, fileName, mimeType, size, createdAt }`. */
+const attachmentQuery = {
+  select: { id: true, url: true, fileName: true, mimeType: true, size: true, createdAt: true },
+  orderBy: { createdAt: 'asc' },
+} satisfies Prisma.MilestoneSubmission$attachmentsArgs;
+
 export const milestoneInclude = {
   payment: true,
   settlementItem: true,
   submissions: {
     orderBy: { round: 'desc' },
     take: 1,
-    include: { attachments: { orderBy: { createdAt: 'asc' } } },
+    include: { attachments: attachmentQuery },
   },
 } satisfies Prisma.MilestoneInclude;
 
@@ -329,7 +335,7 @@ export async function getMilestoneDetail(milestoneId: string, userId: string) {
   const submissions = await prisma.milestoneSubmission.findMany({
     where: { milestoneId },
     orderBy: { round: 'desc' },
-    include: { attachments: { orderBy: { createdAt: 'asc' } } },
+    include: { attachments: attachmentQuery },
   });
 
   const { contract, ...rest } = milestone;
@@ -442,7 +448,7 @@ export async function submitMilestone(
           })),
         },
       },
-      include: { attachments: { orderBy: { createdAt: 'asc' } } },
+      include: { attachments: attachmentQuery },
     });
 
     await enqueueJob(tx, {

@@ -1103,7 +1103,7 @@ describe('ownership is checked after existence', () => {
       .toBeNull();
   });
 
-  it('GET /api/contracts/:id → 404 for a contract owned by nobody', async () => {
+  it('GET /api/contracts/:id → 404 for a contract owned by nobody [CT4]', async () => {
     const user = await makeClient();
 
     const res = await authed(user).get('/api/contracts/missing-contract-id');
@@ -1112,7 +1112,7 @@ describe('ownership is checked after existence', () => {
     expect(res.body.error.message).not.toMatch(/authoriz/i);
   });
 
-  it('GET /api/contracts/:id → 403 for a user who is not a party to it', async () => {
+  it('GET /api/contracts/:id → 403 for a user who is not a party to it [CT4]', async () => {
     const { contract } = await makeContractChain();
     const outsider = await makeFreelancer();
 
@@ -1122,7 +1122,7 @@ describe('ownership is checked after existence', () => {
     expect(res.body.error.message).toBe('Not authorized');
   });
 
-  it('GET /api/contracts/:id → 200 for either party', async () => {
+  it('GET /api/contracts/:id → 200 for either party [CT4]', async () => {
     const { client, freelancer, contract } = await makeContractChain();
 
     const asClient = await authed(client).get(`/api/contracts/${contract.id}`);

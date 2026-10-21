@@ -10,7 +10,7 @@ import { payoutBreakdown } from '../src/lib/money';
 import { setPayoutProvider, LogPayoutProvider } from '../src/lib/payout/provider';
 import type { PayoutProvider } from '../src/lib/payout/provider';
 import { DAY_MS, HOUR_MS, nextKstWeekday } from '../src/lib/time';
-import { runWeeklyBatch, weeklyBatchDedupeKey } from '../src/services/settlements.service';
+import { runPayout, runWeeklyBatch, weeklyBatchDedupeKey } from '../src/services/settlements.service';
 
 /**
  * Weekly settlements and payouts — BEHAVIOR.md S1–S17, M3–M5, M19–M22, J6, J7. Time is driven
@@ -391,6 +391,56 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).status).toBe('PROCESSING');
   });
 
+  it('pays however small the settlement is: no minimum payout [M21]', async () => {
+    const freelancer = await makeFreelancer();
+    await makePayoutAccount(freelancer);
+    const settlement = await scheduled(freelancer, 9);
+    expect(settlement.netAmount).toBe(9);
+
+    await runJobs(PAYOUT_AT);
+
+    expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).status).toBe('PAID');
+  });
+
+  /**
+   * S17/PA7: the payout decision and an account deletion serialize on the freelancer's user row.
+   * With a slow transfer, only these outcomes are possible: the deletion commits first and the
+   * payout holds; or the payout reaches PROCESSING first, the deletion is refused (409) and the
+   * transfer completes; or the whole payout finished before the deletion started.
+   */
+  it('a payout racing an account deletion ends in a consistent state [S17] [PA7]', async () => {
+    const outcomes = new Set<string>();
+    for (let iteration = 0; iteration < 10; iteration += 1) {
+      const freelancer = await makeFreelancer();
+      await makePayoutAccount(freelancer);
+      const settlement = await scheduled(freelancer);
+      const transfer = vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        return { reference: `slow-${iteration}` };
+      });
+      setPayoutProvider({ transfer });
+      await Promise.all([1, 2, 3].map(() => authed(freelancer).get('/api/users/me/payout-account')));
+
+      const [outcome, deletion] = await Promise.all([
+        runPayout(settlement.id, settlement.scheduledPayoutAt.toISOString(), PAYOUT_AT),
+        authed(freelancer).delete('/api/users/me/payout-account'),
+      ]);
+
+      const stored = await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } });
+      const accounts = await prisma.payoutAccount.count({ where: { userId: freelancer.id } });
+      const state = `${outcome}/${stored.status}/${deletion.status}/${accounts}`;
+      expect([
+        'on_hold/ON_HOLD/200/0', // deletion first
+        'paid/PAID/409/1', // payout reached PROCESSING first
+        'paid/PAID/200/0', // payout finished before the deletion began
+      ], `iteration ${iteration}`).toContain(state);
+      if (stored.status === 'ON_HOLD') expect(transfer).not.toHaveBeenCalled();
+      if (stored.status === 'PAID') expect(stored.accountNumberMasked).toBe('********6789');
+      outcomes.add(state);
+    }
+    expect(outcomes.size).toBeGreaterThan(0);
+  });
+
   it('transfers the netAmount of the settlement it moved to PROCESSING [S9]', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
@@ -470,7 +520,7 @@ describe('GET /api/settlements (S14)', () => {
     expect(paged.body.settlements.map((s: { id: string }) => s.id)).toEqual([older.id]);
   });
 
-  it.each(['?status=DONE', '?page=0', '?limit=1.5'])('400s on %s [S14]', async (query) => {
+  it.each(['?status=DONE', '?page=0', '?limit=1.5', '?page=999999999999999999'])('400s on %s [S14]', async (query) => {
     const freelancer = await makeFreelancer();
     expect((await authed(freelancer).get(`/api/settlements${query}`)).status).toBe(400);
   });

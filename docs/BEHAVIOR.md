@@ -487,9 +487,10 @@ endpoint completes a contract by hand.
 ### `GET /` — authenticated, either role
 - **CT1** — Lists the contracts on which the caller is the client **or** the freelancer, newest
   first (`createdAt` desc). Contracts whose project is soft-deleted are left out (rule 5).
-- **CT2** — Query: `status` optional, one of `PENDING | ACTIVE | COMPLETED`; `page` default 1;
-  `limit` default 20, **capped at 50** (a larger value yields 50). Anything else — unknown status,
-  zero, negative, fractional, trailing garbage, repeated parameter — → **400** (rule 12).
+- **CT2** — Query: `status` optional, one of `PENDING | ACTIVE | COMPLETED`; `page` default 1,
+  at most 1,000,000; `limit` default 20, **capped at 50** (a larger value yields 50). Anything
+  else — unknown status, zero, negative, fractional, trailing garbage, repeated parameter, a page
+  above 1,000,000 — → **400** (rule 12), never a 500.
 - **CT3** — Response `{ contracts, meta: { total, page, limit, totalPages } }`. Each entry is
   `{ id, status, amount, startDate, endDate, completedAt, clientSigned, freelancerSigned,
   createdAt, myRole, project: { id, title, status }, counterpart: { id, name, profileImage },
@@ -640,7 +641,8 @@ client funds milestones one at a time, in sequence order (M13). **[C1]**
   keeping its `orderId` (**200**), or a row is created with `orderId` `dev-<uuid>` (**201**) — and
   the milestone is funded exactly as PY7. So dev-complete also repairs a `PENDING` milestone whose
   payment is `COMPLETED`, which `POST /` can only refuse. TossPayments is never contacted. Responds
-  with the payment row. **[C1]**
+  with the payment row. Two concurrent calls on a milestone with no payment row must not 500
+  (rule 8). **[C1]** **[D22]**
 
 ### `GET /` — authenticated
 - **PY12** — The caller's payments (`clientId` = caller), newest first, each with its contract
@@ -849,6 +851,9 @@ automatically (M14). An approved milestone becomes a settlement item for the fre
        `…dueDate: Due date must be a YYYY-MM-DD date`; before today in KST →
        `…dueDate: Due date cannot be in the past`; earlier than the previous entry's →
        `…dueDate: Due dates must not decrease` (M12)
+     - the per-entry checks above are reported in array order (the first failing entry wins);
+       the order check compares entries with each other, so it runs only after every entry
+       passed its own checks
   2. contract missing or its project soft-deleted → **404** `Contract not found`
   3. caller is not the contract's client → **403** `Not authorized`
   4. contract not `PENDING` (`ACTIVE` or `COMPLETED`) → **409**
@@ -1103,10 +1108,13 @@ in plaintext and masked in every response. **[Q22]**
      `PROCESSING` settlement → **409**
      `Payout account cannot be changed while a payout is processing`, and nothing is written
 - **PA4** — On success, **in one transaction**: the account is upserted (digits only, trimmed
-  holder name; a Prisma `upsert` is safe here because PA7 serializes one user's writes); every `ON_HOLD` settlement of the caller becomes `SCHEDULED` with
-  `scheduledPayoutAt` = the next Wednesday 10:00 KST strictly after now (today if it is a
-  Wednesday before 10:00), `failureReason` cleared and `payoutAttempts` kept, and a
-  `settlement.payout` job is enqueued for that new time. Responds **200**
+  holder name; a Prisma `upsert` is safe here because PA7 serializes one user's writes); every
+  `ON_HOLD` settlement of the caller becomes `SCHEDULED` with `scheduledPayoutAt` = the next
+  Wednesday 10:00 KST strictly after **both** now and its current `scheduledPayoutAt` (today if it
+  is a Wednesday before 10:00 and the old date is earlier), `failureReason` cleared and
+  `payoutAttempts` kept, and a `settlement.payout` job is enqueued for that new time. The second
+  bound keeps the new job's `dedupeKey` distinct from the payout that put the settlement on hold,
+  even when the runner's clock was ahead of the API's. Responds **200**
   `{ payoutAccount, rescheduledCount }`.
 - **PA5** — `DELETE` → in one transaction, after the user-row lock (PA7): the caller has a
   `PROCESSING` settlement → **409** (PA3's message) and nothing is written; otherwise the account
@@ -1290,6 +1298,7 @@ not repairing a live race. The genuine defect was the missing status guard.
 | **D19** | A soft-deleted project is still visible to bookmarking | Rule 5 is unconditional: a soft-deleted project must be invisible to listing, fetching, applying, **and bookmarking** | `GET /:id/bookmark` still reports `{ bookmarked: true }` for a soft-deleted project and `DELETE` still removes the row. Only `POST` checks. **This is distinct from Q6** — Q6 defers the narrower question of whether `GET`/`DELETE` should 404 for an id that never existed; rule 5 already decides the soft-deleted case |
 | **D21** | The pre-existing contract endpoints never filter `deletedAt` at all | Rule 5: every read and write filters `deletedAt: null` | `getContract` and `signContract` use a plain `findUnique` with no soft-delete filter, so a contract whose **project has been soft-deleted** stays readable and signable — and the deleted project is returned inside the response body. Completion now goes through `POST /api/milestones/:id/approve`, which is 404 for a deleted project (MS5), and the auto-approval job, which deliberately completes the contract but never writes the deleted project row (MS17, J2) — D21 remains for `getContract` and `signContract`. Interacts with D11/Q4: once deleting a project with a live contract is blocked, this becomes much harder to reach (re-pinned in P1) |
 | **D20** | Concurrent accepts **deadlock** and return 500 | Of several simultaneous accepts on one project, one succeeds and the losers → **409** (rule 8) | Three concurrent `PATCH /:projectId/applications/:appId` calls on *different* PENDING applications of the same project deadlock in the accept transaction: Postgres raises **`40P01` deadlock detected**, which surfaces as `PrismaClientUnknownRequestError` → **500**. The D4 fix catches only `P2002`, so this class escapes it. The database invariants still hold (exactly one contract, one ACCEPTED application) — only the status code is wrong. Reproduced in 2 of 16 full-suite runs; needs a warm connection pool to race |
+| **D22** | Concurrent dev-completes collide | Of two simultaneous `POST /api/payments/dev-complete` for a milestone with no payment row, one creates the payment and the other answers 200 or 409 (rule 8) | Both read "no payment" before their transactions and both `tx.payment.create`; the loser hits the unique `Payment.milestoneId` inside its transaction (P2002) and answers **500**. Same class as D13 on the dev-only bypass route; left unfixed because the route is off in production and fixing it means the same P2002 handling D13 still lacks. Pinned in `payments.test.ts` |
 
 ---
 

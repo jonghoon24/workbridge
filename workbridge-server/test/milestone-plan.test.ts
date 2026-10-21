@@ -183,6 +183,29 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
   });
 
+  it('reports the first failing entry in array order: a past date on #0 wins over a blank title on #1 [MS7]', async () => {
+    const { client, contract } = await makeContractScenario();
+
+    const res = await put(client, contract.id, [
+      { title: 'a', amount: 2_000_000, dueDate: inDays(-1) },
+      { title: '  ', amount: 2_000_000, dueDate: inDays(5) },
+    ]);
+
+    expect(res.body).toEqual({ error: { message: 'milestones.0.dueDate: Due date cannot be in the past' } });
+  });
+
+  it('checks the date order only after every entry passed its own checks [MS7]', async () => {
+    const { client, contract } = await makeContractScenario();
+
+    const res = await put(client, contract.id, [
+      { title: 'a', amount: 2_000_000, dueDate: inDays(9) },
+      { title: 'b', amount: 2_000_000, dueDate: inDays(5) },
+      { title: '', amount: 2_000_000, dueDate: inDays(10) },
+    ]);
+
+    expect(res.body).toEqual({ error: { message: 'milestones.2.title: Title is required' } });
+  });
+
   it('accepts exactly 100 / 2000 characters (the inclusive bounds) [M18]', async () => {
     const { client, contract } = await makeContractScenario();
 
@@ -240,7 +263,7 @@ describe('plan replacement racing a signature (MS9)', () => {
    * commits first, the outcome is one of exactly two consistent states — never an ACTIVE
    * contract on a plan that was replaced after the signatures.
    */
-  it('serializes on the contract row: either ACTIVE with the old plan, or PENDING and unsigned-by-client with the new one', async () => {
+  it('serializes on the contract row: either ACTIVE with the old plan, or PENDING and unsigned-by-client with the new one [MS9]', async () => {
     const outcomes = new Set<string>();
     for (let iteration = 0; iteration < 8; iteration += 1) {
       const { client, freelancer, contract, milestone } = await makeContractScenario({ contract: { clientSigned: true } });

@@ -435,11 +435,19 @@ export async function getSettlement(settlementId: string, freelancerId: string) 
 // Rescheduling held settlements (PA4)
 // ---------------------------------------------------------------------------
 
-/** PA4: every ON_HOLD settlement → SCHEDULED for the next Wednesday 10:00 KST after `now`. */
+/**
+ * PA4: every ON_HOLD settlement → SCHEDULED for the next Wednesday 10:00 KST strictly after both
+ * `now` and its current `scheduledPayoutAt`. The second bound keeps the new payout key distinct
+ * from the job that put it ON_HOLD — with a skewed clock (or a demo run at a future `now`) the
+ * same Wednesday would collide with that job's `dedupeKey` and silently enqueue nothing.
+ */
 export async function rescheduleHeldSettlements(tx: PrismaTransactionClient, freelancerId: string, now: Date): Promise<number> {
-  const held = await tx.settlement.findMany({ where: { freelancerId, status: 'ON_HOLD' }, select: { id: true } });
-  const scheduledPayoutAt = nextKstWeekday(now, WEDNESDAY, 10);
-  for (const { id } of held) {
+  const held = await tx.settlement.findMany({
+    where: { freelancerId, status: 'ON_HOLD' },
+    select: { id: true, scheduledPayoutAt: true },
+  });
+  for (const { id, scheduledPayoutAt: current } of held) {
+    const scheduledPayoutAt = nextKstWeekday(current > now ? current : now, WEDNESDAY, 10);
     const { count } = await tx.settlement.updateMany({
       where: { id, status: 'ON_HOLD' },
       data: { status: 'SCHEDULED', scheduledPayoutAt, failureReason: null },
