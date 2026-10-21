@@ -10,6 +10,8 @@ export { prisma };
 const TABLES = [
   'Job',
   'RateLimitCounter',
+  'EmailDelivery',
+  'NotificationPreference',
   'Notification',
   'Review',
   'MessageAttachment',

@@ -358,3 +358,43 @@ export async function makeContractScenario(overrides: {
 
   return { client, freelancer, project, application, contract, milestone, conversation };
 }
+
+// ─── Phase 3: notification channels (BEHAVIOR.md "Notification channels") ──
+
+/**
+ * A stored preference override for `userId` and `type`. Both channels default to `null`
+ * ("follow the policy default", NC4) — pass the channel the test overrides, e.g.
+ * `makeNotificationPreference(user.id, 'APPLICATION_REJECTED', { email: true })`.
+ * Written directly, so it can also store what the API refuses (a locked channel, NC3).
+ */
+export function makeNotificationPreference(
+  userId: string,
+  type: string,
+  overrides: Partial<Prisma.NotificationPreferenceUncheckedCreateInput> = {},
+) {
+  return prisma.notificationPreference.create({
+    data: { userId, type, inApp: null, email: null, ...overrides },
+  });
+}
+
+/**
+ * An email delivery addressed to `user`: `PENDING`, no attempts, no linked notification, as
+ * `notify()` creates it (NC9, NC12) but without enqueueing its `notification.email` job. Pass
+ * `createdAt` to place a digest delivery in time for the J8 throttle, e.g.
+ * `{ type: 'MESSAGE_UNREAD_DIGEST', contextKey: 'conversation:<id>', createdAt }`.
+ */
+export function makeEmailDelivery(
+  user: Pick<User, 'id' | 'email'>,
+  overrides: Partial<Prisma.EmailDeliveryUncheckedCreateInput> = {},
+) {
+  return prisma.emailDelivery.create({
+    data: {
+      userId: user.id,
+      type: 'APPLICATION_CREATED',
+      toAddress: user.email,
+      subject: '[WorkBridge] 테스트 알림',
+      body: '테스트 본문',
+      ...overrides,
+    },
+  });
+}

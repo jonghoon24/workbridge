@@ -220,3 +220,63 @@
 - 클라이언트: `usePolling`은 PLAN §2.2.4의 `hooks/` 대신 소유권 표대로 `components/messages/`에 둔다. 스레드 5초, 헤더 배지 30초(MG20), 대화방 목록은 명세에 주기가 없어 10초로 정했다. 내 메시지의 읽음 표시는 5초마다 받는 대화방 상세의 `counterpartLastReadAt`으로 다시 계산한다(`after` 폴링은 이미 받은 메시지를 다시 주지 않는다). 같은 이유로 상대가 지운 메시지는 새로고침 전까지 화면에 남는다.
 - 클라이언트: `/my/contracts` 항목에는 대화방 id가 없어(MG19는 수만 준다) "대화" 버튼을 누를 때 `GET /api/contracts/:id/conversation`으로 찾아 이동한다. 첨부는 이미지도 썸네일 없이 파일 칩으로 보여준다(공개 URL Q21, `<img>` lint 경고를 늘리지 않는다). 삭제 버튼은 터치 기기에서도 보이도록 hover 전용으로 숨기지 않는다.
 - 로컬 실행 확인의 업로드 스텁은 병렬 워커(P2B)와 겹치지 않게 54322 포트를 썼다(스킬 Gotchas는 54321). 서버 테스트 1659 통과(+185), it.fails 62(변화 없음), todo 1. D-2A 핀은 없다.
+
+## P3-S (명세)
+
+- 규칙 식별자: 알림 채널 `NC`(NC1~NC16), 이메일 발송 핸들러는 `J`를 이어 `J9`. 새 절 `Notification channels — /api/notifications/preferences`는 PLAN §4.1 자리(RC 절 다음, Background jobs 앞)에 넣었다. J9는 Background jobs의 "Email handler rule (Phase 3)" 소절에 둔다.
+- 이름은 오케스트레이터 지시를 따른다: 작업 type `notification.email`(dedupe `notification.email:<deliveryId>`), env `MAIL_PROVIDER`(기본 log)·`MAIL_FROM`, 기본 provider `LogMailProvider`, 상태 `PENDING`. PLAN §2.0·§2.4의 `email.send`, `EMAIL_PROVIDER`/`EMAIL_FROM`, `LogEmailSender`, `QUEUED`를 대체한다. P1의 `LogPayoutProvider`/`setPayoutProvider()`와 짝이 맞는다.
+- `EmailDeliveryStatus`에 `SKIPPED`를 둔다(지시는 PENDING → SENT/FAILED). 발송 전에 탈퇴한 수신자는 실패가 아니라 "보내지 않음"이고, 감사 기록에서 provider 장애와 구분돼야 한다.
+- 설정의 채널 컬럼(`inApp`, `email`)은 nullable이고 `null`이 "정책 기본값을 따른다"이다(PLAN §2.4.1의 non-null 대체). 한 채널만 바꾼 사용자의 다른 채널이 그 시점 기본값으로 굳지 않아서, 나중에 기본값을 바꾸면 손대지 않은 사용자 모두에게 반영된다. 기본값과 같은 값과 잠긴 채널 값은 `null`로 저장하고, 둘 다 `null`이면 row를 지운다.
+- 정책 표는 PLAN §2.4.2 그대로다(거래·돈 알림은 인앱 필수, 자동 승인 임박·지급 보류·지급 실패는 이메일도 필수). 카테고리 코드는 `APPLICATION`/`CONTRACT`/`MILESTONE`/`SETTLEMENT`/`MESSAGE`이고 `MILESTONE_PLAN_UPDATED`는 `MILESTONE`, `PROJECT_STATUS_CHANGED`는 `APPLICATION`이다.
+- `GET` 응답에서 PLAN의 `label`을 뺐다. 한국어 라벨은 클라이언트가 붙인다(PF21 완성도 items와 같은 결정). 목록은 토큰이 아니라 DB row의 역할 기준(PF21과 같다)으로 CLIENT 8종, FREELANCER 17종. 다이제스트는 인앱이 없어서 `inApp: null`, `inAppLocked: true`.
+- `PUT` 검증은 두 단계다. 모양(배열 1~20개, type, boolean)을 먼저 보고, 모양이 다 맞으면 항목 규칙(채널 하나 이상, 중복 type, 다이제스트의 inApp, 잠긴 채널 끄기)을 배열 순서대로 본다. zod parse 뒤 refine이 도는 순서와 같다. 잠긴 채널에 `true`는 허용(no-op), `null`은 400("기본값으로 되돌리기"는 기본값을 보내면 된다). 다른 역할 전용 type도 저장한다(PLAN §2.4.3). 실패하면 한 항목도 쓰지 않는다.
+- `PUT` 쓰기는 사용자 row `FOR UPDATE`(PA7·PF8과 같은 잠금) 아래에서 읽고 create/update/delete 한다. upsert를 쓰지 않으므로 트랜잭션 안 P2002가 없다. 잠금은 그 하나뿐이다.
+- `notify()`는 호출자의 `now`를 받아 `EmailDelivery.createdAt`과 `notification.email`의 `runAt`에 쓴다(작업에서는 `ctx.now`). 다이제스트 throttle(J8 3단계)이 그 `createdAt`을 읽으므로 `runDueJobs({ now })`만으로 결정적이다. `Notification.createdAt`은 지금처럼 DB 기본값이다.
+- 설정은 `notify()` 시점에 한 번만 읽는다. 이미 만든 PENDING 발송은 나중에 이메일을 꺼도 나간다. 받는 주소도 생성 시점 스냅샷(`toAddress`)이다.
+- 기존 4종의 인앱 알림은 소프트 삭제된 수신자에게도 지금처럼 만든다(`applications.test.ts`의 Q11 핀). 이메일은 어떤 type이든 소프트 삭제된 수신자에게 만들지 않고, 만든 뒤 탈퇴했으면 J9가 SKIPPED로 둔다. 설정 row는 탈퇴 후에도 남아 복구되면 다시 적용된다.
+- J9는 한 트랜잭션이 아니다(provider 호출은 롤백할 수 없다). 모든 쓰기가 `status = PENDING` 조건부 단일 문장이고, `attempts`는 provider 호출 직전에 올린다. 발송은 at-least-once이며 deliveryId를 provider에 멱등 키로 넘긴다. 마지막 시도(`job.attempts >= maxAttempts`)의 실패만 FAILED로 두고 나머지는 큐 재시도에 맡긴다. 프로젝트 소프트 삭제는 보지 않는다.
+- `MAIL_PROVIDER`가 `log`(또는 비어 있음)가 아니면 부팅이 아니라 첫 발송에서 delivery FAILED + `PermanentJobError`다(`src/env.ts`의 지연 원칙). 로그 provider는 `info` `mail.sent` 한 줄에 받는 주소와 본문을 그대로 남긴다(개발용, Q24).
+- 메일 본문은 PLAN §2.4.3의 렌더링(제목 `[WorkBridge] <title>`, 본문 + 바로가기 + 알림 설정 링크)을 그대로 쓰고 `notify()`가 한 번 렌더링해 row에 저장한다. 테스트는 문구를 단언하지 않는다.
+- 다이제스트 완성(NC16): throttle은 상태와 무관하게 가장 최근 다이제스트 delivery의 `createdAt`으로 판단하고, 정확히 60분이 지나면 보낸다(J8의 "after"와 같은 경계). 수신자가 다이제스트 이메일을 껐으면 아무것도 만들지 않고 끝난다. href는 `/messages/<conversationId>`(P2A의 스레드 경로). 메일은 다이제스트 작업이 아니라 그 delivery의 `notification.email` 작업이 다음 러너 패스에서 보낸다.
+- 구독 해지 링크는 없다(모두 거래성 메일, 설정 페이지만). 열린 질문 **Q25**로 남겼다. 실제 메일 서비스 미연결, 로그에 주소·본문이 남는 점, delivery 보존 기간, 반송 처리는 **Q24**다. Q 번호는 P2 병렬 워커가 Q를 더하지 않았다는 전제로 이어 붙였다. 머지 때 겹치면 머지 담당이 번호를 다시 매긴다.
+- 배달 기록을 읽는 API는 두지 않는다(감사 기록 전용). `maintenance.cleanup`도 지우지 않는다(Q24).
+
+## P3-S (스키마)
+
+- 마이그레이션 하나(`20261021071341_expansion_notification_channels`): `EmailDeliveryStatus` enum(`PENDING`/`SENT`/`FAILED`/`SKIPPED`), `NotificationPreference`(`@@unique([userId, type])`, `inApp`/`email` nullable), `EmailDelivery`(`contextKey`와 `[userId, type, contextKey, createdAt]` 인덱스, `attempts`, `provider`·`providerMessageId`·`error`·`sentAt` nullable, `updatedAt`). 희소 저장이라 백필은 없다. `migrate dev --create-only`로 만든 SQL을 손대지 않고 적용했고 `migrate diff`로 drift 0을 확인했다.
+- `Notification.type`은 지금처럼 bare String이라 `MESSAGE_UNREAD_DIGEST`는 DB enum 변경이 아니다. TS 유니온(`src/lib/notifications/types.ts`)에 더하는 것은 P3 구현 몫이다.
+- `EmailDelivery.notificationId`는 `Notification`으로의 FK다(선택 관계라 Prisma 기본 `ON DELETE SET NULL`). `provider`는 PLAN과 달리 nullable이고 발송 시점에 쓴다(생성 시에는 어떤 provider가 보낼지 모른다).
+- `seed.js`는 `emailDelivery` → `notificationPreference` → `notification` 순으로 지운다(delivery가 notification을 참조한다). `TABLES`에도 같은 순서로 넣었다.
+- 팩토리 `makeNotificationPreference(userId, type, overrides)`, `makeEmailDelivery(user, overrides)`는 2A/2B 머지가 깨끗하도록 `factories.ts` 맨 끝에만 더했다(상단 type import를 건드리지 않으려고 반환 타입은 추론에 맡긴다). `makeEmailDelivery`는 작업을 enqueue하지 않는다.
+
+## P3-S (명세 검토 반영, reviews/P3S_SPEC_REVIEW_1.md)
+
+- 다이제스트의 인앱 채널은 "잠긴 off"다(오케스트레이터 결정, 검토 4). GET은 `inApp: false, inAppLocked: true`, PUT은 `inApp: false`를 no-op으로 받고 `true`만 400이다. GET 배열을 그대로 PUT해도 통과한다. 앞의 "P3-S (명세)"의 `inApp: null` 결정을 대체한다(NC2, NC3, NC5, NC6).
+- 지원하지 않는 `MAIL_PROVIDER`는 프로세스 시작(서버, `jobs:run`, `jobs:worker`)에서 `warn` 한 줄로 한 번 알리고 throw하지 않는다(오케스트레이터 결정, 검토 8). 그 FAILED delivery의 `provider`는 설정값 그대로, `attempts`는 그대로다(NC12, NC14, 규칙 9).
+- 작업이 최종 쓰기 전에 FAILED로 끝나면(마지막 시도 뒤 stale 회수, 마지막 시도의 attempts/SENT 쓰기 DB 오류) delivery가 PENDING으로 남을 수 있음을 NC12와 Q24에 적었다. 그때는 작업의 FAILED row가 기록이고 다시 보내지 않는다(검토 6).
+- J8 3~4단계 본문을 지우고 NC16을 가리키는 한 줄로 줄였다. MG20의 "19"는 "in-app 19"로 고쳤다(검토 7). J8의 결과 문단과 작업 타입 표의 "60 min"은 2A와 겹치는 문단이라 손대지 않았다.
+- `notify()` 시그니처를 NC9에 고정했다. 트랜잭션 없는 호출자는 하나 연다(검토 2, 3). 자세한 지시는 아래 핸드오프.
+
+## P3-S (핸드오프)
+
+P3 구현 워커에게 주는 지시. P3 서버 작업은 2A·2B 머지 뒤에 시작한다(`templates.ts`, `jobs/types.ts`, `jobs/registry.ts`, `handlers/messageDigest.ts`, `milestones.test.ts`, `payments.test.ts`는 P2 동안 2A 소유다).
+
+1. **깨지는 기존 단언 5개(검토 1).** NC2 기본값에서 `MILESTONE_SUBMITTED`, `MILESTONE_FUNDED`가 이메일을 만들어 같은 트랜잭션에 `notification.email` 작업이 생긴다. `Job` 테이블 전체를 단언하는 다음 5곳을 고친다: `test/milestones.test.ts:174`, `:231`, `:310`, `test/payments.test.ts:932`, `:955`(P3-S 기준 줄 번호, 2A 머지 뒤 다시 찾는다). 방법: `prisma.job.findMany({ where: { type: { not: 'notification.email' } } })`로 거르거나 `test/helpers/jobs.ts`의 `jobsOf(type)`으로 type별로 단언한다. 이메일 작업 자체는 `email.test.ts`에서 단언한다.
+2. **J3~J5 알림의 트랜잭션(검토 2).** `src/services/milestones.service.ts`의 `sendMilestoneNotice`는 `notifyTemplate(prisma, …)`로 트랜잭션 없이 부른다. P3에서는 수신자마다 Notification + EmailDelivery + Job 세 쓰기가 되므로 `prisma.$transaction(async (tx) => …)`로 감싸 `tx`와 `ctx.now`를 넘긴다. 부분 실패 후 재시도가 인앱 row를 중복시키지 않게 한다(NC9).
+3. **시그니처(검토 3, NC9).** `notify(client, input, now = new Date()): Promise<Notification | null>`(인앱이 꺼졌으면 `null`), `notifyMany(client, inputs, now = new Date()): Promise<number>`(쓴 인앱 row 수), `notifyRecipients(client, recipients, input, now = new Date())`. `notifyTemplate`, `notifyFreelancer`와 J2·J6·J7 경로도 `ctx.now`를 끝까지 넘긴다. `notifyMany`는 `notificationId`를 얻으려고 `createManyAndReturn`(Prisma 5.22에 있다)을 쓴다. `test/notify.test.ts:13-21`은 새 반환값에 맞춘다.
+4. **테스트 행렬(검토 9).** `authorization.test.ts`의 `PROTECTED_ROUTES`는 2A·2B 머지 후 61 → 63(GET/PUT `/api/notifications/preferences`), `ROLE_GATED_ROUTES`와 CLIENT/FREELANCER 분할은 변화 없음, `PUBLIC_ROUTES` 변화 없음. `soft-delete.test.ts`의 `guardedMutations`에 PUT preferences 1행.
+5. **env(검토 9).** `src/env.ts`에 `MAIL_PROVIDER`(선택, 비었거나 `log`면 로그 provider)와 `MAIL_FROM`(기본 `WorkBridge <no-reply@workbridge.local>`)을 더하고 `docs/ENV.md`, `.env.example`에 적는다. 링크 기준 주소는 기존 `CLIENT_URL`. 시작 시 `warn`은 서버(`index.ts`)와 `jobs/cli.ts`·`jobs/worker.ts` 진입점에서 한 번.
+6. **Q 번호.** Q24·Q25는 2A·2B가 Q를 더하지 않았다는 전제다. 겹치면 머지 담당이 다시 매긴다.
+
+**머지 담당이 손으로 합칠 BEHAVIOR.md 문단(검토 5).** P3-S가 고친 곳 중 2A·2B가 같은 자리나 바로 옆을 고칠 수 있는 곳이다. 양쪽을 모두 살린다.
+- 머리말 규칙 식별자 문단(Phase 3 문장 추가)
+- 규칙 5의 마지막 불릿 뒤(Conversations/PF20 불릿 다음에 이메일 불릿)
+- 규칙 6의 "Phase 2 adds" 문장 뒤(Phase 3 문장)
+- 규칙 9의 마지막 불릿 뒤(Email 불릿)
+- Notifications 절 첫 문단(19종 문장 교체)
+- MG20 첫 줄("in-app" 한 단어, 2A)
+- RC 절 끝의 `---` 바로 뒤에 넣은 Notification channels 절 전체(2B가 RC 끝을 고치면 인접)
+- 작업 타입 표의 `message.unreadDigest` 행 다음 `notification.email` 행, Payloads 문단의 `message.unreadDigest` 줄(줄바꿈이 바뀌었다)
+- J8의 3~4단계(한 줄 포인터로 교체, 2A가 J8을 구현하며 고칠 수 있다)와 J8 바로 뒤의 "Email handler rule (Phase 3)" 소절(J9)
+- C 표의 C9 행(C10 행과 인접, 2B)
+- Still open 표의 Q23 다음 Q24·Q25
