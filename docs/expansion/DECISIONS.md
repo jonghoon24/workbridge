@@ -187,3 +187,16 @@
 | `PUBLIC_ROUTES`(라우트 / 핸들러) | 11 / 10 | 0 | +2 / +2(PF16, PF17) | 13 / 12 |
 
 `Ids` 인터페이스와 `MISSING`에는 2A가 `conversationId`, `messageId`를, 2B가 `portfolioItemId`, `careerId`를 더한다.
+
+## P2A (구현)
+
+- 시스템 메시지의 한국어 본문은 `services/messaging.service.ts`의 `SYSTEM_BODIES` 한 곳에 둔다(`lib/notifications/templates.ts`는 고치지 않았다). 마일스톤 제목, 제출 회차, 반려 사유를 본문에 넣는다. `MessageSystemEvent` 유니온도 같은 파일에 두고 `src/types/index.ts`에서 다시 내보낸다(`NotificationType`과 같은 방식).
+- 시스템 메시지는 `postSystemMessage(tx, contractId, event, vars)` 하나로 남긴다. 결제 전이는 `markFunded` 끝에서 남겨 confirm과 dev-complete가 같은 경로를 탄다. 승인은 알림과 같은 `!projectDeleted` 블록 안에서 `MILESTONE_APPROVED`/`MILESTONE_AUTO_APPROVED` 다음 `CONTRACT_COMPLETED` 순서로 남긴다.
+- MG8(안 읽은 수)은 raw SQL 하나(`unreadRows`)로 계산하고 대화방 목록, 상세, 총합(MG12), 계약 목록(MG19), MG18이 모두 이것을 쓴다. 열끼리 비교하므로 `sqlTimestamp`가 필요 없다. 총합만 프로젝트 삭제 조건(MG10)을 SQL에 넣고, 나머지는 호출하는 쪽 조회가 이미 거른다.
+- MG15의 "본문이 비었고 파일도 없음" 400은 zod 본문 스키마가 `req.files`를 볼 수 없어 컨트롤러 첫 줄에서 같은 메시지(`body: Message or attachment is required`)로 낸다. 조회 전이라 검증 단계 순서는 같다. 문자열이 아닌 `body`는 zod 기본 메시지(`body: Expected string, received number`)로 400.
+- 상태가 COMPLETED인데 `completedAt`이 null인 계약(데이터 이상, `makeContractScenario({ contract: { status: 'COMPLETED' } })` 픽스처)은 `closesAt: null`로 보고 MG9 첫 행에 걸리지 않는다(발송 허용).
+- 미확인 다이제스트의 "같은 쌍의 PENDING 작업" 검사는 `payload`의 JSON path 두 개(`conversationId`, `recipientId`)로 찾는다. J8 2단계를 통과한 실행(`due`)은 Phase 2A에서 `unread digest` info 로그(`outcome`, `unreadCount`)만 남기고 SUCCEEDED로 끝난다. 결과 값은 `not-applicable`/`nothing-unread`/`rescheduled`/`due`.
+- 계획 교체와 자동 승인의 시스템 메시지 테스트는 핸드오프 표에 없는 `milestone-plan.test.ts`, `auto-approval.test.ts` 대신 `conversations.test.ts`의 "system messages"에 두었다. 수락·서명·결제·제출·반려·승인은 표대로 각 파일에 더했다.
+- 클라이언트: `usePolling`은 PLAN §2.2.4의 `hooks/` 대신 소유권 표대로 `components/messages/`에 둔다. 스레드 5초, 헤더 배지 30초(MG20), 대화방 목록은 명세에 주기가 없어 10초로 정했다. 내 메시지의 읽음 표시는 5초마다 받는 대화방 상세의 `counterpartLastReadAt`으로 다시 계산한다(`after` 폴링은 이미 받은 메시지를 다시 주지 않는다). 같은 이유로 상대가 지운 메시지는 새로고침 전까지 화면에 남는다.
+- 클라이언트: `/my/contracts` 항목에는 대화방 id가 없어(MG19는 수만 준다) "대화" 버튼을 누를 때 `GET /api/contracts/:id/conversation`으로 찾아 이동한다. 첨부는 이미지도 썸네일 없이 파일 칩으로 보여준다(공개 URL Q21, `<img>` lint 경고를 늘리지 않는다). 삭제 버튼은 터치 기기에서도 보이도록 hover 전용으로 숨기지 않는다.
+- 로컬 실행 확인의 업로드 스텁은 병렬 워커(P2B)와 겹치지 않게 54322 포트를 썼다(스킬 Gotchas는 54321). 서버 테스트 1659 통과(+185), it.fails 62(변화 없음), todo 1. D-2A 핀은 없다.
