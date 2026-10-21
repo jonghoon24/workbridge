@@ -15,6 +15,10 @@ async function main() {
   // `user.deleteMany()` below fails with Prisma P2003 if any notification rows survive.
   // The app creates these whenever an application is accepted, so anyone who uses the
   // app and then re-seeds hits this.
+  // Infrastructure tables have no foreign keys; cleared so a re-seed starts from an empty queue.
+  // (Recurring jobs are not seeded — the worker recreates them via `ensureRecurringJobs`.)
+  await prisma.job.deleteMany();
+  await prisma.rateLimitCounter.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.review.deleteMany();
   await prisma.payment.deleteMany();

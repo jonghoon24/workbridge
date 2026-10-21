@@ -8,6 +8,8 @@ export { prisma };
  * tests — so add new models here when the schema grows.
  */
 const TABLES = [
+  'Job',
+  'RateLimitCounter',
   'Notification',
   'Review',
   'Payment',

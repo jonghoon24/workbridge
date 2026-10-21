@@ -198,3 +198,50 @@ model PricingAnalysis {
   marketReference String?
   createdAt       DateTime @default(now())
 }
+
+// ─── Infrastructure ─────────────────────────────────────────────────────────
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED // maxAttempts exhausted, or PermanentJobError
+  CANCELLED
+}
+
+/// Postgres-backed job queue. See BEHAVIOR.md "Background jobs".
+model Job {
+  id          String    @id @default(uuid())
+  /// TS union `JobType` (src/jobs/types.ts) — a bare String like `Notification.type`.
+  type        String
+  payload     Json      @default("{}")
+  status      JobStatus @default(PENDING)
+  runAt       DateTime  @default(now())
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  lockedAt    DateTime?
+  /// Worker id: `${hostname}:${pid}:${random}`
+  lockedBy    String?
+  lastError   String?
+  /// Enqueueing an existing key is a no-op (ON CONFLICT DO NOTHING).
+  dedupeKey   String?   @unique
+  /// requestId of the request that enqueued the job.
+  traceId     String?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@index([type, status])
+}
+
+/// Fixed-window rate-limit counters, shared across server instances.
+model RateLimitCounter {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+  expiresAt   DateTime
+
+  @@id([key, windowStart])
+  @@index([expiresAt])
+}
