@@ -7,8 +7,12 @@
 | 계획 | 완료 | PLAN.md 1차 검토(reviews/PLAN_REVIEW_1.md) 24건 반영 |
 | P0 인프라 | 완료 | c9d04b4. 검증 1차 반영(reviews/P0_REVIEW_1.md). 서버 테스트 1151 통과, it.fails 63(변화 없음), todo 1. 결정은 DECISIONS.md "P0" |
 | P1 마일스톤과 정산 | 완료 | f670600. 검증 1차 반영(reviews/P1_REVIEW_1.md). 명세 1c560e1·29a8a1a, 스키마 f10f7af, 서버 91e8f3a·ed9d7e4·f1c3e09, 클라이언트 병합 5d1769f. 서버 테스트 1474 통과, it.fails 62(63에서 D12 PATCH·D21 completeContract 행이 빠지고 D22가 더해짐), todo 1. 결정은 DECISIONS.md "P1" 절들 |
-| P2-S 메시지·프로필 명세와 스키마 | 대기 | |
+| P2-S 메시지·프로필 명세와 스키마 | 완료 | c3f5584. 별도 worktree에서 P1 수정과 병렬로 만든 뒤 병합. 병합 트리에서 1474 통과 / 62 핀 / 1 todo 확인 |
 | P2A 메시지 | 대기 | P2B와 병렬 |
 | P2B 프로필 확장 | 대기 | P2A와 병렬 |
 | P3 알림 채널 | 대기 | |
 | P4 마무리 | 대기 | |
+
+## 후속 과제
+
+- D13 핀(`two concurrent creates collide`)은 경합이 가끔 안 일어나 `it.fails`가 "예상 밖 통과"로 실패한다. 기준 커밋(ad4020d)에서도 8회 중 3회 재현된 기존 flake다. P4에서 경합을 확실히 만들거나(지연 주입) 핀 방식을 바꾼다.
