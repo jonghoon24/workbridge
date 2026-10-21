@@ -2,30 +2,46 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
 import Script from 'next/script';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import MilestoneStatusBadge from '@/components/milestones/MilestoneStatusBadge';
+import { formatDate, formatKRW } from '@/lib/format';
 
 const paymentBypassEnabled =
   process.env.NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS === 'true';
 
+// Toss orderName은 100자까지 받는다.
+function buildOrderName(projectTitle, milestoneTitle) {
+  const name = [projectTitle, milestoneTitle].filter(Boolean).join(' - ') || '프로젝트 대금';
+  return name.length > 100 ? `${name.slice(0, 99)}…` : name;
+}
+
 export default function PaymentPage() {
-  const { id } = useParams(); // contract id
+  const { id } = useParams(); // milestone id (P1부터 결제는 마일스톤 단위다)
   const router = useRouter();
-  const [contract, setContract] = useState(null);
+  const [milestone, setMilestone] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [error, setError] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
-    api.get(`/api/contracts/${id}`)
-      .then(({ data }) => setContract(data))
-      .catch(() => router.push('/'))
+    api.get(`/api/milestones/${id}`)
+      .then(({ data }) => setMilestone(data))
+      .catch((err) => {
+        setLoadError(err.response?.data?.error?.message || '결제할 마일스톤을 불러오지 못했습니다');
+      })
       .finally(() => setLoading(false));
-  }, [id, router]);
+  }, [id]);
+
+  const contractId = milestone?.contract?.id;
+  const resultQuery = `milestoneId=${id}${contractId ? `&contractId=${contractId}` : ''}`;
 
   async function handlePayment() {
     if (!sdkReady || !window.TossPayments) {
@@ -34,8 +50,9 @@ export default function PaymentPage() {
     }
 
     setPaymentLoading(true);
+    setError('');
     try {
-      const { data } = await api.post('/api/payments', { contractId: id });
+      const { data } = await api.post('/api/payments', { milestoneId: id });
       const { orderId, amount } = data;
 
       const tossPayments = window.TossPayments(process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY);
@@ -43,14 +60,14 @@ export default function PaymentPage() {
       await tossPayments.requestPayment('카드', {
         amount,
         orderId,
-        orderName: contract.project?.title || '프로젝트 대금',
+        orderName: buildOrderName(milestone.contract?.project?.title, milestone.title),
         customerName: useAuthStore.getState().user?.name,
-        successUrl: `${window.location.origin}/payments/result?status=success&orderId=${orderId}&contractId=${id}`,
-        failUrl: `${window.location.origin}/payments/result?status=fail&contractId=${id}`,
+        successUrl: `${window.location.origin}/payments/result?status=success&${resultQuery}`,
+        failUrl: `${window.location.origin}/payments/result?status=fail&${resultQuery}`,
       });
     } catch (err) {
       if (err.code !== 'USER_CANCEL') {
-        alert(err.response?.data?.error?.message || '결제에 실패했습니다');
+        setError(err.response?.data?.error?.message || err.message || '결제에 실패했습니다');
       }
     } finally {
       setPaymentLoading(false);
@@ -59,18 +76,38 @@ export default function PaymentPage() {
 
   async function handleDevPaymentComplete() {
     setPaymentLoading(true);
+    setError('');
     try {
-      await api.post('/api/payments/dev-complete', { contractId: id });
-      router.push(`/payments/result?status=dev-success&contractId=${id}`);
+      await api.post('/api/payments/dev-complete', { milestoneId: id });
+      router.push(`/payments/result?status=dev-success&${resultQuery}`);
     } catch (err) {
-      alert(err.response?.data?.error?.message || '개발용 결제 완료 처리에 실패했습니다');
+      setError(err.response?.data?.error?.message || '개발용 결제 완료 처리에 실패했습니다');
     } finally {
       setPaymentLoading(false);
     }
   }
 
   if (loading) return <div className="max-w-lg mx-auto px-4 py-8 text-center">로딩 중...</div>;
-  if (!contract) return null;
+
+  if (loadError || !milestone) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-16 text-center">
+        <p className="text-gray-600 mb-4">{loadError || '마일스톤을 찾을 수 없습니다'}</p>
+        <Link href="/my/contracts" className="text-primary-600 hover:text-primary-700 font-medium">
+          내 계약으로 →
+        </Link>
+      </div>
+    );
+  }
+
+  const contract = milestone.contract || {};
+  const currentUser = useAuthStore.getState().user;
+  const isClient = currentUser?.id === contract.clientId;
+  const payable = isClient && contract.status === 'ACTIVE' && milestone.status === 'PENDING';
+  let blockedReason = '';
+  if (!isClient) blockedReason = '계약의 의뢰인만 결제할 수 있습니다.';
+  else if (contract.status !== 'ACTIVE') blockedReason = '양측 서명으로 계약이 체결된 뒤에 결제할 수 있습니다.';
+  else if (milestone.status !== 'PENDING') blockedReason = '이미 결제된 마일스톤입니다.';
 
   return (
     <>
@@ -80,46 +117,82 @@ export default function PaymentPage() {
         onLoad={() => setSdkReady(true)}
       />
       <div className="max-w-lg mx-auto px-4 sm:px-6 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">결제</h1>
+        <h1 className="text-2xl font-bold text-gray-900 mb-6">마일스톤 결제</h1>
 
         <Card className="p-6 mb-6">
           <h2 className="font-semibold text-gray-900 mb-4">결제 정보</h2>
           <dl className="space-y-3 text-sm">
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-4">
               <dt className="text-gray-500">프로젝트</dt>
-              <dd className="font-medium">{contract.project?.title}</dd>
+              <dd className="font-medium text-right">{contract.project?.title}</dd>
             </div>
-            <div className="flex justify-between">
-              <dt className="text-gray-500">프리랜서</dt>
-              <dd className="font-medium">{contract.freelancer?.name}</dd>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">마일스톤</dt>
+              <dd className="font-medium text-right">
+                #{milestone.sequence} {milestone.title}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">상태</dt>
+              <dd><MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} /></dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-500">기한</dt>
+              <dd className="font-medium">{formatDate(milestone.dueDate)}</dd>
             </div>
             <div className="flex justify-between border-t border-gray-100 pt-3">
               <dt className="font-semibold text-gray-900">결제 금액</dt>
-              <dd className="font-bold text-xl text-primary-600">{contract.amount?.toLocaleString()}원</dd>
+              <dd className="font-bold text-xl text-primary-600">{formatKRW(milestone.amount)}</dd>
             </div>
           </dl>
+          <p className="mt-4 text-xs text-gray-500">
+            결제한 금액은 플랫폼이 보관하고, 산출물을 승인하면(또는 검수 기한이 지나 자동 승인되면) 프리랜서에게 정산됩니다.
+            마일스톤은 순서대로만 결제할 수 있습니다.
+          </p>
         </Card>
 
-        <Button
-          onClick={handlePayment}
-          loading={paymentLoading}
-          disabled={!sdkReady}
-          className="w-full"
-          size="lg"
-        >
-          {sdkReady ? `${contract.amount?.toLocaleString()}원 결제하기` : '결제 준비 중...'}
-        </Button>
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">
+            {error}
+          </div>
+        )}
 
-        {paymentBypassEnabled && contract.payment?.status !== 'COMPLETED' && (
-          <Button
-            onClick={handleDevPaymentComplete}
-            loading={paymentLoading}
-            variant="secondary"
-            className="w-full mt-3"
-            size="lg"
-          >
-            개발용 결제 완료 처리
-          </Button>
+        {payable ? (
+          <>
+            <Button
+              onClick={handlePayment}
+              loading={paymentLoading}
+              disabled={!sdkReady}
+              className="w-full"
+              size="lg"
+            >
+              {sdkReady ? `${formatKRW(milestone.amount)} 결제하기` : '결제 준비 중...'}
+            </Button>
+
+            {paymentBypassEnabled && (
+              <Button
+                onClick={handleDevPaymentComplete}
+                loading={paymentLoading}
+                variant="secondary"
+                className="w-full mt-3"
+                size="lg"
+              >
+                개발용 결제 완료 처리
+              </Button>
+            )}
+          </>
+        ) : (
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
+            {blockedReason}
+          </div>
+        )}
+
+        {contract.id && (
+          <div className="mt-6 text-center">
+            <Link href={`/contracts/${contract.id}`} className="text-sm text-primary-600 hover:text-primary-700 font-medium">
+              ← 계약서로 돌아가기
+            </Link>
+          </div>
         )}
       </div>
     </>

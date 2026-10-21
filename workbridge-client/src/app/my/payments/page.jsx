@@ -6,6 +6,8 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
+import { formatDate, formatKRW } from '@/lib/format';
+import { PAYMENT_STATUS_LABELS } from '@/constants/milestones';
 
 export default function MyPaymentsPage() {
   const [payments, setPayments] = useState([]);
@@ -38,6 +40,16 @@ export default function MyPaymentsPage() {
                   <Link href={`/contracts/${payment.contractId}`} className="font-medium text-gray-900 hover:text-primary-600">
                     {payment.contract?.project?.title}
                   </Link>
+                  {payment.milestone && (
+                    <p className="text-sm text-gray-700 mt-1">
+                      <Link
+                        href={`/contracts/${payment.contractId}/milestones/${payment.milestone.id}`}
+                        className="hover:text-primary-600"
+                      >
+                        마일스톤 {payment.milestone.sequence}회차 · {payment.milestone.title}
+                      </Link>
+                    </p>
+                  )}
                   <p className="text-sm text-gray-500 mt-1">
                     프리랜서: {payment.contract?.freelancer?.name}
                   </p>
@@ -46,10 +58,12 @@ export default function MyPaymentsPage() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-semibold text-gray-900">{payment.amount?.toLocaleString()}원</p>
-                  <Badge variant={payment.status} className="mt-1">{payment.status}</Badge>
+                  <p className="font-semibold text-gray-900">{formatKRW(payment.amount)}</p>
+                  <Badge variant={payment.status} className="mt-1">
+                    {PAYMENT_STATUS_LABELS[payment.status] || payment.status}
+                  </Badge>
                   <p className="text-xs text-gray-400 mt-1">
-                    {new Date(payment.createdAt).toLocaleDateString('ko-KR')}
+                    {formatDate(payment.createdAt)}
                   </p>
                 </div>
               </div>
