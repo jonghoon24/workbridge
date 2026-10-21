@@ -163,6 +163,13 @@ export default function Header() {
                       )}
                     </Link>
                     <Link
+                      href="/my/notifications/settings"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      알림 설정
+                    </Link>
+                    <Link
                       href="/my/contracts"
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                       onClick={() => setDropdownOpen(false)}
