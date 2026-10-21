@@ -47,7 +47,7 @@ export function tokenFor(user: Principal): string {
   return generateAccessToken({ id: user.id, email: user.email, role: user.role });
 }
 
-type Method = 'get' | 'post' | 'patch' | 'delete';
+type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 /** Authenticated request builder: `authed(client).post('/api/projects').send({ … })`. */
 export function authed(user: Principal) {
@@ -58,6 +58,7 @@ export function authed(user: Principal) {
   return {
     get: build('get'),
     post: build('post'),
+    put: build('put'),
     patch: build('patch'),
     delete: build('delete'),
   };

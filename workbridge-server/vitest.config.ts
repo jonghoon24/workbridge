@@ -44,6 +44,15 @@ export default defineConfig({
       CLIENT_URL: 'http://localhost:3000',
       TOSS_SECRET_KEY: 'test_sk_dummy',
       ALLOW_PAYMENT_BYPASS: 'false',
+
+      // Infrastructure. Only error-level lines (500s) reach the console, rate limits are
+      // enforced (counters live in a truncated table, so every test starts at zero), and no
+      // worker ever starts — tests drive the queue with `runDueJobs({ now })`.
+      LOG_LEVEL: 'error',
+      RATE_LIMIT_ENABLED: 'true',
+      JOB_WORKER_ENABLED: 'false',
+      TRUST_PROXY: '',
+      INTERNAL_JOB_TOKEN: '',
     },
   },
 });

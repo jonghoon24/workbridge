@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import type { Role } from '@prisma/client';
 import { AppError } from '../lib/errors';
 import { env } from '../env';
+import { getRequestContext } from '../lib/requestContext';
 import type { JwtUserPayload } from '../types/index';
 
 export function authenticate(req: Request, res: Response, next: NextFunction) {
@@ -18,6 +19,8 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     // `JwtUserPayload` shape, so the cast reflects what is on the wire.
     const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtUserPayload;
     req.user = decoded;
+    const context = getRequestContext();
+    if (context) context.userId = decoded.id;
     next();
   } catch (err) {
     return next(new AppError('Invalid or expired token', 401));

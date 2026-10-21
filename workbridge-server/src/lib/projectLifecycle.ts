@@ -31,9 +31,13 @@ export async function rejectPendingApplicationsForClosedProjects(
   });
 }
 
-export async function closeExpiredOpenProjects(): Promise<string[]> {
+/**
+ * The lifecycle sweep (BEHAVIOR.md rule 7). Runs lazily on read paths (no argument, so "now")
+ * and from the scheduled `project.lifecycleSweep` job, which passes the runner's `now` so the
+ * job is deterministic under test. Idempotent.
+ */
+export async function closeExpiredOpenProjects(now: Date = new Date()): Promise<string[]> {
   return prisma.$transaction(async (tx) => {
-    const now = new Date();
 
     await tx.project.updateMany({
       where: {

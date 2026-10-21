@@ -12,7 +12,9 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "db:seed": "node prisma/seed.js"
+    "db:seed": "node prisma/seed.js",
+    "jobs:run": "tsx src/jobs/cli.ts --once",
+    "jobs:worker": "tsx src/jobs/cli.ts"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
@@ -29,7 +31,8 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "openai": "^4.24.1",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

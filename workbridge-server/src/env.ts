@@ -67,6 +67,14 @@ export const env = {
   get PORT(): string {
     return withDefault('PORT', '4000');
   },
+  /** `debug | info | warn | error | silent`. The test config sets `error`. */
+  get LOG_LEVEL(): string {
+    return withDefault('LOG_LEVEL', 'info');
+  },
+  /** Poll interval of the development job worker, in milliseconds. */
+  get JOB_POLL_INTERVAL_MS(): string {
+    return withDefault('JOB_POLL_INTERVAL_MS', '5000');
+  },
 
   // --- Optional passthrough: these call sites tolerate `undefined` ----------
   get NODE_ENV(): string | undefined {
@@ -83,6 +91,25 @@ export const env = {
   },
   get ALLOW_PAYMENT_BYPASS(): string | undefined {
     return process.env.ALLOW_PAYMENT_BYPASS;
+  },
+  /**
+   * Express `trust proxy` setting (`loopback`, a hop count, a subnet list, …). Unset means the
+   * socket address is the client IP and `X-Forwarded-For` is ignored.
+   */
+  get TRUST_PROXY(): string | undefined {
+    return process.env.TRUST_PROXY;
+  },
+  /** Rate limits are on unless this is exactly `'false'`. Read per request. */
+  get RATE_LIMIT_ENABLED(): string | undefined {
+    return process.env.RATE_LIMIT_ENABLED;
+  },
+  /** Shared secret for `POST /api/internal/jobs/run`. Unset → the endpoint 404s. */
+  get INTERNAL_JOB_TOKEN(): string | undefined {
+    return process.env.INTERNAL_JOB_TOKEN;
+  },
+  /** The development worker starts unless this is exactly `'false'`. */
+  get JOB_WORKER_ENABLED(): string | undefined {
+    return process.env.JOB_WORKER_ENABLED;
   },
 
   // --- Derived --------------------------------------------------------------

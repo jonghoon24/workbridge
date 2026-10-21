@@ -31,7 +31,7 @@ import { generateRefreshToken } from '../src/lib/jwt';
  * codebase augments `Express.Request.user` as **non-optional**, so the compiler cannot warn
  * when a public handler reads `req.user`, nor when a protected route loses its `authenticate`
  * middleware. Only a test that walks every route can catch that, so the route table below is
- * transcribed from the eight files in `src/routes/` and every assertion is driven off it.
+ * transcribed from the nine files in `src/routes/` and every assertion is driven off it.
  * Adding a route to the table adds coverage everywhere automatically.
  */
 
@@ -854,10 +854,18 @@ describe('the public surface', () => {
       path: () => `/api/reviews/users/${pub.user.id}`,
       expected: 200,
     },
+    // internal.routes.ts — guarded by `X-Internal-Token`, not a JWT. `INTERNAL_JOB_TOKEN` is
+    // unset under test, so the endpoint does not exist (404); `jobs.test.ts` covers the rest.
+    {
+      label: 'POST /api/internal/jobs/run',
+      method: 'post',
+      path: () => '/api/internal/jobs/run',
+      expected: 404,
+    },
   ];
 
-  it('enumerates ten public routes', () => {
-    expect(PUBLIC_ROUTES).toHaveLength(10);
+  it('enumerates eleven public routes (ten handlers; the review list is mounted twice)', () => {
+    expect(PUBLIC_ROUTES).toHaveLength(11);
   });
 
   it.each(PUBLIC_ROUTES)('$label is reachable with no token → $expected', async (route) => {
