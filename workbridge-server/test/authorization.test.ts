@@ -16,11 +16,13 @@ import { prisma } from './helpers/db';
 import {
   daysFromNow,
   makeApplication,
+  makeCareer,
   makeClient,
   makeContract,
   makeFreelancer,
   makeMilestone,
   makePayment,
+  makePortfolioItem,
   makeProject,
 } from './helpers/factories';
 import { generateRefreshToken } from '../src/lib/jwt';
@@ -93,6 +95,8 @@ interface Ids {
   orderId: string;
   milestoneId: string;
   settlementId: string;
+  portfolioItemId: string;
+  careerId: string;
 }
 
 interface RouteSpec {
@@ -117,6 +121,8 @@ const MISSING: Ids = {
   orderId: 'missing-order-id',
   milestoneId: 'missing-milestone-id',
   settlementId: 'missing-settlement-id',
+  portfolioItemId: 'missing-portfolio-item-id',
+  careerId: 'missing-career-id',
 };
 
 /** Verification fails before any database read, so these tests need no fixture user. */
@@ -127,6 +133,8 @@ const GHOST: Principal = { id: 'ghost-user-id', email: 'ghost@test.local', role:
  * 43 routes: auth 2, users 8 (incl. payout account 3), projects 8, applications 3,
  * contracts 6 (incl. list and milestone plan 3), milestones 4, payments 4, settlements 3,
  * reviews 1, notifications 4.
+ * Phase 2B adds 10 (= 53): profile.routes.ts 9 (portfolio 4, careers 3, profile completion 1,
+ * recommended projects 1) and projects.routes.ts 1 (recommended freelancers).
  */
 const PROTECTED_ROUTES: RouteSpec[] = [
   // auth.routes.ts
@@ -194,7 +202,84 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     gate: 'middleware',
   },
 
+  // profile.routes.ts (Phase 2B; the two public GETs are in PUBLIC_ROUTES)
+  {
+    label: 'POST /api/users/me/portfolio',
+    method: 'post',
+    path: () => '/api/users/me/portfolio',
+    body: () => ({ title: 'A portfolio item' }),
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'PUT /api/users/me/portfolio/order',
+    method: 'put',
+    path: () => '/api/users/me/portfolio/order',
+    body: () => ({ ids: [] }),
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'PATCH /api/users/me/portfolio/:itemId',
+    method: 'patch',
+    path: (ids) => `/api/users/me/portfolio/${ids.portfolioItemId}`,
+    body: () => ({ title: 'Renamed' }),
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'DELETE /api/users/me/portfolio/:itemId',
+    method: 'delete',
+    path: (ids) => `/api/users/me/portfolio/${ids.portfolioItemId}`,
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'POST /api/users/me/careers',
+    method: 'post',
+    path: () => '/api/users/me/careers',
+    body: () => ({ company: 'Codeit', position: 'Developer', employmentType: 'FULL_TIME', startDate: '2021-03' }),
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'PATCH /api/users/me/careers/:careerId',
+    method: 'patch',
+    path: (ids) => `/api/users/me/careers/${ids.careerId}`,
+    body: () => ({ position: 'Lead' }),
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'DELETE /api/users/me/careers/:careerId',
+    method: 'delete',
+    path: (ids) => `/api/users/me/careers/${ids.careerId}`,
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'GET /api/users/me/profile-completion',
+    method: 'get',
+    path: () => '/api/users/me/profile-completion',
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'GET /api/users/me/recommended-projects',
+    method: 'get',
+    path: () => '/api/users/me/recommended-projects',
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+
   // projects.routes.ts
+  {
+    label: 'GET /api/projects/:id/recommended-freelancers',
+    method: 'get',
+    path: (ids) => `/api/projects/${ids.projectId}/recommended-freelancers`,
+    role: 'CLIENT',
+    gate: 'middleware',
+  },
   {
     label: 'POST /api/projects',
     method: 'post',
@@ -480,12 +565,12 @@ function expectErrorEnvelope(res: ApiResponse, status: number) {
 
 describe('the route table itself', () => {
   it('covers every protected route in src/routes, and none twice', () => {
-    expect(PROTECTED_ROUTES).toHaveLength(43);
+    expect(PROTECTED_ROUTES).toHaveLength(53);
     expect(new Set(PROTECTED_ROUTES.map((r) => r.label)).size).toBe(PROTECTED_ROUTES.length);
   });
 
-  it('records a role gate for exactly the 24 role-gated routes', () => {
-    expect(ROLE_GATED_ROUTES).toHaveLength(24);
+  it('records a role gate for exactly the 33 role-gated routes', () => {
+    expect(ROLE_GATED_ROUTES).toHaveLength(33);
     expect(ROLE_GATED_ROUTES.every((r) => r.gate !== null)).toBe(true);
     expect(PROTECTED_ROUTES.filter((r) => r.role === null).every((r) => r.gate === null)).toBe(true);
   });
@@ -676,9 +761,9 @@ describe('authorization — role gating', () => {
   const clientOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'CLIENT');
   const freelancerOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'FREELANCER');
 
-  it('splits the role-gated routes into 11 CLIENT-only and 13 FREELANCER-only', () => {
-    expect(clientOnly).toHaveLength(11);
-    expect(freelancerOnly).toHaveLength(13);
+  it('splits the role-gated routes into 12 CLIENT-only and 21 FREELANCER-only', () => {
+    expect(clientOnly).toHaveLength(12);
+    expect(freelancerOnly).toHaveLength(21);
   });
 
   it.each(clientOnly)('$label → 403 for a FREELANCER', async (route) => {
@@ -953,6 +1038,19 @@ describe('the public surface', () => {
       path: () => `/api/reviews/users/${pub.user.id}`,
       expected: 200,
     },
+    // profile.routes.ts (Phase 2B) — PF16, PF17. The fixture user is a CLIENT, so both lists are empty.
+    {
+      label: 'GET /api/users/:id/portfolio',
+      method: 'get',
+      path: () => `/api/users/${pub.user.id}/portfolio`,
+      expected: 200,
+    },
+    {
+      label: 'GET /api/users/:id/careers',
+      method: 'get',
+      path: () => `/api/users/${pub.user.id}/careers`,
+      expected: 200,
+    },
     // internal.routes.ts — guarded by `X-Internal-Token`, not a JWT. `INTERNAL_JOB_TOKEN` is
     // unset under test, so the endpoint does not exist (404); `jobs.test.ts` covers the rest.
     {
@@ -963,8 +1061,8 @@ describe('the public surface', () => {
     },
   ];
 
-  it('enumerates eleven public routes (ten handlers; the review list is mounted twice)', () => {
-    expect(PUBLIC_ROUTES).toHaveLength(11);
+  it('enumerates thirteen public routes (twelve handlers; the review list is mounted twice)', () => {
+    expect(PUBLIC_ROUTES).toHaveLength(13);
   });
 
   it.each(PUBLIC_ROUTES)('$label is reachable with no token → $expected', async (route) => {
@@ -1332,6 +1430,47 @@ describe('ownership is checked after existence', () => {
 
     expectErrorEnvelope(missing, 404);
     expect(missing.body.error.message).toBe('Settlement not found');
+    expectErrorEnvelope(foreign, 403);
+    expect(foreign.body.error.message).toBe('Not authorized');
+  });
+
+  it.each([
+    ['PATCH', 'patch', 'portfolio', 'Portfolio item not found'],
+    ['DELETE', 'delete', 'portfolio', 'Portfolio item not found'],
+    ['PATCH', 'patch', 'careers', 'Career not found'],
+    ['DELETE', 'delete', 'careers', 'Career not found'],
+  ] as const)('%s /api/users/me/%s/:id → 404 for a missing row, 403 for another freelancer\'s [PF7]', async (_label, method, resource, notFound) => {
+    const owner = await makeFreelancer();
+    const intruder = await makeFreelancer();
+    const row = resource === 'portfolio'
+      ? await makePortfolioItem(owner.id)
+      : await makeCareer(owner.id);
+    const body = resource === 'portfolio' ? { title: 'Taken over' } : { position: 'Taken over' };
+
+    const missing = await authed(intruder)[method](`/api/users/me/${resource}/missing-row-id`).send(body);
+    const foreign = await authed(intruder)[method](`/api/users/me/${resource}/${row.id}`).send(body);
+
+    expectErrorEnvelope(missing, 404);
+    expect(missing.body.error.message).toBe(notFound);
+    expectErrorEnvelope(foreign, 403);
+    expect(foreign.body.error.message).toBe('Not authorized');
+    const stillThere = resource === 'portfolio'
+      ? await prisma.portfolioItem.findUnique({ where: { id: row.id } })
+      : await prisma.career.findUnique({ where: { id: row.id } });
+    expect(stillThere).toMatchObject({ id: row.id, userId: owner.id });
+    expect(JSON.stringify(stillThere)).not.toContain('Taken over');
+  });
+
+  it('GET /api/projects/:id/recommended-freelancers → 404 for a missing project, 403 for another client\'s [RC3]', async () => {
+    const owner = await makeClient();
+    const outsider = await makeClient();
+    const project = await makeProject(owner.id);
+
+    const missing = await authed(outsider).get('/api/projects/missing-project-id/recommended-freelancers');
+    const foreign = await authed(outsider).get(`/api/projects/${project.id}/recommended-freelancers`);
+
+    expectErrorEnvelope(missing, 404);
+    expect(missing.body.error.message).toBe('Project not found');
     expectErrorEnvelope(foreign, 403);
     expect(foreign.body.error.message).toBe('Not authorized');
   });

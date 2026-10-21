@@ -11,10 +11,14 @@ import {
   updateProjectStatus,
   analyzeProject,
 } from '../controllers/projects.controller';
+import { getRecommendedFreelancers } from '../controllers/recommendations.controller';
 import { authenticate, requireRole } from '../middlewares/auth';
+import { requireActiveUser } from '../middlewares/activeUser';
 import { requireCompleteProfile } from '../middlewares/profile';
 import { rateLimit } from '../middlewares/rateLimit';
+import { validate } from '../middlewares/validate';
 import { ANALYZE_DAILY_RULE, ANALYZE_HOURLY_RULE } from '../lib/rateLimitRules';
+import { recommendationQuery } from '../schemas/profile';
 
 const router = Router();
 
@@ -35,6 +39,17 @@ router.post(
   rateLimit(ANALYZE_HOURLY_RULE),
   rateLimit(ANALYZE_DAILY_RULE),
   analyzeProject,
+);
+
+// Expansion route (rule 12): freelancers recommended for the caller's project (RC3). Read-only —
+// unlike `GET /:id`, it runs no lifecycle sweep.
+router.get(
+  '/:id/recommended-freelancers',
+  authenticate,
+  requireActiveUser,
+  requireRole('CLIENT'),
+  validate({ query: recommendationQuery }),
+  getRecommendedFreelancers,
 );
 
 export default router;

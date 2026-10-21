@@ -32,12 +32,14 @@ import { prisma } from './helpers/db';
 import {
   daysFromNow,
   makeApplication,
+  makeCareer,
   makeClient,
   makeContractScenario,
   makeFreelancer,
   makeMilestone,
   makePayment,
   makePayoutAccount,
+  makePortfolioItem,
   makeProject,
   makeSubmission,
   makeUser,
@@ -614,6 +616,110 @@ const guardedMutations: Mutation[] = [
         send: (token) => bearer(token).delete('/api/users/me/payout-account'),
         async assertUnchanged() {
           expect(await prisma.payoutAccount.count({ where: { userId: actor.id } })).toBe(1);
+        },
+      };
+    },
+  },
+  // Phase 2B — portfolio and careers (PF20).
+  {
+    label: 'POST /api/users/me/portfolio',
+    async setup() {
+      const actor = await makeFreelancer();
+      return {
+        actor,
+        send: (token) => bearer(token).post('/api/users/me/portfolio').send({ title: GHOST }),
+        async assertUnchanged() {
+          expect(await prisma.portfolioItem.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'PATCH /api/users/me/portfolio/:itemId',
+    async setup() {
+      const actor = await makeFreelancer();
+      const item = await makePortfolioItem(actor.id, { title: 'Before deletion' });
+      return {
+        actor,
+        send: (token) => bearer(token).patch(`/api/users/me/portfolio/${item.id}`).send({ title: GHOST }),
+        async assertUnchanged() {
+          expect((await prisma.portfolioItem.findUniqueOrThrow({ where: { id: item.id } })).title).toBe('Before deletion');
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/users/me/portfolio/:itemId',
+    async setup() {
+      const actor = await makeFreelancer();
+      const item = await makePortfolioItem(actor.id);
+      return {
+        actor,
+        send: (token) => bearer(token).delete(`/api/users/me/portfolio/${item.id}`),
+        async assertUnchanged() {
+          expect(await prisma.portfolioItem.count({ where: { id: item.id } })).toBe(1);
+        },
+      };
+    },
+  },
+  {
+    label: 'PUT /api/users/me/portfolio/order',
+    async setup() {
+      const actor = await makeFreelancer();
+      const first = await makePortfolioItem(actor.id);
+      const second = await makePortfolioItem(actor.id);
+      return {
+        actor,
+        send: (token) => bearer(token).put('/api/users/me/portfolio/order').send({ ids: [second.id, first.id] }),
+        async assertUnchanged() {
+          const stored = await prisma.portfolioItem.findMany({ where: { userId: actor.id }, orderBy: { sortOrder: 'asc' } });
+          expect(stored.map((item) => item.id)).toEqual([first.id, second.id]);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/users/me/careers',
+    async setup() {
+      const actor = await makeFreelancer();
+      return {
+        actor,
+        send: (token) => bearer(token).post('/api/users/me/careers').send({
+          company: GHOST,
+          position: 'Developer',
+          employmentType: 'FULL_TIME',
+          startDate: '2021-03',
+        }),
+        async assertUnchanged() {
+          expect(await prisma.career.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'PATCH /api/users/me/careers/:careerId',
+    async setup() {
+      const actor = await makeFreelancer();
+      const career = await makeCareer(actor.id, { company: 'Before deletion' });
+      return {
+        actor,
+        send: (token) => bearer(token).patch(`/api/users/me/careers/${career.id}`).send({ company: GHOST }),
+        async assertUnchanged() {
+          expect((await prisma.career.findUniqueOrThrow({ where: { id: career.id } })).company).toBe('Before deletion');
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/users/me/careers/:careerId',
+    async setup() {
+      const actor = await makeFreelancer();
+      const career = await makeCareer(actor.id);
+      return {
+        actor,
+        send: (token) => bearer(token).delete(`/api/users/me/careers/${career.id}`),
+        async assertUnchanged() {
+          expect(await prisma.career.count({ where: { id: career.id } })).toBe(1);
         },
       };
     },
