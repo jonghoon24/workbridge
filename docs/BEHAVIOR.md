@@ -77,10 +77,14 @@ public profile lookups.
 
 Expansion resources follow their contract's project:
 - A contract whose project is soft-deleted is **404** on every expansion path that reaches it or
-  its milestones — `/api/contracts/:id/milestones`, `/api/milestones/:id/…`, and
-  `POST /api/payments` and `/dev-complete` by `milestoneId` — and is left out of
-  `GET /api/contracts`. (The pre-existing `GET /api/contracts/:id` and `POST /:id/sign` still miss
-  this: **D21**.)
+  its milestones — `/api/contracts/:id/milestones`, `/api/milestones/:id/…`, `POST /api/payments`
+  and `/dev-complete` by `milestoneId`, and `POST /api/payments/confirm` by `orderId` (before
+  anything is captured) — and is left out of `GET /api/contracts`. (The pre-existing
+  `GET /api/contracts/:id` and `POST /:id/sign` still miss this: **D21**.)
+- **Exception — automatic approval proceeds.** Money already captured for a milestone must not be
+  frozen because the client deleted the project, so the auto-approval job approves regardless and
+  completes the contract when due, without writing the deleted project row or notifying anyone
+  about that approval (MS17, J2). Manual approval of such a milestone stays 404.
 - **Settlements and payout accounts are exempt.** They stay readable and keep being paid after a
   project is deleted: one settlement bundles items from several contracts, and the project of a
   completed contract may legitimately be deleted (S2).
@@ -423,7 +427,9 @@ Runs the lifecycle sweep, then returns the project with its client, application 
 ### `POST /:id/applications` — authenticated, FREELANCER, complete profile
 - Runs the lifecycle sweep first.
 - Requires `coverLetter`, `expectedRate`, `expectedDuration` → else 400.
-- `expectedRate` must parse as a number `> 0` → else 400.
+- `expectedRate` must parse as a number `> 0` → else 400 `expectedRate must be a positive number`;
+  a positive value below 1 → **400** `expectedRate must be at least 1`. A rate that rounds to
+  0 won would create a contract whose milestone can never be paid (M7). **[C2]**
 - Project missing/deleted → 404.
 - If the project is `OPEN` but its deadline has already passed, it is closed (and its pending
   applications rejected) **in one transaction**, then → **400** `Project deadline has passed`.
@@ -449,7 +455,8 @@ Runs the lifecycle sweep, then returns the project with its client, application 
   1. mark this application `ACCEPTED`
   2. mark every other `PENDING` application on the project `REJECTED`
   3. create a `Contract` (`status: PENDING`, `amount` = the application's `expectedRate`,
-     `startDate` = now, `endDate` = the project deadline)
+     `startDate` = now, `endDate` = the default milestone's due date — 30 days out, M9 —
+     rather than the project's recruitment deadline, which may already have passed) **[C2]**
   4. create the contract's **default milestone** (M9): sequence 1, title `전체 작업`, amount
      `Math.round(contract.amount)`, due 30 days after the KST acceptance date, `PENDING` **[C2]**
   5. set the project to `CLOSED`
@@ -461,7 +468,8 @@ Runs the lifecycle sweep, then returns the project with its client, application 
 - **`REJECTED`**, in one transaction: mark the application `REJECTED` and notify the freelancer.
 - The contract amount comes from the freelancer's `expectedRate`, **not** the project budget.
   It stays the stored value (possibly fractional); everything milestone-related uses it rounded
-  to whole won (M7). The contract's `endDate` changes only when a plan is replaced (MS8).
+  to whole won (M7). The contract's `endDate` is the last milestone's due date: set at acceptance
+  (step 3) and again whenever the plan is replaced (MS8).
 
 ---
 
@@ -486,15 +494,19 @@ endpoint completes a contract by hand.
   `{ id, status, amount, startDate, endDate, completedAt, clientSigned, freelancerSigned,
   createdAt, myRole, project: { id, title, status }, counterpart: { id, name, profileImage },
   milestoneSummary }`, where `myRole` is `CLIENT` or `FREELANCER` (the caller's side of this
-  contract) and `counterpart` is the other party. No email address appears (contrast Q9).
+  contract) and `counterpart` is the other party — shown as stored even when that user is
+  soft-deleted (whether joined users should be hidden is Q11). No email address appears
+  (contrast Q9).
 
 ### `GET /:id` — authenticated
 - **CT4** — Missing → 404 `Contract not found`; not a party → 403 `Not authorized`.
 - **CT5** — Returns the contract with `project`, `client`, `freelancer`, `milestones` (sequence
   ascending, each a milestone object, MS1), `milestoneSummary`, and `reviews` (newest first).
   There is **no `payment` key**: payments belong to milestones. **[C4]**
-- **CT6** — `milestoneSummary` is `{ count, fundedAmount, approvedAmount, approvedCount }`:
-  `count` milestones in the plan; `fundedAmount` the sum of amounts of milestones that have been
+- **CT6** — `milestoneSummary` is `{ count, contractAmount, fundedAmount, approvedAmount,
+  approvedCount }`: `count` milestones in the plan; `contractAmount` the contract amount in whole
+  won (M7) — the total a plan must add up to (M11), so a plan editor need not round `amount`
+  itself; `fundedAmount` the sum of amounts of milestones that have been
   funded (status `FUNDED`, `SUBMITTED`, `REVISION_REQUESTED` or `APPROVED`); `approvedAmount` and
   `approvedCount` over `APPROVED` milestones only. The same object appears in `GET /` and
   `GET /:id/milestones`.
@@ -570,8 +582,10 @@ client funds milestones one at a time, in sequence order (M13). **[C1]**
 ### `POST /confirm` — verify with TossPayments
 - **PY5** — Check order: `paymentKey`, `orderId`, `amount` all required → else **400**
   `paymentKey, orderId, and amount are required`; `amount` must be a positive finite number → else
-  **400** `Invalid payment amount`; payment not found → **404** `Payment not found`; not the
-  caller's → **403** `Not authorized`; payment not `PENDING` → **409**
+  **400** `Invalid payment amount`; payment not found, **or its milestone's contract's project
+  soft-deleted** → **404** `Payment not found` (checked before the provider is contacted, so
+  nothing is captured for a deleted project — the same condition as `/dev-complete`, rule 5); not
+  the caller's → **403** `Not authorized` **[C1]**; payment not `PENDING` → **409**
   `Payment has already been processed` (this makes confirmation non-replayable, though not under
   concurrency — **D18**); submitted `amount` ≠ stored amount → **400**
   `Payment amount does not match the contract amount` (wording predates milestones; the stored
@@ -589,15 +603,19 @@ client funds milestones one at a time, in sequence order (M13). **[C1]**
   the payment still completes. (Throwing here would be caught by the verification catch-all below
   and would overwrite the winner's `COMPLETED` payment with `FAILED`.)
 - **PY8** — On any verification failure the payment is marked **`FAILED`** and the response is
-  **400** `Payment verification failed`. **If any database write after the provider has captured
+  **400** `Payment verification failed`. The `FAILED` write is **conditional on the payment still
+  being `PENDING`** (`updateMany` where `orderId` and `status: PENDING`): a confirm that loses a
+  race to a successful one — the real provider rejects the second confirmation of one payment —
+  must never turn the winner's `COMPLETED` payment back into `FAILED`; it still answers 400. **If any database write after the provider has captured
   the payment fails (including notification or job enqueue), the payment is marked FAILED and the
   response is 400 — existing behaviour of the D8 family, not a new divergence.** The underlying
   cause must be logged — a network fault and a genuine amount mismatch currently produce identical
   output. **[D8]**
 - **PY9** — Two simultaneous confirms of one `PENDING` payment, whatever D18 does to their status
-  codes, leave the payment `COMPLETED`, the milestone `FUNDED`, **exactly one** `MILESTONE_FUNDED`
-  notification and one `milestone.dueSoon`/`milestone.overdue` job each. This holds today and must
-  keep passing.
+  codes, must leave the payment `COMPLETED`, the milestone `FUNDED`, **exactly one**
+  `MILESTONE_FUNDED` notification and one `milestone.dueSoon`/`milestone.overdue` job each — both
+  when the provider accepts both calls (the no-op funding step, PY7) and when it **rejects the
+  second** (the conditional `FAILED` write, PY8). These are required behavior, not a divergence.
 
 ### `POST /dev-complete` — local/demo shortcut
 - **PY10** — Check order and messages:
@@ -608,15 +626,21 @@ client funds milestones one at a time, in sequence order (M13). **[C1]**
   3. milestone missing or its project soft-deleted → **404** `Milestone not found`
   4. not the contract's client → **403** `Not authorized`
   5. contract not `ACTIVE` → **400** `Contract must be active to proceed with payment`
-  6. the milestone's payment is `COMPLETED` → **200** with it unchanged (idempotent)
-  7. its payment is `REFUNDED` → **409** `Payment cannot be completed for a refunded milestone`
-  8. an earlier milestone is still `PENDING` → **400** `Earlier milestones must be funded first`
-  9. the milestone is not `PENDING` → **409** `Milestone is already funded` **[C1]**
-- **PY11** — Otherwise, **in one transaction**: the payment becomes `COMPLETED` with
-  `paymentKey: dev_bypass_<milestoneId>` — an existing `PENDING`/`FAILED` row is completed in
-  place keeping its `orderId` (**200**), or a row is created with `orderId` `dev-<uuid>` and the
-  milestone's amount (**201**) — and the milestone is funded exactly as PY7. TossPayments is never
-  contacted. Responds with the payment row. **[C1]**
+  6. an earlier milestone is still `PENDING` → **400** `Earlier milestones must be funded first`
+  7. the milestone is not `PENDING`: if its payment is `COMPLETED` → **200** with the payment
+     unchanged (idempotent replay); otherwise → **409** `Milestone is already funded`
+  8. its payment is `REFUNDED` → **409** `Payment cannot be completed for a refunded milestone`
+     **[C1]**
+
+  Steps 4–6 and the not-`PENDING` 409 match PY1, so the same state gets the same answer on both
+  routes.
+- **PY11** — Otherwise (the milestone is `PENDING`), **in one transaction**: the payment becomes
+  `COMPLETED` with `paymentKey: dev_bypass_<milestoneId>` and `amount` = the milestone's amount —
+  an existing `PENDING`, `FAILED` or (inconsistently) already-`COMPLETED` row is updated in place
+  keeping its `orderId` (**200**), or a row is created with `orderId` `dev-<uuid>` (**201**) — and
+  the milestone is funded exactly as PY7. So dev-complete also repairs a `PENDING` milestone whose
+  payment is `COMPLETED`, which `POST /` can only refuse. TossPayments is never contacted. Responds
+  with the payment row. **[C1]**
 
 ### `GET /` — authenticated
 - **PY12** — The caller's payments (`clientId` = caller), newest first, each with its contract
@@ -704,22 +728,22 @@ ever writes whole-won values into them, and all its arithmetic is on integers.
 | **M4** | **Rate snapshot:** each settlement item stores the `feeRateBps` in force when its milestone was approved; a later rate change never alters existing items. |
 | **M5** | **Settlement totals** are the sums of their items' stored `gross`/`fee`/`vat`/`net`, never recomputed from the total gross. |
 | **M6** | **Whole won:** every amount the expansion accepts is an integer number of won; a non-integer → 400 (rule 12). |
-| **M7** | **Contract amount in won** is `Math.round(contract.amount)` (half up). `contract.amount` comes from the application's `expectedRate`, which may be fractional. The default milestone (M9), the plan sum (M11) and the signing check (CT7) all use this value. |
+| **M7** | **Contract amount in won** is `Math.round(contract.amount)` (half up). `contract.amount` comes from the application's `expectedRate`, which may be fractional. The default milestone (M9), the plan sum (M11) and the signing check (CT7) all use this value. Applying requires `expectedRate >= 1`, so this is always at least 1 won. The migration that backfills a default milestone for contracts created before the expansion uses `ROUND(amount::numeric)`, which rounds halves up like `Math.round` for positive values — Postgres `round()` on a `float8` rounds halves to even (`2500000.5` → 2500000) and would leave a backfilled plan one won short of CT7's check. |
 | **M8** | **Milestone count:** 1 to 10 per contract. |
-| **M9** | **Default milestone,** created when an application is accepted: sequence 1, title `전체 작업`, no description, amount = M7, due at the end of the KST day 30 days after the KST acceptance date (accepted 2026-10-21 14:00 KST → due 2026-11-20 23:59:59.999 KST). It is exempt from M10. |
+| **M9** | **Default milestone,** created when an application is accepted: sequence 1, title `전체 작업`, no description, amount = M7, due at the end of the KST day 30 days after the KST acceptance date (accepted 2026-10-21 14:00 KST → due 2026-11-20 23:59:59.999 KST). The contract's `endDate` is set to the same instant. It is exempt from M10. |
 | **M10** | **Minimum milestone amount:** 10,000 won, for every milestone of a plan submitted with `PUT`. (A contract worth less than 10,000 won therefore keeps its default milestone.) |
 | **M11** | **Plan sum:** the amounts of a plan add up to M7 exactly → else **400** `Milestone amounts must add up to the contract amount (N)`, where `N` is the M7 value as plain digits (`(1500000)`). |
 | **M12** | **Due dates** are calendar dates `YYYY-MM-DD`, interpreted in KST. **Today (KST) is allowed**; an earlier date → 400. Within a plan they must not decrease with `sequence` (equal dates allowed). A due date is stored as the last millisecond of that KST day: `2026-11-02` → `2026-11-02T14:59:59.999Z`. |
 | **M13** | **Sequential funding:** milestones are funded in `sequence` order. While any milestone with a lower sequence is `PENDING`, funding another → **400** `Earlier milestones must be funded first`. |
 | **M14** | **Auto-approval:** a submission not approved or rejected within `MILESTONE_AUTO_APPROVE_DAYS` days is approved automatically. The env value is a positive integer number of days (unset or not a positive integer → **7**), counted as exact 24-hour periods: `autoApproveAt = submittedAt + days × 24 h` (168 h by default), not KST calendar days. Rejecting clears the timer; a resubmission starts a new one. |
 | **M15** | **Auto-approval reminder:** at `autoApproveAt − 48 h` the client is reminded. If that instant is not in the future when the submission is made, no reminder is scheduled. |
-| **M16** | **Due-date notices:** at `dueDate − 24 h` the freelancer gets `MILESTONE_DUE_SOON` (not scheduled if that instant has already passed when the milestone is funded), and at `dueDate` both parties get `MILESTONE_OVERDUE` — each only while the milestone is `FUNDED` or `REVISION_REQUESTED`. There is no late penalty, and a late submission is accepted. |
+| **M16** | **Due-date notices:** at `dueDate − 24 h` the freelancer gets `MILESTONE_DUE_SOON` (not scheduled if that instant has already passed when the milestone is funded), and at `dueDate` both parties get `MILESTONE_OVERDUE` — each only while the milestone is `FUNDED` or `REVISION_REQUESTED`. There is no late penalty, and a late submission is accepted. A milestone funded after its due date has already passed gets `MILESTONE_OVERDUE` on the next runner pass — intended: the parties should agree a new schedule. |
 | **M17** | **Revisions:** unlimited. Each rejection increments `revisionCount`; nothing else depends on it. |
 | **M18** | **Text limits** (measured as JavaScript string length after trimming): milestone `title` 1–100, `description` 0–2,000; submission `message` 1–5,000; at most 5 `links`, each an absolute `http`/`https` URL of at most 2,000 characters; at most 5 files under rule 12's attachment policy; rejection `reason` 10–2,000 (exactly 10 passes, 9 fails). |
 | **M19** | **Settlement calendar (KST):** a settlement period runs from Monday 00:00 to the next Monday 00:00 (`periodEnd`, exclusive). The weekly batch runs at `periodEnd + 3 h` (**Monday 03:00**) and schedules the payout at `periodEnd + 2 days 10 h` (**Wednesday 10:00**). |
 | **M20** | **Settlement eligibility:** a batch settles every item that is in no settlement yet and has `approvedAt < periodEnd`. An item therefore normally lands in the settlement of the week it was approved in; one that a batch missed (a late or failed run, or S5's non-`SCHEDULED` case) is caught up by the next batch, into that batch's period. |
 | **M21** | **Minimum payout:** none. |
-| **M22** | **Payout attempts:** at most **3** transfer attempts per settlement in total (the first plus two retries), 24 hours apart. |
+| **M22** | **Payout attempts:** at most **3** transfer attempts per settlement in total (the first plus two retries). A failed attempt is retried 24 hours later; an `ON_HOLD` rescheduling in between (PA4) can make the gap longer. |
 | **M23** | **Payout account:** bank code from the fixed list below; account number with hyphens and spaces removed must be 10–14 digits; the account holder must be the member — `holderName` equals the user's `name` ignoring all whitespace and letter case. Responses show `accountNumberMasked` only: every digit but the last four replaced by `*` (`110123456789` → `********6789`). |
 
 Worked fee example (M3), and why M5 sums items rather than recomputing:
@@ -764,7 +788,10 @@ automatically (M14). An approved milestone becomes a settlement item for the fre
   description, amount, dueDate, status, fundedAt, submittedAt, autoApproveAt, approvedAt,
   approvalType, revisionCount, createdAt, updatedAt` — plus `payment` (its payment row, or
   `null`) and `latestSubmission` (the submission with the highest `round`, with its
-  `attachments`, or `null`). `autoApproveAt` is non-null only while `SUBMITTED`.
+  `attachments`, or `null`), plus `payoutPreview` — `{ gross, fee, vat, net }` for this
+  milestone: its settlement item's stored values when it has one (M4), otherwise M3 at the
+  current rate (including milestones approved before the expansion, which have no item, S3).
+  `autoApproveAt` is non-null only while `SUBMITTED`. **[C4]**
 - **MS2** — A **submission object** is `{ id, milestoneId, round, message, links, decision,
   decisionReason, decidedAt, decidedById, autoDecided, submittedAt, attachments }`, where
   `decision` is `null` while awaiting review, `APPROVED` or `REJECTED`; `decidedById` is `null`
@@ -833,20 +860,22 @@ automatically (M14). An approved milestone becomes a settlement item for the fre
   deleted (they are all `PENDING` while the contract is) and the new ones created `PENDING`; and,
   if at least one signature was present before the call, the freelancer is notified
   (`MILESTONE_PLAN_UPDATED`). Changed terms must be signed again by both parties.
-- **MS9** — The transaction's **first statement** is the conditional contract write
-  (`status = PENDING` → reset signatures, set `endDate`), and if it matches nothing the request is
-  the 409 of step 4. That write takes the contract's row lock, so a concurrent signature
-  serializes against it: if the signature commits first and activates the contract, the
+- **MS9** — The transaction's **first statement locks the contract row and reads its
+  pre-image** (`SELECT "status", "clientSigned", "freelancerSigned" FROM "Contract" WHERE id = $1
+  FOR UPDATE`, raw SQL). If the locked status is not `PENDING` the request is the 409 of step 4.
+  Only then are the signatures reset and `endDate` set, and MS8's "a signature was present" is
+  decided from that **locked pre-image** — never from a read taken before the transaction, which
+  would let a signature landing in between be wiped without a notification. A concurrent signature
+  serializes on the same row lock: if it commits first and activates the contract, the
   replacement → 409 and the plan is unchanged; if the replacement commits first, the signature
   lands on the reset contract and the contract stays `PENDING` until the other party signs again.
 - **MS10** — Responds **200** `{ contract: { id, status, amount, endDate, clientSigned,
   freelancerSigned }, milestones }` with the new milestone objects.
 
 ### `GET /api/milestones/:id` — either party
-- **MS11** — 404 / 403 per MS5. Responds **200** with the milestone object plus:
+- **MS11** — 404 / 403 per MS5. Responds **200** with the milestone object (MS1, including
+  `payoutPreview`) plus:
   - `submissions` — every submission object, `round` descending, with attachments;
-  - `payoutPreview` — `{ gross, fee, vat, net }` for this milestone: the settlement item's stored
-    values once it is approved, otherwise M3 at the current rate;
   - `contract` — `{ id, status, amount, clientId, freelancerId, project: { id, title } }`.
 
 ### `POST /api/milestones/:id/submissions` — FREELANCER, the contract's freelancer
@@ -862,43 +891,59 @@ automatically (M14). An approved milestone becomes a settlement item for the fre
   3. milestone not `FUNDED` or `REVISION_REQUESTED` → **409**
      `Milestone is not awaiting a submission` (the contract is necessarily `ACTIVE` then)
 - **MS13** — Then the files are stored (keys `milestones/<milestoneId>/<uuid>.<ext>`; a storage
-  failure → **502** and nothing is written), and **in one transaction**: a submission is created
-  with `round` = previous highest round + 1 (1 for the first); the milestone becomes `SUBMITTED`
-  with `submittedAt = now` and `autoApproveAt` per M14; `milestone.autoApprove` and (M15)
-  `milestone.autoApproveReminder` are enqueued for that round (J2, J3); the client is notified
-  (`MILESTONE_SUBMITTED`). If the conditional status write loses a race → the 409 of step 3; files
-  already stored are left in the bucket unreferenced.
+  failure → **502** and nothing is written), and **in one transaction**, in this order: **first**
+  the conditional status write `FUNDED | REVISION_REQUESTED → SUBMITTED` with `submittedAt = now`
+  and `autoApproveAt` per M14 — if it matches nothing, the request is the 409 of step 3; **then**
+  the submission is created with `round` = highest existing round + 1 (1 for the first), computed
+  only after that write holds the milestone's row lock, so two concurrent submissions never
+  compute the same round (the loser is a 409, never a 500 from the `(milestoneId, round)` unique
+  constraint); then `milestone.autoApprove` and (M15) `milestone.autoApproveReminder` are enqueued
+  for that round (J2, J3) and the client is notified (`MILESTONE_SUBMITTED`). Files already stored
+  by a request that ends in 409 are left in the bucket unreferenced.
 - **MS14** — Responds **201** `{ milestone, submission }` (milestone object, submission object).
   A submission after the due date is accepted (M16).
 
 ### `POST /api/milestones/:id/approve` — CLIENT, the contract's client
 - **MS15** — No body. **404** / **403** per MS5, then milestone not `SUBMITTED` → **409**
   `Milestone is not awaiting review`.
-- **MS16** — **In one transaction**: the milestone becomes `APPROVED` with `approvedAt = now`,
-  `approvalType: MANUAL` and `autoApproveAt = null`; the latest submission gets
+- **MS16** — **In one transaction**, in this order: **first** the contract row is locked
+  (`SELECT … FROM "Contract" WHERE id = $1 FOR UPDATE`, raw SQL), so approvals of different
+  milestones of one contract serialize (MS22); **then** the conditional write
+  `SUBMITTED → APPROVED` — if it matches nothing, the request is the 409 of MS15 — setting
+  `approvedAt = now`, `approvalType: MANUAL` and `autoApproveAt = null`; the latest submission gets
   `decision: APPROVED`, `decidedAt`, `decidedById` = the client; a **settlement item** is created
   for the freelancer (S3); the freelancer is notified (`MILESTONE_APPROVED`); and MS17 applies.
   Responds **200** `{ milestone, contract: { id, status, completedAt } }`.
-- **MS17** — **Contract completion is automatic.** When the approval — manual or automatic — leaves
-  every milestone of the contract `APPROVED`, the same transaction sets the contract `COMPLETED`
-  with `completedAt = now`, sets the project `COMPLETED` (directly from `CLOSED`, bypassing
-  `validTransitions` — **[Q5]**; a soft-deleted project is never written), and notifies both
-  parties (`CONTRACT_COMPLETED`). Reviews become possible from then on. **[C3]**
+- **MS17** — **Contract completion is automatic.** After the milestone write, a **fresh
+  statement** counts the contract's milestones that are not `APPROVED`. When there are none —
+  the approval, manual or automatic, approved the last one — the same transaction sets the
+  contract `COMPLETED` with `completedAt = now`, sets the project `COMPLETED` (directly from
+  `CLOSED`, bypassing `validTransitions` — **[Q5]**), and notifies both parties
+  (`CONTRACT_COMPLETED`). Reviews become possible from then on. **[C3]**
+  - When the contract's project is **soft-deleted** — reachable only through automatic approval
+    (MS20), since the manual route is 404 — the contract still completes and the settlement item
+    is still created, but the project row is **not written** and **no notification** of that
+    approval is created (neither `MILESTONE_AUTO_APPROVED` nor `CONTRACT_COMPLETED`): the pages
+    they would link to are gone. Money already captured is never frozen by a deletion (S2).
 
 ### `POST /api/milestones/:id/reject` — CLIENT, the contract's client
 - **MS18** — Body `{ reason }`. Check order: `reason` shorter than 10 after trimming →
   **400** `reason: Reason must be at least 10 characters`, longer than 2,000 →
   **400** `reason: Reason must be at most 2000 characters` (M18); **404** / **403** per MS5;
   milestone not `SUBMITTED` → **409** `Milestone is not awaiting review`.
-- **MS19** — **In one transaction**: the milestone becomes `REVISION_REQUESTED`, `revisionCount`
-  +1, `autoApproveAt = null`; the latest submission gets `decision: REJECTED`,
+- **MS19** — **In one transaction**, **first** the conditional write `SUBMITTED →
+  REVISION_REQUESTED` (no match → the 409 of MS18) with `revisionCount` +1 and
+  `autoApproveAt = null`; then the latest submission (read after that write) gets `decision: REJECTED`,
   `decisionReason` (trimmed), `decidedAt`, `decidedById`; the freelancer is notified
   (`MILESTONE_REVISION_REQUESTED`). Pending jobs for the rejected round are left in place and
   turn into no-ops (J2, J3). Responds **200** `{ milestone }`.
 
 ### Automatic approval
-- **MS20** — The `milestone.autoApprove` job (J2) approves exactly as MS16 except:
-  `approvalType: AUTO`; the submission gets `decision: APPROVED`, `decidedById: null`,
+- **MS20** — The `milestone.autoApprove` job (J2) approves exactly as MS16 — contract lock first,
+  then the conditional milestone write — except: the conditional write also requires
+  `autoApproveAt <= now`, so a job for an earlier round can never approve a later round's fresh
+  submission; it proceeds **whether or not the project is soft-deleted** (MS17's deleted-project
+  case); `approvalType: AUTO`; the submission gets `decision: APPROVED`, `decidedById: null`,
   `autoDecided: true`; and **both** parties are notified with `MILESTONE_AUTO_APPROVED` instead of
   `MILESTONE_APPROVED`. A soft-deleted party does not stop it — the money is not held hostage —
   only that party's notification is skipped (rule 5). MS17 applies.
@@ -906,6 +951,11 @@ automatically (M14). An approved milestone becomes a settlement item for the fre
   Afterwards there is exactly one settlement item, exactly one of `MILESTONE_APPROVED` /
   `MILESTONE_AUTO_APPROVED`, and at most one `CONTRACT_COMPLETED` per party. The losing request
   is the 409 of MS15; a losing job ends as a successful no-op.
+- **MS22** — Approvals of **different** milestones of one contract racing each other — the last
+  two approved at once, manually, automatically or one of each — serialize on the contract row
+  lock (MS16), so the second to commit sees the first's approval in MS17's fresh count. When they
+  are the last two, the contract ends `COMPLETED` with exactly one `CONTRACT_COMPLETED` per party;
+  it can never be left `ACTIVE` with every milestone `APPROVED`.
 
 ---
 
@@ -939,18 +989,28 @@ provider only logs the transfer and succeeds — real bank transfers are out of 
   milestone's, no settlement yet. Milestones approved before the expansion have no items.
 
 ### Weekly batch (`settlement.weeklyBatch`, J6)
-- **S4** — Settles the period **ending at 00:00 KST on the Monday of the job's scheduled run**
-  (derived from the job's `runAt`, so a late run still settles the intended week). For every
-  freelancer with eligible items (M20: unsettled, `approvedAt < periodEnd`), **in one transaction
-  per freelancer**: create the freelancer's settlement for that `periodStart` as `SCHEDULED`
-  with `periodStart`, `periodEnd`, `scheduledPayoutAt` (M19); attach the eligible items; set
-  `itemCount` and the totals (M5); notify the freelancer (`SETTLEMENT_SCHEDULED`); and enqueue
-  `settlement.payout` (J7). A freelancer with no eligible items gets no settlement.
-- **S5** — **Idempotent.** A settlement is unique per `(freelancerId, periodStart)`. If one
-  already exists and is still `SCHEDULED`, newly eligible items are attached to it and its totals
-  updated, without a second notification (the payout job is deduplicated). If it exists in any
-  other status, the items stay unsettled for the next batch. Items are attached with a
-  conditional write on "no settlement yet", so no item is ever in two settlements.
+- **S4** — Settles the period of the job's **slot**, which is read from its `dedupeKey`
+  (`settlement.weeklyBatch:<periodStart>`): `periodStart` is that instant (a Monday 00:00 KST)
+  and `periodEnd = periodStart + 7 days`. The period is **never derived from the job's current
+  `runAt`** — a retry moves `runAt` to `now + backoff`, and the slot is the only stable record of
+  which week the job is for. A late or retried batch therefore still settles its own week, and
+  its `scheduledPayoutAt` (M19) may already be in the past, in which case the payout runs on the
+  next runner pass. For every freelancer with eligible items (M20: unsettled,
+  `approvedAt < periodEnd`), **in one transaction per freelancer**: create the freelancer's
+  settlement for that `periodStart` as `SCHEDULED` with `periodStart`, `periodEnd`,
+  `scheduledPayoutAt`; attach the eligible items; set `itemCount` and the totals (M5); notify the
+  freelancer (`SETTLEMENT_SCHEDULED`); and enqueue `settlement.payout` (J7). A freelancer with no
+  eligible items gets no settlement.
+- **S5** — **Idempotent.** A settlement is unique per `(freelancerId, periodStart)`. It is created
+  with an insert that ignores a conflict on that key (`createMany` with `skipDuplicates`, i.e.
+  `ON CONFLICT DO NOTHING`) followed by a read — never Prisma's `upsert`, which is a
+  find-then-insert and can raise P2002 inside the transaction. If the settlement already existed,
+  the transaction **first** makes a conditional write on it requiring `status = SCHEDULED`
+  (taking its row lock); if that matches nothing — the payout has already moved it on — the
+  items stay unsettled for the next batch and nothing else is written. Otherwise newly eligible
+  items are attached and the totals recomputed as the sums of all its items (M5), in the same
+  transaction, without a second notification (the payout job is deduplicated). Items are attached
+  with a conditional write on "no settlement yet", so no item is ever in two settlements.
 - **S6** — One freelancer's failure rolls back only that freelancer's transaction; the batch
   carries on with the others and then fails the job, so the queue retries it (rule 11 backoff)
   and the retry skips what is already settled. A soft-deleted freelancer still gets a settlement,
@@ -964,8 +1024,17 @@ provider only logs the transfer and succeeds — real bank transfers are out of 
   notified (`SETTLEMENT_ON_HOLD`) unless soft-deleted. `payoutAttempts` is unchanged.
 - **S9** — Otherwise, in one transaction, the settlement becomes `PROCESSING`, `payoutAttempts` +1,
   and the account is snapshotted onto it: `bankName`, `accountNumberMasked`, `accountHolder`
-  (never the full number). Only then is the provider asked to transfer `netAmount`. A
-  `SCHEDULED` settlement therefore pays to whatever account exists at payout time.
+  (never the full number). The transition is a conditional write (`SCHEDULED | FAILED →
+  PROCESSING`) that **returns the row**, and the provider is asked to transfer **the `netAmount`
+  that write returned** — never a value read earlier, so items attached by a concurrent batch
+  (S5) are either in the transfer or left for the next settlement. A `SCHEDULED` settlement
+  therefore pays to whatever account exists at payout time.
+- **S17** — The transaction that decides between S8 and S9 **starts by locking the freelancer's
+  `User` row** (`SELECT id FROM "User" WHERE id = $1 FOR UPDATE`, raw SQL) and only then reads the
+  payout account. Payout-account writes take the same lock first (PA7), so an account change or
+  deletion and a payout decision for one freelancer never interleave: whichever locks first
+  commits first, and the other reads its result. (Locking the account row alone would not cover
+  an account being *created* while the payout finds none.)
 - **S10** — Transfer succeeds → `PAID` with `paidAt = now` and the provider's
   `providerReference`; the freelancer is notified (`SETTLEMENT_PAID`).
 - **S11** — Transfer fails → `FAILED` with `failureReason`. If `payoutAttempts < 3`,
@@ -1030,17 +1099,23 @@ in plaintext and masked in every response. **[Q22]**
      `accountNumber: Account number must be 10 to 14 digits`; `holderName` empty after trimming →
      `holderName: Account holder is required` (M23)
   2. `holderName` is not the caller's name (M23) → **400** `Account holder must match your name`
-  3. the caller has a `PROCESSING` settlement → **409**
-     `Payout account cannot be changed while a payout is processing`
+  3. inside the transaction of PA4, after its user-row lock (PA7): the caller has a
+     `PROCESSING` settlement → **409**
+     `Payout account cannot be changed while a payout is processing`, and nothing is written
 - **PA4** — On success, **in one transaction**: the account is upserted (digits only, trimmed
-  holder name); every `ON_HOLD` settlement of the caller becomes `SCHEDULED` with
+  holder name; a Prisma `upsert` is safe here because PA7 serializes one user's writes); every `ON_HOLD` settlement of the caller becomes `SCHEDULED` with
   `scheduledPayoutAt` = the next Wednesday 10:00 KST strictly after now (today if it is a
   Wednesday before 10:00), `failureReason` cleared and `payoutAttempts` kept, and a
   `settlement.payout` job is enqueued for that new time. Responds **200**
   `{ payoutAccount, rescheduledCount }`.
-- **PA5** — `DELETE` → the caller has a `PROCESSING` settlement → **409** (PA3's message);
-  otherwise the account is removed and the response is **200** `{ payoutAccount: null }`.
+- **PA5** — `DELETE` → in one transaction, after the user-row lock (PA7): the caller has a
+  `PROCESSING` settlement → **409** (PA3's message) and nothing is written; otherwise the account
+  is removed and the response is **200** `{ payoutAccount: null }`.
   Deleting when there is no account also answers 200 (idempotent).
+- **PA7** — `PUT` and `DELETE` run in a transaction whose **first statement locks the caller's
+  `User` row** (`SELECT id FROM "User" WHERE id = $1 FOR UPDATE`, raw SQL), the same lock the
+  payout decision takes (S17). The `PROCESSING` check of PA3/PA5 is made under that lock, so it
+  cannot go stale between check and write.
 - **PA6** — Only `PROCESSING` locks the account. `SCHEDULED` settlements are not affected by a
   change or deletion — they use whatever account exists when their payout runs (S9), and go
   `ON_HOLD` if there is none (S8).
@@ -1101,7 +1176,7 @@ endpoint is not decided yet. Until one does, recurring jobs only run where a run
 | `milestone.autoApproveReminder` | a submission (MS13), unless the reminder time has passed (M15) | `autoApproveAt − 48 h` | `milestone.autoApproveReminder:<milestoneId>:<round>` | J3 | `MILESTONE_AUTO_APPROVE_REMINDER` to the client |
 | `milestone.dueSoon` | funding (PY7), unless the time has passed (M16) | `dueDate − 24 h` | `milestone.dueSoon:<milestoneId>` | J4 | `MILESTONE_DUE_SOON` to the freelancer |
 | `milestone.overdue` | funding (PY7) | `dueDate` | `milestone.overdue:<milestoneId>` | J5 | `MILESTONE_OVERDUE` to both parties |
-| `settlement.weeklyBatch` | recurring | the next Monday 03:00 KST strictly after `now` (M19) | `settlement.weeklyBatch:<periodStart ISO-8601>`, `periodStart` = `runAt − 7 days − 3 h` (e.g. `settlement.weeklyBatch:2026-10-18T15:00:00.000Z` for the run at `2026-10-25T18:00:00.000Z`) | J6 | the weekly batch (S4–S6) |
+| `settlement.weeklyBatch` | recurring | the next Monday 03:00 KST strictly after `now` (M19) | `settlement.weeklyBatch:<periodStart ISO-8601>`, where `periodStart` = the slot's `runAt − 7 days − 3 h`, fixed when the slot is enqueued (e.g. `settlement.weeklyBatch:2026-10-18T15:00:00.000Z` for the slot at `2026-10-25T18:00:00.000Z`) | J6 | the weekly batch (S4–S6) |
 | `settlement.payout` | the batch (S4), payout-account registration (PA4), a failed transfer with attempts left (S11) | the settlement's `scheduledPayoutAt` | `settlement.payout:<settlementId>:<scheduledPayoutAt ISO-8601>` | J7 | the payout (S7–S11) |
 
 Payloads: `milestone.autoApprove` and `milestone.autoApproveReminder` carry
@@ -1117,17 +1192,19 @@ it replaces.
   ends **`SUCCEEDED` as a no-op**. A payload naming a milestone or settlement that does not exist
   throws `PermanentJobError` (→ `FAILED`, kept for inspection). Notifications to a soft-deleted
   user are skipped (rule 5).
-- **J2** — `milestone.autoApprove` approves (MS20) only if the contract's project is not
-  soft-deleted, the milestone is `SUBMITTED`, its latest submission's `round` equals the payload's,
-  and `autoApproveAt <= now`. A soft-deleted project makes it a no-op — a deleted project is never
-  written `COMPLETED` (D21's write path does not exist here).
-- **J3** — `milestone.autoApproveReminder` notifies the client under the same conditions as J2
-  except that `autoApproveAt` is still in the future.
+- **J2** — `milestone.autoApprove` approves (MS20) if the milestone is `SUBMITTED`, its latest
+  submission's `round` equals the payload's, and `autoApproveAt <= now` — **whether or not the
+  contract's project is soft-deleted**. With a deleted project it completes the approval and,
+  where due, the contract, but never writes the project row and creates no notification for that
+  approval (MS17) — captured money is not frozen by a deletion.
+- **J3** — `milestone.autoApproveReminder` notifies the client if the project is not soft-deleted,
+  the milestone is `SUBMITTED`, the round matches and `autoApproveAt` is still in the future.
 - **J4** — `milestone.dueSoon` notifies the freelancer if the project is not soft-deleted and the
   milestone is `FUNDED` or `REVISION_REQUESTED`.
 - **J5** — `milestone.overdue` notifies both parties under J4's conditions.
-- **J6** — `settlement.weeklyBatch` runs S4–S6 for the period ending at the KST Monday 00:00 of its
-  `runAt`. It does not look at project deletion; a soft-deleted freelancer's settlement is created
+- **J6** — `settlement.weeklyBatch` runs S4–S6 for the period whose `periodStart` is parsed from
+  its `dedupeKey` — never from its current `runAt`, which a retry changes. A missing or
+  unparseable key throws `PermanentJobError`. It does not look at project deletion; a soft-deleted freelancer's settlement is created
   without notification.
 - **J7** — `settlement.payout` runs S7–S11. A soft-deleted freelancer's settlement goes `ON_HOLD`
   without notification, even if a payout account exists.
@@ -1158,8 +1235,8 @@ Changed bullets end with **[C*n*]**, and so do the names of the tests that pin t
 
 | ID | Area | Before | Now | Tests |
 |---|---|---|---|---|
-| **C1** | Payments | one payment per contract (`Payment.contractId` unique); body `{ contractId }`; amount = contract amount; dev-complete key `dev_bypass_<contractId>` | one payment per milestone (`Payment.milestoneId` unique, a contract has many); body `{ milestoneId }`; amount = milestone amount; sequential funding (M13), `409 Milestone is already funded`; confirm and dev-complete also fund the milestone (PY1–PY12) | `payments.test.ts` |
-| **C2** | Accept application | five writes in one transaction | six: the default milestone is created after the contract (M9) | `applications.test.ts` |
+| **C1** | Payments | one payment per contract (`Payment.contractId` unique); body `{ contractId }`; amount = contract amount; dev-complete key `dev_bypass_<contractId>` | one payment per milestone (`Payment.milestoneId` unique, a contract has many); body `{ milestoneId }`; amount = milestone amount; sequential funding (M13), `409 Milestone is already funded`; confirm and dev-complete also fund the milestone and are 404 for a soft-deleted project; a failed confirm marks the payment `FAILED` only if it is still `PENDING` (PY1–PY12) | `payments.test.ts` |
+| **C2** | Apply / accept application | `expectedRate > 0`; five writes in one transaction; contract `endDate` = project deadline | `expectedRate >= 1`; six writes: the default milestone is created after the contract (M9); contract `endDate` = the default milestone's due date | `applications.test.ts` |
 | **C3** | Contract completion | the client's `PATCH /api/contracts/:id { status: COMPLETED }` once the payment was `COMPLETED` | automatic in the transaction that approves the last milestone, manually or automatically (MS17); `PATCH` → **410** (CT11) | `contracts.test.ts`, `milestones.test.ts` |
 | **C4** | Contract shape | `GET /:id` and sign responses carry `payment` | no `payment`; `milestones[]` (each with `payment` and `latestSubmission`) and `milestoneSummary` (CT5, CT6) | `contracts.test.ts` |
 | **C5** | Signing | both flags → `ACTIVE` | a `PENDING` contract needs a valid milestone plan or the signature is refused (CT7); activation notifies both parties (CT8) | `contracts.test.ts`, `milestone-plan.test.ts` |
@@ -1211,7 +1288,7 @@ not repairing a live race. The genuine defect was the missing status guard.
 | **D17** | A tags array of non-strings → 500 | Malformed value → **400** | `createReview` passes `tags` straight through when `Array.isArray` is true, so `tags: [1, 2]` reaches Prisma and is rejected as a 500. Non-array tags are handled correctly (coerced to `[]`) |
 | **D18** | `POST /api/payments/confirm` replay guard is not concurrency-safe | Confirmation is non-replayable: of two simultaneous confirms, exactly one succeeds and the other → 409 | The `status !== 'PENDING'` check is a read followed by a separate write with no row lock, so two concurrent confirms can both pass it, both call the provider and both answer 200. The milestone side is safe: funding is a conditional write that is a no-op for the loser (PY7), so the milestone is funded and notified once (PY9) (re-pinned in P1) |
 | **D19** | A soft-deleted project is still visible to bookmarking | Rule 5 is unconditional: a soft-deleted project must be invisible to listing, fetching, applying, **and bookmarking** | `GET /:id/bookmark` still reports `{ bookmarked: true }` for a soft-deleted project and `DELETE` still removes the row. Only `POST` checks. **This is distinct from Q6** — Q6 defers the narrower question of whether `GET`/`DELETE` should 404 for an id that never existed; rule 5 already decides the soft-deleted case |
-| **D21** | The pre-existing contract endpoints never filter `deletedAt` at all | Rule 5: every read and write filters `deletedAt: null` | `getContract` and `signContract` use a plain `findUnique` with no soft-delete filter, so a contract whose **project has been soft-deleted** stays readable and signable — and the deleted project is returned inside the response body. Completion now goes through `POST /api/milestones/:id/approve` and the auto-approval job, which filter `deletedAt` (MS5, J2) — D21 remains for `getContract` and `signContract`. Interacts with D11/Q4: once deleting a project with a live contract is blocked, this becomes much harder to reach (re-pinned in P1) |
+| **D21** | The pre-existing contract endpoints never filter `deletedAt` at all | Rule 5: every read and write filters `deletedAt: null` | `getContract` and `signContract` use a plain `findUnique` with no soft-delete filter, so a contract whose **project has been soft-deleted** stays readable and signable — and the deleted project is returned inside the response body. Completion now goes through `POST /api/milestones/:id/approve`, which is 404 for a deleted project (MS5), and the auto-approval job, which deliberately completes the contract but never writes the deleted project row (MS17, J2) — D21 remains for `getContract` and `signContract`. Interacts with D11/Q4: once deleting a project with a live contract is blocked, this becomes much harder to reach (re-pinned in P1) |
 | **D20** | Concurrent accepts **deadlock** and return 500 | Of several simultaneous accepts on one project, one succeeds and the losers → **409** (rule 8) | Three concurrent `PATCH /:projectId/applications/:appId` calls on *different* PENDING applications of the same project deadlock in the accept transaction: Postgres raises **`40P01` deadlock detected**, which surfaces as `PrismaClientUnknownRequestError` → **500**. The D4 fix catches only `P2002`, so this class escapes it. The database invariants still hold (exactly one contract, one ACCEPTED application) — only the status code is wrong. Reproduced in 2 of 16 full-suite runs; needs a warm connection pool to race |
 
 ---
@@ -1294,9 +1371,9 @@ last approval's `CLOSED → COMPLETED` (MS17) look like a violation.
 
 Ordered by risk, not by convenience:
 
-1. **Milestone approval race (manual vs auto) and settlement arithmetic** — MS21's "exactly one
-   winner, one settlement item", the fee/VAT/net table and M5's item sums, and the batch's
-   idempotence (S5). Money moves automatically here, so a bug pays the wrong amount or pays twice.
+1. **Milestone approval races and settlement arithmetic** — MS21's "exactly one winner, one
+   settlement item", MS22's concurrent approval of the last two milestones completing the
+   contract, the fee/VAT/net table and M5's item sums, and the batch's idempotence (S5). Money moves automatically here, so a bug pays the wrong amount or pays twice.
 2. **The accept-application transaction** — six coupled writes, the most complex state change in
    the system. Assert every effect, then assert a forced failure rolls all of it back.
 3. **The auth matrix** — every protected route 401s without a token, and 403s for the wrong role.

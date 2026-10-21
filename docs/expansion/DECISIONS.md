@@ -68,3 +68,22 @@
 
 - 소프트 삭제된 프로젝트의 자금은 얼리지 않는다. 자동 승인(J2)은 프로젝트 삭제 여부와 무관하게 진행하고, 승인 트랜잭션은 삭제된 프로젝트의 행과 그 맥락의 알림만 건너뛴다. 수동 승인은 그대로 404다. 클라이언트가 글을 지웠다고 프리랜서가 받을 돈이 묶이는 것은 실제 플랫폼에서 허용되지 않는 동작이다.
 - `POST /api/payments/confirm`도 삭제된 프로젝트면 캡처 전에 404다. dev-complete와 같은 조건에 같은 답을 준다.
+
+## P1 (명세 검토 1차 반영, reviews/P1_SPEC_REVIEW_1.md)
+
+- 승인 트랜잭션은 계약 row를 `FOR UPDATE`로 먼저 잠그고, 완료 판정은 마일스톤 쓰기 뒤의 새 문장으로 센다(MS16, MS17, MS22). 서로 다른 마지막 두 마일스톤의 동시 승인이 계약을 ACTIVE로 남기지 않게 한다.
+- 제출·반려·승인 트랜잭션은 조건부 상태 쓰기를 먼저 하고 round·최신 제출은 그 뒤에 읽는다(MS13, MS16, MS19). 동시 제출이 P2002 500이 아니라 409가 된다.
+- 계획 교체는 `SELECT … FOR UPDATE`로 계약의 사전 상태를 잠가 읽고, `MILESTONE_PLAN_UPDATED` 여부를 그 값으로 정한다(MS9).
+- confirm 실패 시 FAILED 쓰기는 `status = PENDING`일 때만 한다(PY8). 실제 Toss는 두 번째 confirm을 거절하므로, 무조건 쓰면 이긴 쪽의 COMPLETED가 FAILED로 덮인다.
+- 주간 배치의 기간은 `runAt`이 아니라 `dedupeKey`의 슬롯에서 읽는다(S4, J6). 재시도가 `runAt`을 바꾸기 때문이다. 앞의 "P1 (명세)"의 `runAt` 기준 결정을 대체한다. 슬롯 키가 없거나 깨졌으면 `PermanentJobError`.
+- 지급 결정(S8/S9)과 지급 계좌 PUT/DELETE는 둘 다 프리랜서 `User` row를 `FOR UPDATE`로 먼저 잠근다(S17, PA7). 검토 제안(계좌 row 잠금 + 쓰기 먼저)은 계좌가 없을 때 새로 만들어지는 경합을 막지 못해 사용자 row로 바꿨다.
+- 정산 생성은 `createMany({ skipDuplicates })` 후 읽기로 하고(Prisma upsert 금지), 기존 SCHEDULED 정산에 항목을 붙일 때는 `status = SCHEDULED` 조건부 쓰기를 먼저 한다. 지급 금액은 PROCESSING 전이가 돌려준 `netAmount`다(S5, S9).
+- 자동 승인의 조건부 쓰기는 `autoApproveAt <= now`도 요구한다(MS20). 앞 round 작업이 재제출된 round를 바로 승인하지 못한다.
+- dev-complete 검사 순서를 `POST /`와 맞췄다(순서 규칙 → 이미 결제됨 → REFUNDED). 마일스톤이 PENDING인데 결제가 COMPLETED인 불일치 상태는 dev-complete가 마일스톤을 FUNDED로 고친다. 금액은 마일스톤 금액으로 다시 쓴다(PY10, PY11).
+- 반올림 0원 계약: 지원 시 `expectedRate >= 1`을 요구한다(0 < 값 < 1이면 400 `expectedRate must be at least 1`, [C2]). 실제 플랫폼은 최소 거래 금액이 있고, 0원 마일스톤은 confirm의 `!amount` 검사 때문에 영원히 결제할 수 없다. 기존 테스트 입력(0, 음수, 문자)은 영향이 없다.
+- 백필 마이그레이션은 `ROUND(amount::numeric)`을 쓴다. float8 `ROUND`는 .5를 짝수로 보내 `Math.round`(M7)와 1원 어긋난다(PLAN §2.1.1 2단계 수정).
+- 수락 시 계약 `endDate`는 기본 마일스톤 기한(수락일 + 30일)으로 둔다. 모집 마감일은 이미 지났을 수 있어 화면에서 틀려 보인다. 앞의 "P1 (명세)"의 endDate 결정을 대체한다([C2]).
+- 마일스톤 객체에 `payoutPreview`를 넣는다(MS1). 정산 항목이 없는 백필 승인분은 현재 요율의 M3로 계산한다. `milestoneSummary.contractAmount`(= M7)를 더해 계획 편집기가 반올림하지 않아도 된다(CT6).
+- 기한 지난 뒤 결제된 마일스톤의 즉시 `MILESTONE_OVERDUE`는 의도된 동작이다(M16). 지급 재시도 간격 24시간은 ON_HOLD 재예약이 끼면 길어질 수 있다고 적었다(M22). 목록의 `counterpart`는 소프트 삭제돼도 그대로 보인다(Q11 범위, CT3).
+- authorization 테스트의 Q10 벡터 `GET /api/contracts`는 `GET /api/users`로 바꾼다(PLAN §1.6). 같은 "마운트된 라우터, 인덱스 라우트 없음" 범주다.
+- 새 규칙 식별자는 번호를 이어 붙인다: `MS22`, `S17`, `PA7`. 기존 번호는 바꾸지 않았다.
