@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
@@ -9,6 +10,7 @@ import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { formatDate, formatKRW } from '@/lib/format';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
+import UnreadBadge from '@/components/messages/UnreadBadge';
 
 const TABS = [
   { value: '', label: '전체' },
@@ -20,6 +22,8 @@ const TABS = [
 const PAGE_SIZE = 10;
 
 export default function MyContractsPage() {
+  const router = useRouter();
+  const [openingChat, setOpeningChat] = useState('');
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [contracts, setContracts] = useState([]);
@@ -56,6 +60,20 @@ export default function MyContractsPage() {
       ignored = true;
     };
   }, [status, page]);
+
+  // 목록에는 대화방 id가 없으므로(MG19는 수만 준다) 계약의 대화방을 찾아서 연다(MG18).
+  async function openConversation(contractId) {
+    setOpeningChat(contractId);
+    try {
+      const { data } = await api.get(`/api/contracts/${contractId}/conversation`);
+      router.push(`/messages/${data.id}`);
+    } catch (err) {
+      setError(err.response?.data?.error?.message === 'Conversation not found'
+        ? '이 계약에는 대화방이 없습니다.'
+        : '대화방을 열지 못했습니다.');
+      setOpeningChat('');
+    }
+  }
 
   function changeTab(value) {
     setStatus(value);
@@ -133,7 +151,18 @@ export default function MyContractsPage() {
                       </p>
                     )}
                   </div>
-                  <p className="font-semibold text-gray-900 sm:text-right">{formatKRW(contractAmount)}</p>
+                  <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+                    <p className="font-semibold text-gray-900 sm:text-right">{formatKRW(contractAmount)}</p>
+                    <button
+                      type="button"
+                      onClick={() => openConversation(contract.id)}
+                      disabled={openingChat === contract.id}
+                      className="inline-flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 disabled:opacity-50"
+                    >
+                      {contract.unreadMessageCount > 0 ? '새 메시지' : '대화'}
+                      <UnreadBadge count={contract.unreadMessageCount} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="mt-4">
