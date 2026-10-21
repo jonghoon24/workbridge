@@ -187,3 +187,23 @@
 | `PUBLIC_ROUTES`(라우트 / 핸들러) | 11 / 10 | 0 | +2 / +2(PF16, PF17) | 13 / 12 |
 
 `Ids` 인터페이스와 `MISSING`에는 2A가 `conversationId`, `messageId`를, 2B가 `portfolioItemId`, `careerId`를 더한다.
+
+## P2B (구현)
+
+- 추천 라우트 경로는 BEHAVIOR.md를 따른다: `GET /api/projects/:id/recommended-freelancers`(RC3), `GET /api/users/me/recommended-projects`(RC6). RC3에도 규칙 12대로 `requireActiveUser`를 붙였다(`authenticate → requireActiveUser → requireRole('CLIENT') → validate`).
+- 추천은 서비스 파일 없이 `src/lib/recommendations.ts`가 prefilter 쿼리와 점수(RC4, RC7 표를 주석으로 한 번만)를 모두 담는다(핸드오프 표의 파일 목록). 후보의 `avgRating`은 `GET /api/users/:id`처럼 받은 리뷰 전부의 평균이다.
+- 포트폴리오 PF5 정렬은 `portfolio.service.ts`의 `PORTFOLIO_ORDER`가 기준이고, `lib/recommendations.ts`는 lib → services 의존을 피하려고 같은 정렬을 직접 적었다.
+- 월 헬퍼(`isKstMonth`, `kstMonthToDate`, `kstMonthString`, `kstMonthOrNull`, `kstMonthIndex`)는 `lib/time.ts`에 있다. 연도는 네 자리면 받는다(하한 없음, 명세에 없음). "미래" 판정은 요청 시각의 KST 달과 문자열 비교다.
+- 경력 생성에서 `startDate`가 없으면 `startDate: Month must be a YYYY-MM month`다(PF13은 필수라고만 적었다). `removeImage`가 true/false가 아니면 `removeImage: Must be true or false`. 스킬 배열에 문자열이 아닌 값이 있으면 zod union 메시지(`skills: Invalid input`)라 접두어만 의미가 있다.
+- `removeImage`와 `image`를 같이 보낸 400은 스키마가 파일을 보지 못해 컨트롤러에서 검사하지만, 서비스 호출 전이라 PF7의 "검증 → 존재" 순서를 지킨다.
+- PATCH의 병합 행 월 검사는 시작 쪽을 바꿔서 생긴 위반도 끝 필드 경로로 보고한다(`startedAt: ''`이면 `endedAt: Start month is required with an end month`, 시작이 저장된 끝보다 뒤면 `endDate: End month must not be before start month`). 생성의 교차 검사와 같은 문구다.
+- 바꿀 필드가 하나도 없는 PATCH(예: `removeImage=false`만)는 쓰지 않고 200으로 현재 행을 돌려준다(`updatedAt` 그대로). Prisma는 데이터 없는 `updateMany`를 0행으로 보고해 404가 되던 것을 막았다.
+- 포트폴리오 이미지 저장은 잠금 트랜잭션 밖(사전 개수 검사 뒤)에서 한다. 네트워크 호출 동안 사용자 row 잠금을 쥐지 않기 위해서다. 경합에서 진 요청의 이미지는 참조 없이 남는다(PF9 그대로).
+- 순서 변경은 잠금 아래에서 항목마다 `update`를 한 번씩 한다(최대 20행). 삭제와의 경합 테스트는 5회 반복해 500이 없고 결과가 둘 중 하나(200 후 삭제, 또는 삭제 후 400)임을 본다.
+- `careerSummary`는 끝이 시작보다 앞선 구간(API로는 만들 수 없음)을 무시한다.
+- 완성도 타입(`ProfileScoreInput`, `ProfileCompletionCounts`, `ProfileCompletionItem`, `ProfileCompletion`)은 `src/types/index.ts`에 더했다. `GET /me/profile-completion`은 가드와 읽기 사이에 row가 사라지면 404 `User not found`(사실상 도달 불가).
+- 클라이언트: 완성도 라벨과 서버 오류 번역은 PLAN §2.3.4의 `lib/profileCompletion.js` 확장 대신 `components/profile/`에 두었다(핸드오프 표의 "새 헬퍼는 components/profile 안" 규칙, p2a-client와 충돌 방지). 기존 게이트 함수는 그대로다.
+- 클라이언트 이미지는 `components/profile/ProfileImage.jsx` 한 곳에서 `<img>`(+ eslint-disable 한 줄)로 그린다. 저장소 호스트가 환경마다 달라 `next/image`의 remotePatterns 밖일 수 있다. lint 경고는 기존 3건 그대로다.
+- 클라이언트 월 입력은 `<input type="month">`(값이 곧 YYYY-MM)이고 `max`는 KST 이번 달이다. 포트폴리오 수정은 항상 multipart로 모든 필드를 보낸다(빈 값 = 지우기). 순서 변경은 화면을 먼저 바꾸고 실패하면 서버 목록을 다시 읽는다.
+- 홈의 추천 섹션은 로그인한 프리랜서에게만 보이는 클라이언트 컴포넌트(`HomeRecommendedProjects`)다. 홈 페이지 자체는 서버 컴포넌트로 남는다.
+- **P4 메모:** 시드의 프로젝트는 모두 마감이 지나 새 시드에서는 프로젝트 추천이 비어 있다. 실행 확인에서는 의뢰인이 모집 중 프로젝트 3개를 API로 올려 확인했다. P4 시드에 마감이 남은 OPEN 프로젝트와 포트폴리오·경력을 넣는다. 또 `seed.js`는 dotenv를 읽지 않아 새 worktree에서는 `.env`를 셸에 export해야 돈다.
