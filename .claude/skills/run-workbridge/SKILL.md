@@ -57,6 +57,8 @@ SUPABASE_SECRET_KEY=sb_secret_dummy
 TRUST_PROXY=loopback
 # Every local login comes from loopback and would share one 20-per-15-min login limit.
 RATE_LIMIT_ENABLED=false
+# Email is log-only: each email is one mail.sent info line in the server log.
+MAIL_PROVIDER=log
 EOF
 
 # 3. Client env (.env.local)
@@ -148,6 +150,12 @@ http://localhost:3000 and sign in with a seed account. `Ctrl-C` to stop each.
   (cd workbridge-server && SUPABASE_URL=http://localhost:54321 npm run dev)
   ```
   The stored URLs then point at the stub and do not load in the browser.
+- **Email is log-only.** Notifications whose email channel is on create an `EmailDelivery` and a
+  `notification.email` job; the dev worker sends it within ~5 s as a `mail.sent` info line in
+  `/tmp/wb-server.log` (`grep mail.sent`). The unread-message digest only fires 10 minutes after
+  an unread message, and at most once per conversation per hour — to see it now, run
+  `runDueJobs({ now: <now + 11 min>, types: ['message.unreadDigest', 'notification.email'] })`
+  twice from a `tsx` one-off script inside `workbridge-server/` (the second pass sends).
 - **Settlements only move when jobs run.** The dev worker runs due jobs every 5 s, but the
   weekly batch is due Monday 03:00 KST and payouts Wednesday 10:00 KST. To see them now,
   call `runDueJobs({ now: <future date>, types: ['settlement.weeklyBatch', 'settlement.payout'] })`
