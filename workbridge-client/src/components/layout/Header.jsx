@@ -199,6 +199,13 @@ export default function Header() {
                         >
                           내 지원 현황
                         </Link>
+                        <Link
+                          href="/my/recommendations"
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                          onClick={() => setDropdownOpen(false)}
+                        >
+                          추천 프로젝트
+                        </Link>
                       </>
                     )}
                     {user.role === 'CLIENT' && (
