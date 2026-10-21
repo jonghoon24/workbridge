@@ -10,6 +10,15 @@ import type { Logger } from '../lib/logger';
 export interface JobPayloads {
   'project.lifecycleSweep': Record<string, never>;
   'maintenance.cleanup': Record<string, never>;
+  // Phase 1 (BEHAVIOR.md "Background jobs", J1–J7)
+  'milestone.autoApprove': { milestoneId: string; round: number };
+  'milestone.autoApproveReminder': { milestoneId: string; round: number };
+  'milestone.dueSoon': { milestoneId: string };
+  'milestone.overdue': { milestoneId: string };
+  /** Recurring; the settled period is read from the job's `dedupeKey`, never from `runAt`. */
+  'settlement.weeklyBatch': Record<string, never>;
+  /** `scheduledPayoutAt` is an ISO-8601 string; a mismatch with the row means "rescheduled". */
+  'settlement.payout': { settlementId: string; scheduledPayoutAt: string };
 }
 
 export type JobType = keyof JobPayloads;

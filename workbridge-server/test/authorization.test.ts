@@ -19,6 +19,7 @@ import {
   makeClient,
   makeContract,
   makeFreelancer,
+  makeMilestone,
   makePayment,
   makeProject,
 } from './helpers/factories';
@@ -31,7 +32,7 @@ import { generateRefreshToken } from '../src/lib/jwt';
  * codebase augments `Express.Request.user` as **non-optional**, so the compiler cannot warn
  * when a public handler reads `req.user`, nor when a protected route loses its `authenticate`
  * middleware. Only a test that walks every route can catch that, so the route table below is
- * transcribed from the nine files in `src/routes/` and every assertion is driven off it.
+ * transcribed from the files in `src/routes/` and every assertion is driven off it.
  * Adding a route to the table adds coverage everywhere automatically.
  */
 
@@ -80,7 +81,7 @@ vi.mock('../src/lib/openai', () => ({
   },
 }));
 
-type HttpMethod = 'get' | 'post' | 'patch' | 'delete';
+type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 /** Path/body parameters a route needs, so the table can be reused with real or missing ids. */
 interface Ids {
@@ -90,6 +91,8 @@ interface Ids {
   contractId: string;
   notificationId: string;
   orderId: string;
+  milestoneId: string;
+  settlementId: string;
 }
 
 interface RouteSpec {
@@ -112,6 +115,8 @@ const MISSING: Ids = {
   contractId: 'missing-contract-id',
   notificationId: 'missing-notification-id',
   orderId: 'missing-order-id',
+  milestoneId: 'missing-milestone-id',
+  settlementId: 'missing-settlement-id',
 };
 
 /** Verification fails before any database read, so these tests need no fixture user. */
@@ -119,7 +124,8 @@ const GHOST: Principal = { id: 'ghost-user-id', email: 'ghost@test.local', role:
 
 /**
  * Every route that mounts `authenticate`, transcribed from `src/routes/*.ts`.
- * 30 routes: auth 2, users 5, projects 8, applications 3, contracts 3, payments 4,
+ * 43 routes: auth 2, users 8 (incl. payout account 3), projects 8, applications 3,
+ * contracts 6 (incl. list and milestone plan 3), milestones 4, payments 4, settlements 3,
  * reviews 1, notifications 4.
  */
 const PROTECTED_ROUTES: RouteSpec[] = [
@@ -164,6 +170,28 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/users/me/projects',
     role: 'CLIENT',
     gate: 'controller',
+  },
+  {
+    label: 'GET /api/users/me/payout-account',
+    method: 'get',
+    path: () => '/api/users/me/payout-account',
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'PUT /api/users/me/payout-account',
+    method: 'put',
+    path: () => '/api/users/me/payout-account',
+    body: () => ({ bankCode: '004', accountNumber: '110-1234-56789', holderName: 'Nobody' }),
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'DELETE /api/users/me/payout-account',
+    method: 'delete',
+    path: () => '/api/users/me/payout-account',
+    role: 'FREELANCER',
+    gate: 'middleware',
   },
 
   // projects.routes.ts
@@ -258,7 +286,23 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     gate: 'middleware',
   },
 
-  // contracts.routes.ts — no index route, so a concrete :id is required
+  // contracts.routes.ts
+  { label: 'GET /api/contracts', method: 'get', path: () => '/api/contracts', role: null, gate: null },
+  {
+    label: 'GET /api/contracts/:id/milestones',
+    method: 'get',
+    path: (ids) => `/api/contracts/${ids.contractId}/milestones`,
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'PUT /api/contracts/:id/milestones',
+    method: 'put',
+    path: (ids) => `/api/contracts/${ids.contractId}/milestones`,
+    body: () => ({ milestones: [{ title: 'All', amount: 4_000_000, dueDate: '2099-01-01' }] }),
+    role: 'CLIENT',
+    gate: 'middleware',
+  },
   {
     label: 'GET /api/contracts/:id',
     method: 'get',
@@ -287,7 +331,7 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     label: 'POST /api/payments',
     method: 'post',
     path: () => '/api/payments',
-    body: (ids) => ({ contractId: ids.contractId }),
+    body: (ids) => ({ milestoneId: ids.milestoneId }),
     role: null,
     gate: null,
   },
@@ -303,11 +347,66 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     label: 'POST /api/payments/dev-complete',
     method: 'post',
     path: () => '/api/payments/dev-complete',
-    body: (ids) => ({ contractId: ids.contractId }),
+    body: (ids) => ({ milestoneId: ids.milestoneId }),
     role: null,
     gate: null,
   },
   { label: 'GET /api/payments', method: 'get', path: () => '/api/payments', role: null, gate: null },
+
+  // milestones.routes.ts
+  {
+    label: 'GET /api/milestones/:id',
+    method: 'get',
+    path: (ids) => `/api/milestones/${ids.milestoneId}`,
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'POST /api/milestones/:id/submissions',
+    method: 'post',
+    path: (ids) => `/api/milestones/${ids.milestoneId}/submissions`,
+    body: () => ({ message: 'Done', links: [] }),
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'POST /api/milestones/:id/approve',
+    method: 'post',
+    path: (ids) => `/api/milestones/${ids.milestoneId}/approve`,
+    role: 'CLIENT',
+    gate: 'middleware',
+  },
+  {
+    label: 'POST /api/milestones/:id/reject',
+    method: 'post',
+    path: (ids) => `/api/milestones/${ids.milestoneId}/reject`,
+    body: () => ({ reason: 'Please fix the layout.' }),
+    role: 'CLIENT',
+    gate: 'middleware',
+  },
+
+  // settlements.routes.ts
+  {
+    label: 'GET /api/settlements',
+    method: 'get',
+    path: () => '/api/settlements',
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'GET /api/settlements/summary',
+    method: 'get',
+    path: () => '/api/settlements/summary',
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
+    label: 'GET /api/settlements/:id',
+    method: 'get',
+    path: (ids) => `/api/settlements/${ids.settlementId}`,
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
 
   // reviews.routes.ts
   {
@@ -381,12 +480,12 @@ function expectErrorEnvelope(res: ApiResponse, status: number) {
 
 describe('the route table itself', () => {
   it('covers every protected route in src/routes, and none twice', () => {
-    expect(PROTECTED_ROUTES).toHaveLength(30);
+    expect(PROTECTED_ROUTES).toHaveLength(43);
     expect(new Set(PROTECTED_ROUTES.map((r) => r.label)).size).toBe(PROTECTED_ROUTES.length);
   });
 
-  it('records a role gate for exactly the 14 role-gated routes', () => {
-    expect(ROLE_GATED_ROUTES).toHaveLength(14);
+  it('records a role gate for exactly the 24 role-gated routes', () => {
+    expect(ROLE_GATED_ROUTES).toHaveLength(24);
     expect(ROLE_GATED_ROUTES.every((r) => r.gate !== null)).toBe(true);
     expect(PROTECTED_ROUTES.filter((r) => r.role === null).every((r) => r.gate === null)).toBe(true);
   });
@@ -577,9 +676,9 @@ describe('authorization — role gating', () => {
   const clientOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'CLIENT');
   const freelancerOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'FREELANCER');
 
-  it('splits the role-gated routes into 8 CLIENT-only and 6 FREELANCER-only', () => {
-    expect(clientOnly).toHaveLength(8);
-    expect(freelancerOnly).toHaveLength(6);
+  it('splits the role-gated routes into 11 CLIENT-only and 13 FREELANCER-only', () => {
+    expect(clientOnly).toHaveLength(11);
+    expect(freelancerOnly).toHaveLength(13);
   });
 
   it.each(clientOnly)('$label → 403 for a FREELANCER', async (route) => {
@@ -1054,20 +1153,20 @@ describe('ownership is checked after existence', () => {
     expect(after.status).toBe('PENDING');
   });
 
-  it('POST /api/payments → 404 for a contract owned by nobody', async () => {
+  it('POST /api/payments → 404 for a milestone that does not exist', async () => {
     const client = await makeClient();
 
-    const res = await authed(client).post('/api/payments').send({ contractId: 'missing-contract-id' });
+    const res = await authed(client).post('/api/payments').send({ milestoneId: 'missing-milestone-id' });
 
     expectErrorEnvelope(res, 404);
     expect(res.body.error.message).not.toMatch(/authoriz/i);
   });
 
-  it('POST /api/payments → 403 for a contract belonging to another client', async () => {
-    const { contract } = await makeContractChain({ status: 'ACTIVE' });
+  it('POST /api/payments → 403 for a milestone of another client\'s contract', async () => {
+    const { milestone } = await makeContractChain({ status: 'ACTIVE' });
     const intruder = await makeClient();
 
-    const res = await authed(intruder).post('/api/payments').send({ contractId: contract.id });
+    const res = await authed(intruder).post('/api/payments').send({ milestoneId: milestone.id });
 
     expectErrorEnvelope(res, 403);
     expect(res.body.error.message).toBe('Not authorized');
@@ -1088,8 +1187,8 @@ describe('ownership is checked after existence', () => {
   });
 
   it('POST /api/payments/confirm → 403 for another client\'s payment, before any provider call', async () => {
-    const { client, contract } = await makeContractChain({ status: 'ACTIVE' });
-    const payment = await makePayment(contract.id, client.id, { amount: 4_000_000 });
+    const { client, milestone } = await makeContractChain({ status: 'ACTIVE' });
+    const payment = await makePayment(milestone.id, client.id, { amount: 4_000_000 });
     const intruder = await makeClient();
 
     const res = await authed(intruder).post('/api/payments/confirm').send({
@@ -1110,10 +1209,10 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(client)
       .post('/api/payments/dev-complete')
-      .send({ contractId: 'missing-contract-id' });
+      .send({ milestoneId: 'missing-milestone-id' });
 
-    // The bypass guard answers before the contract lookup, so it reveals nothing about which
-    // contracts exist. `ALLOW_PAYMENT_BYPASS` is `'false'` in `vitest.config.ts`.
+    // The bypass guard answers before the milestone lookup, so it reveals nothing about which
+    // milestones exist. `ALLOW_PAYMENT_BYPASS` is `'false'` in `vitest.config.ts`.
     expectErrorEnvelope(res, 403);
     expect(res.body.error.message).toBe('Payment bypass is disabled');
   });
@@ -1161,25 +1260,80 @@ describe('ownership is checked after existence', () => {
     expect((await prisma.review.findFirstOrThrow()).reviewerId).toBe(client.id);
   });
 
-  it('PATCH /api/contracts/:id → 404 for a contract owned by nobody', async () => {
-    const client = await makeClient();
+  // PATCH /api/contracts/:id is 410 for everyone (CT11), so it has no ownership rows here; the
+  // 410 is asserted in contracts.test.ts.
 
-    const res = await authed(client).patch('/api/contracts/missing-contract-id')
-      .send({ status: 'COMPLETED' });
+  it.each([
+    ['GET /api/contracts/:id/milestones', 'get', (id: string) => `/api/contracts/${id}/milestones`],
+    ['PUT /api/contracts/:id/milestones', 'put', (id: string) => `/api/contracts/${id}/milestones`],
+  ] as const)('%s → 404 for a missing contract, 403 for a non-party [MS5]', async (_label, method, path) => {
+    const { contract } = await makeContractChain();
+    const outsider = await makeClient();
+    const body = { milestones: [{ title: 'All', amount: 4_000_000, dueDate: '2099-01-01' }] };
 
-    expectErrorEnvelope(res, 404);
-    expect(res.body.error.message).not.toMatch(/authoriz|client/i);
+    const missing = await authed(outsider)[method](path('missing-contract-id')).send(body);
+    const foreign = await authed(outsider)[method](path(contract.id)).send(body);
+
+    expectErrorEnvelope(missing, 404);
+    expect(missing.body.error.message).toBe('Contract not found');
+    expectErrorEnvelope(foreign, 403);
+    expect(foreign.body.error.message).toBe('Not authorized');
   });
 
-  it('PATCH /api/contracts/:id → 403 for the freelancer party, who may not complete it', async () => {
-    const { freelancer, contract } = await makeContractChain({ status: 'ACTIVE' });
+  it.each([
+    ['GET /api/milestones/:id', 'get', '', 'CLIENT'],
+    ['POST /api/milestones/:id/approve', 'post', '/approve', 'CLIENT'],
+    ['POST /api/milestones/:id/reject', 'post', '/reject', 'CLIENT'],
+    ['POST /api/milestones/:id/submissions', 'post', '/submissions', 'FREELANCER'],
+  ] as const)('%s → 404 for a missing milestone, 403 for a non-party [MS5]', async (_label, method, suffix, role) => {
+    const { milestone } = await makeContractChain({ status: 'ACTIVE' });
+    const outsider = role === 'CLIENT' ? await makeClient() : await makeFreelancer();
+    const body = { reason: 'Please fix the layout.', message: 'Done' };
 
-    const res = await authed(freelancer).patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
+    const missing = await authed(outsider)[method](`/api/milestones/missing-milestone-id${suffix}`).send(body);
+    const foreign = await authed(outsider)[method](`/api/milestones/${milestone.id}${suffix}`).send(body);
+
+    expectErrorEnvelope(missing, 404);
+    expect(missing.body.error.message).toBe('Milestone not found');
+    expectErrorEnvelope(foreign, 403);
+    expect(foreign.body.error.message).toBe('Not authorized');
+  });
+
+  it('POST /api/milestones/:id/approve → 403 for a client of another contract even when SUBMITTED [MS15]', async () => {
+    const { milestone } = await makeContractChain({ status: 'ACTIVE' });
+    await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
+    const intruder = await makeClient();
+
+    const res = await authed(intruder).post(`/api/milestones/${milestone.id}/approve`);
 
     expectErrorEnvelope(res, 403);
-    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status)
-      .toBe('ACTIVE');
+    expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('SUBMITTED');
+  });
+
+  it('GET /api/settlements/:id → 404 for a missing settlement, 403 for another freelancer\'s [S16]', async () => {
+    const owner = await makeFreelancer();
+    const other = await makeFreelancer();
+    const settlement = await prisma.settlement.create({
+      data: {
+        freelancerId: owner.id,
+        periodStart: new Date('2026-10-18T15:00:00.000Z'),
+        periodEnd: new Date('2026-10-25T15:00:00.000Z'),
+        scheduledPayoutAt: new Date('2026-10-28T01:00:00.000Z'),
+        itemCount: 0,
+        grossAmount: 0,
+        feeAmount: 0,
+        feeVatAmount: 0,
+        netAmount: 0,
+      },
+    });
+
+    const missing = await authed(other).get('/api/settlements/missing-settlement-id');
+    const foreign = await authed(other).get(`/api/settlements/${settlement.id}`);
+
+    expectErrorEnvelope(missing, 404);
+    expect(missing.body.error.message).toBe('Settlement not found');
+    expectErrorEnvelope(foreign, 403);
+    expect(foreign.body.error.message).toBe('Not authorized');
   });
 
   it('GET /api/projects/:id/applications → 404 for a project owned by nobody', async () => {
@@ -1239,8 +1393,8 @@ describe('ownership is checked after existence', () => {
   it('GET /api/payments only returns the caller\'s own payments', async () => {
     const mine = await makeContractChain({ status: 'ACTIVE' });
     const theirs = await makeContractChain({ status: 'ACTIVE' });
-    await makePayment(mine.contract.id, mine.client.id);
-    await makePayment(theirs.contract.id, theirs.client.id);
+    await makePayment(mine.milestone.id, mine.client.id);
+    await makePayment(theirs.milestone.id, theirs.client.id);
 
     const res = await authed(mine.client).get('/api/payments');
 
@@ -1267,8 +1421,11 @@ describe('ownership is checked after existence', () => {
       },
       contract,
     );
+    const milestone = await makeMilestone(created.id, {
+      status: created.status === 'COMPLETED' ? 'APPROVED' : 'PENDING',
+    });
 
-    return { client, freelancer, project, application, contract: created };
+    return { client, freelancer, project, application, contract: created, milestone };
   }
 });
 
@@ -1359,10 +1516,11 @@ describe('unmatched paths and methods bypass errorHandler (Q10)', () => {
    */
   const UNMATCHED = [
     {
-      label: 'GET /api/contracts (mounted router, no index route)',
+      // Was `GET /api/contracts` until Phase 1 gave that router an index route (CT1).
+      label: 'GET /api/users (mounted router, no index route)',
       method: 'get' as HttpMethod,
-      path: '/api/contracts',
-      expectedText: 'Cannot GET /api/contracts',
+      path: '/api/users',
+      expectedText: 'Cannot GET /api/users',
     },
     {
       label: 'DELETE /api/users/me (path exists, method does not)',

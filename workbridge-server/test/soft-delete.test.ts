@@ -35,8 +35,11 @@ import {
   makeClient,
   makeContractScenario,
   makeFreelancer,
+  makeMilestone,
   makePayment,
+  makePayoutAccount,
   makeProject,
+  makeSubmission,
   makeUser,
   TEST_PASSWORD,
 } from './helpers/factories';
@@ -68,6 +71,7 @@ function bearer(token: string) {
     get: (url: string) => api().get(url).set('Authorization', `Bearer ${token}`),
     post: (url: string) => api().post(url).set('Authorization', `Bearer ${token}`),
     patch: (url: string) => api().patch(url).set('Authorization', `Bearer ${token}`),
+    put: (url: string) => api().put(url).set('Authorization', `Bearer ${token}`),
     delete: (url: string) => api().delete(url).set('Authorization', `Bearer ${token}`),
   };
 }
@@ -121,6 +125,9 @@ beforeEach(() => {
  * caller and the write is the missing `deletedAt` re-check. `assertUnchanged` captures the
  * invariant that matters: **nothing the request would have written landed.** That assertion is
  * what flips when a guard is added; the status code is the secondary signal.
+ *
+ * `PATCH /api/contracts/:id` left this table in Phase 1: it answers 410 to everyone (CT11), so it
+ * writes nothing and is no longer a D12 vector.
  *
  * Three mutating routes are deliberately absent, none of which can exhibit D12:
  * - `POST /api/auth/logout` — clears a cookie and writes no row.
@@ -320,35 +327,14 @@ const mutations: Mutation[] = [
     },
   },
   {
-    label: 'PATCH /api/contracts/:id',
-    async setup() {
-      const { client, project, contract } = await makeContractScenario({
-        contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
-      });
-      await makePayment(contract.id, client.id, { status: 'COMPLETED' });
-      return {
-        actor: client,
-        send: (token) => bearer(token).patch(`/api/contracts/${contract.id}`).send({ status: 'COMPLETED' }),
-        async assertUnchanged() {
-          const storedContract = await prisma.contract.findUniqueOrThrow({
-            where: { id: contract.id },
-          });
-          expect(storedContract.status).toBe('ACTIVE');
-          const storedProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-          expect(storedProject.status).toBe('CLOSED');
-        },
-      };
-    },
-  },
-  {
     label: 'POST /api/payments',
     async setup() {
-      const { client, contract } = await makeContractScenario({
+      const { client, milestone } = await makeContractScenario({
         contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
       });
       return {
         actor: client,
-        send: (token) => bearer(token).post('/api/payments').send({ contractId: contract.id }),
+        send: (token) => bearer(token).post('/api/payments').send({ milestoneId: milestone.id }),
         async assertUnchanged() {
           expect(await prisma.payment.count()).toBe(0);
         },
@@ -358,10 +344,10 @@ const mutations: Mutation[] = [
   {
     label: 'POST /api/payments/confirm',
     async setup() {
-      const { client, contract } = await makeContractScenario({
+      const { client, milestone } = await makeContractScenario({
         contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
       });
-      const payment = await makePayment(contract.id, client.id, { status: 'PENDING' });
+      const payment = await makePayment(milestone.id, client.id, { status: 'PENDING' });
       // The provider is stubbed to approve, so a 400 here can only come from a guard, never
       // from a failed verification.
       axiosPost.mockResolvedValue({ data: { status: 'DONE', totalAmount: payment.amount } });
@@ -529,9 +515,110 @@ describe('a soft-deleted principal must not be able to write anything (D12)', ()
  *
  * Every expansion phase adds a row here for each new mutating route. **Never add an expansion
  * route to `mutations`** — that table is `it.fails`, and a guarded route would break it with an
- * unexpected pass. Empty in Phase 0, which adds the guard but no user-facing route.
+ * unexpected pass. Phase 1 adds the milestone, plan and payout-account writes.
  */
-const guardedMutations: Mutation[] = [];
+const activeContract = () => makeContractScenario({
+  contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
+});
+
+const guardedMutations: Mutation[] = [
+  {
+    label: 'PUT /api/contracts/:id/milestones',
+    async setup() {
+      const { client, contract, milestone } = await makeContractScenario();
+      return {
+        actor: client,
+        send: (token) => bearer(token).put(`/api/contracts/${contract.id}/milestones`).send({
+          milestones: [{ title: GHOST, amount: 4_000_000, dueDate: '2099-01-01' }],
+        }),
+        async assertUnchanged() {
+          const stored = await prisma.milestone.findMany({ where: { contractId: contract.id } });
+          expect(stored.map((m) => m.id)).toEqual([milestone.id]);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/milestones/:id/submissions',
+    async setup() {
+      const { freelancer, milestone } = await activeContract();
+      await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'FUNDED' } });
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/milestones/${milestone.id}/submissions`).send({ message: GHOST }),
+        async assertUnchanged() {
+          expect(await prisma.milestoneSubmission.count()).toBe(0);
+          const stored = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+          expect(stored.status).toBe('FUNDED');
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/milestones/:id/approve',
+    async setup() {
+      const { client, milestone } = await activeContract();
+      await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
+      await makeSubmission(milestone.id);
+      return {
+        actor: client,
+        send: (token) => bearer(token).post(`/api/milestones/${milestone.id}/approve`),
+        async assertUnchanged() {
+          const stored = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+          expect(stored.status).toBe('SUBMITTED');
+          expect(await prisma.settlementItem.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/milestones/:id/reject',
+    async setup() {
+      const { client, milestone } = await activeContract();
+      await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
+      await makeSubmission(milestone.id);
+      return {
+        actor: client,
+        send: (token) => bearer(token).post(`/api/milestones/${milestone.id}/reject`).send({ reason: 'Please redo the whole thing.' }),
+        async assertUnchanged() {
+          const stored = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+          expect(stored.status).toBe('SUBMITTED');
+        },
+      };
+    },
+  },
+  {
+    label: 'PUT /api/users/me/payout-account',
+    async setup() {
+      const actor = await makeFreelancer();
+      return {
+        actor,
+        send: (token) => bearer(token).put('/api/users/me/payout-account').send({
+          bankCode: '004',
+          accountNumber: '1101234567',
+          holderName: actor.name,
+        }),
+        async assertUnchanged() {
+          expect(await prisma.payoutAccount.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/users/me/payout-account',
+    async setup() {
+      const actor = await makeFreelancer();
+      await makePayoutAccount(actor);
+      return {
+        actor,
+        send: (token) => bearer(token).delete('/api/users/me/payout-account'),
+        async assertUnchanged() {
+          expect(await prisma.payoutAccount.count({ where: { userId: actor.id } })).toBe(1);
+        },
+      };
+    },
+  },
+];
 
 describe('expansion routes refuse a soft-deleted principal (requireActiveUser)', () => {
   it.each(guardedMutations)('$label → 401 and writes nothing', async (mutation) => {
@@ -909,12 +996,12 @@ describe('a soft-deleted project', () => {
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `getContract`, `signContract` and `completeContract` all resolve the contract with a plain
- * `findUnique` and never consult `deletedAt` on the joined project. Rule 5 ("every read and
- * write must filter `deletedAt: null`") decides the soft-deleted case, so a contract whose
- * project is gone must be invisible. Today all three succeed: the contract is served with the
- * deleted project embedded in the body, it can be signed, and `completeContract` writes
- * `status: COMPLETED` onto the deleted project row. Interacts with D11/Q4 — once deleting a
+ * `getContract` and `signContract` resolve the contract with a plain `findUnique` and never
+ * consult `deletedAt` on the joined project. Rule 5 ("every read and write must filter
+ * `deletedAt: null`") decides the soft-deleted case, so a contract whose project is gone must be
+ * invisible. Today both succeed: the contract is served with the deleted project embedded in
+ * the body, and it can be signed. Completion moved to the milestone routes in Phase 1, which do
+ * filter — that half of D21 is now a passing test. Interacts with D11/Q4 — once deleting a
  * project with a live contract is blocked, this state becomes much harder to reach.
  */
 describe('a contract whose project is soft-deleted (D21)', () => {
@@ -940,22 +1027,57 @@ describe('a contract whose project is soft-deleted (D21)', () => {
     expect(stored.status).toBe('PENDING');
   });
 
-  it.fails('cannot be completed: COMPLETED is not written onto the deleted project [D21]', async () => {
-    const { client, project, contract } = await makeContractScenario({
-      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
-    });
-    await makePayment(contract.id, client.id, { status: 'COMPLETED' });
+  it('cannot be completed: approving its last milestone is 404 and writes nothing [MS5] [D21]', async () => {
+    const { client, project, contract, milestone } = await activeContract();
+    await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
+    await makeSubmission(milestone.id);
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 
-    const res = await authed(client)
-      .patch(`/api/contracts/${contract.id}`)
-      .send({ status: 'COMPLETED' });
+    const res = await authed(client).post(`/api/milestones/${milestone.id}/approve`);
 
     expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Milestone not found' } });
     const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     const storedProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    const storedMilestone = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
     expect(storedContract.status).toBe('ACTIVE');
     expect(storedProject.status).not.toBe('COMPLETED');
+    expect(storedMilestone.status).toBe('SUBMITTED');
+  });
+});
+
+/** Rule 5 on the expansion routes: the deleted project hides its contract's milestones. */
+describe('a contract whose project is soft-deleted, on the expansion routes (rule 5)', () => {
+  async function deletedProjectContract() {
+    const scenario = await activeContract();
+    await prisma.milestone.update({ where: { id: scenario.milestone.id }, data: { status: 'SUBMITTED' } });
+    await makeSubmission(scenario.milestone.id);
+    await prisma.project.update({ where: { id: scenario.project.id }, data: { deletedAt: new Date() } });
+    return scenario;
+  }
+
+  it('is left out of GET /api/contracts [CT1]', async () => {
+    const { client } = await deletedProjectContract();
+
+    const res = await authed(client).get('/api/contracts');
+
+    expect(res.status).toBe(200);
+    expect(res.body.contracts).toEqual([]);
+  });
+
+  it.each([
+    ['GET /api/contracts/:id/milestones', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).get(`/api/contracts/${s.contract.id}/milestones`), 'Contract not found'],
+    ['PUT /api/contracts/:id/milestones', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).put(`/api/contracts/${s.contract.id}/milestones`).send({ milestones: [{ title: 'x', amount: 4_000_000, dueDate: '2099-01-01' }] }), 'Contract not found'],
+    ['GET /api/milestones/:id', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.freelancer).get(`/api/milestones/${s.milestone.id}`), 'Milestone not found'],
+    ['POST /api/milestones/:id/reject', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post(`/api/milestones/${s.milestone.id}/reject`).send({ reason: 'Not what we agreed on.' }), 'Milestone not found'],
+    ['POST /api/payments', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post('/api/payments').send({ milestoneId: s.milestone.id }), 'Milestone not found'],
+  ] as const)('%s → 404 [MS5] [PY1]', async (_label, send, message) => {
+    const scenario = await deletedProjectContract();
+
+    const res = await send(scenario);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message } });
   });
 });
 

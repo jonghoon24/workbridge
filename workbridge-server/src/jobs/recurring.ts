@@ -1,6 +1,7 @@
 import prisma from '../lib/prisma';
 import { MINUTE_MS, kstDateString, nextKstTimeOfDay } from '../lib/time';
 import type { PrismaTransactionClient } from '../types/index';
+import { nextBatchAt, weeklyBatchDedupeKey } from '../services/settlements.service';
 import { enqueueJob } from './queue';
 import type { JobType } from './types';
 
@@ -27,6 +28,12 @@ export const RECURRING_JOBS: readonly RecurringJob[] = [
     type: 'maintenance.cleanup',
     nextRunAt: (now) => nextKstTimeOfDay(now, 4),
     dedupeKey: (runAt) => `maintenance.cleanup:${kstDateString(runAt)}`,
+  },
+  {
+    // Monday 03:00 KST; the key names the settled period, which the handler reads back (J6).
+    type: 'settlement.weeklyBatch',
+    nextRunAt: nextBatchAt,
+    dedupeKey: weeklyBatchDedupeKey,
   },
 ];
 
