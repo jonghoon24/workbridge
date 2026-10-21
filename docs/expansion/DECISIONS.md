@@ -111,3 +111,35 @@
 - 첨부 응답은 MS2의 6개 키만 select한다(`submissionId` 제외).
 - 동시 dev-complete의 500은 D22로 고정했다(`it.fails`, 5회 연속 재현). D13과 같은 P2002 미처리이고 운영에서 꺼진 개발 전용 경로라 고치지 않는다.
 - 클라이언트: 지급 계좌 화면은 예측 가능한 서버 오류 2개(예금주 불일치, PROCESSING 중 변경)를 한국어로 바꾼다. 상태 라벨과 `MAX_PAYOUT_ATTEMPTS`는 `constants/milestones.js` 한 곳에 둔다. 결제 내역의 "N회차"는 제출 회차와 헷갈려 "#N"으로 바꿨다.
+
+## P2-S (명세)
+
+- 규칙 식별자: 대화방·메시지 `MG`, 포트폴리오·경력·프로필 완성도 `PF`, 추천 `RC`. 미확인 메시지 다이제스트 핸들러는 P1의 `J`를 이어 `J8`. 새 절은 PLAN §4.1 순서대로 Payout account 뒤, Background jobs 앞에 `Conversations` → `Portfolio and careers` → `Profile completion and recommendations`로 넣었다.
+- 마이그레이션은 오케스트레이터 지시대로 하나(`expansion_messaging_profile`)다. PLAN §2.2.1/§2.3.1/§3.2의 두 개(`expansion_messaging`, `expansion_profile_portfolio_careers`)를 대체한다.
+- 시스템 메시지에 `Message.systemEvent`(String, 알림 type처럼 TS 유니온)를 더했다. 테스트가 한국어 본문이 아니라 이벤트를 단언한다(MG6). 계획 교체도 시스템 메시지로 남기고, 알림과 달리 서명 유무와 상관없이 매번 남긴다.
+- 메시지 `createdAt`은 대화방 row를 `FOR UPDATE`로 잠근 뒤 서버 시계로 정하고 `lastMessageAt + 1ms` 이상으로 강제한다(MG7). 대화방 안에서 커밋 순서대로 엄격히 증가하므로 `after` 커서 폴링이 늦게 커밋된 메시지를 놓치지 않는다. 시스템 메시지도 같은 경로라서 작업의 `ctx.now`가 아니라 서버 시계를 쓴다(규칙 11의 now 주입 예외).
+- 잠금 순서: `Contract` → `Milestone` → `Conversation`. 대화방 잠금을 잡은 트랜잭션은 계약·마일스톤을 잠그지 않는다. 참여자 row는 단독으로만 잠근다(읽음, 다이제스트).
+- 읽음 워터마크는 "대화방의 마지막 메시지"가 아니라 "상대가 보낸 마지막 메시지"의 `createdAt`까지 올린다(PLAN §2.2.2 수정, MG16). 시스템 메시지 시각이 그 뒤의 텍스트를 읽음으로 만들지 않는다. 조건부 쓰기라 뒤로 가지 않는다.
+- 발송은 보낸 사람의 워터마크를 바꾸지 않는다. 클라이언트가 스레드를 보여 줄 때 `POST /read`를 부른다. 메시지 목록 GET도 읽음 처리를 하지 않는다(모든 GET은 쓰지 않는다).
+- 발송 가능 조건(MG9)에 "상대가 소프트 삭제됨 → 409 `The other participant is no longer active`"를 더했다(탈퇴 회원에게는 보낼 수 없는 것이 보편적). 마감(완료 후 30×24시간, M14처럼 정확한 시간) 판정이 먼저다. 응답에 `canSend`, `closedReason`(`CONTRACT_CLOSED`/`COUNTERPART_INACTIVE`), `closesAt`을 둔다. 시스템 메시지는 마감과 무관하게 남는다.
+- 메시지 삭제: 5분 "미만"만 허용(정확히 5분이면 409), 이미 삭제된 메시지는 200(멱등), 시스템 메시지와 상대 메시지는 403. 저장소 파일은 지우지 않고 Q21에 적었다.
+- 메시지 목록 `limit`은 기본 30, 100 초과는 100으로 자른다(CT2처럼 400 아님). 응답은 커서와 상관없이 항상 오래된 순. `before`와 `after`를 함께 주면 400, 이 대화방 메시지가 아닌 커서는 404/403 다음에 400.
+- 대화방 목록은 `lastMessageAt desc`(메시지 없는 대화방은 맨 뒤) → `createdAt desc` → `id asc`. 상세 응답은 `{ conversation }`으로 감싼다(PA2처럼).
+- 백필 대화방과 참여자의 `createdAt`은 계약의 `createdAt`이다. `now()`를 `timestamp(3)`에 넣으면 세션 TimeZone(로컬 Asia/Seoul) 때문에 9시간 어긋난다(P0의 `sql.ts` 결정과 같은 이유). 시스템 메시지는 백필하지 않는다.
+- 미확인 다이제스트는 PLAN §2.4.3과 달리 P2A가 enqueue와 핸들러 1~2단계(참여자 잠금, 0개·삭제면 no-op)를 구현하고 P3가 3~4단계(60분 throttle, `EmailDelivery.contextKey`, 이메일)를 채운다(MG21, J8). 핸들러 없는 type은 즉시 FAILED라서 enqueue만 먼저 넣을 수 없다. 같은 쌍의 PENDING 작업 확인은 대화방 잠금 안이라 발송끼리는 경합하지 않는다.
+- 삭제된 프로젝트의 자동 승인은 시스템 메시지도 남기지 않는다(MS17이 알림을 생략하는 조건과 같다).
+- P2는 인앱 알림 type을 더하지 않는다(19종 그대로). `MESSAGE_UNREAD_DIGEST`는 이메일 전용이고 P3가 정책 표와 함께 넣는다.
+- `GET /api/contracts`의 `unreadMessageCount`와 `GET /api/contracts/:id/conversation`은 CT 절을 고치지 않고 MG18·MG19로 적었다(P1 문장 수정 최소화).
+- 월 값(`YYYY-MM`)은 KST 그 달 1일 0시로 저장하고 응답에서는 `YYYY-MM` 문자열로 돌려준다(PF2). 포트폴리오와 경력 모두 이번 달(KST) 이후는 400, 끝 달은 시작 달 이상(같은 달 허용). 포트폴리오 `endedAt`만 있으면 400.
+- 포트폴리오·경력 생성과 포트폴리오 순서 변경은 사용자 row `FOR UPDATE`(PA7·S17과 같은 잠금) 아래에서 개수와 `sortOrder`를 정한다(PF8). 개수 초과 409는 이미지 저장 전에 한 번, 잠금 아래에서 다시 본다. 수정·삭제는 잠그지 않는다.
+- 남의 포트폴리오·경력 id는 404가 아니라 403(규칙 3, MS5와 같은 순서). 삭제 응답은 `{ id, deleted: true }`. 교체·삭제된 이미지 파일은 저장소에서 지우지 않는다.
+- 포트폴리오 스킬은 각 50자 이하, 문자열이 아니면 400(이 라우트에는 D16이 없다). `skills`는 `PATCH /me`처럼 반복 필드나 쉼표 문자열을 받는다.
+- 경력 정렬: `startDate desc` → 재직 중 먼저 → `endDate desc` → `createdAt desc` → `id asc`. 경력 합계는 양끝 포함 개월 수이고 겹치거나 맞닿은 구간을 병합한다.
+- 공개 GET 2개는 페이지네이션 없이 상한(20/30)이 묶는다. `GET /api/users/me/portfolio`는 따로 두지 않는다(공개 라우트의 id `me` → 404).
+- 완성도 응답 `items`는 `{ key, weight, done }`이고 한국어 라벨은 클라이언트가 붙인다. 역할은 토큰이 아니라 DB row 기준. `isComplete`와 `percent`는 독립이다.
+- 추천 `limit`은 기본 10, 20 초과는 20으로 자른다. `page`는 없다. 두 추천 모두 지연 스윕을 부르지 않는다.
+- 프리랜서 추천: 프로젝트 상태와 무관하게 쓸 수 있고, 이 프로젝트에 지원한 적이 있으면(상태 무관) 후보에서 뺀다. DB prefilter에는 완성도 조건 중 DB로 표현되는 것(skills 비어 있지 않음, activityCategory not null, experienceYears ≥ 0, hourlyRate > 0)을 넣고, 공백 activityCategory만 200개 컷 뒤에 메모리에서 거른다. 요구 스킬이 없는 프로젝트는 스킬·포트폴리오 점수가 0이고 모든 완성 프리랜서가 후보다.
+- 프로젝트 추천: 최신성은 `createdAt` 기준 7일까지 10점, 7~30일 선형 감소, 30일부터 0점("30일에 걸쳐"를 등록 후 30일에 0이 되는 것으로 정했다). 동점은 마감 임박 순 → `id`. 삭제된 의뢰인의 프로젝트는 거르지 않는다(Q11 범위).
+- 점수 반올림은 `Math.round(x × 100) / 100`이고 정렬도 반올림한 점수로 한다. 카테고리 비교는 양쪽 trim 후 정확히 일치.
+- `makeContractScenario`는 수락이 만드는 것과 같게 대화방과 참여자 둘도 만든다. `seed.js`는 시연 메시지 없이 대화방이 없는 모든 계약에 대화방과 참여자를 만든다(P4 전에도 "계약마다 대화방" 불변식 유지).
+- `src/index.ts`에 빈 라우터 두 개(`conversations.routes.ts`를 `/api/conversations`에, `profile.routes.ts`를 `/api/users`의 `userRoutes` 다음에)를 미리 마운트했다(PLAN §3.2). 2A와 2B는 `index.ts`를 고치지 않는다. 빈 라우터는 매칭되지 않는 경로를 그대로 흘려보내므로 Q10 동작이 바뀌지 않는다.

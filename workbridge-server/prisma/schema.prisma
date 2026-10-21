@@ -67,6 +67,18 @@ enum SettlementStatus {
   ON_HOLD // no payout account (or the freelancer is soft-deleted)
 }
 
+enum MessageKind {
+  TEXT // written by a participant
+  SYSTEM // contract/milestone event log; no sender (BEHAVIOR.md MG6)
+}
+
+enum EmploymentType {
+  FULL_TIME
+  CONTRACT
+  FREELANCE
+  INTERN
+}
+
 model User {
   id               String    @id @default(uuid())
   email            String    @unique
@@ -88,18 +100,22 @@ model User {
   createdAt        DateTime  @default(now())
   deletedAt        DateTime?
 
-  clientProjects      Project[]         @relation("ClientProjects")
-  applications        Application[]     @relation("FreelancerApplications")
-  clientContracts     Contract[]        @relation("ClientContracts")
-  freelancerContracts Contract[]        @relation("FreelancerContracts")
-  clientPayments      Payment[]         @relation("ClientPayments")
-  givenReviews        Review[]          @relation("ReviewerReviews")
-  receivedReviews     Review[]          @relation("RevieweeReviews")
+  clientProjects      Project[]                 @relation("ClientProjects")
+  applications        Application[]             @relation("FreelancerApplications")
+  clientContracts     Contract[]                @relation("ClientContracts")
+  freelancerContracts Contract[]                @relation("FreelancerContracts")
+  clientPayments      Payment[]                 @relation("ClientPayments")
+  givenReviews        Review[]                  @relation("ReviewerReviews")
+  receivedReviews     Review[]                  @relation("RevieweeReviews")
   projectBookmarks    ProjectBookmark[]
   notifications       Notification[]
-  settlementItems     SettlementItem[]  @relation("FreelancerSettlementItems")
-  settlements         Settlement[]      @relation("FreelancerSettlements")
+  settlementItems     SettlementItem[]          @relation("FreelancerSettlementItems")
+  settlements         Settlement[]              @relation("FreelancerSettlements")
   payoutAccount       PayoutAccount?
+  conversations       ConversationParticipant[]
+  sentMessages        Message[]                 @relation("SentMessages")
+  portfolioItems      PortfolioItem[]
+  careers             Career[]
 }
 
 model Project {
@@ -175,6 +191,7 @@ model Contract {
   payments        Payment[]
   settlementItems SettlementItem[]
   reviews         Review[]
+  conversation    Conversation?
 }
 
 model Milestone {
@@ -313,6 +330,114 @@ model PayoutAccount {
   holderName    String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// ─── Messaging (BEHAVIOR.md "Conversations") ────────────────────────────────
+
+/// One per contract (MG2), created with the contract (MG3).
+model Conversation {
+  id            String    @id @default(uuid())
+  contractId    String    @unique
+  contract      Contract  @relation(fields: [contractId], references: [id])
+  /// `createdAt` of the newest message; strictly increasing (MG7). null = no message yet.
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+
+  participants ConversationParticipant[]
+  messages     Message[]
+}
+
+/// Exactly two per conversation: the contract's client and freelancer (MG2).
+model ConversationParticipant {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  /// Read watermark: `createdAt` of the newest counterpart message read (MG16). Never moves back.
+  lastReadAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  /// null for SYSTEM messages
+  senderId       String?
+  sender         User?        @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
+  kind           MessageKind  @default(TEXT)
+  /// SYSTEM only: `CONTRACT_CREATED`, `MILESTONE_FUNDED`, … (MG6). A bare String like `Notification.type`.
+  systemEvent    String?
+  /// '' when a message carries only attachments
+  body           String
+  /// Soft delete by the sender within 5 minutes (MG17)
+  deletedAt      DateTime?
+  /// Server clock after the conversation lock; strictly increasing per conversation (MG7)
+  createdAt      DateTime     @default(now())
+
+  attachments MessageAttachment[]
+
+  @@index([conversationId, createdAt])
+}
+
+model MessageAttachment {
+  id        String   @id @default(uuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id])
+  url       String
+  /// Original name restored to UTF-8 (rule 12); never part of the storage key
+  fileName  String
+  mimeType  String
+  size      Int
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+}
+
+// ─── Profile (BEHAVIOR.md "Portfolio and careers") ──────────────────────────
+
+model PortfolioItem {
+  id          String    @id @default(uuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  title       String
+  description String?
+  url         String?
+  imageUrl    String?
+  /// The freelancer's role in the work, e.g. "프론트엔드 리드"
+  role        String?
+  /// normalizeSkillList-normalized (PF1)
+  skills      String[]
+  /// First instant of the month in KST (PF2); returned as `YYYY-MM`
+  startedAt   DateTime?
+  endedAt     DateTime?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, sortOrder])
+}
+
+model Career {
+  id             String         @id @default(uuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id])
+  company        String
+  position       String
+  employmentType EmploymentType
+  /// First instant of the month in KST (PF2); returned as `YYYY-MM`
+  startDate      DateTime
+  /// null = current position
+  endDate        DateTime?
+  description    String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([userId, startDate])
 }
 
 model Review {

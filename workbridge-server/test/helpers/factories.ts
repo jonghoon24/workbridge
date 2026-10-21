@@ -1,11 +1,17 @@
 import bcrypt from 'bcryptjs';
 import type {
   Application,
+  Career,
   Contract,
+  Conversation,
+  ConversationParticipant,
+  Message,
+  MessageAttachment,
   Milestone,
   MilestoneSubmission,
   PayoutAccount,
   Payment,
+  PortfolioItem,
   Prisma,
   Project,
   User,
@@ -190,11 +196,128 @@ export function makePayoutAccount(
   });
 }
 
+export type ConversationWithParticipants = Conversation & { participants: ConversationParticipant[] };
+
+/**
+ * The contract's conversation with its two participants (client and freelancer, nothing read), as
+ * accepting an application creates it (BEHAVIOR.md MG2, MG3) — but without the `CONTRACT_CREATED`
+ * system message, like a conversation backfilled by the migration.
+ */
+export function makeConversation(
+  contract: Pick<Contract, 'id' | 'clientId' | 'freelancerId'>,
+  overrides: Partial<Prisma.ConversationUncheckedCreateInput> = {},
+): Promise<ConversationWithParticipants> {
+  return prisma.conversation.create({
+    data: {
+      contractId: contract.id,
+      participants: {
+        create: [{ userId: contract.clientId }, { userId: contract.freelancerId }],
+      },
+      ...overrides,
+    },
+    include: { participants: true },
+  });
+}
+
+/**
+ * A message in `conversationId`: `TEXT` from `senderId`, or `SYSTEM` when `senderId` is `null`
+ * (with `systemEvent` defaulting to `CONTRACT_CREATED`). `createdAt` defaults to now; pass it to
+ * place a message in the past (the 5-minute delete window, cursors). Keeps the conversation's
+ * `lastMessageAt` at its newest message, as posting does (MG7). `attachments` adds attachment
+ * rows.
+ */
+export async function makeMessage(
+  conversationId: string,
+  senderId: string | null,
+  overrides: Partial<Prisma.MessageUncheckedCreateInput> & {
+    attachments?: Partial<Prisma.MessageAttachmentUncheckedCreateWithoutMessageInput>[];
+  } = {},
+): Promise<Message & { attachments: MessageAttachment[] }> {
+  const { attachments = [], ...data } = overrides;
+  const system = senderId === null;
+  const message = await prisma.message.create({
+    data: {
+      conversationId,
+      senderId,
+      kind: system ? 'SYSTEM' : 'TEXT',
+      systemEvent: system ? 'CONTRACT_CREATED' : null,
+      body: system ? '계약이 생성되었습니다.' : `Message ${next()}`,
+      ...data,
+      attachments: {
+        create: attachments.map((attachment) => {
+          const n = next();
+          return {
+            url: `https://storage.test/messages/${conversationId}/${n}.pdf`,
+            fileName: `file-${n}.pdf`,
+            mimeType: 'application/pdf',
+            size: 1024,
+            ...attachment,
+          };
+        }),
+      },
+    },
+    include: { attachments: true },
+  });
+  await prisma.conversation.updateMany({
+    where: {
+      id: conversationId,
+      OR: [{ lastMessageAt: null }, { lastMessageAt: { lt: message.createdAt } }],
+    },
+    data: { lastMessageAt: message.createdAt },
+  });
+  return message;
+}
+
+/** A portfolio item for `userId`, appended after the user's existing items (`sortOrder` max + 1). */
+export async function makePortfolioItem(
+  userId: string,
+  overrides: Partial<Prisma.PortfolioItemUncheckedCreateInput> = {},
+): Promise<PortfolioItem> {
+  const last = await prisma.portfolioItem.findFirst({
+    where: { userId },
+    orderBy: { sortOrder: 'desc' },
+    select: { sortOrder: true },
+  });
+  return prisma.portfolioItem.create({
+    data: {
+      userId,
+      title: `Portfolio ${next()}`,
+      skills: ['React'],
+      sortOrder: last ? last.sortOrder + 1 : 0,
+      ...overrides,
+    },
+  });
+}
+
+/**
+ * A career entry for `userId`: by default a finished `FULL_TIME` position from 2020-01 to
+ * 2021-12, with months stored as the first instant of the month in KST (BEHAVIOR.md PF2).
+ * Pass `endDate: null` for a current position.
+ */
+export function makeCareer(
+  userId: string,
+  overrides: Partial<Prisma.CareerUncheckedCreateInput> = {},
+): Promise<Career> {
+  const n = next();
+  return prisma.career.create({
+    data: {
+      userId,
+      company: `Company ${n}`,
+      position: 'Developer',
+      employmentType: 'FULL_TIME',
+      startDate: new Date('2019-12-31T15:00:00.000Z'), // 2020-01 KST
+      endDate: new Date('2021-11-30T15:00:00.000Z'), // 2021-12 KST
+      ...overrides,
+    },
+  });
+}
+
 /**
  * The full chain most contract, payment, and review tests need: a client, a freelancer, a
- * project whose recruitment has closed, an accepted application, the resulting contract, and
- * its default milestone (sequence 1, the whole contract amount) — as accepting an application
- * creates it (BEHAVIOR.md M9).
+ * project whose recruitment has closed, an accepted application, the resulting contract, its
+ * default milestone (sequence 1, the whole contract amount) and its conversation with both
+ * participants — as accepting an application creates them (BEHAVIOR.md M9, MG3). The
+ * conversation has no messages.
  *
  * Pass `contract` overrides to place the contract in a particular state, e.g.
  * `makeContractScenario({ contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true } })`.
@@ -231,6 +354,7 @@ export async function makeContractScenario(overrides: {
     ...(completed ? { status: 'APPROVED', approvalType: 'MANUAL', approvedAt: new Date() } : {}),
     ...overrides.milestone,
   });
+  const conversation = await makeConversation(contract);
 
-  return { client, freelancer, project, application, contract, milestone };
+  return { client, freelancer, project, application, contract, milestone, conversation };
 }

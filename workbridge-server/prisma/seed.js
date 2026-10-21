@@ -21,6 +21,14 @@ async function main() {
   await prisma.rateLimitCounter.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.review.deleteMany();
+  // Phase 2 models, children first. The migration backfills a conversation for every contract,
+  // so these must go before `contract` or the next seed fails with P2003.
+  await prisma.messageAttachment.deleteMany();
+  await prisma.message.deleteMany();
+  await prisma.conversationParticipant.deleteMany();
+  await prisma.conversation.deleteMany();
+  await prisma.portfolioItem.deleteMany();
+  await prisma.career.deleteMany();
   // Phase 1 models, children first (every FK is ON DELETE RESTRICT).
   await prisma.settlementItem.deleteMany();
   await prisma.settlement.deleteMany();
@@ -574,6 +582,31 @@ async function main() {
   });
 
   console.log('Pricing analysis created');
+
+  // ─── Conversations ───────────────────────────────────
+  // Every contract has exactly one conversation with both parties (BEHAVIOR.md MG2, MG3).
+  // Accepting an application creates it in the app; seeded contracts are created directly, so
+  // give each one its conversation here. Demo messages arrive with the Phase 4 seed.
+  const contractsWithoutConversation = await prisma.contract.findMany({
+    where: { conversation: null },
+    select: { id: true, clientId: true, freelancerId: true, createdAt: true },
+  });
+  for (const contract of contractsWithoutConversation) {
+    await prisma.conversation.create({
+      data: {
+        contractId: contract.id,
+        createdAt: contract.createdAt,
+        participants: {
+          create: [
+            { userId: contract.clientId, createdAt: contract.createdAt },
+            { userId: contract.freelancerId, createdAt: contract.createdAt },
+          ],
+        },
+      },
+    });
+  }
+  console.log('Conversations created');
+
   console.log('Seed completed successfully!');
 }
 

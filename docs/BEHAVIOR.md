@@ -19,6 +19,8 @@ of its bullet: **M** money and milestone rules, **CT** contracts, **PY** payment
 milestones, **S** settlements, **PA** payout account, **J** job handlers (`M3`, `MS14`, …). A
 test that pins a rule carries the identifier in brackets in its name — `it('… [MS14]')` — the
 same way D/Q/C tags are used. Identifiers are never renumbered; a withdrawn rule leaves a gap.
+Phase 2 adds **MG** conversations and messages, **PF** portfolio, careers and profile completion,
+and **RC** recommendations; its job handler continues the **J** series (`J8`).
 
 Scope: the `workbridge-server` HTTP API. The Next.js client is out of scope. Written in English
 (unlike the rest of `docs/`) because it is consumed as a test specification.
@@ -91,6 +93,9 @@ Expansion resources follow their contract's project:
 - Expansion routes also re-check the *caller* (`requireActiveUser`, rule 12).
 - Notifications created by Phase 1 code are **never addressed to a soft-deleted user**. The state
   change still happens; only that user's notification is skipped.
+- Conversations follow their contract's project the same way: 404 on every route, left out of
+  lists and unread totals (MG10). Portfolio items and career entries follow their owner: they are
+  invisible while the owner is soft-deleted and are themselves hard-deleted, never soft (PF20).
 
 ### 6. Atomicity
 Any operation that changes more than one row must be a single `prisma.$transaction`. If any step
@@ -102,6 +107,9 @@ settlement item, notifications, contract and project completion) and rejecting a
 freelancer's share of the weekly settlement batch, each settlement state change, registering a
 payout account (including the rescheduling of held settlements), and the lazy lifecycle sweep.
 Notifications and jobs caused by a change are written in that change's transaction (rule 11).
+Phase 2 adds: accepting also creates the conversation (MG3); every system message is written in
+the transaction of the event it records (MG6); sending a message (message, attachments, digest
+job, MG15); and creating a portfolio item or career entry or reordering the portfolio (PF8).
 
 ### 7. Project lifecycle: lazy sweep on read paths and a scheduled sweep
 `closeExpiredOpenProjects(now)` runs on read paths and:
@@ -318,6 +326,8 @@ Returns the caller's own profile including private fields (`email`). 404 if the 
 - Returns the public profile only — **never `email`**.
 - Includes `receivedReviews` (newest first), plus computed `avgRating` (`null` when there are no
   reviews) and `reviewCount`.
+- Also includes `portfolioItems`, `careers` and `careerSummary`, exactly as the public portfolio
+  and career routes return them (PF18). **[C10]**
 - Unknown id → 404. A soft-deleted user must also 404.
 
 ### `GET /me/applications` — authenticated, FREELANCER only
@@ -462,6 +472,8 @@ Runs the lifecycle sweep, then returns the project with its client, application 
   5. set the project to `CLOSED`
   6. notify the accepted freelancer (`APPLICATION_ACCEPTED`) and each rejected one
      (`APPLICATION_REJECTED`)
+  7. create the contract's **conversation** with the client and the freelancer as its two
+     participants, and post the `CONTRACT_CREATED` system message in it (MG3, MG7) **[C2]**
 
   If any step fails, none may persist — a failure creating the milestone leaves no contract.
   Responds `{ application, contract }` (the contract row, without milestones).
@@ -1130,6 +1142,457 @@ in plaintext and masked in every response. **[Q22]**
 
 ---
 
+## Conversations — `/api/conversations`
+
+Every contract has exactly one conversation between its two parties. It opens when the contract is
+created, carries the parties' text messages and attachments, and logs contract and milestone
+events as system messages. There is no real-time channel: clients poll (MG20). All routes are
+expansion routes (rule 12) open to either role; the only authorization is being a participant.
+
+### Constants
+- **MG1** — Every messaging constant, stated once:
+
+  | Constant | Value |
+  |---|---|
+  | message `body` | 0–5,000 characters after trimming (JavaScript length); at least 1 when the message has no attachment |
+  | attachments per message | rule 12's attachment policy: 0–5 files, 10 MB each; keys `messages/<conversationId>/<uuid>.<ext>` |
+  | delete window | strictly less than 5 minutes after `createdAt` |
+  | posting after completion | until `closesAt = completedAt + 30 × 24 h` (exclusive) — exact hours, not KST calendar days |
+  | conversation list | `page` and `limit` exactly as CT2 (default 20, capped at 50) |
+  | message page | `limit` default 30, capped at 100 (a larger value yields 100) |
+  | unread digest delay | 10 minutes after the message (J8) |
+  | unread digest throttle | at most one digest email per conversation and recipient per 60 minutes (J8, Phase 3) |
+  | polling | open thread every 5 s while the page is visible; unread badge every 30 s (MG20) |
+
+### Objects and invariants
+- **MG2** — A conversation belongs to exactly one contract (`contractId` unique) and has exactly two
+  participants, the contract's client and freelancer (`(conversationId, userId)` unique). Nobody
+  else is ever a participant and participants never change. A message is either `TEXT` — a
+  `senderId` that is one of the participants and `systemEvent: null` — or `SYSTEM` — `senderId:
+  null` and a `systemEvent` from MG6.
+- **MG3** — **Creation.** The accept-application transaction creates the contract's conversation,
+  both participants with `lastReadAt: null`, and the `CONTRACT_CREATED` system message
+  (Applications, step 7). Contracts that existed before the expansion got their conversation and
+  both participants from the migration, with no messages (`lastMessageAt: null`) and `createdAt`
+  equal to the contract's. **[C2]**
+- **MG4** — A **message object** is `{ id, conversationId, kind, systemEvent, sender, body,
+  deleted, attachments, createdAt, readByCounterpart }`:
+  - `sender` is `{ id, name, profileImage }`, shown as stored even when that user is
+    soft-deleted (Q11), or `null` for a system message;
+  - `deleted` is `true` once the sender deleted it (MG17); a deleted message is a **tombstone**
+    with `body: ''` and `attachments: []`;
+  - each attachment is `{ id, url, fileName, mimeType, size, createdAt }`, `fileName` the original
+    UTF-8 name (rule 12), `url` a public URL **[Q21]**;
+  - `readByCounterpart` is, for a `TEXT` message sent by the caller, whether the other
+    participant's `lastReadAt >= createdAt` (the messenger's read mark), and `null` for every
+    other message.
+- **MG5** — A **conversation object** is `{ id, contractId, myRole, contract: { id, status,
+  completedAt }, project: { id, title }, counterpart: { id, name, profileImage }, lastMessageAt,
+  createdAt, unreadCount, myLastReadAt, counterpartLastReadAt, canSend, closedReason, closesAt }`.
+  `myRole` is `CLIENT` or `FREELANCER`, the caller's side of the contract; `counterpart` is the
+  other participant, shown as stored when soft-deleted (Q11); `unreadCount` is MG8 for the caller;
+  `canSend`, `closedReason` and `closesAt` are MG9's. No email address appears.
+
+### System messages
+- **MG6** — System messages are posted in the transaction of the event they record (rule 6), with a
+  fixed Korean `body`. The wording is not part of this spec: tests assert `kind: SYSTEM`,
+  `systemEvent` and `sender: null`.
+
+  | `systemEvent` | Posted by |
+  |---|---|
+  | `CONTRACT_CREATED` | accepting an application (MG3) |
+  | `MILESTONE_PLAN_UPDATED` | every plan replacement (MS8), whether or not a signature was present — unlike the notification |
+  | `CONTRACT_ACTIVATED` | the signature that activates the contract (CT8) |
+  | `MILESTONE_FUNDED` | funding that transitions the milestone (PY7) — not the no-op |
+  | `MILESTONE_SUBMITTED` | a submission (MS13) |
+  | `MILESTONE_REVISION_REQUESTED` | a rejection (MS19) |
+  | `MILESTONE_APPROVED` | a manual approval (MS16) |
+  | `MILESTONE_AUTO_APPROVED` | an automatic approval (MS20) |
+  | `CONTRACT_COMPLETED` | contract completion (MS17), after that approval's own message |
+
+  A step whose conditional write loses (MS4, PY7's no-op) posts nothing, so each event is logged
+  exactly once. An approval of a milestone whose project is soft-deleted (MS17's deleted-project
+  case) posts no system message, just as it creates no notification. A system message is posted
+  whatever MG9 says — the closing rules apply to people, not to events.
+- **MG7** — **Posting and ordering.** Both kinds are written by one routine that, inside the
+  caller's transaction:
+  1. locks the conversation row (`SELECT "lastMessageAt" FROM "Conversation" WHERE id = $1 FOR
+     UPDATE`, raw SQL);
+  2. sets `createdAt = max(server clock, lastMessageAt + 1 ms)`, reading the clock only after the
+     lock is held;
+  3. inserts the message and its attachment rows;
+  4. sets the conversation's `lastMessageAt` to that `createdAt`.
+
+  Within one conversation `createdAt` is therefore **strictly increasing in commit order**, which
+  the cursors (MG14) and the read watermark (MG16) rely on: a poller never misses a message that
+  commits after its cursor, and every message older than a watermark had committed when the
+  watermark was taken. `createdAt` is deliberately the server clock, never a `now` handed in by the
+  caller — an exception to rule 11, so that a system message written by a job run with a future
+  `now` still sorts by when it was written.
+  **Lock order:** `Contract` → `Milestone` → `Conversation`. Event transactions that hold a
+  contract or milestone row lock take the conversation lock last; nothing that holds a conversation
+  lock goes on to lock a contract or milestone. The participant row is only ever locked on its own
+  (MG16, J8).
+
+### Unread state and who may post
+- **MG8** — **Unread count** of a conversation for a participant: its messages with `kind = TEXT`,
+  sent by the **other** participant, not deleted, and `createdAt > ` the participant's
+  `lastReadAt` (all of them while `lastReadAt` is null). System messages never count, nor do the
+  caller's own messages; a message deleted after it was counted stops counting. Conversations
+  under MG10 count nowhere.
+- **MG9** — **Who may post**, evaluated top to bottom; the first matching row decides:
+
+  | Condition | `canSend` | `closedReason` | `POST …/messages` |
+  |---|---|---|---|
+  | contract `COMPLETED` and now ≥ `closesAt` | `false` | `CONTRACT_CLOSED` | **409** `This conversation is closed` |
+  | the other participant is soft-deleted | `false` | `COUNTERPART_INACTIVE` | **409** `The other participant is no longer active` |
+  | otherwise — `PENDING`, `ACTIVE`, or `COMPLETED` before `closesAt` | `true` | `null` | allowed |
+
+  `closesAt` is `completedAt + 30 × 24 h` for a `COMPLETED` contract and `null` otherwise. Reading,
+  marking read and deleting one's own message within its window stay allowed in every row. A
+  soft-deleted caller is 401 on every route (rule 12).
+- **MG10** — **Soft delete** (rule 5): a conversation whose contract's project is soft-deleted is
+  **404** `Conversation not found` on every route below, is left out of `GET /api/conversations`,
+  and is excluded from every unread total (MG12, MG18, MG19). A participant's soft deletion hides
+  nothing: the conversation, its messages and that participant's name stay visible to the other
+  party (MG4, MG5), and only posting changes (MG9).
+
+### `GET /api/conversations` — either role
+- **MG11** — The caller's conversations, MG10 excluded, ordered by `lastMessageAt` descending with
+  conversations that have no message last, then `createdAt` descending, then `id` ascending. Query
+  `page`/`limit` exactly as CT2, including its 400s. Response `{ conversations, meta: { total,
+  page, limit, totalPages } }`, each entry a conversation object (MG5) plus `lastMessage` — the
+  newest message as a message object (MG4; a tombstone if deleted), or `null`.
+
+### `GET /api/conversations/unread-count` — either role
+- **MG12** — `{ unreadCount }`, the sum of MG8 over the caller's conversations (MG10 excluded).
+  Registered before `/:id`, so the path is never read as an id.
+
+### `GET /api/conversations/:id` — a participant
+- **MG13** — Missing, or MG10 → **404** `Conversation not found`; the caller is not a participant →
+  **403** `Not authorized`. Responds **200** `{ conversation }` (MG5). The same 404 / 403 pair, in
+  that order, opens every `/:id` route below.
+
+### `GET /api/conversations/:id/messages` — a participant
+- **MG14** — Query: `before` or `after`, a message id (optional, at most one of them), and `limit`
+  (MG1). Check order:
+  1. validation → **400**: both cursors → `before: Use either before or after, not both`; a bad
+     `limit` or a repeated parameter as CT2;
+  2. 404 / 403 per MG13;
+  3. a cursor that is not a message of this conversation → **400**
+     `before: Message not found in this conversation` (or `after: …`). A deleted message is a
+     valid cursor.
+
+  | Cursor | `messages` | `hasMore` |
+  |---|---|---|
+  | none | the newest `limit` messages | older messages exist |
+  | `before=X` | the `limit` messages immediately older than X | still older messages exist |
+  | `after=X` | the `limit` messages immediately newer than X | still newer messages exist — the poller asks again at once |
+
+  `messages` is always in ascending `(createdAt, id)` order and includes system messages and
+  tombstones. Responds **200** `{ messages, hasMore }`. Reading does **not** mark anything read.
+
+### `POST /api/conversations/:id/messages` — a participant
+- **MG15** — `multipart/form-data` with a `body` field and zero or more `files` (rule 12's
+  attachment policy; its 413 / 400 come before validation). A JSON body `{ body }` is accepted
+  when there are no files. Check order:
+  1. validation → **400**: `body` longer than 5,000 after trimming →
+     `body: Message must be at most 5000 characters`; `body` empty after trimming and no files →
+     `body: Message or attachment is required` (MG1);
+  2. 404 / 403 per MG13;
+  3. MG9: **409** `This conversation is closed`, then **409**
+     `The other participant is no longer active`;
+  4. the files are stored (MG1 keys); a storage failure → **502** and nothing is written;
+  5. **in one transaction**: the message is posted per MG7 (`kind: TEXT`, `body` trimmed, one
+     attachment row per file) and the unread digest is scheduled for the other participant (J8).
+
+  Steps 2–3 are not repeated inside the transaction: a counterpart soft-deleted in between does not
+  undo the send. Files stored by a request whose transaction fails stay in the bucket unreferenced.
+  Responds **201** `{ message }` (MG4). Sending creates no `Notification` row (MG20) and does not
+  move the sender's own `lastReadAt`.
+
+### `POST /api/conversations/:id/read` — a participant
+- **MG16** — No body. 404 / 403 per MG13, then allowed whatever MG9 says. Moves the caller's
+  `lastReadAt` up to the `createdAt` of the newest message sent by the **other** participant
+  (deleted ones included) — a conditional write `lastReadAt IS NULL OR lastReadAt < t`, so the
+  watermark never moves back and concurrent calls are harmless. Without such a message nothing
+  changes. System messages never move it: their timestamps cannot mark later text as read.
+  Responds **200** `{ lastReadAt, unreadCount }` — the caller's watermark after the call and MG8
+  recomputed (0 unless a message arrived meanwhile).
+
+### `DELETE /api/conversations/:id/messages/:messageId` — the sender
+- **MG17** — Check order: 404 / 403 per MG13; message missing or in another conversation → **404**
+  `Message not found`; a system message or the other participant's message → **403**
+  `Not authorized`; already deleted → **200** with the tombstone (idempotent); `now ≥ createdAt +
+  5 min` → **409** `Messages can only be deleted within 5 minutes`. The deletion is the conditional
+  write `deletedAt IS NULL AND createdAt > now − 5 min`; when it matches nothing the row is read
+  again and the answer is the 200 or the 409 above. Responds **200** `{ message }`, the tombstone.
+  Deletion is soft: the message and its attachment rows stay, `lastMessageAt` is unchanged, the
+  stored files are **not** removed (Q21), and the message stops counting as unread (MG8). Allowed
+  whatever MG9 says. Messages cannot be edited.
+
+### `GET /api/contracts/:id/conversation` — either party
+- **MG18** — An expansion route on the contracts router. Contract missing or its project
+  soft-deleted → **404** `Contract not found`; not a party → **403** `Not authorized`; no
+  conversation (impossible after MG3 — a data-repair case) → **404** `Conversation not found`.
+  Responds **200** `{ id, unreadCount }`.
+- **MG19** — Each entry of `GET /api/contracts` (CT3) also carries `unreadMessageCount`, MG8 for
+  the caller (0 when the conversation is missing).
+
+### Notifications, polling and the unread digest
+- **MG20** — Messages create **no** in-app `Notification` row; the notification types stay the 19
+  of the Notifications table. Clients poll: an open thread calls `GET …/messages?after=<newest
+  id>` every 5 s while the page is visible and `POST …/read` once new counterpart messages are on
+  screen; the unread badge calls `GET /api/conversations/unread-count` every 30 s and after a
+  thread is read. Every `GET` in this section is read-only (contrast rule 7), so polling never
+  writes.
+- **MG21** — The out-of-band signal is a digest email of unread messages (J8), split across phases:
+  **Phase 2A** schedules it (MG15) and implements the handler's steps 1–2 — so the job runs and
+  ends as a no-op or a success without sending; **Phase 3** adds steps 3–4 — the 60-minute
+  throttle and the email-only `MESSAGE_UNREAD_DIGEST` through `notify()`, recorded as an
+  `EmailDelivery` with `contextKey = conversation:<id>`. Until Phase 3 no email exists and the job
+  writes nothing.
+
+---
+
+## Portfolio and careers — `/api/users`
+
+Freelancers describe their work with portfolio items and career entries, shown on their public
+profile. The writes are expansion routes for FREELANCER only (`authenticate → requireActiveUser
+→ requireRole('FREELANCER') → [imageUpload] → validate`). The two list reads are **public** — no
+token, like `GET /api/users/:id` — and are the only expansion routes outside rule 12's guard chain;
+they must never read `req.user`.
+
+### Constants and objects
+- **PF1** — Every constant, stated once (lengths are JavaScript string lengths after trimming;
+  an optional text field sent empty is stored as `null`):
+
+  | Constant | Value |
+  |---|---|
+  | portfolio items per user | at most 20 |
+  | portfolio `title` | 1–100 |
+  | portfolio `description`, career `description` | 0–2,000 |
+  | portfolio `url` | an absolute `http`/`https` URL of at most 2,000 |
+  | portfolio `role` (the freelancer's role in the work) | 0–100 |
+  | portfolio `skills` | at most 10 after normalization through `SKILL_ALIASES` and de-duplication; each 1–50 |
+  | portfolio image | rule 12's image policy (field `image`, one file, 5 MB); key `portfolio/<uuid>.<ext>` |
+  | career entries per user | at most 30 |
+  | career `company`, `position` | 1–100 each |
+  | career `employmentType` | `FULL_TIME`, `CONTRACT`, `FREELANCE` or `INTERN` |
+- **PF2** — **Months.** Portfolio `startedAt`/`endedAt` and career `startDate`/`endDate` are
+  calendar months written `YYYY-MM` (month `01`–`12`), stored as the first instant of that month in
+  KST (`2025-03` → `2025-02-28T15:00:00.000Z`) and returned as `YYYY-MM` strings again, never as
+  timestamps. The current month is the KST month containing now; a later month → 400. Where both
+  ends are present the end must not be before the start (equal is allowed).
+- **PF3** — A **portfolio item object** is `{ id, userId, title, description, url, imageUrl, role,
+  skills, startedAt, endedAt, sortOrder, createdAt, updatedAt }`.
+- **PF4** — A **career object** is `{ id, userId, company, position, employmentType, startDate,
+  endDate, description, createdAt, updatedAt }`. `endDate: null` is a current position; several
+  current positions may coexist.
+- **PF5** — **Order.** Portfolio items: `sortOrder` ascending, then `createdAt` descending, then
+  `id` ascending. Careers: `startDate` descending, then current ones first, then `endDate`
+  descending, then `createdAt` descending, then `id` ascending.
+- **PF6** — **`careerSummary`** is `{ totalMonths, years, months }`. Each entry covers its months
+  inclusively from `startDate` through `endDate` (a current one through the current month);
+  overlapping or adjacent ranges are merged and each month counted once; `years =
+  floor(totalMonths / 12)`, `months = totalMonths % 12`. Example: `2020-01…2021-06` and
+  `2021-03…2022-02` merge into `2020-01…2022-02`, 26 months — 2 years 2 months; `2024-05…2024-05`
+  alone is 1 month; no entries → all zero. It is for display and never changes `experienceYears`.
+
+### Writes — common rules
+- **PF7** — Check order of every write: role (a CLIENT → **403** `Insufficient permissions`) →
+  upload policy (portfolio only: 413 / 400) → validation (400) → existence (**404** `Portfolio item
+  not found` / `Career not found`) → ownership (another user's row → **403** `Not authorized`, rule
+  3) → limits (409). The messages quoted below are exact; for a wrong JSON type only the
+  `<path>: ` prefix is asserted (as MS5).
+- **PF8** — **Serialization.** Creating a portfolio item or career entry, and reordering the
+  portfolio, run in a transaction whose **first statement locks the caller's `User` row** (`SELECT
+  id FROM "User" WHERE id = $1 FOR UPDATE`, raw SQL — the lock PA7 and S17 take), and only then
+  count, compute `sortOrder` and write. Two creates racing at 19 items end with 20 items and one
+  409, never 21; a reorder never interleaves with a create or delete. Updates and deletes take no
+  lock: they change neither the count nor the order.
+
+### `POST /api/users/me/portfolio` — FREELANCER
+- **PF9** — `multipart/form-data` with an optional `image`, or a JSON body when there is no image.
+  Fields `title` (required), `description`, `url`, `role`, `skills` (repeated fields or one
+  comma-separated value; in JSON also an array of strings), `startedAt`, `endedAt`. Validation →
+  **400**:
+  - `title: Title is required`, `title: Title must be at most 100 characters`;
+  - `description: Description must be at most 2000 characters`;
+  - `url: URL must be an http or https URL` (also for one longer than 2,000);
+  - `role: Role must be at most 100 characters`;
+  - `skills: At most 10 skills are allowed`, `skills: Each skill must be at most 50 characters`;
+    a non-string skill is a 400 too (no D16 on this route);
+  - `startedAt: Month must be a YYYY-MM month`, `startedAt: Month cannot be in the future` (the
+    same for `endedAt`), `endedAt: End month must not be before start month`, and an `endedAt`
+    without `startedAt` → `endedAt: Start month is required with an end month`.
+
+  Then the caller already has 20 items → **409** `Portfolio is limited to 20 items` — checked once
+  before the image is stored and again under PF8's lock. The image is stored (failure → **502**,
+  nothing written), then in PF8's transaction the item is created with `sortOrder` = the caller's
+  highest + 1 (0 for the first item). A request that loses the race at the lock is the 409, and
+  its stored image stays unreferenced. Responds **201** `{ item }`.
+
+### `PATCH /api/users/me/portfolio/:itemId` — FREELANCER, the owner
+- **PF10** — PF9's fields, all optional; only fields present change, an optional field sent empty
+  is cleared to `null`, and `title` cannot be cleared. A new `image` replaces the old one;
+  `removeImage` (`true`/`false`, a string in multipart) set to `true` clears `imageUrl`; both at once
+  → **400** `removeImage: Cannot upload and remove an image at once`. The month order is checked on
+  the stored row merged with the patch, so that check comes after existence and ownership, with
+  PF9's messages. Then the new image is stored and the row updated (an item deleted in between →
+  404). A replaced or removed image file is not deleted from storage. Responds **200** `{ item }`.
+
+### `DELETE /api/users/me/portfolio/:itemId` — FREELANCER, the owner
+- **PF11** — Hard delete; 404 / 403 per PF7. The other items keep their `sortOrder` (gaps are
+  fine) and the image file is not removed. Responds **200** `{ id, deleted: true }`.
+
+### `PUT /api/users/me/portfolio/order` — FREELANCER
+- **PF12** — Body `{ ids }`, an array of strings (otherwise **400**). Then, under PF8's lock:
+  unless `ids` lists every one of the caller's items exactly once — nothing missing, duplicated,
+  unknown or someone else's → **400** `ids: Must list each of your portfolio items exactly once`.
+  Each item's `sortOrder` becomes its 0-based position. An empty list is valid for a caller with
+  no items. Responds **200** `{ items }` in the new order.
+
+### `POST /api/users/me/careers` — FREELANCER
+- **PF13** — JSON body. `company`, `position`, `employmentType` and `startDate` are required;
+  `endDate` absent, `null` or `''` means current; `description` optional. Validation → **400**:
+  `company: Company is required`, `company: Company must be at most 100 characters`,
+  `position: Position is required`, `position: Position must be at most 100 characters`,
+  `employmentType: …` (zod's enum message, prefix asserted), PF9's month messages for `startDate`
+  and `endDate` (`endDate: End month must not be before start month`), and
+  `description: Description must be at most 2000 characters`. Then 30 entries already → **409**
+  `Careers are limited to 30 entries`, checked under PF8's lock. Responds **201** `{ career }`.
+
+### `PATCH /api/users/me/careers/:careerId` — FREELANCER, the owner
+- **PF14** — PF13's fields, all optional, with PF10's partial-update rules; `endDate: null` or `''`
+  makes the position current. The month order is checked on the merged row after existence and
+  ownership. Responds **200** `{ career }`.
+
+### `DELETE /api/users/me/careers/:careerId` — FREELANCER, the owner
+- **PF15** — Hard delete; 404 / 403 per PF7. Responds **200** `{ id, deleted: true }`.
+
+### Public reads
+- **PF16** — `GET /api/users/:id/portfolio` — public. The user missing or soft-deleted → **404**
+  `User not found`. Responds **200** `{ items }` in PF5 order, unpaginated — PF1 bounds it at 20. A
+  CLIENT's list is `[]`.
+- **PF17** — `GET /api/users/:id/careers` — public. Same 404. Responds **200** `{ careers,
+  careerSummary }`, unpaginated (at most 30).
+- **PF18** — `GET /api/users/:id` additionally returns `portfolioItems` (PF16's list), `careers`
+  and `careerSummary` (PF17's). **[C10]**
+- **PF19** — There is no `GET /api/users/me/portfolio` or `/me/careers`: those paths are PF16 and
+  PF17 with the id `me`, so → 404 `User not found`. An editor reads its own rows through PF16/PF17
+  with its user id.
+- **PF20** — **Soft delete** (rule 5): a soft-deleted user's items and entries are kept but
+  invisible — PF16–PF18 are 404 for that user and recommendations skip them (RC3) — and the user
+  can no longer write (401, rule 12). Items and entries have no `deletedAt`; deleting one is
+  final.
+
+---
+
+## Profile completion and recommendations
+
+### `GET /api/users/me/profile-completion` — either role
+- **PF21** — Expansion route (`authenticate → requireActiveUser`). Uses the caller's stored row and
+  its stored role, not the token's. Responds **200** `{ isComplete, percent, items }`:
+  - `isComplete` is exactly rule 4's `isProfileComplete` — the gate for creating projects and
+    applying, **unchanged** by this section;
+  - `items` is the checklist of the caller's role below, in that order, each `{ key, weight, done
+    }` (the client supplies the Korean labels);
+  - `percent` is the sum of `weight` over items that are `done`, an integer from 0 to 100.
+
+  The two are independent: a freelancer missing only `hourlyRate` is at 90% and not complete; one
+  with only the four gate fields is complete at 45%. "Non-blank" means not null and not empty after
+  trimming.
+
+  | Role | `key` | `weight` | `done` when |
+  |---|---|---|---|
+  | FREELANCER | `skills` | 15 | at least one skill |
+  | | `activityCategory` | 10 | non-blank |
+  | | `experienceYears` | 10 | an integer ≥ 0 |
+  | | `hourlyRate` | 10 | finite and > 0 |
+  | | `bio` | 10 | non-blank |
+  | | `profileImage` | 10 | non-blank |
+  | | `portfolio` | 15 | at least 1 portfolio item |
+  | | `portfolioThree` | 5 | at least 3 portfolio items |
+  | | `career` | 10 | at least 1 career entry |
+  | | `payoutAccount` | 5 | a payout account exists (PA2) |
+  | CLIENT | `companyName` | 25 | non-blank |
+  | | `businessField` | 25 | non-blank |
+  | | `bio` | 15 | non-blank |
+  | | `profileImage` | 15 | non-blank |
+  | | `website` | 20 | non-blank |
+
+### Recommendations — common rules
+- **RC1** — Both recommendation routes are **read-only** (no lifecycle sweep; contrast rule 7) and
+  are computed at the request's `now`. Query `limit` only: default 10, **capped at 20** (a larger
+  value yields 20); zero, negative, fractional, trailing garbage or repeated → **400**. There is no
+  `page`. Each works in two stages: a database **prefilter** with a fixed `orderBy` cut to its
+  first **200** rows — the order is applied before the cut, so which rows enter never varies
+  between runs — then scoring in memory. A score is out of 100, rounded to two decimals
+  (`Math.round(x × 100) / 100`), and results are sorted by the rounded score.
+- **RC2** — **Skill matching.** Both sides' skills go through `normalizeSkill` and are compared
+  exactly (case-sensitive), so `PostgreSQL` matches `SQL`; prefilters use
+  `expandSkillSearchTerms` with `hasSome`, so rows stored under an alias still enter. `matched` is
+  the set of the project's normalized required skills that the freelancer has, and `matchedSkills`
+  lists it in the project's order. Against a project with no required skills every skill
+  component is 0 and `matchedSkills` is `[]`.
+
+### `GET /api/projects/:id/recommended-freelancers` — CLIENT, the project's owner
+- **RC3** — Check order: role (**403** `Insufficient permissions`) → validation → project missing
+  or soft-deleted → **404** `Project not found` → not the owner → **403** `Not authorized`. Any
+  project status. Prefilter: users with role `FREELANCER`, `deletedAt` null, non-empty `skills`,
+  non-null `activityCategory`, `experienceYears >= 0` and `hourlyRate > 0`; **no application to
+  this project** in any status; and, when the project has required skills, `skills` overlapping
+  them (RC2). Ordered by `createdAt` ascending, then `id` ascending; first 200. Candidates that
+  still fail `isProfileComplete` (a blank `activityCategory`) are then dropped.
+- **RC4** — Score, out of 100:
+
+  | Component | Points |
+  |---|---|
+  | skills | `|matched| / |required| × 50` |
+  | portfolio | `|required skills found in the skills of any of the candidate's portfolio items| / |required| × 10` |
+  | category | 15 when the trimmed `activityCategory` equals the trimmed project `category` |
+  | rating | `avgRating / 5 × 15`; 9 (= 0.6 × 15) with no reviews |
+  | experience | `min(experienceYears, 10) / 10 × 10` |
+
+  Sorted by score descending, then `reviewCount` descending, then `id` ascending. Example: required
+  `[React, Node.js, SQL]`; candidate skills `[React, PostgreSQL, Java]`, portfolio skills
+  `[React]`, same category, two reviews averaging 4.5, 4 years → 33.333… + 3.333… + 15 + 13.5 + 4
+  = 69.1666… → **69.17**.
+- **RC5** — Responds **200** `{ freelancers }`, at most `limit`, each `{ id, name, profileImage,
+  activityCategory, experienceYears, hourlyRate, skills, score, matchedSkills, avgRating,
+  reviewCount, portfolioPreview }`: `avgRating` is the mean of the received ratings (`null` with
+  none), `portfolioPreview` the first 3 portfolio items in PF5 order as `{ id, title, imageUrl }`.
+  No email address appears.
+
+### `GET /api/users/me/recommended-projects` — FREELANCER, complete profile
+- **RC6** — Check order: role (**403** `Insufficient permissions`) → complete profile (rule 4:
+  **403** `프로필을 먼저 완성해주세요`) → validation. Prefilter: `status = OPEN`, `deadline >= now`,
+  `deletedAt` null, **no application from the caller** in any status, and either `requiredSkills`
+  overlapping the caller's skills (RC2) **or** `category` equal to the caller's
+  `activityCategory`; ordered by `createdAt` descending, then `id` ascending; first 200. A project
+  without required skills therefore enters only through its category. `UPCOMING` projects are not
+  candidates, and with no sweep an `OPEN` project past its deadline is excluded by the `deadline`
+  condition, not by its status. Projects of a soft-deleted client are not excluded (Q11).
+- **RC7** — Score, out of 100 (`age = now − project.createdAt`):
+
+  | Component | Points |
+  |---|---|
+  | coverage | `|matched| / |project's required skills| × 50` |
+  | utilization | `|matched| / |caller's skills| × 10` |
+  | category | 20 when the trimmed values are equal |
+  | freshness | 10 while `age ≤ 7 days`; `10 × (30 days − age) / 23 days` between 7 and 30 days; 0 from 30 days |
+  | deadline room | 10 when `deadline − now ≥ 3 × 24 h`, else 0 |
+
+  Sorted by score descending, then `deadline` ascending, then `id` ascending. Example: caller
+  skills `[React, TypeScript]`, category `웹 개발`; a `웹 개발` project requiring `[React, Node.js]`,
+  created 14 days ago, deadline in 10 days → 25 + 5 + 20 + 6.9565… + 10 = 66.9565… → **66.96**.
+- **RC8** — Responds **200** `{ projects }`, at most `limit`, each `{ id, title, category, budget,
+  deadline, requiredSkills, status, createdAt, client: { id, name, companyName }, score,
+  matchedSkills }`.
+
+---
+
 ## Background jobs
 
 Postgres-backed queue (`Job` table) used by the scheduled sweeps, milestone auto-approval and
@@ -1186,6 +1649,7 @@ endpoint is not decided yet. Until one does, recurring jobs only run where a run
 | `milestone.overdue` | funding (PY7) | `dueDate` | `milestone.overdue:<milestoneId>` | J5 | `MILESTONE_OVERDUE` to both parties |
 | `settlement.weeklyBatch` | recurring | the next Monday 03:00 KST strictly after `now` (M19) | `settlement.weeklyBatch:<periodStart ISO-8601>`, where `periodStart` = the slot's `runAt − 7 days − 3 h`, fixed when the slot is enqueued (e.g. `settlement.weeklyBatch:2026-10-18T15:00:00.000Z` for the slot at `2026-10-25T18:00:00.000Z`) | J6 | the weekly batch (S4–S6) |
 | `settlement.payout` | the batch (S4), payout-account registration (PA4), a failed transfer with attempts left (S11) | the settlement's `scheduledPayoutAt` | `settlement.payout:<settlementId>:<scheduledPayoutAt ISO-8601>` | J7 | the payout (S7–S11) |
+| `message.unreadDigest` | a text message (MG15), unless a `PENDING` one exists for the same conversation and recipient; a throttled run (J8 step 3, Phase 3) | the message's `createdAt` + 10 min; a throttled re-run at the last digest's time + 60 min | none | J8 | the unread-message digest email (MG21) |
 
 Payloads: `milestone.autoApprove` and `milestone.autoApproveReminder` carry
 `{ milestoneId, round }`; `milestone.dueSoon` and `milestone.overdue` carry `{ milestoneId }`;
@@ -1217,6 +1681,33 @@ it replaces.
 - **J7** — `settlement.payout` runs S7–S11. A soft-deleted freelancer's settlement goes `ON_HOLD`
   without notification, even if a payout account exists.
 
+### Messaging handler rule (Phase 2A, completed in Phase 3)
+- **J8** — `message.unreadDigest`, payload `{ conversationId, recipientId }`, no `dedupeKey`, the
+  default `maxAttempts`. **Enqueued** by MG15's transaction for the other participant, with
+  `runAt` = the message's `createdAt` + 10 minutes, unless a `PENDING` job of this type with the
+  same `conversationId` and `recipientId` already exists (matched on the payload). Sends to one
+  conversation serialize on MG7's lock, so that check cannot race another send. There is no
+  clock-bucket key: an hour-bucket `dedupeKey` would drop or double emails at the bucket edge. The
+  handler uses `ctx.now` and runs **in one transaction**:
+  1. lock the recipient's participant row (`SELECT … FROM "ConversationParticipant" WHERE
+     "conversationId" = $1 AND "userId" = $2 FOR UPDATE`, raw SQL); no such row →
+     `PermanentJobError`. `POST …/read` (MG16) writes the same row, so a read and a digest
+     serialize;
+  2. no-op (`SUCCEEDED`) when the conversation's project is soft-deleted, the recipient is
+     soft-deleted, or MG8's unread count for the recipient is 0;
+  3. *(Phase 3)* when a `MESSAGE_UNREAD_DIGEST` `EmailDelivery` for this recipient with
+     `contextKey = 'conversation:<conversationId>'` was created after `ctx.now − 60 min`, send
+     nothing; instead, unless another `PENDING` job for the pair exists, enqueue one at that
+     delivery's `createdAt + 60 min` — a throttled digest is postponed, never dropped;
+  4. *(Phase 3)* `notify()` an email-only `MESSAGE_UNREAD_DIGEST` ("새 메시지 N개", N = MG8) with
+     that `contextKey`.
+
+  Until Phase 3, steps 3–4 do nothing and the job ends `SUCCEEDED` after step 2. Outcome once
+  complete: a message read within 10 minutes never causes an email; a conversation sends a
+  recipient at most one digest per 60 minutes; unread messages that pile up in between go out
+  together 60 minutes after the last digest. A duplicate `PENDING` job (a send racing step 3's
+  re-enqueue) is harmless — step 3 throttles it. Tests drive it with `runDueJobs({ now })` alone.
+
 ---
 
 ## Internal endpoints — `/api/internal`
@@ -1244,7 +1735,7 @@ Changed bullets end with **[C*n*]**, and so do the names of the tests that pin t
 | ID | Area | Before | Now | Tests |
 |---|---|---|---|---|
 | **C1** | Payments | one payment per contract (`Payment.contractId` unique); body `{ contractId }`; amount = contract amount; dev-complete key `dev_bypass_<contractId>` | one payment per milestone (`Payment.milestoneId` unique, a contract has many); body `{ milestoneId }`; amount = milestone amount; sequential funding (M13), `409 Milestone is already funded`; confirm and dev-complete also fund the milestone and are 404 for a soft-deleted project; a failed confirm marks the payment `FAILED` only if it is still `PENDING` (PY1–PY12) | `payments.test.ts` |
-| **C2** | Apply / accept application | `expectedRate > 0`; five writes in one transaction; contract `endDate` = project deadline | `expectedRate >= 1`; six writes: the default milestone is created after the contract (M9); contract `endDate` = the default milestone's due date | `applications.test.ts` |
+| **C2** | Apply / accept application | `expectedRate > 0`; five writes in one transaction; contract `endDate` = project deadline | `expectedRate >= 1`; six writes: the default milestone is created after the contract (M9); contract `endDate` = the default milestone's due date; (Phase 2A) a seventh: the contract's conversation, its two participants and the `CONTRACT_CREATED` system message (MG3) | `applications.test.ts` |
 | **C3** | Contract completion | the client's `PATCH /api/contracts/:id { status: COMPLETED }` once the payment was `COMPLETED` | automatic in the transaction that approves the last milestone, manually or automatically (MS17); `PATCH` → **410** (CT11) | `contracts.test.ts`, `milestones.test.ts` |
 | **C4** | Contract shape | `GET /:id` and sign responses carry `payment` | no `payment`; `milestones[]` (each with `payment` and `latestSubmission`) and `milestoneSummary` (CT5, CT6) | `contracts.test.ts` |
 | **C5** | Signing | both flags → `ACTIVE` | a `PENDING` contract needs a valid milestone plan or the signature is refused (CT7); activation notifies both parties (CT8) | `contracts.test.ts`, `milestone-plan.test.ts` |
@@ -1252,6 +1743,7 @@ Changed bullets end with **[C*n*]**, and so do the names of the tests that pin t
 | **C7** | Logging | `console.error` on 500 | structured JSON logger, same rule: error level only for a 500, exactly once (rules 1, 9) | `payments.test.ts` (logging block), `request-id.test.ts` |
 | **C8** | Login / analyze | unlimited | 429 with `Retry-After` (rule 10) | `rate-limit.test.ts` |
 | **C9** | Notifications | 4 types, always an in-app row | 19 types (Phase 1 adds 15, created through `notify()`, skipped for soft-deleted recipients); per-user preferences and email follow in Phase 3 | `notifications.test.ts` |
+| **C10** | Public profile (`GET /api/users/:id`) | profile fields, `receivedReviews`, `avgRating`, `reviewCount` | the same plus `portfolioItems`, `careers` and `careerSummary` (PF18) — additive | `users.test.ts` |
 
 ---
 
@@ -1362,6 +1854,7 @@ obviously a bug.
 | **Q18** | `POST /logout` sits behind `authenticate`, so a client whose 15-minute access token has already expired **cannot clear its own 7-day `httpOnly` refresh cookie** — logout only works while you still hold a live access token. Given the endpoint's purpose is to drop the long-lived credential, should it be public (or tolerate an expired token)? |
 | **Q19** | Google identity matching by `googleId` never refreshes `email` or `name` from the profile, so a Google-side email change leaves WorkBridge permanently stale. Should the profile be re-synced on each login? |
 | **Q20** | `CLIENT_URL` is an optional passthrough in `src/env.ts`, so if it is **unset** every OAuth redirect becomes the literal string `undefined/login?error=oauth_failed` or `undefined/auth/callback?…` rather than failing. The spec documents these targets as `${CLIENT_URL}/…` but never says what an absent value should do. Should `CLIENT_URL` be promoted to a required var — noting that would make it a boot-time failure, which is the tradeoff `src/env.ts`'s lazy getters were designed to avoid? |
+| **Q21** | Message attachments (MG4, MG15) and milestone deliverables (MS2, MS13) live in the existing **public** Supabase bucket under unguessable `<folder>/<uuid>.<ext>` keys and are returned as plain public URLs. Anyone who obtains a URL — a forwarded link, a log line, a former participant — can download the file without authenticating, and nothing revokes it: deleting the message (MG17) or the user removes neither the object nor its reachability. This is the current, deliberate intent (signed URLs need a private bucket and a download endpoint), so it is not a divergence. Should attachments move to a private bucket served through short-lived signed URLs, and should deleting a message delete its files? |
 | **Q22** | Payout account numbers are **stored in plaintext** (`PayoutAccount.accountNumber`) and only masked in responses (M23, PA1). There is no encryption at rest and no bank-side verification that the account belongs to the member — the holder-name rule compares against the profile name only. This is the current, deliberate intent (encryption and real-name verification carry cost and regulatory work), so it is not a divergence. Should account numbers be encrypted at rest, and under what key management? Should holder verification go through a bank API before the first payout? |
 | **Q23** | The rate-limit client IP comes from `X-Forwarded-For` when `TRUST_PROXY` is set, and the Next.js proxies forward that header as received (rule 10). Behind Vercel's edge the header is rewritten, but a self-hosted Next reachable by untrusted clients lets them pick their own IP: rotating it bypasses the per-IP login limit, makes the email + IP failure limit effectively unlimited per account, and lets anyone exhaust a chosen IP's quota. Should the deployment put a header-rewriting proxy in front of Next, should self-hosted setups leave `TRUST_PROXY` unset, or should the failure limit also key on email alone? |
 | **Q13** | An **empty** query value is treated inconsistently. `GET /api/projects` 400s on `?status=`, `?sort=`, `?page=`, `?limit=` but ignores `?search=`, `?category=`, `?skills=`, `?minBudget=`; `GET /api/notifications` treats `?limit=` as absent and falls back to its default of 20. Reading `''` as "absent → default" is at least as defensible as "non-integer → 400". Both behaviors are currently pinned by tests; the spec should pick one. |
