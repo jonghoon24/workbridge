@@ -1,6 +1,7 @@
 import type { ContractStatus, Prisma } from '@prisma/client';
 
 import prisma from '../lib/prisma';
+import { unreadByContract } from './messaging.service';
 import { milestoneInclude, milestoneSummary, serializeMilestone } from './milestones.service';
 
 /**
@@ -40,7 +41,7 @@ export interface ContractListQuery {
   limit: number;
 }
 
-/** CT1–CT3. */
+/** CT1–CT3, plus `unreadMessageCount` (MG19). */
 export async function listContracts(userId: string, query: ContractListQuery) {
   const where: Prisma.ContractWhereInput = {
     OR: [{ clientId: userId }, { freelancerId: userId }],
@@ -64,6 +65,7 @@ export async function listContracts(userId: string, query: ContractListQuery) {
       take: query.limit,
     }),
   ]);
+  const unread = await unreadByContract(userId, contracts.map((c) => c.id));
 
   return {
     contracts: contracts.map((c) => {
@@ -82,6 +84,7 @@ export async function listContracts(userId: string, query: ContractListQuery) {
         project: c.project,
         counterpart: myRole === 'CLIENT' ? c.freelancer : c.client,
         milestoneSummary: milestoneSummary(c.milestones, c.amount),
+        unreadMessageCount: unread.get(c.id) ?? 0,
       };
     }),
     meta: {

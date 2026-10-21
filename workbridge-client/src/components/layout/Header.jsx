@@ -1,17 +1,22 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import useAuthStore from '@/store/authStore';
 import api from '@/lib/api';
 import authApi from '@/lib/authApi';
+import UnreadBadge from '@/components/messages/UnreadBadge';
+import usePolling from '@/components/messages/usePolling';
+import { BADGE_POLL_MS, MESSAGES_CHANGED_EVENT } from '@/components/messages/messageUtils';
 
 export default function Header() {
   const router = useRouter();
   const { user, clearAuth, initAuth } = useAuthStore();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const userId = user?.id;
 
   useEffect(() => {
     initAuth();
@@ -44,6 +49,27 @@ export default function Header() {
     };
   }, [user?.id]);
 
+  // 안 읽은 메시지 수(BEHAVIOR.md MG12, MG20): 30초마다(탭이 보일 때만), 그리고 스레드를 읽거나
+  // 메시지를 보냈을 때(`messages:changed`) 다시 센다.
+  const refreshUnreadMessages = useCallback(() => {
+    if (!userId) return;
+    api.get('/api/conversations/unread-count')
+      .then(({ data }) => setUnreadMessages(data.unreadCount || 0))
+      .catch(() => {});
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      setUnreadMessages(0);
+      return undefined;
+    }
+    refreshUnreadMessages();
+    window.addEventListener(MESSAGES_CHANGED_EVENT, refreshUnreadMessages);
+    return () => window.removeEventListener(MESSAGES_CHANGED_EVENT, refreshUnreadMessages);
+  }, [userId, refreshUnreadMessages]);
+
+  usePolling(refreshUnreadMessages, BADGE_POLL_MS, { enabled: Boolean(userId) });
+
   async function handleLogout() {
     try {
       await authApi.post('/api/auth/logout');
@@ -74,6 +100,13 @@ export default function Header() {
           <div className="flex items-center gap-3">
             {user ? (
               <>
+                <Link
+                  href="/messages"
+                  className="relative hidden sm:inline-flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
+                >
+                  메시지
+                  <UnreadBadge count={unreadMessages} className="ml-1.5" />
+                </Link>
                 <Link
                   href="/my/notifications"
                   className="relative hidden sm:inline-flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900"
@@ -107,6 +140,14 @@ export default function Header() {
                       onClick={() => setDropdownOpen(false)}
                     >
                       내 프로필
+                    </Link>
+                    <Link
+                      href="/messages"
+                      className="flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      onClick={() => setDropdownOpen(false)}
+                    >
+                      <span>메시지</span>
+                      <UnreadBadge count={unreadMessages} />
                     </Link>
                     <Link
                       href="/my/notifications"

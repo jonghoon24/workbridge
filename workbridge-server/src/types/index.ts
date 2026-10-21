@@ -139,6 +139,9 @@ export type ProjectStatusTransitions = Partial<Record<ProjectStatus, readonly Pr
 /** `Notification.type` values. Defined next to `notify()`; re-exported here. */
 export type { NotificationType } from '../lib/notifications/types';
 
+/** `Message.systemEvent` values (BEHAVIOR.md MG6). Defined next to `postSystemMessage()`; re-exported here. */
+export type { MessageSystemEvent } from '../services/messaging.service';
+
 // ---------------------------------------------------------------------------
 // Infrastructure
 // ---------------------------------------------------------------------------

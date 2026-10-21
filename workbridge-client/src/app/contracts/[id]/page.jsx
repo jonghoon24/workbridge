@@ -11,6 +11,7 @@ import Badge from '@/components/ui/Badge';
 import MilestoneCard from '@/components/milestones/MilestoneCard';
 import MilestonePlanEditor from '@/components/milestones/MilestonePlanEditor';
 import RejectModal from '@/components/milestones/RejectModal';
+import UnreadBadge from '@/components/messages/UnreadBadge';
 import { formatDate, formatKRW } from '@/lib/format';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
 
@@ -30,6 +31,7 @@ export default function ContractPage() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewError, setReviewError] = useState('');
   const [reviewSuccess, setReviewSuccess] = useState('');
+  const [conversation, setConversation] = useState(null);
 
   const loadContract = useCallback(
     () => api.get(`/api/contracts/${id}`).then(({ data }) => setContract(data)),
@@ -42,6 +44,21 @@ export default function ContractPage() {
       .catch(() => router.push('/'))
       .finally(() => setLoading(false));
   }, [loadContract, router]);
+
+  // 계약의 대화방과 안 읽은 메시지 수(BEHAVIOR.md MG18). 대화방이 없으면(데이터 복구 상황) 버튼을 숨긴다.
+  useEffect(() => {
+    let ignored = false;
+    api.get(`/api/contracts/${id}/conversation`)
+      .then(({ data }) => {
+        if (!ignored) setConversation(data);
+      })
+      .catch(() => {
+        if (!ignored) setConversation(null);
+      });
+    return () => {
+      ignored = true;
+    };
+  }, [id]);
 
   // CONTRACT_COMPLETED 알림의 href는 `/contracts/<id>#review`다. 리뷰 영역은 데이터가 온 뒤에
   // 그려지므로 브라우저의 기본 앵커 스크롤이 닿지 않아 직접 옮긴다.
@@ -172,9 +189,20 @@ export default function ContractPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between gap-3 mb-6">
         <h1 className="text-2xl font-bold text-gray-900">계약서</h1>
-        <Badge variant={contract.status}>{CONTRACT_STATUS_LABELS[contract.status] || contract.status}</Badge>
+        <div className="flex items-center gap-3">
+          {conversation && (isClient || isFreelancer) && (
+            <Link
+              href={`/messages/${conversation.id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              대화 열기
+              <UnreadBadge count={conversation.unreadCount} />
+            </Link>
+          )}
+          <Badge variant={contract.status}>{CONTRACT_STATUS_LABELS[contract.status] || contract.status}</Badge>
+        </div>
       </div>
 
       <div className="space-y-4">

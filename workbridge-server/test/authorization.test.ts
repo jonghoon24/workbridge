@@ -19,7 +19,9 @@ import {
   makeCareer,
   makeClient,
   makeContract,
+  makeConversation,
   makeFreelancer,
+  makeMessage,
   makeMilestone,
   makePayment,
   makePortfolioItem,
@@ -97,6 +99,8 @@ interface Ids {
   settlementId: string;
   portfolioItemId: string;
   careerId: string;
+  conversationId: string;
+  messageId: string;
 }
 
 interface RouteSpec {
@@ -123,6 +127,8 @@ const MISSING: Ids = {
   settlementId: 'missing-settlement-id',
   portfolioItemId: 'missing-portfolio-item-id',
   careerId: 'missing-career-id',
+  conversationId: 'missing-conversation-id',
+  messageId: 'missing-message-id',
 };
 
 /** Verification fails before any database read, so these tests need no fixture user. */
@@ -130,11 +136,11 @@ const GHOST: Principal = { id: 'ghost-user-id', email: 'ghost@test.local', role:
 
 /**
  * Every route that mounts `authenticate`, transcribed from `src/routes/*.ts`.
- * 43 routes: auth 2, users 8 (incl. payout account 3), projects 8, applications 3,
- * contracts 6 (incl. list and milestone plan 3), milestones 4, payments 4, settlements 3,
- * reviews 1, notifications 4.
- * Phase 2B adds 10 (= 53): profile.routes.ts 9 (portfolio 4, careers 3, profile completion 1,
- * recommended projects 1) and projects.routes.ts 1 (recommended freelancers).
+ * 61 routes: auth 2, users 8 (incl. payout account 3), projects 8, applications 3,
+ * contracts 7 (incl. list, milestone plan 3 and conversation 1), milestones 4, payments 4,
+ * settlements 3, reviews 1, notifications 4, conversations 7 (Phase 2A, +8),
+ * profile.routes.ts 9 (portfolio 4, careers 3, profile completion 1, recommended projects 1)
+ * and projects.routes.ts recommended freelancers 1 (Phase 2B, +10).
  */
 const PROTECTED_ROUTES: RouteSpec[] = [
   // auth.routes.ts
@@ -410,6 +416,13 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     role: null,
     gate: null,
   },
+  {
+    label: 'GET /api/contracts/:id/conversation',
+    method: 'get',
+    path: (ids) => `/api/contracts/${ids.contractId}/conversation`,
+    role: null,
+    gate: null,
+  },
 
   // payments.routes.ts
   {
@@ -531,6 +544,52 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     role: null,
     gate: null,
   },
+
+  // conversations.routes.ts
+  { label: 'GET /api/conversations', method: 'get', path: () => '/api/conversations', role: null, gate: null },
+  {
+    label: 'GET /api/conversations/unread-count',
+    method: 'get',
+    path: () => '/api/conversations/unread-count',
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'GET /api/conversations/:id',
+    method: 'get',
+    path: (ids) => `/api/conversations/${ids.conversationId}`,
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'GET /api/conversations/:id/messages',
+    method: 'get',
+    path: (ids) => `/api/conversations/${ids.conversationId}/messages`,
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'POST /api/conversations/:id/messages',
+    method: 'post',
+    path: (ids) => `/api/conversations/${ids.conversationId}/messages`,
+    body: () => ({ body: 'Hello' }),
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'POST /api/conversations/:id/read',
+    method: 'post',
+    path: (ids) => `/api/conversations/${ids.conversationId}/read`,
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'DELETE /api/conversations/:id/messages/:messageId',
+    method: 'delete',
+    path: (ids) => `/api/conversations/${ids.conversationId}/messages/${ids.messageId}`,
+    role: null,
+    gate: null,
+  },
 ];
 
 const ROLE_GATED_ROUTES = PROTECTED_ROUTES.filter((route) => route.role !== null);
@@ -565,7 +624,7 @@ function expectErrorEnvelope(res: ApiResponse, status: number) {
 
 describe('the route table itself', () => {
   it('covers every protected route in src/routes, and none twice', () => {
-    expect(PROTECTED_ROUTES).toHaveLength(53);
+    expect(PROTECTED_ROUTES).toHaveLength(61);
     expect(new Set(PROTECTED_ROUTES.map((r) => r.label)).size).toBe(PROTECTED_ROUTES.length);
   });
 
@@ -1540,6 +1599,77 @@ describe('ownership is checked after existence', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveLength(1);
     expect(res.body[0].clientId).toBe(mine.client.id);
+  });
+
+  it.each([
+    ['GET /api/conversations/:id', 'get', ''],
+    ['GET /api/conversations/:id/messages', 'get', '/messages'],
+    ['POST /api/conversations/:id/messages', 'post', '/messages'],
+    ['POST /api/conversations/:id/read', 'post', '/read'],
+    ['DELETE /api/conversations/:id/messages/:messageId', 'delete', '/messages/:messageId'],
+  ] as const)('%s → 404 for a missing conversation, 403 for a non-participant [MG13]', async (_label, method, suffix) => {
+    const { contract, freelancer } = await makeContractChain({ status: 'ACTIVE' });
+    const conversation = await makeConversation(contract);
+    const message = await makeMessage(conversation.id, freelancer.id);
+    const outsider = await makeClient();
+    const path = (id: string) => `/api/conversations/${id}${suffix.replace(':messageId', message.id)}`;
+
+    const missing = await authed(outsider)[method](path('missing-conversation-id')).send({ body: 'Hello' });
+    const foreign = await authed(outsider)[method](path(conversation.id)).send({ body: 'Hello' });
+
+    expectErrorEnvelope(missing, 404);
+    expect(missing.body.error.message).toBe('Conversation not found');
+    expectErrorEnvelope(foreign, 403);
+    expect(foreign.body.error.message).toBe('Not authorized');
+    expect(await prisma.message.count()).toBe(1);
+    expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
+  });
+
+  it("DELETE /api/conversations/:id/messages/:messageId → 404 for a missing or foreign message, 403 for the other participant's [MG17]", async () => {
+    const { contract, client, freelancer } = await makeContractChain({ status: 'ACTIVE' });
+    const conversation = await makeConversation(contract);
+    const theirs = await makeMessage(conversation.id, freelancer.id);
+    const other = await makeContractChain({ status: 'ACTIVE' });
+    const elsewhere = await makeMessage((await makeConversation(other.contract)).id, other.client.id);
+    const url = (messageId: string) => `/api/conversations/${conversation.id}/messages/${messageId}`;
+
+    const missing = await authed(client).delete(url('missing-message-id'));
+    const foreign = await authed(client).delete(url(elsewhere.id));
+    const notMine = await authed(client).delete(url(theirs.id));
+
+    expectErrorEnvelope(missing, 404);
+    expect(missing.body.error.message).toBe('Message not found');
+    expectErrorEnvelope(foreign, 404);
+    expect(foreign.body.error.message).toBe('Message not found');
+    expectErrorEnvelope(notMine, 403);
+    expect(notMine.body.error.message).toBe('Not authorized');
+    expect(await prisma.message.count({ where: { deletedAt: { not: null } } })).toBe(0);
+  });
+
+  it('GET /api/contracts/:id/conversation → 404 for a missing contract, 403 for a non-party [MG18]', async () => {
+    const { contract } = await makeContractChain();
+    await makeConversation(contract);
+    const outsider = await makeFreelancer();
+
+    const missing = await authed(outsider).get('/api/contracts/missing-contract-id/conversation');
+    const foreign = await authed(outsider).get(`/api/contracts/${contract.id}/conversation`);
+
+    expectErrorEnvelope(missing, 404);
+    expect(missing.body.error.message).toBe('Contract not found');
+    expectErrorEnvelope(foreign, 403);
+    expect(foreign.body.error.message).toBe('Not authorized');
+  });
+
+  it("GET /api/conversations lists only the caller's own conversations [MG11]", async () => {
+    const mine = await makeContractChain({ status: 'ACTIVE' });
+    const theirs = await makeContractChain({ status: 'ACTIVE' });
+    const conversation = await makeConversation(mine.contract);
+    await makeConversation(theirs.contract);
+
+    const res = await authed(mine.freelancer).get('/api/conversations');
+
+    expect(res.status).toBe(200);
+    expect(res.body.conversations.map((c: { id: string }) => c.id)).toEqual([conversation.id]);
   });
 
   /**

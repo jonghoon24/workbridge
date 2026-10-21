@@ -36,6 +36,7 @@ import {
   makeClient,
   makeContractScenario,
   makeFreelancer,
+  makeMessage,
   makeMilestone,
   makePayment,
   makePayoutAccount,
@@ -635,6 +636,20 @@ const guardedMutations: Mutation[] = [
     },
   },
   {
+    label: 'POST /api/conversations/:id/messages',
+    async setup() {
+      const { freelancer, conversation } = await makeContractScenario();
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/conversations/${conversation.id}/messages`).send({ body: GHOST }),
+        async assertUnchanged() {
+          expect(await prisma.message.count()).toBe(0);
+          expect(await prisma.job.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
     label: 'PATCH /api/users/me/portfolio/:itemId',
     async setup() {
       const actor = await makeFreelancer();
@@ -644,6 +659,21 @@ const guardedMutations: Mutation[] = [
         send: (token) => bearer(token).patch(`/api/users/me/portfolio/${item.id}`).send({ title: GHOST }),
         async assertUnchanged() {
           expect((await prisma.portfolioItem.findUniqueOrThrow({ where: { id: item.id } })).title).toBe('Before deletion');
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/conversations/:id/read',
+    async setup() {
+      const { client, freelancer, conversation } = await makeContractScenario();
+      await makeMessage(conversation.id, client.id);
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/conversations/${conversation.id}/read`),
+        async assertUnchanged() {
+          const me = await prisma.conversationParticipant.findFirstOrThrow({ where: { userId: freelancer.id } });
+          expect(me.lastReadAt).toBeNull();
         },
       };
     },
@@ -720,6 +750,20 @@ const guardedMutations: Mutation[] = [
         send: (token) => bearer(token).delete(`/api/users/me/careers/${career.id}`),
         async assertUnchanged() {
           expect(await prisma.career.count({ where: { id: career.id } })).toBe(1);
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/conversations/:id/messages/:messageId',
+    async setup() {
+      const { freelancer, conversation } = await makeContractScenario();
+      const message = await makeMessage(conversation.id, freelancer.id);
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).delete(`/api/conversations/${conversation.id}/messages/${message.id}`),
+        async assertUnchanged() {
+          expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
         },
       };
     },

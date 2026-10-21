@@ -6,6 +6,7 @@ import {
   makeClient,
   makeContractScenario,
   makeFreelancer,
+  makeMessage,
   makeMilestone,
   makePayment,
   makeSubmission,
@@ -19,6 +20,15 @@ import {
  * to pass. Two tests pin still-undecided behavior instead — `(Q5)` on the project going straight
  * from `CLOSED` to `COMPLETED`, and `(Q9)` on both parties' email addresses being returned.
  */
+
+/** The system events posted so far, oldest first (BEHAVIOR.md MG6). */
+async function systemEvents(conversationId: string) {
+  const messages = await prisma.message.findMany({
+    where: { conversationId, kind: 'SYSTEM' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  return messages.map((m) => m.systemEvent);
+}
 
 /** Every error body is exactly `{ error: { message } }` — cross-cutting rule 1. */
 function expectErrorEnvelope(body: unknown, message?: string) {
@@ -636,6 +646,60 @@ describe('POST /api/contracts/:id/sign', () => {
   });
 });
 
+describe('POST /api/contracts/:id/sign — system message', () => {
+  it('posts CONTRACT_ACTIVATED once, from the activating signature only [MG6] [CT8]', async () => {
+    const { client, freelancer, contract, conversation } = await makeContractScenario();
+
+    await authed(client).post(`/api/contracts/${contract.id}/sign`);
+    expect(await systemEvents(conversation.id)).toEqual([]);
+    await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+    await authed(freelancer).post(`/api/contracts/${contract.id}/sign`); // idempotent re-sign
+
+    expect(await systemEvents(conversation.id)).toEqual(['CONTRACT_ACTIVATED']);
+    const [message] = await prisma.message.findMany({ where: { conversationId: conversation.id } });
+    expect(message).toMatchObject({ kind: 'SYSTEM', senderId: null });
+    const stored = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+    expect(stored.lastMessageAt?.getTime()).toBe(message.createdAt.getTime());
+  });
+
+  it('posts exactly one CONTRACT_ACTIVATED when both parties sign concurrently [MG6] [CT9]', async () => {
+    for (let iteration = 0; iteration < 5; iteration += 1) {
+      const { client, freelancer, contract, conversation } = await makeContractScenario();
+
+      await Promise.all([
+        authed(client).post(`/api/contracts/${contract.id}/sign`),
+        authed(freelancer).post(`/api/contracts/${contract.id}/sign`),
+      ]);
+
+      expect(await systemEvents(conversation.id), `iteration ${iteration}`).toEqual(['CONTRACT_ACTIVATED']);
+    }
+  });
+
+  it('posts nothing when the signature is refused [MG6] [CT7]', async () => {
+    const { client, contract, conversation, milestone } = await makeContractScenario();
+    await prisma.milestone.update({ where: { id: milestone.id }, data: { amount: 1 } });
+
+    const res = await authed(client).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(400);
+    expect(await systemEvents(conversation.id)).toEqual([]);
+  });
+
+  it('still activates a contract that has no conversation, posting nothing and never failing [MG7]', async () => {
+    const { client, freelancer, contract, conversation } = await makeContractScenario();
+    await prisma.conversationParticipant.deleteMany({ where: { conversationId: conversation.id } });
+    await prisma.conversation.delete({ where: { id: conversation.id } });
+
+    await authed(client).post(`/api/contracts/${contract.id}/sign`);
+    const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ACTIVE');
+    expect(await prisma.message.count()).toBe(0);
+    expect(await prisma.notification.count({ where: { type: 'CONTRACT_ACTIVATED' } })).toBe(2);
+  });
+});
+
 describe('PATCH /api/contracts/:id', () => {
   const GONE = 'Contracts are completed automatically when every milestone is approved';
 
@@ -794,6 +858,27 @@ describe('GET /api/contracts (list)', () => {
 
     expect(res.body.contracts).toEqual([]);
     expect(res.body.meta.total).toBe(0);
+  });
+
+  it('carries unreadMessageCount for the caller on each entry [MG19] [MG8]', async () => {
+    const busy = await makeContractScenario({ contract: { createdAt: new Date('2026-01-01T00:00:00Z') } });
+    const quiet = await makeContractScenario({
+      contract: { clientId: busy.client.id, createdAt: new Date('2026-02-01T00:00:00Z') },
+    });
+    await makeMessage(busy.conversation.id, busy.freelancer.id);
+    await makeMessage(busy.conversation.id, busy.freelancer.id);
+    await makeMessage(busy.conversation.id, busy.client.id); // the caller's own
+    await makeMessage(busy.conversation.id, null); // system messages never count
+    // A contract without a conversation (data repair) counts 0.
+    await prisma.conversationParticipant.deleteMany({ where: { conversationId: quiet.conversation.id } });
+    await prisma.conversation.delete({ where: { id: quiet.conversation.id } });
+
+    const asClient = await authed(busy.client).get('/api/contracts');
+    const asFreelancer = await authed(busy.freelancer).get('/api/contracts');
+
+    expect(asClient.body.contracts.map((c: { id: string; unreadMessageCount: number }) => [c.id, c.unreadMessageCount]))
+      .toEqual([[quiet.contract.id, 0], [busy.contract.id, 2]]);
+    expect(asFreelancer.body.contracts[0]).toMatchObject({ id: busy.contract.id, unreadMessageCount: 1 });
   });
 
   it('shows a soft-deleted counterpart as stored (Q11) [CT3]', async () => {
