@@ -550,3 +550,100 @@ describe('unauthenticated access', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// System messages (MG6, MG7)
+// ---------------------------------------------------------------------------------------------
+
+describe('system messages of submission, review and completion', () => {
+  /** The conversation's system events, oldest first; every one without a sender. */
+  async function systemMessages(conversationId: string) {
+    const messages = await prisma.message.findMany({
+      where: { conversationId, kind: 'SYSTEM' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    for (const m of messages) expect(m.senderId).toBeNull();
+    return messages.map((m) => m.systemEvent);
+  }
+
+  it('a submission posts MILESTONE_SUBMITTED; a refused one posts nothing [MG6] [MS13]', async () => {
+    const { freelancer, milestone, conversation } = await funded();
+
+    expect((await submit(freelancer, milestone.id).send({ message: '1차' })).status).toBe(201);
+    expect((await submit(freelancer, milestone.id).send({ message: '중복' })).status).toBe(409);
+
+    expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_SUBMITTED']);
+  });
+
+  it('a rejection posts MILESTONE_REVISION_REQUESTED [MG6] [MS19]', async () => {
+    const { client, milestone, conversation } = await submitted();
+
+    const res = await authed(client).post(`/api/milestones/${milestone.id}/reject`).send({ reason: '헤더 레이아웃을 고쳐주세요.' });
+
+    expect(res.status).toBe(200);
+    expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_REVISION_REQUESTED']);
+  });
+
+  it('approving a milestone that is not the last posts MILESTONE_APPROVED only [MG6] [MS16]', async () => {
+    const { client, milestone, conversation } = await submitted({ milestones: 2 });
+
+    await authed(client).post(`/api/milestones/${milestone.id}/approve`);
+
+    expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_APPROVED']);
+  });
+
+  it('approving the last milestone posts MILESTONE_APPROVED, then CONTRACT_COMPLETED [MG6] [MG7] [MS17]', async () => {
+    const { client, milestone, conversation } = await submitted();
+
+    await authed(client).post(`/api/milestones/${milestone.id}/approve`);
+
+    expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_APPROVED', 'CONTRACT_COMPLETED']);
+    const [approved, completed] = await prisma.message.findMany({ orderBy: { createdAt: 'asc' } });
+    expect(completed.createdAt.getTime()).toBeGreaterThan(approved.createdAt.getTime());
+    const stored = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+    expect(stored.lastMessageAt?.getTime()).toBe(completed.createdAt.getTime());
+  });
+
+  it('a rolled-back approval posts nothing [MG6] [MS16]', async () => {
+    const { client, milestone, conversation } = await submitted();
+    await prisma.$executeRawUnsafe(`ALTER TABLE "SettlementItem" ADD CONSTRAINT "tmp_no_items" CHECK (false) NOT VALID`);
+    const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect((await authed(client).post(`/api/milestones/${milestone.id}/approve`)).status).toBe(500);
+      expect(await systemMessages(conversation.id)).toEqual([]);
+    } finally {
+      logs.mockRestore();
+      await prisma.$executeRawUnsafe(`ALTER TABLE "SettlementItem" DROP CONSTRAINT "tmp_no_items"`);
+    }
+  });
+
+  it('two concurrent approvals of one milestone post one MILESTONE_APPROVED [MG6] [MS4]', async () => {
+    const { client, milestone, conversation } = await submitted({ milestones: 2 });
+    await Promise.all([1, 2, 3].map(() => authed(client).get('/api/contracts')));
+
+    await Promise.all([
+      authed(client).post(`/api/milestones/${milestone.id}/approve`),
+      authed(client).post(`/api/milestones/${milestone.id}/approve`),
+    ]);
+
+    expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_APPROVED']);
+  });
+
+  it('concurrent approvals of the last two milestones: two approvals, then one completion [MG6] [MG7] [MS22]', async () => {
+    for (let iteration = 0; iteration < 4; iteration += 1) {
+      const { client, contract, milestone, conversation } = await submitted();
+      await prisma.milestone.update({ where: { id: milestone.id }, data: { amount: 3_000_000 } });
+      const other = await makeMilestone(contract.id, { amount: 1_000_000, status: 'SUBMITTED' });
+      await makeSubmission(other.id);
+      await Promise.all([1, 2, 3].map(() => authed(client).get('/api/contracts')));
+
+      await Promise.all([
+        authed(client).post(`/api/milestones/${milestone.id}/approve`),
+        authed(client).post(`/api/milestones/${other.id}/approve`),
+      ]);
+
+      expect(await systemMessages(conversation.id), `iteration ${iteration}`)
+        .toEqual(['MILESTONE_APPROVED', 'MILESTONE_APPROVED', 'CONTRACT_COMPLETED']);
+    }
+  });
+});

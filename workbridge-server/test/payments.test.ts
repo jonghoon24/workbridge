@@ -1536,3 +1536,83 @@ describe('errorHandler logging (cross-cutting rule 1)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// System messages (MG6): funding that transitions the milestone posts MILESTONE_FUNDED once
+// ---------------------------------------------------------------------------------------------
+
+describe('MILESTONE_FUNDED system message', () => {
+  const fundedMessages = (conversationId: string) =>
+    prisma.message.findMany({ where: { conversationId, kind: 'SYSTEM', systemEvent: 'MILESTONE_FUNDED' } });
+
+  async function pendingPayment() {
+    const scenario = await activeScenario();
+    const payment = await makePayment(scenario.milestone.id, scenario.client.id, { status: 'PENDING' });
+    return { ...scenario, payment };
+  }
+
+  const confirmBody = (orderId: string) => ({ paymentKey: 'pk_test_123', orderId, amount: CONTRACT_AMOUNT });
+
+  it('a confirmation posts it in the funding transaction [MG6] [PY7]', async () => {
+    const { client, conversation, payment } = await pendingPayment();
+    tossPost.mockResolvedValue(tossDone());
+
+    const res = await authed(client).post('/api/payments/confirm').send(confirmBody(payment.orderId));
+
+    expect(res.status).toBe(200);
+    const messages = await fundedMessages(conversation.id);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ senderId: null, deletedAt: null });
+  });
+
+  it('a failed verification posts nothing [MG6] [PY8]', async () => {
+    const { client, conversation, payment } = await pendingPayment();
+    tossPost.mockResolvedValue(tossDone(1));
+
+    const res = await authed(client).post('/api/payments/confirm').send(confirmBody(payment.orderId));
+
+    expect(res.status).toBe(400);
+    expect(await prisma.message.count({ where: { conversationId: conversation.id } })).toBe(0);
+  });
+
+  it('two concurrent confirms post it once — the no-op loser posts nothing [MG6] [PY9]', async () => {
+    const { client, conversation, payment } = await pendingPayment();
+    tossPost.mockResolvedValue(tossDone());
+    await warmConnectionPool(client);
+
+    await Promise.all([
+      authed(client).post('/api/payments/confirm').send(confirmBody(payment.orderId)),
+      authed(client).post('/api/payments/confirm').send(confirmBody(payment.orderId)),
+    ]);
+
+    expect(await fundedMessages(conversation.id)).toHaveLength(1);
+  });
+
+  it('dev-complete posts it once; the idempotent repeat posts nothing [MG6] [PY11]', async () => {
+    const { client, conversation, milestone } = await activeScenario();
+
+    const first = await withBypassEnabled(() =>
+      authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+    );
+    const again = await withBypassEnabled(() =>
+      authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+    );
+
+    expect([first.status, again.status]).toEqual([201, 200]);
+    expect(await fundedMessages(conversation.id)).toHaveLength(1);
+  });
+
+  it('funds a milestone whose contract has no conversation, posting nothing [MG7] [PY11]', async () => {
+    const { client, conversation, milestone } = await activeScenario();
+    await prisma.conversationParticipant.deleteMany({ where: { conversationId: conversation.id } });
+    await prisma.conversation.delete({ where: { id: conversation.id } });
+
+    const res = await withBypassEnabled(() =>
+      authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+    );
+
+    expect(res.status).toBe(201);
+    expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('FUNDED');
+    expect(await prisma.message.count()).toBe(0);
+  });
+});

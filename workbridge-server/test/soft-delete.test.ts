@@ -35,6 +35,7 @@ import {
   makeClient,
   makeContractScenario,
   makeFreelancer,
+  makeMessage,
   makeMilestone,
   makePayment,
   makePayoutAccount,
@@ -614,6 +615,49 @@ const guardedMutations: Mutation[] = [
         send: (token) => bearer(token).delete('/api/users/me/payout-account'),
         async assertUnchanged() {
           expect(await prisma.payoutAccount.count({ where: { userId: actor.id } })).toBe(1);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/conversations/:id/messages',
+    async setup() {
+      const { freelancer, conversation } = await makeContractScenario();
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/conversations/${conversation.id}/messages`).send({ body: GHOST }),
+        async assertUnchanged() {
+          expect(await prisma.message.count()).toBe(0);
+          expect(await prisma.job.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/conversations/:id/read',
+    async setup() {
+      const { client, freelancer, conversation } = await makeContractScenario();
+      await makeMessage(conversation.id, client.id);
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/conversations/${conversation.id}/read`),
+        async assertUnchanged() {
+          const me = await prisma.conversationParticipant.findFirstOrThrow({ where: { userId: freelancer.id } });
+          expect(me.lastReadAt).toBeNull();
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/conversations/:id/messages/:messageId',
+    async setup() {
+      const { freelancer, conversation } = await makeContractScenario();
+      const message = await makeMessage(conversation.id, freelancer.id);
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).delete(`/api/conversations/${conversation.id}/messages/${message.id}`),
+        async assertUnchanged() {
+          expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
         },
       };
     },

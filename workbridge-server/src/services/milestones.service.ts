@@ -12,6 +12,7 @@ import type { Recipient } from '../lib/notifications/notify';
 import { renderTemplate } from '../lib/notifications/templates';
 import type { TemplateType, TemplateVars } from '../lib/notifications/templates';
 import { enqueueJob } from '../jobs/queue';
+import { postSystemMessage } from './messaging.service';
 import { storeUploadedFile } from '../middlewares/attachmentUpload';
 import type { StoredFile } from '../middlewares/attachmentUpload';
 import type { PrismaTransactionClient } from '../types/index';
@@ -290,6 +291,8 @@ export async function replacePlan(contractId: string, actorId: string, items: re
         contractId,
       });
     }
+    // MG6: every replacement leaves a system message, signature or not — the last write (MG7).
+    await postSystemMessage(tx, contractId, 'MILESTONE_PLAN_UPDATED');
 
     const milestones = await tx.milestone.findMany({
       where: { contractId },
@@ -385,6 +388,10 @@ export async function markFunded(
     dedupeKey: `milestone.overdue:${milestoneId}`,
   });
 
+  // MG6: only the transition posts (the no-op above returned early). Callers make this the last
+  // write of their transaction (MG7).
+  await postSystemMessage(tx, milestone.contractId, 'MILESTONE_FUNDED', { milestoneTitle: milestone.title });
+
   return { funded: true };
 }
 
@@ -468,6 +475,7 @@ export async function submitMilestone(
     }
 
     await notifyTemplate(tx, [milestone.contract.client], 'MILESTONE_SUBMITTED', varsFor(milestone));
+    await postSystemMessage(tx, milestone.contractId, 'MILESTONE_SUBMITTED', { milestoneTitle: milestone.title, round });
 
     const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
     return { milestone: serializeMilestone(updated), submission };
@@ -579,7 +587,7 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
       }
     }
 
-    // MS17: a deleted project's approval notifies nobody — the pages are gone.
+    // MS17: a deleted project's approval notifies nobody and posts no system message (MG6).
     if (!projectDeleted) {
       const vars = varsFor(milestone);
       if (kind === 'MANUAL') {
@@ -590,6 +598,13 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
       if (completed) {
         await notifyTemplate(tx, [contract.client, contract.freelancer], 'CONTRACT_COMPLETED', vars);
       }
+
+      // MG6: the approval's own message, then completion — the last writes, so the conversation
+      // lock comes after the contract, milestone and project (MG7). Skipped with the
+      // notifications for a deleted project.
+      const title = { milestoneTitle: milestone.title };
+      await postSystemMessage(tx, contractId, kind === 'MANUAL' ? 'MILESTONE_APPROVED' : 'MILESTONE_AUTO_APPROVED', title);
+      if (completed) await postSystemMessage(tx, contractId, 'CONTRACT_COMPLETED');
     }
 
     const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
@@ -635,6 +650,7 @@ export async function rejectMilestone(
     }
 
     await notifyTemplate(tx, [milestone.contract.freelancer], 'MILESTONE_REVISION_REQUESTED', varsFor(milestone, { reason }));
+    await postSystemMessage(tx, milestone.contractId, 'MILESTONE_REVISION_REQUESTED', { milestoneTitle: milestone.title, reason });
 
     const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
     return { milestone: serializeMilestone(updated) };

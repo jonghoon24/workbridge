@@ -9,6 +9,7 @@ import {
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle';
 import { createDefaultMilestone, defaultMilestoneDueDate } from '../services/milestones.service';
+import { openContractConversation } from '../services/messaging.service';
 import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -184,7 +185,7 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
 
     if (status === 'ACCEPTED') {
       // Atomic transaction: accept application, reject others, create contract and its default
-      // milestone, close recruitment, notify (BEHAVIOR.md accept steps 1–6).
+      // milestone, close recruitment, notify, open the conversation (BEHAVIOR.md accept steps 1–7).
       const now = new Date();
       const milestoneDueDate = defaultMilestoneDueDate(now);
       let result;
@@ -248,6 +249,10 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
               })),
             });
           }
+
+          // 7. The conversation, its participants and `CONTRACT_CREATED` — last, so the
+          // conversation lock is the last one taken (MG3, MG7).
+          await openContractConversation(tx, contract);
 
           return { application: updatedApp, contract };
         });

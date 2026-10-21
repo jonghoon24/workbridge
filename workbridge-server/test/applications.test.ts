@@ -876,6 +876,34 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(await prisma.notification.count()).toBe(3);
     });
 
+    it('7. opens the conversation: both parties, nothing read, and the CONTRACT_CREATED system message [MG3] [MG6] [C2]', async () => {
+      const s = await scenario();
+
+      const res = await authed(s.client)
+        .patch(url(s.project.id, s.chosen.id))
+        .send({ status: 'ACCEPTED' });
+
+      expect(res.status).toBe(200);
+      const conversation = await prisma.conversation.findUniqueOrThrow({
+        where: { contractId: res.body.contract.id },
+        include: { participants: true, messages: true },
+      });
+      expect(conversation.participants.map((p) => p.userId).sort()).toEqual([s.client.id, s.winner.id].sort());
+      expect(conversation.participants.every((p) => p.lastReadAt === null)).toBe(true);
+      expect(conversation.messages).toHaveLength(1);
+      expect(conversation.messages[0]).toMatchObject({
+        kind: 'SYSTEM',
+        systemEvent: 'CONTRACT_CREATED',
+        senderId: null,
+        deletedAt: null,
+      });
+      // MG7: lastMessageAt is the system message's createdAt.
+      expect(conversation.lastMessageAt?.getTime()).toBe(conversation.messages[0].createdAt.getTime());
+      expect(await prisma.conversation.count()).toBe(1);
+      // MG20: the system message creates no notification beyond step 6's three.
+      expect(await prisma.notification.count()).toBe(3);
+    });
+
     it('responds with { application, contract }', async () => {
       const s = await scenario();
 
@@ -1130,6 +1158,29 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       } finally {
         logs.mockRestore();
         await prisma.$executeRawUnsafe(`ALTER TABLE "Milestone" DROP CONSTRAINT "tmp_no_default"`);
+      }
+    });
+
+    it('rolls the whole accept back when opening the conversation fails [C2] [MG3]', async () => {
+      const s = await scenario();
+      await prisma.$executeRawUnsafe(`ALTER TABLE "Message" ADD CONSTRAINT "tmp_no_messages" CHECK (false) NOT VALID`);
+      const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const res = await authed(s.client)
+          .patch(url(s.project.id, s.chosen.id))
+          .send({ status: 'ACCEPTED' });
+
+        expect(res.status).toBe(500);
+        expect(await prisma.contract.count()).toBe(0);
+        expect(await prisma.milestone.count()).toBe(0);
+        expect(await prisma.conversation.count()).toBe(0);
+        expect(await prisma.conversationParticipant.count()).toBe(0);
+        expect(await prisma.notification.count()).toBe(0);
+        const chosen = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
+        expect(chosen.status).toBe('PENDING');
+      } finally {
+        logs.mockRestore();
+        await prisma.$executeRawUnsafe(`ALTER TABLE "Message" DROP CONSTRAINT "tmp_no_messages"`);
       }
     });
 

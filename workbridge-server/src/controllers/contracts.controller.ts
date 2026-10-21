@@ -7,6 +7,7 @@ import { notifyRecipients } from '../lib/notifications/notify';
 import { renderTemplate } from '../lib/notifications/templates';
 import { contractInclude, serializeContract } from '../services/contracts.service';
 import { isValidPlan } from '../services/milestones.service';
+import { postSystemMessage } from '../services/messaging.service';
 import type { AuthedRequest } from '../types/index';
 
 export async function getContract(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -86,6 +87,8 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
           type: 'CONTRACT_ACTIVATED',
           ...renderTemplate('CONTRACT_ACTIVATED', { projectTitle: signed.project.title, contractId: contract.id }),
         });
+        // MG6: the activating signature only, as the transaction's last write (MG7).
+        await postSystemMessage(tx, contract.id, 'CONTRACT_ACTIVATED');
         return activated;
       }
 
