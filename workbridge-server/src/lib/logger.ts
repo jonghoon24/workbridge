@@ -27,11 +27,17 @@ function threshold(): number {
   return LEVEL_RANK[configured] ?? LEVEL_RANK.info;
 }
 
+/**
+ * An `Error`, or an error-shaped object that is not one (some SDKs throw plain objects). A bare
+ * `message` is not enough — `Notification`, `Message` and `ZodIssue` all have one — so a
+ * non-`Error` needs a string `stack`, or a string `name` alongside its string `message`.
+ */
 function isErrorLike(value: unknown): value is Record<string, unknown> {
   if (value instanceof Error) return true;
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
-  return typeof candidate.message === 'string' || typeof candidate.stack === 'string';
+  return typeof candidate.stack === 'string'
+    || (typeof candidate.name === 'string' && typeof candidate.message === 'string');
 }
 
 /**
@@ -39,10 +45,11 @@ function isErrorLike(value: unknown): value is Record<string, unknown> {
  * `{}`. Spell them out, plus the fields our errors and Prisma's carry: `code` (P2002, …),
  * `statusCode` (AppError) and `meta` (Prisma).
  */
-export function serializeError(err: unknown): Record<string, unknown> {
+export function serializeError(err: unknown, seen: WeakSet<object> = new WeakSet()): Record<string, unknown> {
   if (!isErrorLike(err)) {
     return { message: String(err) };
   }
+  seen.add(err);
 
   const out: Record<string, unknown> = {
     name: err.name ?? (err.constructor as { name?: string } | undefined)?.name,
@@ -52,19 +59,33 @@ export function serializeError(err: unknown): Record<string, unknown> {
   if (err.code !== undefined) out.code = err.code;
   if (err.statusCode !== undefined) out.statusCode = err.statusCode;
   if (err.meta !== undefined) out.meta = err.meta;
-  if (err.cause !== undefined) out.cause = isErrorLike(err.cause) ? serializeError(err.cause) : err.cause;
+  if (err.cause !== undefined) {
+    // A cause chain can loop back on itself (`e.cause = e`); recursing would overflow the stack
+    // inside `errorHandler` and lose both the log line and the response.
+    if (isErrorLike(err.cause)) {
+      out.cause = seen.has(err.cause) ? '[Circular]' : serializeError(err.cause, seen);
+    } else {
+      out.cause = err.cause;
+    }
+  }
   return out;
 }
 
-/** `JSON.stringify` that survives cycles and BigInt instead of throwing mid-log. */
+/**
+ * `JSON.stringify` that survives cycles and BigInt instead of throwing mid-log. Only a value
+ * that is its own ancestor is a cycle; the same object referenced twice side by side is printed
+ * twice.
+ */
 function stringify(record: Record<string, unknown>): string {
-  const seen = new WeakSet<object>();
-  return JSON.stringify(record, (_key, value: unknown) => {
+  const ancestors: object[] = [];
+  return JSON.stringify(record, function replacer(this: unknown, _key: string, value: unknown) {
     if (typeof value === 'bigint') return value.toString();
-    if (value && typeof value === 'object') {
-      if (seen.has(value)) return '[Circular]';
-      seen.add(value);
-    }
+    if (!value || typeof value !== 'object') return value;
+
+    // `this` is the object holding `value`; drop ancestors we have walked back out of.
+    while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+    if (ancestors.includes(value)) return '[Circular]';
+    ancestors.push(value);
     return value;
   });
 }

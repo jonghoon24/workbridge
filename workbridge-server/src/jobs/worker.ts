@@ -18,7 +18,8 @@ export interface StartJobWorkerOptions {
  * The polling worker for local development (`index.ts` starts it outside production and tests)
  * and for `npm run jobs:worker`. Production has no resident worker.
  *
- * Batches never overlap: the next poll is scheduled only after the previous one finished.
+ * Each poll: `ensureRecurringJobs` → `recoverStaleJobs` → `runDueJobs`. Batches never overlap:
+ * the next poll is scheduled only after the previous one finished.
  */
 export function startJobWorker(options: StartJobWorkerOptions = {}): JobWorker {
   const intervalMs = options.intervalMs ?? (Number(env.JOB_POLL_INTERVAL_MS) || 5000);
@@ -29,6 +30,9 @@ export function startJobWorker(options: StartJobWorkerOptions = {}): JobWorker {
   const poll = async () => {
     try {
       const now = new Date();
+      // Every poll, not just at start: `npm run db:seed` deletes every Job row, and two
+      // `ON CONFLICT DO NOTHING` inserts are cheap.
+      await ensureRecurringJobs(now);
       await recoverStaleJobs(now);
       const result = await runDueJobs({ now });
       if (result.claimed > 0) logger.info('jobs ran', { ...result });
@@ -44,16 +48,7 @@ export function startJobWorker(options: StartJobWorkerOptions = {}): JobWorker {
     });
   };
 
-  const start = async () => {
-    try {
-      await ensureRecurringJobs(new Date());
-    } catch (err) {
-      logger.error('ensureRecurringJobs failed', { err });
-    }
-    if (!stopped) tick();
-  };
-
-  inFlight = start();
+  tick();
   logger.info('job worker started', { intervalMs });
 
   const worker: JobWorker = {

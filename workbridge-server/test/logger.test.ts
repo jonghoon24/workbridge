@@ -56,6 +56,13 @@ describe('serializeError', () => {
     expect(serializeError(wrapped).cause).toMatchObject({ message: 'Bucket not found' });
   });
 
+  it('survives a cause chain that loops back on itself', () => {
+    const err = new Error('loop') as Error & { cause?: unknown };
+    err.cause = err;
+
+    expect(serializeError(err)).toMatchObject({ message: 'loop', cause: '[Circular]' });
+  });
+
   it('turns a non-error into a message', () => {
     expect(serializeError('just a string')).toEqual({ message: 'just a string' });
   });
@@ -120,6 +127,36 @@ describe('logger', () => {
 
     expect(lineOf(out, 0)).toMatchObject({ msg: 'inside', requestId: 'req-1', jobId: 'job-1' });
     expect(lineOf(out, 1)).not.toHaveProperty('requestId');
+  });
+
+  it('does not mistake a domain object with a `message` for an error', () => {
+    process.env.LOG_LEVEL = 'info';
+    const { out } = spies();
+    const notification = { id: 'n1', title: '제목', message: 'body', readAt: null };
+
+    logger.info('notified', { notification });
+
+    expect(lineOf(out).notification).toEqual(notification);
+  });
+
+  it('logs an error whose cause is itself without throwing', () => {
+    const { err } = spies();
+    const loop = new Error('loop') as Error & { cause?: unknown };
+    loop.cause = loop;
+
+    logger.error('looped', { err: loop });
+
+    expect(lineOf(err).err).toMatchObject({ message: 'loop', cause: '[Circular]' });
+  });
+
+  it('prints an object referenced twice side by side, not as a cycle', () => {
+    process.env.LOG_LEVEL = 'info';
+    const { out } = spies();
+    const shared = { a: 1 };
+
+    logger.info('twice', { left: shared, right: shared });
+
+    expect(lineOf(out)).toMatchObject({ left: { a: 1 }, right: { a: 1 } });
   });
 
   it('survives circular fields and BigInt', () => {

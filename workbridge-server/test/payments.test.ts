@@ -1184,7 +1184,7 @@ describe('GET /api/payments', () => {
  * These two tests pin the premise, using the payments endpoints to reach each status.
  */
 describe('errorHandler logging (cross-cutting rule 1)', () => {
-  it('logs nothing for 400, 403, 404 and 409 responses', async () => {
+  it('logs nothing for 400, 403, 404 and 409 responses [C7]', async () => {
     const { client, freelancer, contract } = await activeScenario();
     const settled = await activeScenario();
     await makePayment(settled.contract.id, settled.client.id, { status: 'COMPLETED' });
@@ -1214,7 +1214,7 @@ describe('errorHandler logging (cross-cutting rule 1)', () => {
     }
   });
 
-  it('logs a 500 exactly once', async () => {
+  it('logs a 500 exactly once [C7]', async () => {
     const { client } = await activeScenario();
 
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});

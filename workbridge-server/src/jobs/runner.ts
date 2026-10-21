@@ -18,6 +18,7 @@ export const STALE_LOCK_MS = 10 * MINUTE_MS;
 const BASE_BACKOFF_MS = 30 * 1000;
 const MAX_BACKOFF_MS = HOUR_MS;
 const MAX_ERROR_LENGTH = 2000;
+const STALE_EXHAUSTED_ERROR = 'stale lock, attempts exhausted';
 
 /** Identifies this process in `Job.lockedBy`. */
 export const WORKER_ID = `${hostname()}:${process.pid}:${randomBytes(3).toString('hex')}`;
@@ -34,6 +35,8 @@ export interface RunDueJobsResult {
   succeeded: number;
   retried: number;
   failed: number;
+  /** Claimed, but another runner had taken the lock over before this one got to it. */
+  skipped: number;
 }
 
 /** `min(30 s × 2^(attempts − 1), 1 h)` — `attempts` already counts the run that just failed. */
@@ -72,18 +75,32 @@ function errorText(err: unknown): string {
   return text.slice(0, MAX_ERROR_LENGTH);
 }
 
-type Outcome = 'succeeded' | 'retried' | 'failed';
+type Outcome = 'succeeded' | 'retried' | 'failed' | 'skipped';
 
 async function runOne(job: Job, now: Date, workerId: string): Promise<Outcome> {
   // Only touch the row while we still own it: stale-lock recovery may have handed it on.
   const owned = { id: job.id, status: 'RUNNING' as const, lockedBy: workerId };
   const unlock = { lockedAt: null, lockedBy: null };
 
+  // Re-assert ownership before running. Jobs in a batch run one after another, so a long batch
+  // can outlive the 10-minute stale-lock window; if another runner has recovered and taken this
+  // job in the meantime, running it here too would run the handler twice.
+  const { count: stillOwned } = await prisma.job.updateMany({ where: owned, data: { lockedBy: workerId } });
+  if (stillOwned === 0) {
+    logger.warn('job skipped: lock taken over', { jobId: job.id, type: job.type });
+    return 'skipped';
+  }
+
   // The next slot of a recurring job is enqueued at claim time, not on success, so one slot
-  // that retries and finally fails does not break the chain.
+  // that retries and finally fails does not break the chain. A failure here must not strand
+  // the job (or the rest of the batch): log it, and let the next `ensureRecurringJobs` repair it.
   const recurring = findRecurringJob(job.type);
   if (recurring) {
-    await enqueueNextOccurrence(recurring, now);
+    try {
+      await enqueueNextOccurrence(recurring, now);
+    } catch (err) {
+      logger.warn('could not enqueue next recurring slot', { type: job.type, err });
+    }
   }
 
   const handler = handlerFor(job.type);
@@ -93,12 +110,7 @@ async function runOne(job: Job, now: Date, workerId: string): Promise<Outcome> {
       throw new PermanentJobError(`No handler registered for job type "${job.type}"`);
     }
 
-    await runWithContext({ requestId: job.traceId ?? undefined, jobId: job.id }, () => handler({
-      job,
-      payload: job.payload as never,
-      now,
-      logger,
-    }));
+    await handler({ job, payload: job.payload as never, now, logger });
 
     await prisma.job.updateMany({
       where: owned,
@@ -115,7 +127,6 @@ async function runOne(job: Job, now: Date, workerId: string): Promise<Outcome> {
         data: { status: 'FAILED', lastError: errorText(err), ...unlock },
       });
       logger.error('job failed', {
-        jobId: job.id,
         type: job.type,
         attempts: job.attempts,
         reason: permanent ? 'permanent' : 'attempts exhausted',
@@ -133,7 +144,7 @@ async function runOne(job: Job, now: Date, workerId: string): Promise<Outcome> {
         ...unlock,
       },
     });
-    logger.warn('job will retry', { jobId: job.id, type: job.type, attempts: job.attempts, err });
+    logger.warn('job will retry', { type: job.type, attempts: job.attempts, err });
     return 'retried';
   }
 }
@@ -146,28 +157,57 @@ async function runOne(job: Job, now: Date, workerId: string): Promise<Outcome> {
 export async function runDueJobs(options: RunDueJobsOptions = {}): Promise<RunDueJobsResult> {
   const { now = new Date(), limit = 50, types, workerId = WORKER_ID } = options;
   const jobs = await claimDueJobs(now, limit, workerId, types);
-  const result: RunDueJobsResult = { claimed: jobs.length, succeeded: 0, retried: 0, failed: 0 };
+  const result: RunDueJobsResult = { claimed: jobs.length, succeeded: 0, retried: 0, failed: 0, skipped: 0 };
 
   for (const job of jobs) {
-    const outcome = await runOne(job, now, workerId);
-    result[outcome] += 1;
+    // Every line logged while the job runs — the runner's own included — carries `jobId`, and
+    // the id of the request that enqueued it as `requestId`.
+    const context = { requestId: job.traceId ?? undefined, jobId: job.id };
+    try {
+      const outcome = await runWithContext(context, () => runOne(job, now, workerId));
+      result[outcome] += 1;
+    } catch (err) {
+      // Bookkeeping itself failed (e.g. the database went away). Leave this job to stale-lock
+      // recovery and keep going, so one bad write does not strand the rest of the batch.
+      runWithContext(context, () => logger.error('job bookkeeping failed', { type: job.type, err }));
+    }
   }
 
   return result;
 }
 
-/**
- * Returns orphaned `RUNNING` jobs (locked more than 10 minutes before `now`) to `PENDING`.
- * `attempts` is not refunded — the crashed run counts.
- */
-export async function recoverStaleJobs(now: Date = new Date()): Promise<number> {
-  const { count } = await prisma.job.updateMany({
-    where: { status: 'RUNNING', lockedAt: { lt: new Date(now.getTime() - STALE_LOCK_MS) } },
-    data: { status: 'PENDING', lockedAt: null, lockedBy: null },
-  });
+export interface RecoverStaleJobsResult {
+  /** Returned to `PENDING` to be claimed again. */
+  requeued: number;
+  /** Already at `maxAttempts`, so marked `FAILED` instead of looping forever. */
+  failed: number;
+}
 
-  if (count > 0) {
-    logger.warn('recovered stale jobs', { count });
+/**
+ * Releases orphaned `RUNNING` jobs (locked more than 10 minutes before `now`, so their runner
+ * died). `attempts` is not refunded — the crashed run counts — and a job that has used up
+ * `maxAttempts` is marked `FAILED`: a job that kills its runner every time must not come back
+ * every 10 minutes forever.
+ */
+export async function recoverStaleJobs(now: Date = new Date()): Promise<RecoverStaleJobsResult> {
+  const cutoff = new Date(now.getTime() - STALE_LOCK_MS);
+
+  const rows = await prisma.$queryRaw<{ id: string; type: string; status: string; attempts: number }[]>`
+    UPDATE "Job"
+       SET "status" = CASE WHEN "attempts" >= "maxAttempts" THEN 'FAILED'::"JobStatus" ELSE 'PENDING'::"JobStatus" END,
+           "lastError" = CASE WHEN "attempts" >= "maxAttempts" THEN ${STALE_EXHAUSTED_ERROR} ELSE "lastError" END,
+           "lockedAt" = NULL, "lockedBy" = NULL, "updatedAt" = ${sqlTimestamp(now)}
+     WHERE "status" = 'RUNNING' AND "lockedAt" < ${sqlTimestamp(cutoff)}
+    RETURNING "id", "type", "status"::text AS "status", "attempts"`;
+
+  const failed = rows.filter((row) => row.status === 'FAILED');
+  for (const row of failed) {
+    logger.error('job failed', { jobId: row.id, type: row.type, attempts: row.attempts, reason: STALE_EXHAUSTED_ERROR });
   }
-  return count;
+
+  const result = { requeued: rows.length - failed.length, failed: failed.length };
+  if (rows.length > 0) {
+    logger.warn('recovered stale jobs', { ...result });
+  }
+  return result;
 }

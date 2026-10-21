@@ -12,25 +12,21 @@ export function getApiUrl() {
 const PASSTHROUGH_RESPONSE_HEADERS = ['x-request-id', 'retry-after'];
 
 /**
- * The `X-Forwarded-For` chain to send to the backend: whatever arrived, plus the address this
- * proxy saw. The backend rate-limits login by client IP and trusts this header from loopback
- * (`TRUST_PROXY=loopback`); without it every browser would share the Next server's address.
+ * Headers every proxied request carries: content-type, authorization, X-Forwarded-For,
+ * X-Request-Id.
+ *
+ * `X-Forwarded-For` is passed on **exactly as Next received it**. Self-hosted Next cannot see
+ * the browser's socket address in a route handler (`request.ip` is always undefined); its server
+ * only fills the header with the socket address when the client sent none, and on Vercel the
+ * edge overwrites it. So a client talking to a self-hosted Next directly can choose this value
+ * — the backend trusts it only under `TRUST_PROXY` (BEHAVIOR.md rule 10, Q23).
  */
-function forwardedFor(request) {
-  const incoming = request.headers.get('x-forwarded-for');
-  const ip = request.ip;
-
-  if (incoming && ip) return `${incoming}, ${ip}`;
-  return incoming || ip || null;
-}
-
-/** Headers every proxied request carries: content-type, authorization, X-Forwarded-For, X-Request-Id. */
 export function buildForwardHeaders(request) {
   const headers = new Headers();
   const contentType = request.headers.get('content-type');
   const authorization = request.headers.get('authorization');
   const requestId = request.headers.get('x-request-id');
-  const chain = forwardedFor(request);
+  const chain = request.headers.get('x-forwarded-for');
 
   if (contentType) headers.set('content-type', contentType);
   if (authorization) headers.set('authorization', authorization);

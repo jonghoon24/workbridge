@@ -10,6 +10,7 @@ import { enqueueJob } from '../src/jobs/queue';
 import { ensureRecurringJobs, RECURRING_JOBS } from '../src/jobs/recurring';
 import { registry } from '../src/jobs/registry';
 import { backoffMs, recoverStaleJobs, runDueJobs, STALE_LOCK_MS } from '../src/jobs/runner';
+import { startJobWorker } from '../src/jobs/worker';
 import { runWithContext } from '../src/lib/requestContext';
 
 /**
@@ -106,7 +107,7 @@ describe('runDueJobs', () => {
 
     const result = await runDueJobs({ now });
 
-    expect(result).toEqual({ claimed: 2, succeeded: 2, retried: 0, failed: 0 });
+    expect(result).toEqual({ claimed: 2, succeeded: 2, retried: 0, failed: 0, skipped: 0 });
     expect(handler).toHaveBeenCalledTimes(2);
     expect((await reload(due)).status).toBe('SUCCEEDED');
     expect((await reload(exactlyNow)).status).toBe('SUCCEEDED');
@@ -137,7 +138,7 @@ describe('runDueJobs', () => {
     const job = await makeJob();
     const t1 = new Date();
 
-    expect(await runDueJobs({ now: t1 })).toEqual({ claimed: 1, succeeded: 0, retried: 1, failed: 0 });
+    expect(await runDueJobs({ now: t1 })).toEqual({ claimed: 1, succeeded: 0, retried: 1, failed: 0, skipped: 0 });
     let stored = await reload(job);
     expect(stored).toMatchObject({ status: 'PENDING', attempts: 1, lockedAt: null, lockedBy: null });
     expect(stored.runAt.getTime()).toBe(t1.getTime() + 30_000);
@@ -172,7 +173,7 @@ describe('runDueJobs', () => {
 
     const result = await runDueJobs({ now: new Date(t1.getTime() + 30_000) });
 
-    expect(result).toEqual({ claimed: 1, succeeded: 0, retried: 0, failed: 1 });
+    expect(result).toEqual({ claimed: 1, succeeded: 0, retried: 0, failed: 1, skipped: 0 });
     expect(await reload(job)).toMatchObject({ status: 'FAILED', attempts: 2, lockedBy: null });
     expect(consoleError).toHaveBeenCalledTimes(1);
     const line = JSON.parse(String(consoleError.mock.calls[0][0]));
@@ -231,7 +232,7 @@ describe('runDueJobs', () => {
     expect((await reload(cleanup)).status).toBe('PENDING');
   });
 
-  it('never hands the same job to two concurrent runners (FOR UPDATE SKIP LOCKED)', async () => {
+  it('never hands the same job to two concurrent runners', async () => {
     const runs = new Map<string, number>();
     vi.spyOn(registry, TYPE).mockImplementation(async ({ job }) => {
       runs.set(job.id, (runs.get(job.id) ?? 0) + 1);
@@ -250,6 +251,69 @@ describe('runDueJobs', () => {
     expect(runs.size).toBe(20);
     for (const job of jobs) {
       expect((await reload(job)).status).toBe('SUCCEEDED');
+    }
+  });
+
+  it('skips a locked row instead of waiting for it (FOR UPDATE SKIP LOCKED)', async () => {
+    spyHandler();
+    const locked = await makeJob();
+    const free = await Promise.all([makeJob(), makeJob()]);
+
+    // Another runner is mid-claim on `locked`: hold its row lock in an open transaction. With a
+    // plain FOR UPDATE, runDueJobs would block until this transaction ends — i.e. never, since
+    // the transaction is waiting for runDueJobs.
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Job" WHERE "id" = ${locked.id} FOR UPDATE`;
+
+      const outcome = await Promise.race([
+        runDueJobs({ types: [TYPE] }),
+        new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 2000)),
+      ]);
+
+      expect(outcome).toMatchObject({ claimed: 2, succeeded: 2 });
+    }, { timeout: 10_000 });
+
+    expect((await reload(locked)).status).toBe('PENDING');
+    for (const job of free) expect((await reload(job)).status).toBe('SUCCEEDED');
+  });
+
+  it('re-asserts the lock before each job and skips one another runner has taken over', async () => {
+    const first = await makeJob({ runAt: new Date(Date.now() - 2000) });
+    const second = await makeJob({ runAt: new Date(Date.now() - 1000) });
+    const ran: string[] = [];
+    vi.spyOn(registry, TYPE).mockImplementation(async ({ job }) => {
+      ran.push(job.id);
+      // While the first job runs, recovery hands the second to another runner.
+      if (job.id === first.id) {
+        await prisma.job.update({ where: { id: second.id }, data: { lockedBy: 'other-runner' } });
+      }
+    });
+
+    const result = await runDueJobs({ workerId: 'slow-runner' });
+
+    expect(result).toEqual({ claimed: 2, succeeded: 1, retried: 0, failed: 0, skipped: 1 });
+    expect(ran).toEqual([first.id]);
+    expect(await reload(second)).toMatchObject({ status: 'RUNNING', lockedBy: 'other-runner' });
+  });
+
+  it('logs from inside a job carry its jobId and the enqueuing request id', async () => {
+    await runWithContext({ requestId: 'trace-from-request' }, () => enqueueJob(prisma, { type: TYPE, runAt: new Date(Date.now() - 1000) }));
+    const [job] = await jobsOf(TYPE);
+    vi.spyOn(registry, TYPE).mockImplementation(async ({ logger }) => {
+      logger.info('handler says hi');
+      throw new Error('transient');
+    });
+    process.env.LOG_LEVEL = 'info';
+    const out = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    try {
+      await runDueJobs();
+    } finally {
+      process.env.LOG_LEVEL = 'error';
+    }
+
+    const lines = out.mock.calls.map(([line]) => JSON.parse(String(line)));
+    for (const msg of ['handler says hi', 'job will retry']) {
+      expect(lines.find((line) => line.msg === msg)).toMatchObject({ jobId: job.id, requestId: 'trace-from-request' });
     }
   });
 
@@ -280,10 +344,66 @@ describe('recoverStaleJobs', () => {
       status: 'RUNNING', attempts: 1, lockedBy: 'alive', lockedAt: new Date(now.getTime() - STALE_LOCK_MS + 60_000),
     });
 
-    expect(await recoverStaleJobs(now)).toBe(1);
+    expect(await recoverStaleJobs(now)).toEqual({ requeued: 1, failed: 0 });
 
     expect(await reload(stale)).toMatchObject({ status: 'PENDING', attempts: 2, lockedAt: null, lockedBy: null });
     expect(await reload(fresh)).toMatchObject({ status: 'RUNNING', lockedBy: 'alive' });
+  });
+
+  it('fails a stale job that has used up its attempts instead of requeueing it forever', async () => {
+    const now = new Date();
+    const exhausted = await makeJob({
+      status: 'RUNNING', attempts: 5, maxAttempts: 5, lockedBy: 'dead', lockedAt: new Date(now.getTime() - STALE_LOCK_MS - 1),
+    });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    expect(await recoverStaleJobs(now)).toEqual({ requeued: 0, failed: 1 });
+
+    expect(await reload(exhausted)).toMatchObject({
+      status: 'FAILED', lockedBy: null, lastError: 'stale lock, attempts exhausted',
+    });
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toMatchObject({ msg: 'job failed', jobId: exhausted.id });
+    expect((await runDueJobs({ now })).claimed).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// the polling worker
+// ---------------------------------------------------------------------------------------------
+
+describe('startJobWorker', () => {
+  async function until(condition: () => Promise<boolean>, ms = 3000) {
+    const deadline = Date.now() + ms;
+    while (!(await condition())) {
+      if (Date.now() > deadline) throw new Error('condition not reached in time');
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  it('ensures recurring jobs, recovers stale ones and runs due jobs on every poll, and stops cleanly', async () => {
+    const handler = spyHandler();
+    const due = await makeJob();
+    const stale = await makeJob({
+      status: 'RUNNING', attempts: 1, lockedBy: 'dead', lockedAt: new Date(Date.now() - STALE_LOCK_MS - 60_000),
+    });
+
+    const worker = startJobWorker({ intervalMs: 10, handleSignals: false });
+    try {
+      await until(async () => (await reload(due)).status === 'SUCCEEDED' && (await reload(stale)).status === 'SUCCEEDED');
+      expect((await jobsOf('project.lifecycleSweep')).length).toBe(1);
+
+      // A re-seed wipes every job; the next poll puts the schedule back.
+      await prisma.job.deleteMany({ where: { type: 'project.lifecycleSweep' } });
+      await until(async () => (await jobsOf('project.lifecycleSweep')).length === 1);
+    } finally {
+      await worker.stop();
+    }
+
+    const callsAtStop = handler.mock.calls.length;
+    await makeJob();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(handler.mock.calls.length).toBe(callsAtStop);
   });
 });
 
@@ -322,7 +442,7 @@ describe('recurring jobs', () => {
   });
 
   it('runDueJobs itself never creates recurring jobs', async () => {
-    expect(await runJobs()).toEqual({ claimed: 0, succeeded: 0, retried: 0, failed: 0 });
+    expect(await runJobs()).toEqual({ claimed: 0, succeeded: 0, retried: 0, failed: 0, skipped: 0 });
     expect(await prisma.job.count()).toBe(0);
   });
 
@@ -490,7 +610,7 @@ describe('POST /api/internal/jobs/run', () => {
         .send({});
 
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ claimed: 2, succeeded: 2, retried: 0, failed: 0 });
+      expect(res.body).toEqual({ claimed: 2, succeeded: 2, retried: 0, failed: 0, skipped: 0 });
       expect(handler).toHaveBeenCalledTimes(2);
       expect((await reload(due)).status).toBe('SUCCEEDED');
       expect(await reload(stale)).toMatchObject({ status: 'SUCCEEDED', attempts: 2 });
