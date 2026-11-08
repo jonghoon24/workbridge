@@ -11,13 +11,15 @@ function AuthCallbackContent() {
   const searchParams = useSearchParams();
   const { setAuth } = useAuthStore();
 
+  // `replace`, not `push`: the callback URL carries the access token, so it must not stay in
+  // the browser history.
   useEffect(() => {
     const token = searchParams.get('token');
     const error = searchParams.get('error');
     const needsRoleSelection = searchParams.get('needsRoleSelection') === 'true';
 
     if (error) {
-      router.push('/login?error=oauth_failed');
+      router.replace('/login?error=oauth_failed');
       return;
     }
 
@@ -28,14 +30,14 @@ function AuthCallbackContent() {
       api.get('/api/users/me')
         .then(({ data }) => {
           setAuth(data, token);
-          router.push(needsRoleSelection ? '/auth/select-role' : '/');
+          router.replace(needsRoleSelection ? '/auth/select-role' : '/');
         })
         .catch(() => {
           localStorage.removeItem('accessToken');
-          router.push('/login?error=oauth_failed');
+          router.replace('/login?error=oauth_failed');
         });
     } else {
-      router.push('/login');
+      router.replace('/login');
     }
   }, [searchParams, setAuth, router]);
 

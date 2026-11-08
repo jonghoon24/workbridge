@@ -78,7 +78,11 @@ api.interceptors.response.use(
         if (typeof window !== 'undefined') {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('user');
-          window.location.href = '/login';
+          // Come back here after logging in (LoginForm only follows same-site paths).
+          const here = `${window.location.pathname}${window.location.search}`;
+          window.location.href = window.location.pathname === '/login'
+            ? '/login'
+            : `/login?redirect=${encodeURIComponent(here)}`;
         }
         return Promise.reject(refreshError);
       } finally {
