@@ -14,8 +14,8 @@ paths:
 - **base URL이 둘로 나뉜다:** 브라우저에서 `getBaseURL()`은 `''`(같은 출처 `/api/*`, 라우트 핸들러
   `src/app/api/[...path]/route.js`와 `src/app/api/auth/*`가 전달)이고, SSR에서는
   `getApiUrl()`이다. 새 HTTP 메서드는 catch-all 라우트에서 export해야 한다.
-- **백엔드 주소는 `src/lib/apiUrl.js`의 `getApiUrl()` 한 곳에서만 정한다**(`API_URL` → `API_URL_TEMPLATE`+브랜치
-  → `NEXT_PUBLIC_API_URL` → localhost). 서버 쪽에서만 부른다 — 브라우저 번들에 넣지 않는다.
+- **백엔드 주소는 `src/lib/apiUrl.js`의 `getApiUrl()` 한 곳에서만 정한다**(`API_URL` → Related Projects
+  `VERCEL_RELATED_PROJECTS` → `NEXT_PUBLIC_API_URL` → localhost). 서버 쪽에서만 부른다 — 브라우저 번들에 넣지 않는다.
 - **`src/middleware.js`는 쿠키가 있는지만 본다.** 검증이 아니다: `protectedRoutes` 경로에
   `refreshToken` 쿠키가 없으면 `/login?redirect=…`로 보낸다. 보호할 페이지를 추가하면 그 접두사를
   여기에 넣는다. 실제 권한 경계는 여전히 서버의 컨트롤러다.
