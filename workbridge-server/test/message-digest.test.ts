@@ -11,7 +11,7 @@ import type { MailMessage, MailProvider } from '../src/lib/mail/provider';
 import { MINUTE_MS } from '../src/lib/time';
 
 /**
- * The unread-message digest completed by Phase 3: J8 steps 3–4 as NC16 specifies them — the
+ * The unread-message digest, second half: J8 steps 3–4 as NC16 specifies them — the
  * 60-minute throttle and the email-only `MESSAGE_UNREAD_DIGEST` through `notify()`, sent by its
  * `notification.email` job on a later runner pass. Driven by `runDueJobs({ now })` alone.
  */

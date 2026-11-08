@@ -359,7 +359,7 @@ export async function makeContractScenario(overrides: {
   return { client, freelancer, project, application, contract, milestone, conversation };
 }
 
-// ─── Phase 3: notification channels (BEHAVIOR.md "Notification channels") ──
+// ─── Notification channels (BEHAVIOR.md "Notification channels") ──────────
 
 /**
  * A stored preference override for `userId` and `type`. Both channels default to `null`

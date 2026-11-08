@@ -543,7 +543,7 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     role: null,
     gate: null,
   },
-  // Phase 3 (NC5–NC8)
+  // notifications.routes.ts — preferences (NC5–NC8)
   {
     label: 'GET /api/notifications/preferences',
     method: 'get',
@@ -1856,7 +1856,7 @@ describe('unmatched paths and methods bypass errorHandler (Q10)', () => {
    */
   const UNMATCHED = [
     {
-      // Was `GET /api/contracts` until Phase 1 gave that router an index route (CT1).
+      // Was `GET /api/contracts` until the contract list (CT1) gave that router an index route.
       label: 'GET /api/users (mounted router, no index route)',
       method: 'get' as HttpMethod,
       path: '/api/users',

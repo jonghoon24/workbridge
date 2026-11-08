@@ -1143,7 +1143,7 @@ describe('POST /api/payments/confirm', () => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/payments/dev-complete — local/demo bypass
+// POST /api/payments/dev-complete — local development bypass
 // ---------------------------------------------------------------------------
 
 describe('POST /api/payments/dev-complete', () => {

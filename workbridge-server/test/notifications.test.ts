@@ -496,7 +496,7 @@ describe('PATCH /api/notifications/read-all', () => {
   });
 });
 
-describe('Phase 1 notification types [C9]', () => {
+describe('contract, milestone and settlement notification types [C9]', () => {
   it('renders all 15 new types with the links BEHAVIOR.md lists', () => {
     const v = { projectTitle: 'P', contractId: 'c1', milestoneId: 'm1', milestoneTitle: 'M', settlementId: 's1', amount: 1_000, reason: 'r' };
     const milestone = '/contracts/c1/milestones/m1';
