@@ -1,0 +1,44 @@
+# 프리뷰 또는 운영 DB를 시드 데이터(docs/SEED_DATA.md)로 되돌린다. 시드는 모든 테이블을 비우므로
+# 수동 실행 전용이고, confirm에 `seed`를 입력해야 돈다. 마이그레이션을 먼저 적용한다.
+#   gh workflow run seed.yml -f environment=preview -f confirm=seed
+name: seed
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "대상 환경"
+        required: true
+        type: choice
+        options: [preview, production]
+      confirm:
+        description: "모든 테이블을 비운다. 진행하려면 seed 라고 입력"
+        required: true
+        type: string
+
+concurrency: migrate
+
+jobs:
+  seed:
+    name: db:seed (${{ inputs.environment }})
+    if: inputs.confirm == 'seed'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workbridge-server
+    env:
+      DATABASE_URL: ${{ inputs.environment == 'production' && secrets.PROD_DIRECT_URL || secrets.PREVIEW_DIRECT_URL }}
+      DIRECT_URL: ${{ inputs.environment == 'production' && secrets.PROD_DIRECT_URL || secrets.PREVIEW_DIRECT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workbridge-server/package-lock.json
+      - name: 의존성 설치
+        run: npm ci
+      - name: 마이그레이션 적용
+        run: npx prisma migrate deploy
+      - name: 시드 넣기
+        run: npm run db:seed

@@ -1,0 +1,58 @@
+# main에 새 마이그레이션이 들어오면 프리뷰 DB → 운영 DB 순서로 `prisma migrate deploy`를 적용한다
+# (docs/DEPLOYMENT.md "환경"). 원격 DB에 마이그레이션을 적용하는 유일한 경로다 — 손으로 돌리지 않는다.
+# 시크릿 PREVIEW_DIRECT_URL / PROD_DIRECT_URL은 pgbouncer를 거치지 않는 Session mode(5432) 연결이다.
+name: migrate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workbridge-server/prisma/migrations/**"
+  workflow_dispatch:
+
+# 두 실행이 겹치면 같은 마이그레이션을 두 번 적용하려 든다.
+concurrency: migrate
+
+jobs:
+  preview:
+    name: prisma migrate deploy (preview)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workbridge-server
+    env:
+      DATABASE_URL: ${{ secrets.PREVIEW_DIRECT_URL }}
+      DIRECT_URL: ${{ secrets.PREVIEW_DIRECT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workbridge-server/package-lock.json
+      - name: 의존성 설치
+        run: npm ci
+      - name: 마이그레이션 적용
+        run: npx prisma migrate deploy
+
+  production:
+    name: prisma migrate deploy (production)
+    needs: preview
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workbridge-server
+    env:
+      DATABASE_URL: ${{ secrets.PROD_DIRECT_URL }}
+      DIRECT_URL: ${{ secrets.PROD_DIRECT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workbridge-server/package-lock.json
+      - name: 의존성 설치
+        run: npm ci
+      - name: 마이그레이션 적용
+        run: npx prisma migrate deploy
