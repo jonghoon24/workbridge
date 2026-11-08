@@ -6,6 +6,12 @@ import ProjectDiscovery from '@/components/home/ProjectDiscovery';
 import HomeRecommendedProjects from '@/components/profile/HomeRecommendedProjects';
 import { ShieldCheckIcon, SparklesIcon, StarIcon } from '@/components/ui/Icons';
 
+// 최근 프로젝트는 요청마다 서버에서 읽는다. axios 호출은 Next가 동적 데이터로 알아채지 못해서
+// 그냥 두면 빌드 때 정적으로 굳는다. 그러면 목록이 다음 배포까지 바뀌지 않고, 빌드가 그 환경의
+// 목록 API(마감된 프로젝트를 닫으며 행을 쓴다)를 부른다. ISR(revalidate)도 빌드 때 한 번은
+// 부르므로 동적 렌더링으로 둔다.
+export const dynamic = 'force-dynamic';
+
 async function getRecentProjects() {
   try {
     const { data } = await api.get('/api/projects?limit=6&sort=latest');
