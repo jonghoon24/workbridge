@@ -15,11 +15,7 @@ Thumbs.db
 .env.test.local
 .env.production.local
 
-# Local agent/tooling
-.agents/
-skills-lock.json
-
-# .claude/ is local-only, except the shared harness (settings, rules, hooks, skills)
+# .claude/는 공유 하네스(settings, rules, hooks, skills)만 추적한다. settings.local.json, worktrees/ 등은 로컬 전용
 .claude/*
 !.claude/settings.json
 !.claude/rules/
@@ -27,9 +23,8 @@ skills-lock.json
 !.claude/skills/
 !.claude/skills/**
 
-# Planning/scaffolding docs (kept locally, not tracked)
-docs/PRD.md
-docs/TODO.md
+# npx playwright cli의 세션 산출물(스냅샷, 스크린샷)
+.playwright-cli/
 
-# Claude Code local settings
-.claude/settings.local.json
+# @claude(claude.yml)가 드래프트 PR 본문을 쓰는 임시 파일
+/.pr-body.md
