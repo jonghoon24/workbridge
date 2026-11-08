@@ -5,6 +5,7 @@ import Button from '@/components/ui/Button';
 import { formatFileSize } from '@/lib/format';
 import { ATTACHMENT_ACCEPT } from '@/constants/milestones';
 import { CLOSED_REASON_TEXT, MESSAGE_LIMITS } from './messageUtils';
+import { PaperclipIcon } from '@/components/ui/Icons';
 
 // 메시지 입력창(BEHAVIOR.md MG15). Enter 전송, Shift+Enter 줄바꿈. 파일은 최대 5개, 개당 10MB.
 // 보낼 수 없는 대화방(MG9)이면 입력창 대신 이유를 보여준다.
@@ -42,9 +43,9 @@ export default function MessageComposer({ canSend, closedReason, onSend }) {
   }
 
   function validate(trimmed) {
-    if (!trimmed && files.length === 0) return '메시지를 입력하거나 파일을 첨부해주세요.';
+    if (!trimmed && files.length === 0) return '메시지를 입력하거나 파일을 첨부해 주세요.';
     if (trimmed.length > MESSAGE_LIMITS.bodyMax) {
-      return `메시지는 ${MESSAGE_LIMITS.bodyMax.toLocaleString()}자 이하로 입력해주세요.`;
+      return `메시지는 ${MESSAGE_LIMITS.bodyMax.toLocaleString()}자 이하로 입력해 주세요.`;
     }
     const big = files.find((file) => file.size > MESSAGE_LIMITS.fileMaxBytes);
     if (big) return `파일은 개당 10MB 이하여야 합니다: ${big.name}`;
@@ -133,7 +134,7 @@ export default function MessageComposer({ canSend, closedReason, onSend }) {
           }`}
           title="파일 첨부 (최대 5개, 개당 10MB)"
         >
-          <span aria-hidden="true">📎</span>
+          <PaperclipIcon className="h-4 w-4 shrink-0" />
           <span className="sr-only">파일 첨부</span>
           <input
             key={fileInputKey}
@@ -152,7 +153,7 @@ export default function MessageComposer({ canSend, closedReason, onSend }) {
           onCompositionStart={() => { composing.current = true; }}
           onCompositionEnd={() => { composing.current = false; }}
           rows={Math.min(5, Math.max(1, body.split('\n').length))}
-          placeholder="메시지를 입력하세요"
+          placeholder="메시지를 입력해 주세요"
           className="block min-h-[2.5rem] flex-1 resize-none rounded-lg border-gray-300 text-sm shadow-sm focus:border-primary-500 focus:ring-primary-500"
           disabled={sending}
           aria-label="메시지 입력"

@@ -5,6 +5,8 @@ import api from '@/lib/api';
 import Button from '@/components/ui/Button';
 import { formatFileSize } from '@/lib/format';
 import { ATTACHMENT_ACCEPT, MILESTONE_LIMITS } from '@/constants/milestones';
+import { toUserMessage } from '@/lib/errorMessages';
+import FileButton from '@/components/ui/FileButton';
 
 function isHttpUrl(value) {
   try {
@@ -15,7 +17,7 @@ function isHttpUrl(value) {
   }
 }
 
-// 산출물 제출(BEHAVIOR.md MS12). multipart로 message, links(반복 필드), files를 보낸다.
+// 결과물 제출(BEHAVIOR.md MS12). multipart로 message, links(반복 필드), files를 보낸다.
 // 화면 검사는 M18 한도를 미리 알려주는 용도이고, 파일 형식은 서버가 판단한다.
 export default function SubmissionForm({ milestoneId, isResubmission = false, onSubmitted }) {
   const [message, setMessage] = useState('');
@@ -49,9 +51,9 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
 
   function validate(filledLinks) {
     const trimmed = message.trim();
-    if (!trimmed) return '작업 내용을 입력해주세요.';
+    if (!trimmed) return '작업 내용을 입력해 주세요.';
     if (trimmed.length > MILESTONE_LIMITS.messageMax) {
-      return `작업 내용은 ${MILESTONE_LIMITS.messageMax.toLocaleString()}자 이하로 입력해주세요.`;
+      return `작업 내용은 ${MILESTONE_LIMITS.messageMax.toLocaleString()}자 이하로 입력해 주세요.`;
     }
     if (filledLinks.length > MILESTONE_LIMITS.linksMax) {
       return `링크는 최대 ${MILESTONE_LIMITS.linksMax}개까지 첨부할 수 있습니다.`;
@@ -93,9 +95,9 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
       onSubmitted?.(data);
     } catch (err) {
       if (err.response?.status === 413) {
-        setError(err.response?.data?.error?.message || '파일 크기가 너무 큽니다 (개당 10MB 이하).');
+        setError(toUserMessage(err, '파일이 너무 큽니다. 크기를 줄여 다시 올려 주세요.'));
       } else {
-        setError(err.response?.data?.error?.message || '제출에 실패했습니다');
+        setError(toUserMessage(err, '결과물을 제출하지 못했습니다'));
       }
     } finally {
       setSubmitting(false);
@@ -121,8 +123,8 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
           rows={6}
           className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
           placeholder={isResubmission
-            ? '반려 사유를 어떻게 반영했는지 적어주세요'
-            : '이번 마일스톤에서 완료한 작업과 확인 방법을 적어주세요'}
+            ? '수정 요청 사항을 어떻게 반영했는지 적어 주세요'
+            : '이번 마일스톤에서 완료한 작업과 확인 방법을 적어 주세요'}
         />
         <p className="mt-1 text-xs text-gray-400">
           {message.trim().length.toLocaleString()} / {MILESTONE_LIMITS.messageMax.toLocaleString()}자
@@ -155,20 +157,19 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
       </div>
 
       <div>
-        <label htmlFor="submission-files" className="block text-sm font-medium text-gray-700 mb-1">
+        <p className="block text-sm font-medium text-gray-700 mb-1">
           첨부 파일 <span className="text-gray-400 font-normal">(최대 {MILESTONE_LIMITS.filesMax}개, 개당 10MB)</span>
-        </label>
-        {files.length < MILESTONE_LIMITS.filesMax && (
-          <input
-            key={fileInputKey}
-            id="submission-files"
-            type="file"
-            multiple
-            accept={ATTACHMENT_ACCEPT}
-            onChange={handleFileChange}
-            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100"
-          />
-        )}
+        </p>
+        <FileButton
+          id="submission-files"
+          inputKey={fileInputKey}
+          label="파일 선택"
+          multiple
+          accept={ATTACHMENT_ACCEPT}
+          onChange={handleFileChange}
+          disabled={files.length >= MILESTONE_LIMITS.filesMax}
+          fileName={files.length > 0 ? `${files.length}개 선택됨` : ''}
+        />
         <p className="mt-1 text-xs text-gray-400">이미지, PDF, ZIP, 텍스트, 오피스 문서, HWP</p>
         {files.length > 0 && (
           <ul className="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200">
@@ -191,7 +192,7 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
 
       <div className="flex justify-end">
         <Button type="submit" loading={submitting}>
-          {isResubmission ? '재제출하기' : '산출물 제출하기'}
+          {isResubmission ? '다시 제출하기' : '결과물 제출하기'}
         </Button>
       </div>
     </form>

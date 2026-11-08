@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { buttonClasses } from '@/components/ui/Button';
 
 export const metadata = {
-  title: '페이지를 찾을 수 없습니다 - WorkBridge',
+  title: '페이지를 찾을 수 없습니다',
 };
 
 export default function NotFound() {
@@ -11,7 +11,7 @@ export default function NotFound() {
       <p className="text-sm font-semibold text-primary-600">404</p>
       <h1 className="mt-3 text-2xl font-bold text-gray-900 sm:text-3xl">페이지를 찾을 수 없습니다</h1>
       <p className="mt-3 text-gray-500">
-        주소가 바뀌었거나 삭제된 페이지일 수 있어요. 입력한 주소를 다시 확인해주세요.
+        주소가 바뀌었거나 삭제된 페이지일 수 있습니다. 입력한 주소를 다시 확인해 주세요.
       </p>
       <div className="mt-8 flex flex-col gap-3 sm:flex-row">
         <Link href="/" className={buttonClasses({ variant: 'primary', size: 'lg' })}>

@@ -13,7 +13,7 @@ const PAGE_SIZE = 50;
 
 // /messages와 /messages/[conversationId]가 함께 쓰는 틀. 왼쪽 대화방 목록은 페이지를 옮겨도 유지되고
 // 폴링으로 갱신된다. 모바일에서는 목록과 스레드 중 하나만 보인다.
-export default function MessagesLayout({ children }) {
+export default function MessagesShell({ children }) {
   const activeId = useSelectedLayoutSegment();
   const [conversations, setConversations] = useState([]);
   const [meta, setMeta] = useState({ total: 0, totalPages: 0 });
@@ -63,7 +63,7 @@ export default function MessagesLayout({ children }) {
 
   return (
     <div className="mx-auto max-w-6xl sm:px-6 sm:py-6 lg:px-8">
-      <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-white sm:h-[calc(100vh-7rem)] sm:rounded-xl sm:border sm:border-gray-200/80 sm:shadow-card">
+      <div className="flex h-[calc(100dvh-4rem)] overflow-hidden bg-white sm:h-[calc(100dvh-7rem)] sm:rounded-xl sm:border sm:border-gray-200/80 sm:shadow-card">
         <aside
           className={`${activeId ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-gray-200 md:w-80`}
           aria-label="대화방 목록"

@@ -11,6 +11,8 @@ import Input from '@/components/ui/Input';
 import CheckboxChips from '@/components/ui/CheckboxChips';
 import ProfileCompletionCard from '@/components/profile/ProfileCompletionCard';
 import PageLoader from '@/components/ui/PageLoader';
+import FileButton from '@/components/ui/FileButton';
+import EmptyState from '@/components/ui/EmptyState';
 import {
   BUSINESS_FIELD_OPTIONS,
   FREELANCER_ACTIVITY_CATEGORIES,
@@ -19,6 +21,7 @@ import {
   resolveOtherValue,
   resolvePreset,
 } from '@/constants/taxonomy';
+import { toUserMessage } from '@/lib/errorMessages';
 
 function resolveSelectableValue(preset, other) {
   return preset === '기타' ? other.trim() : preset;
@@ -35,6 +38,7 @@ export default function ProfilePage() {
   const [success, setSuccess] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [completionKey, setCompletionKey] = useState(0);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
@@ -56,7 +60,14 @@ export default function ProfilePage() {
           portfolioUrl: data.portfolioUrl || '',
         });
       })
-      .catch(() => router.push('/login'))
+      .catch((err) => {
+        // 로그인이 풀린 경우만 로그인으로 보낸다. 서버 오류나 네트워크 오류는 이 화면에서 알린다.
+        if (err.response?.status === 401) {
+          router.push('/login?redirect=/profile');
+          return;
+        }
+        setLoadError(toUserMessage(err, '프로필을 불러오지 못했습니다'));
+      })
       .finally(() => setLoading(false));
   }, [router]);
 
@@ -76,7 +87,7 @@ export default function ProfilePage() {
       if (profile?.role === 'CLIENT') {
         const businessField = resolveSelectableValue(form.businessFieldPreset, form.businessFieldOther);
         if (!form.companyName?.trim() || !businessField) {
-          setError('회사명과 사업 분야를 입력해주세요');
+          setError('회사명과 사업 분야를 입력해 주세요');
           return;
         }
 
@@ -100,7 +111,7 @@ export default function ProfilePage() {
           || !Number.isFinite(hourlyRate)
           || hourlyRate <= 0
         ) {
-          setError('기술 스택, 활동 카테고리, 경력, 시간당 단가를 입력해주세요');
+          setError('기술 스택, 활동 카테고리, 경력, 시간당 단가를 입력해 주세요');
           return;
         }
 
@@ -130,13 +141,21 @@ export default function ProfilePage() {
       setSuccess('프로필이 저장되었습니다');
       setCompletionKey((key) => key + 1);
     } catch (err) {
-      setError(err.response?.data?.error?.message || '저장에 실패했습니다');
+      setError(toUserMessage(err, '저장에 실패했습니다'));
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) return <PageLoader />;
+
+  if (loadError) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <EmptyState tone="error" title={loadError} description="잠시 후 새로고침해 주세요." />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -153,7 +172,7 @@ export default function ProfilePage() {
             className="rounded-lg border border-gray-200 bg-white p-4 hover:border-primary-300 hover:bg-primary-50"
           >
             <p className="font-medium text-gray-900">포트폴리오 관리 →</p>
-            <p className="text-xs text-gray-500 mt-1">대표 작업을 이미지와 함께 보여주세요</p>
+            <p className="text-xs text-gray-500 mt-1">대표 작업을 이미지와 함께 보여 주세요</p>
           </Link>
           <Link
             href="/profile/careers"
@@ -182,12 +201,15 @@ export default function ProfilePage() {
                   <span className="text-primary-700 font-bold text-xl">{profile?.name?.[0]?.toUpperCase()}</span>
                 )}
               </div>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => setImageFile(e.target.files[0])}
-                className="text-sm text-gray-600"
-              />
+              <div className="min-w-0">
+                <FileButton
+                  label={profile?.profileImage ? '이미지 바꾸기' : '이미지 선택'}
+                  accept="image/*"
+                  onChange={(e) => setImageFile(e.target.files[0] || null)}
+                  fileName={imageFile?.name || ''}
+                  placeholder="이미지 파일, 5MB 이하"
+                />
+              </div>
             </div>
           </div>
 
@@ -205,7 +227,7 @@ export default function ProfilePage() {
               onChange={(e) => setForm({ ...form, bio: e.target.value })}
               rows={3}
               className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-              placeholder="자신을 소개해주세요"
+              placeholder="자신을 소개해 주세요"
             />
           </div>
 
@@ -234,7 +256,7 @@ export default function ProfilePage() {
                   label="기타 사업 분야"
                   value={form.businessFieldOther}
                   onChange={(e) => setForm({ ...form, businessFieldOther: e.target.value })}
-                  placeholder="사업 분야를 입력하세요"
+                  placeholder="사업 분야를 입력해 주세요"
                 />
               )}
               <Input label="웹사이트" type="url" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} />
@@ -274,7 +296,7 @@ export default function ProfilePage() {
                   label="기타 활동 카테고리"
                   value={form.activityCategoryOther}
                   onChange={(e) => setForm({ ...form, activityCategoryOther: e.target.value })}
-                  placeholder="활동 카테고리를 입력하세요"
+                  placeholder="활동 카테고리를 입력해 주세요"
                 />
               )}
               <div className="grid grid-cols-2 gap-4">

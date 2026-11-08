@@ -33,11 +33,11 @@ export default async function HomePage() {
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
           <div className="text-center">
             <h1 className="text-[2rem] leading-tight sm:text-5xl font-bold mb-5 tracking-tight">
-              최고의 프리랜서를 찾아드립니다
+              프로젝트를 단계별로 맡기고, 승인된 만큼 정산합니다
             </h1>
             <p className="text-base sm:text-lg text-primary-100 mb-9 max-w-2xl mx-auto leading-relaxed">
-              WorkBridge는 의뢰인과 프리랜서를 연결하는 안전한 매칭 플랫폼입니다.
-              AI 기반 단가 분석으로 합리적인 가격에 최고의 결과를 만드세요.
+              의뢰인은 프로젝트를 등록하고 지원자를 비교해 전자 계약을 맺습니다.
+              프리랜서는 마일스톤마다 결과물을 제출하고, 의뢰인이 승인한 금액을 정산받습니다.
             </p>
             <HeroActions />
           </div>
@@ -51,23 +51,23 @@ export default async function HomePage() {
       {/* Features Section */}
       <section className="py-16 sm:py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-10 sm:mb-12">주요 기능</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-10 sm:mb-12">WorkBridge에서 일하는 방식</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
             {[
               {
                 icon: SparklesIcon,
                 title: 'AI 단가 분석',
-                desc: '프로젝트 내용을 AI가 분석하여 적정 단가를 산정해드립니다.',
+                desc: '프로젝트 설명과 필요 기술을 바탕으로 기능별 예상 비용을 계산합니다. 예산을 정할 때 참고할 수 있습니다.',
               },
               {
                 icon: ShieldCheckIcon,
-                title: '안전한 계약',
-                desc: '전자 서명과 에스크로 결제로 안전한 거래를 보장합니다.',
+                title: '전자 계약과 안전결제',
+                desc: '양측이 마일스톤 계획에 서명하면 계약이 시작됩니다. 결제한 금액은 WorkBridge가 보관하다가 결과물이 승인되면 정산합니다.',
               },
               {
                 icon: StarIcon,
-                title: '신뢰 기반 리뷰',
-                desc: '실제 프로젝트 완료 후 상호 평가로 신뢰를 쌓습니다.',
+                title: '상호 리뷰',
+                desc: '계약이 끝나면 의뢰인과 프리랜서가 서로 평가를 남깁니다. 리뷰는 공개 프로필에 쌓입니다.',
               },
             ].map((feature) => (
               <div key={feature.title} className="flex gap-4 rounded-2xl border border-gray-200/80 bg-gray-50/60 p-5 sm:p-7 md:block">

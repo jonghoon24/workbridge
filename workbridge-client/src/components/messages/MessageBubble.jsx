@@ -2,6 +2,7 @@
 
 import { formatFileSize } from '@/lib/format';
 import { MESSAGE_LIMITS, formatMessageTime } from './messageUtils';
+import { PaperclipIcon } from '@/components/ui/Icons';
 
 function AttachmentList({ attachments, mine }) {
   if (!attachments?.length) return null;
@@ -20,7 +21,7 @@ function AttachmentList({ attachments, mine }) {
                 : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
             }`}
           >
-            <span aria-hidden="true">📎</span>
+            <PaperclipIcon className="h-4 w-4 shrink-0" />
             <span className="truncate font-medium">{attachment.fileName}</span>
             <span className={`shrink-0 ${mine ? 'text-primary-100' : 'text-gray-400'}`}>{formatFileSize(attachment.size)}</span>
           </a>

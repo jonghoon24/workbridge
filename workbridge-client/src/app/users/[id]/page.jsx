@@ -10,7 +10,8 @@ import { formatCareerSummary } from '@/components/profile/profileFormat';
 import Tag from '@/components/ui/Tag';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
-import { UserIcon } from '@/components/ui/Icons';
+import { BriefcaseIcon, BuildingIcon, GlobeIcon, UserIcon } from '@/components/ui/Icons';
+import { formatDate } from '@/lib/format';
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -20,7 +21,7 @@ export default function UserProfilePage() {
   useEffect(() => {
     api.get(`/api/users/${id}`)
       .then(({ data }) => setUser(data))
-      .catch(console.error)
+      .catch(() => setUser(null))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -50,7 +51,7 @@ export default function UserProfilePage() {
               <div className="flex items-center gap-1 mt-1">
                 <span className="text-yellow-400">★</span>
                 <span className="text-sm font-medium">{user.avgRating?.toFixed(1)}</span>
-                <span className="text-sm text-gray-500">({user.reviewCount}개 리뷰)</span>
+                <span className="text-sm text-gray-500">리뷰 {user.reviewCount}개</span>
               </div>
             )}
             {user.bio && <p className="text-gray-600 mt-2 text-sm">{user.bio}</p>}
@@ -96,13 +97,27 @@ export default function UserProfilePage() {
         )}
 
         {user.role === 'CLIENT' && (
-          <div className="mt-4 pt-4 border-t border-gray-100 text-sm">
-            {user.companyName && <p className="text-gray-600">🏢 {user.companyName}</p>}
-            {user.businessField && <p className="text-gray-600">💼 {user.businessField}</p>}
+          <div className="mt-4 pt-4 border-t border-gray-100 text-sm space-y-1.5">
+            {user.companyName && (
+              <p className="flex items-center gap-2 text-gray-600">
+                <BuildingIcon className="h-4 w-4 shrink-0 text-gray-400" />
+                <span className="sr-only">회사</span>
+                {user.companyName}
+              </p>
+            )}
+            {user.businessField && (
+              <p className="flex items-center gap-2 text-gray-600">
+                <BriefcaseIcon className="h-4 w-4 shrink-0 text-gray-400" />
+                <span className="sr-only">사업 분야</span>
+                {user.businessField}
+              </p>
+            )}
             {user.website && (
               <a href={user.website} target="_blank" rel="noopener noreferrer"
-                className="text-primary-600 hover:text-primary-700">
-                🌐 {user.website}
+                className="flex items-center gap-2 text-primary-600 hover:text-primary-700 break-all">
+                <GlobeIcon className="h-4 w-4 shrink-0" />
+                <span className="sr-only">웹사이트</span>
+                {user.website}
               </a>
             )}
           </div>
@@ -153,7 +168,7 @@ export default function UserProfilePage() {
                         ))}
                       </div>
                     )}
-                    <p className="text-xs text-gray-400 mt-1">{new Date(review.createdAt).toLocaleDateString('ko-KR')}</p>
+                    <p className="text-xs text-gray-400 mt-1">{formatDate(review.createdAt)}</p>
                   </div>
                 </div>
               </Card>
