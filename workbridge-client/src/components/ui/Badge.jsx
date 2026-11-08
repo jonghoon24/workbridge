@@ -41,16 +41,16 @@ const variantTones = {
 };
 
 const statusLabels = {
-  UPCOMING: '모집예정',
-  OPEN: '모집중',
-  IN_PROGRESS: '진행중',
+  UPCOMING: '모집 예정',
+  OPEN: '모집 중',
+  IN_PROGRESS: '진행 중',
   COMPLETED: '완료',
   CANCELLED: '취소',
-  CLOSED: '모집마감',
-  PENDING: '검토중',
+  CLOSED: '모집 마감',
+  PENDING: '검토 중',
   ACCEPTED: '수락됨',
   REJECTED: '거절됨',
-  ACTIVE: '진행중',
+  ACTIVE: '진행 중',
   FAILED: '실패',
   REFUNDED: '환불됨',
 };

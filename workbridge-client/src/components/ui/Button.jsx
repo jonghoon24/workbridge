@@ -5,6 +5,8 @@ export const buttonClasses = ({ variant = 'primary', size = 'md' } = {}) => {
     primary: 'bg-primary-600 text-white shadow-sm hover:bg-primary-700 focus-visible:ring-primary-500',
     secondary: 'bg-white text-gray-700 border border-gray-300 shadow-sm hover:bg-gray-50 hover:border-gray-400 focus-visible:ring-primary-500',
     danger: 'bg-red-600 text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-500',
+    // 같은 줄의 다른 행동보다 눈에 띄지 않아야 하는 위험 행동(삭제 등)
+    dangerText: 'text-red-600 hover:bg-red-50 hover:text-red-700 focus-visible:ring-red-500',
     ghost: 'text-gray-700 hover:bg-gray-100 focus-visible:ring-gray-400',
   };
   const sizes = {
