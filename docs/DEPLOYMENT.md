@@ -31,6 +31,7 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 ## 백엔드
 
 - `vercel.json`이 이미 설정되어 있음(`src/index.ts`를 `@vercel/node`가 서버리스 함수로 직접 트랜스파일한다. 빌드 단계와 `dist/`는 없다)
+- 함수 리전은 `vercel.json`의 `regions: ["icn1"]`(서울)이다. DB(Supabase)가 ap-northeast-2에 있어서 함수가 다른 리전(기본값 iad1)에서 돌면 쿼리마다 왕복 지연이 붙고, 지원 수락처럼 쿼리가 많은 트랜잭션이 Prisma의 인터랙티브 트랜잭션 기본 한도(5초)를 넘겨 500(`Transaction not found`)이 난다. DB 리전을 옮기면 이 값도 같이 옮긴다
 - Vercel 대시보드에서 환경변수 설정([ENV.md](ENV.md))
 - Prisma 클라이언트는 `package.json`의 `postinstall: prisma generate`가 설치 단계에서 만든다. 대시보드의 Build Command에도 `npx prisma generate`가 있지만 `vercel.json`에 `builds`가 있으면 대시보드 빌드 설정은 무시되므로 실제로 동작하는 것은 `postinstall`이다
 - 마이그레이션은 손으로 적용하지 않는다. 위 `migrate.yml`이 `prisma migrate deploy`를 돌리며, 이때 `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 5432)이어야 한다
@@ -41,8 +42,8 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 - GitHub 연동 시 Next.js 자동 감지
 - `NEXT_PUBLIC_API_URL`을 백엔드 배포 URL로 설정
 - 브라우저는 같은 출처의 `/api/*`를 부르고, Next 라우트 핸들러(`app/api/[...path]`, `app/api/auth/*`)가 백엔드로 전달한다
-- 백엔드 주소는 서버 쪽(라우트 핸들러와 SSR)에서만 `src/lib/apiUrl.js`의 `getApiUrl()`이 정한다. 우선순위는 `API_URL` → `API_URL_TEMPLATE`과 `VERCEL_GIT_COMMIT_REF`가 둘 다 있으면 템플릿의 `{branch}`를 브랜치 슬러그로 바꾼 값 → `NEXT_PUBLIC_API_URL` → `http://localhost:4000`이고, 끝의 `/`는 뗀다
-- 그래서 PR 프리뷰에서는 클라이언트 프리뷰가 같은 브랜치의 서버 프리뷰를 부른다. Vercel Preview 환경에는 `API_URL_TEMPLATE=https://workbridge-server-git-{branch}-jonghoon24s-projects.vercel.app`이 들어 있다(Preview에는 `API_URL`을 넣지 않는다 — 넣으면 템플릿보다 먼저 쓰인다). 브랜치 슬러그는 Vercel 브랜치 URL 규칙대로 소문자로 바꾸고 `[a-z0-9]` 밖의 글자를 `-`로, 연속 `-`는 하나로, 앞뒤 `-`는 뗀다. Vercel은 호스트명이 길면 슬러그를 잘라 해시를 붙이는데 이건 재현하지 않으므로 **브랜치 이름은 20자 안팎으로 짧게** 둔다
+- 백엔드 주소는 서버 쪽(라우트 핸들러와 SSR)에서만 `src/lib/apiUrl.js`의 `getApiUrl()`이 정한다. 우선순위는 `API_URL` → Vercel이 `VERCEL_RELATED_PROJECTS`를 넣어 줬으면 `@vercel/related-projects`의 `withRelatedProject`가 돌려주는 `workbridge-server` 호스트 → `NEXT_PUBLIC_API_URL` → `http://localhost:4000`이고, 프로토콜이 없으면 `https://`를 붙이고 끝의 `/`는 뗀다
+- 그래서 PR 프리뷰에서는 클라이언트 프리뷰가 같은 브랜치의 서버 프리뷰를 부른다. `workbridge-client/vercel.json`의 `relatedProjects`에 서버 프로젝트 ID(`prj_u3RYDLPGTEVB29lYr8z60KXSyiSm`)가 들어 있어서, Vercel이 클라이언트 배포마다 `VERCEL_RELATED_PROJECTS`에 서버의 운영 주소와 같은 브랜치의 프리뷰 주소를 넣어 준다. 브랜치 이름이 길면 Vercel이 슬러그를 잘라 프로젝트마다 다른 해시를 붙이므로 클라이언트 쪽에서 서버 주소를 만들어 낼 수 없다 — 이 값만 믿는다. Preview에는 `API_URL`을 넣지 않는다(넣으면 이 값보다 먼저 쓰인다). Related Projects는 같은 리포지토리의 Git 연동 배포에서만 채워진다(CLI 배포에서는 비어 있어 `NEXT_PUBLIC_API_URL`로 간다)
 
 ## 배포 후 업데이트
 

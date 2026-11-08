@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@tailwindcss/forms": "^0.5.7",
+    "@vercel/related-projects": "^1.1.1",
     "axios": "^1.6.2",
     "next": "14.1.0",
     "react": "^18",

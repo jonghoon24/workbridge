@@ -105,7 +105,7 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
   갱신한다. 로그인·가입·역할 선택·로그아웃만 갱신 인터셉터가 없는 `src/lib/authApi.js`를 쓴다.
 - **프록시**: `src/app/api/[...path]/route.js`가 `/api/*`를 서버로 전달하고, `src/app/api/auth/*`는
   `src/lib/server/authProxy.js`로 리프레시 토큰을 프론트엔드 쪽 `refreshToken` 쿠키로 다룬다. 서버 주소는
-  `API_URL || NEXT_PUBLIC_API_URL`.
+  `src/lib/apiUrl.js`의 `getApiUrl()`이 정한다(`API_URL` → 프리뷰에서는 Vercel Related Projects → `NEXT_PUBLIC_API_URL`).
 - **상태**: Zustand 스토어 `src/store/authStore.js`(토큰과 사용자, `localStorage`에 복사)와
   `src/store/projectStore.js`(목록 필터와 페이지).
 - **`src/middleware.js`**: 보호 경로에 `refreshToken` 쿠키가 없으면 `/login`으로 보낸다. 쿠키가 있는지만 보고,
