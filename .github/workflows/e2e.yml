@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # Same Postgres-service convention as typecheck.yml. The database is seeded (= wiped) by
+    # Same Postgres-service convention as ci.yml. The database is seeded (= wiped) by
     # scripts/e2e.sh; test/helpers/db.ts's "must contain test" guard does not apply here because
     # the E2E suite never loads that helper.
     services:
