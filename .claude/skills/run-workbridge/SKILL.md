@@ -1,42 +1,39 @@
 ---
 name: run-workbridge
-description: Build, launch, and drive the WorkBridge app locally — both the Express/Prisma backend (:4000) and the Next.js frontend (:3000). Use when asked to run, start, boot, serve, smoke-test, or screenshot WorkBridge (the freelancer-matching platform / 프리랜서 매칭 플랫폼).
+description: Build, launch, and drive the WorkBridge app locally — both the Express/Prisma backend (:4000) and the Next.js frontend (:3000). Use when asked to run, start, boot, serve, smoke-test, E2E-test, or screenshot WorkBridge (the freelancer-matching platform / 프리랜서 매칭 플랫폼).
 ---
 
 # Run WorkBridge
 
-WorkBridge is a two-package web app that runs as one product: `workbridge-server`
-(Express + Prisma API on **:4000**) and `workbridge-client` (Next.js 14 App Router
-on **:3000**). The browser talks to the API **same-origin** — the Next.js dev server
-proxies `/api/*` to :4000, so you only ever visit :3000.
+Two packages, one product: `workbridge-server` (Express + Prisma, **:4000**) and
+`workbridge-client` (Next.js 14, **:3000**). The browser only talks to :3000 — the route handlers
+`src/app/api/[...path]` and `src/app/api/auth/*` forward `/api/*` to :4000.
 
-Drive it with **`.claude/skills/run-workbridge/drive.sh`**: it runs API smoke tests,
-a real seed-account login, and captures headless-Chrome screenshots of the frontend.
+Three ways to check it, cheapest first:
+1. `bash .claude/skills/run-workbridge/drive.sh` — API smoke (health, list, seed login, proxy).
+2. `node workbridge-client/scripts/screenshots.mjs` — Playwright screenshots of key pages.
+3. `bash scripts/e2e.sh` (repo root) — Playwright E2E specs in `workbridge-client/e2e/`.
 
-All paths below are relative to the repo root. Verified on macOS (darwin) with a
-Homebrew Postgres. Commands were run this session and passed.
+All paths are relative to the repo root.
 
 ## Prerequisites
 
-- **Node** ≥ 18 (verified on v22), npm.
-- **PostgreSQL running locally.** Homebrew: `brew services start postgresql@14`.
-  The default superuser is your macOS username with no password — that's what the
-  setup below uses.
-- **Google Chrome** (for screenshots), at
-  `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`. Optional — the
-  API smoke tests still run without it.
-
-External services (Google OAuth, OpenAI pricing analysis, TossPayments, Supabase
-image upload) are **stubbed with dummy keys** — those features won't work, but every
-core flow (auth, projects, applications, contracts, reviews) runs against the local DB.
+- Node ≥ 18, npm. PostgreSQL on **localhost** (`brew services start postgresql@14`; superuser =
+  your macOS user, no password).
+- Playwright's Chromium for 2 and 3: `(cd workbridge-client && npx playwright install chromium)`.
+- External services (Google OAuth, OpenAI, TossPayments, Supabase Storage) use dummy values:
+  those features fail, every core flow works against the local DB.
 
 ## Setup (one-time)
 
+`.env` files are deny-listed for Claude's file tools (`.claude/settings.json`). If writing them
+is refused, show these blocks to the user and let them create the files.
+Use `localhost` for every URL — any command containing `supabase.co` is denied, because that is
+where the real preview/production databases live.
+
 ```bash
-# 1. Local database
 createdb workbridge 2>/dev/null || echo "db exists (ok)"
 
-# 2. Server env (.env) — local DB + dummy external-service keys, payment bypass ON
 cat > workbridge-server/.env <<EOF
 PORT=4000
 DATABASE_URL=postgresql://$(whoami)@localhost:5432/workbridge
@@ -52,43 +49,35 @@ OPENAI_API_KEY=dummy
 TOSS_SECRET_KEY=test_sk_dummy
 ALLOW_PAYMENT_BYPASS=true
 CLIENT_URL=http://localhost:3000
-SUPABASE_URL=https://dummy.supabase.co
+SUPABASE_URL=http://localhost:54321
 SUPABASE_SECRET_KEY=sb_secret_dummy
 TRUST_PROXY=loopback
-# Every local login comes from loopback and would share one 20-per-15-min login limit.
 RATE_LIMIT_ENABLED=false
-# Email is log-only: each email is one mail.sent info line in the server log.
 MAIL_PROVIDER=log
 EOF
 
-# 3. Client env (.env.local)
 cat > workbridge-client/.env.local <<'EOF'
 NEXT_PUBLIC_API_URL=http://localhost:4000
 NEXT_PUBLIC_TOSS_CLIENT_KEY=test_ck_dummy
 NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true
 EOF
 
-# 4. Install deps (server postinstall runs `prisma generate`)
-(cd workbridge-server && npm install)
+(cd workbridge-server && npm install)   # postinstall runs prisma generate
 (cd workbridge-client && npm install)
-
-# 5. Apply migrations + seed
 (cd workbridge-server && npx prisma migrate deploy && npm run db:seed)
 ```
 
-Seed creates 8 users, 16 projects (7 OPEN) and 6 contracts covering every milestone,
-settlement and conversation state, with dates relative to the moment it runs. **All seed
-account passwords are `password123`** (e.g. `kim@example.com` = CLIENT,
-`park@example.com` = FREELANCER; `docs/SEED_DATA.md` lists who to log in as for each screen).
+`RATE_LIMIT_ENABLED=false` because every local login comes from loopback and shares one
+20-per-15-min budget (BEHAVIOR.md rule 10). Seed: 8 users, 16 projects, 6 contracts covering every
+milestone/settlement/conversation state, dates relative to now. **Password for all seed accounts
+is `password123`** (`kim@example.com` CLIENT, `park@example.com` FREELANCER; who to use per
+screen: `docs/SEED_DATA.md`).
 
 ## Run
-
-Launch both dev servers in the background, then wait for them to report ready:
 
 ```bash
 (cd workbridge-server && npm run dev > /tmp/wb-server.log 2>&1 &)
 (cd workbridge-client && npm run dev > /tmp/wb-client.log 2>&1 &)
-
 for i in $(seq 1 30); do
   grep -q "Server running on port" /tmp/wb-server.log 2>/dev/null \
     && grep -qE "Ready in|Local:" /tmp/wb-client.log 2>/dev/null && break
@@ -97,100 +86,49 @@ done
 tail -n2 /tmp/wb-server.log /tmp/wb-client.log
 ```
 
-Backend logs to `/tmp/wb-server.log`, frontend to `/tmp/wb-client.log`.
+## Drive
 
-## Drive (agent path)
+1. **API smoke** — `bash .claude/skills/run-workbridge/drive.sh` → expect `== 4 passed, 0 failed ==`.
+   Other ports: `API_PORT=4001 CLIENT_PORT=3001 bash .claude/skills/run-workbridge/drive.sh`.
+2. **Screenshots** — `node workbridge-client/scripts/screenshots.mjs` (read its header for the page
+   list, output directory and options). It warms each route first (a fresh `next dev` compiles on
+   first hit) and waits for client-side fetches. A non-empty PNG proves nothing: **open the images
+   and look** — a blank frame or error overlay means the page did not hydrate.
+3. **E2E** — `bash scripts/e2e.sh` from the repo root runs the Playwright specs in
+   `workbridge-client/e2e/`. Specs select by visible Korean text, so a wording change in the
+   client must update the spec in the same change.
 
-With both servers up, run the driver — API smoke + login + screenshots:
+For an ad-hoc look at one screen, the Playwright MCP server (`.mcp.json`) drives a real browser.
 
-```bash
-bash .claude/skills/run-workbridge/drive.sh /tmp/wb-shots
-```
+Quick manual checks: `curl -s http://localhost:4000/health` → `{"status":"ok"}`;
+`curl -s http://localhost:3000/api/projects | head -c 200` → proxied JSON.
 
-The script warms both pages with a plain request before screenshotting them, because
-a just-started `next dev` compiles each route on first hit. Expected tail: `== 6 passed, 0 failed ==` (exit 0). Screenshots land in `/tmp/wb-shots/`
-(`home.png`, `projects.png`) — **open them and look**; a blank frame or error page
-means the frontend didn't hydrate. `home.png` shows the hero + feature cards + a
-recent-project card; `projects.png` shows the filter sidebar and project listing.
-
-Quick manual checks:
-
-```bash
-curl -s http://localhost:4000/health                        # {"status":"ok"}
-curl -s http://localhost:3000/api/projects | head -c 200     # proxied list JSON
-```
-
-### Non-default ports
-
-`npm run dev` in the client is fixed to :3000. To run a second copy (or when 3000/4000 are
-taken), pick a pair and keep every URL consistent:
-
-- server `workbridge-server/.env`: `PORT=4001`, `CLIENT_URL=http://localhost:3001`
-  (and `GOOGLE_CALLBACK_URL` on 3001 if you test OAuth);
-- client `workbridge-client/.env.local`: `API_URL` and `NEXT_PUBLIC_API_URL` =
-  `http://localhost:4001`, then start it with `npx next dev -p 3001`;
-- drive it with `API_PORT=4001 CLIENT_PORT=3001 bash .claude/skills/run-workbridge/drive.sh`.
-
-## Human path
-
-Same two `npm run dev` commands in the foreground (two terminals), then open
-http://localhost:3000 and sign in with a seed account. `Ctrl-C` to stop each.
+Non-default ports: server `.env` `PORT=4001`, `CLIENT_URL=http://localhost:3001`; client
+`.env.local` `API_URL`/`NEXT_PUBLIC_API_URL=http://localhost:4001`; start with `npx next dev -p 3001`.
 
 ## Gotchas
 
-- **Seed dates are relative to when it ran.** OPEN deadlines are days to weeks out, so an
-  old seed slowly drifts: projects close on list-read once their deadline passes
-  (`lib/projectLifecycle.ts`) and recommendations thin out. Re-seed to refresh:
-  `(cd workbridge-server && npm run db:seed)`. `node prisma/seed.js` alone does not load
-  `.env` — use `npm run db:seed` or export `DATABASE_URL`/`DIRECT_URL` first.
-- **Frontend fetches data client-side.** A naive screenshot can fire before the
-  fetch settles — `drive.sh` passes `--virtual-time-budget=8000` to let JS + network
-  finish. Bump it if a page looks empty.
-- **`createdb` errors "already exists"** on re-run — harmless; the `|| echo` swallows it.
-- **Two servers, two package.json** — there is no root workspace. `npm install` and
-  all scripts run *inside* each package dir.
-- **Same-origin only in the browser.** The client's API base is `''` (relative), so
-  the browser hits `:3000/api/*` and Next.js rewrites to `:4000`. Don't expect the
-  browser to call `:4000` directly.
-- **Payment bypass is ON** here (`ALLOW_PAYMENT_BYPASS=true` both sides) so the
-  contract→payment→review flow works without the Toss sandbox. Keep it `false` in prod.
-  Payments are per milestone: `POST /api/payments/dev-complete` takes `{ milestoneId }`,
-  and milestones must be funded in sequence order.
-- **Milestone file attachments 502 with the dummy Supabase keys.** Submissions upload to
-  Supabase Storage. To exercise uploads locally, run a stub that accepts any upload and
-  start the server with `SUPABASE_URL` pointing at it (env beats `.env`, which stays as is):
-  ```bash
-  node -e "require('http').createServer((q,r)=>{q.resume();q.on('end',()=>{r.writeHead(200,{'content-type':'application/json'});r.end('{\"Key\":\"stub\"}')})}).listen(54321)" &
-  (cd workbridge-server && SUPABASE_URL=http://localhost:54321 npm run dev)
-  ```
-  The stored URLs then point at the stub and do not load in the browser.
-- **Email is log-only.** Notifications whose email channel is on create an `EmailDelivery` and a
-  `notification.email` job; the dev worker sends it within ~5 s as a `mail.sent` info line in
-  `/tmp/wb-server.log` (`grep mail.sent`). The unread-message digest only fires 10 minutes after
-  an unread message, and at most once per conversation per hour — to see it now, run
-  `runDueJobs({ now: <now + 11 min>, types: ['message.unreadDigest', 'notification.email'] })`
-  twice from a `tsx` one-off script inside `workbridge-server/` (the second pass sends).
-- **Settlements only move when jobs run.** The dev worker runs due jobs every 5 s, but the
-  weekly batch is due Monday 03:00 KST and payouts Wednesday 10:00 KST. To see them now,
-  call `runDueJobs({ now: <future date>, types: ['settlement.weeklyBatch', 'settlement.payout'] })`
-  from a `tsx` one-off script (run it twice: the batch enqueues the payout). Limit `types`,
-  or the lifecycle sweep will close every project whose deadline precedes that date.
+- **Seed dates drift.** Projects close on list-read once their deadline passes
+  (`lib/projectLifecycle.ts`). Re-seed: `(cd workbridge-server && npm run db:seed)` — plain
+  `node prisma/seed.js` does not load `.env`.
+- **Payment bypass is ON** locally (both flags). Payments are per milestone:
+  `POST /api/payments/dev-complete` takes `{ milestoneId }`, funded in sequence order.
+- **Uploads need a storage stub.** `SUPABASE_URL=http://localhost:54321` points at nothing until you run:
+  `node -e "require('http').createServer((q,r)=>{q.resume();q.on('end',()=>{r.writeHead(200,{'content-type':'application/json'});r.end('{\"Key\":\"stub\"}')})}).listen(54321)" &`
+  Without it, milestone attachments answer 502. Stored URLs point at the stub and don't render.
+- **Email is log-only**: `grep mail.sent /tmp/wb-server.log` (dev worker sends within ~5 s).
+- **Jobs on a future clock.** Weekly settlement is Monday 03:00 KST, payout Wednesday 10:00 KST,
+  unread digest 10 min after a message. To see them now, call
+  `runDueJobs({ now: <future>, types: ['settlement.weeklyBatch', 'settlement.payout'] })` from a
+  `tsx` one-off inside `workbridge-server/`, twice (the first pass enqueues the next). Always limit
+  `types`, or the lifecycle sweep closes every project whose deadline precedes that date.
 
 ## Troubleshooting
 
-- **Server exits / Prisma `P1001` can't reach database** → Postgres isn't running
-  (`brew services start postgresql@14`) or the DB/user in `DATABASE_URL` is wrong.
-  Test directly: `psql "postgresql://$(whoami)@localhost:5432/workbridge" -c '\dt'`.
-- **`@prisma/client did not initialize yet`** → run `(cd workbridge-server && npm run db:generate)`.
-- **`relation "Project" does not exist`** → migrations not applied:
-  `(cd workbridge-server && npx prisma migrate deploy)`.
-- **`EADDRINUSE` on 3000/4000** → a previous run is still up:
-  `lsof -ti:4000 -ti:3000 | xargs kill`.
-- **429 `Too many requests` on login** → the rate limit counts every local login under one
-  loopback address. Set `RATE_LIMIT_ENABLED=false` in `workbridge-server/.env` and restart
-  the server (dotenv loads `.env` once at boot), or clear the counters without restarting:
-  `psql "postgresql://$(whoami)@localhost:5432/workbridge" -c 'DELETE FROM "RateLimitCounter"'`.
-- **CORS error in browser** → `CLIENT_URL` in `workbridge-server/.env` must be
-  `http://localhost:3000`.
-- **Screenshots blank / `drive.sh` browser step skipped** → Chrome not at the
-  expected path; API checks still pass. Adjust `CHROME` in `drive.sh`.
+- `P1001` can't reach database → Postgres not running, or wrong DB in `DATABASE_URL`.
+- `@prisma/client did not initialize yet` → `(cd workbridge-server && npm run db:generate)`.
+- `relation "Project" does not exist` → `(cd workbridge-server && npx prisma migrate deploy)`.
+- `EADDRINUSE` → `lsof -ti:4000 -ti:3000 | xargs kill`.
+- 429 on login → set `RATE_LIMIT_ENABLED=false` and restart, or
+  `psql -d workbridge -c 'DELETE FROM "RateLimitCounter"'`.
+- CORS error → `CLIENT_URL` must be `http://localhost:3000`.

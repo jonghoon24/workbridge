@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# Drives the running WorkBridge app end-to-end:
-#   - API smoke tests against the backend (:$API_PORT, default 4000)
+# API smoke test of the running WorkBridge app:
+#   - backend health and project list (:$API_PORT, default 4000)
 #   - a real seed-account login
-#   - browser screenshots of the frontend (:$CLIENT_PORT, default 3000) via headless Chrome
+#   - the frontend's same-origin /api proxy (:$CLIENT_PORT, default 3000)
+# Browser checks live elsewhere: E2E `bash scripts/e2e.sh`, screenshots
+# `workbridge-client/scripts/screenshots.mjs` (see SKILL.md).
 #
 # Assumes both dev servers are ALREADY running (see SKILL.md "Run").
-# Usage:  [API_PORT=4001 CLIENT_PORT=3001] bash drive.sh [screenshot-out-dir]
+# Usage:  [API_PORT=4001 CLIENT_PORT=3001] bash drive.sh
 set -uo pipefail
 
-OUT="${1:-${TMPDIR:-/tmp}/workbridge-shots}"
-mkdir -p "$OUT"
-CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 API="http://localhost:${API_PORT:-4000}"
 WEB="http://localhost:${CLIENT_PORT:-3000}"
 
@@ -34,22 +33,6 @@ token=$(curl -s -X POST "$API/api/auth/login" \
 echo "== Frontend proxy ($WEB) =="
 curl -s "$WEB/api/projects" | grep -q '"projects"' \
   && ok "same-origin /api proxy reaches backend" || bad "/api proxy"
-
-echo "== Browser screenshots -> $OUT =="
-if [ -x "$CHROME" ]; then
-  # A just-started `next dev` compiles each route (and its CSS) on first request; without this
-  # the first screenshot can be an unstyled frame that still counts as a non-empty PNG.
-  for path in "" projects; do curl -s -o /dev/null "$WEB/$path"; done
-  for path in "" projects; do
-    name="${path:-home}"
-    "$CHROME" --headless=new --disable-gpu --hide-scrollbars \
-      --virtual-time-budget=8000 --window-size=1280,1400 \
-      --screenshot="$OUT/$name.png" "$WEB/$path" 2>/dev/null
-    [ -s "$OUT/$name.png" ] && ok "$name.png" || bad "$name.png"
-  done
-else
-  echo "  (skip) Chrome not found at: $CHROME"
-fi
 
 echo "== $pass passed, $fail failed =="
 [ "$fail" -eq 0 ]

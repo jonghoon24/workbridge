@@ -8,7 +8,8 @@ paths:
 
 - **Applied migrations are immutable.** Never edit or delete a folder under
   `prisma/migrations/` — it has already run on the preview and production databases, and Prisma
-  checks checksums. A PreToolUse hook blocks such edits. To change the schema: edit
+  checks checksums. A PreToolUse hook blocks edits to every committed migration (a fresh,
+  still-untracked `--create-only` folder may get its backfill SQL). To change the schema: edit
   `schema.prisma` → `npx prisma migrate dev --name <name>` → `npm run db:generate`
   (`db-migration` skill). Fix a bad migration with a new one.
 - Never run `prisma migrate reset`, `db push --force-reset`/`--accept-data-loss`, or point a
