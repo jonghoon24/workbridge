@@ -194,7 +194,8 @@ describe('GET /api/notifications', () => {
     expect(res.body.notifications).toHaveLength(20);
   });
 
-  // [unlisted] divergence: the spec says a non-integer limit must be 400, but `Number.parseInt`
+  // 알려진 불일치 — #37
+  // The spec says a non-integer limit must be 400, but `Number.parseInt`
   // truncates "1.5" to 1, so the request succeeds with one row instead of erroring.
   it.fails('rejects a fractional limit with 400 [unlisted]', async () => {
     const caller = await makeClient();
@@ -205,7 +206,8 @@ describe('GET /api/notifications', () => {
     expect(res.status).toBe(400);
   });
 
-  // [unlisted] divergence, same root cause: "20abc" parses to 20 rather than being rejected.
+  // 알려진 불일치 — #37
+  // Same root cause: "20abc" parses to 20 rather than being rejected.
   it.fails('rejects a trailing-garbage limit with 400 [unlisted]', async () => {
     const caller = await makeClient();
     await seedNotifications(caller.id, 4);

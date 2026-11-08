@@ -226,7 +226,8 @@ describe('POST /api/reviews', () => {
     expect(res.body.rating).toBe(rating);
   });
 
-  // [D9] `rating < 1 || rating > 5` runs before coercion: both comparisons are false for
+  // 알려진 불일치 D9 — #4
+  // `rating < 1 || rating > 5` runs before coercion: both comparisons are false for
   // "abc", then `parseInt('abc')` is NaN and Prisma rejects it — so this 500s today.
   it.fails('rejects a non-numeric rating with 400 [D9]', async () => {
     const { contract, client, freelancer } = await completedScenario();
@@ -241,7 +242,8 @@ describe('POST /api/reviews', () => {
     expect(res.status).toBe(400);
   });
 
-  // [D9] Same root cause with a different payload shape: an object escapes both comparisons.
+  // 알려진 불일치 D9 — #4
+  // Same root cause with a different payload shape: an object escapes both comparisons.
   it.fails('rejects an object rating with 400 [D9]', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
@@ -255,7 +257,8 @@ describe('POST /api/reviews', () => {
     expect(res.status).toBe(400);
   });
 
-  // [D9] Same defect as the two cases above — "rating validated before coercion" — with a third
+  // 알려진 불일치 D9 — #4
+  // Same defect as the two cases above — "rating validated before coercion" — with a third
   // symptom. 3.7 passes `rating < 1 || rating > 5`, then `parseInt` truncates it to 3, so the
   // review is accepted with a rating the caller never sent. The spec requires "an integer between
   // 1 and 5", so silent truncation is a divergence, not undecided behavior; D9's *Intended* column
@@ -394,7 +397,8 @@ describe('POST /api/reviews', () => {
     expect(res.body.tags).toEqual([]);
   });
 
-  // [D17] `Array.isArray(tags)` is true for `[1, 2]`, so the array is handed to Prisma unchanged
+  // 알려진 불일치 D17 — #12
+  // `Array.isArray(tags)` is true for `[1, 2]`, so the array is handed to Prisma unchanged
   // and rejected against the `String[]` column — a 500 today. Cross-cutting rule 8 requires a
   // malformed value to be a 400. (Non-array tags are handled correctly and are covered above.)
   it.fails('rejects a tags array of non-strings with 400 [D17]', async () => {

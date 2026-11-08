@@ -359,6 +359,7 @@ describe('GET /api/projects', () => {
       expect(res.body).toEqual({ error: { message: expect.any(String) } });
     });
 
+    // 알려진 불일치 — #37
     // No D-number: BEHAVIOR.md says "non-positive or non-integer → 400", but the code runs
     // `Number.parseInt`, which truncates "1.5" to 1 and then finds it a valid positive
     // integer. So a fractional page/limit is silently accepted instead of rejected.
@@ -368,12 +369,14 @@ describe('GET /api/projects', () => {
       expect(res.status).toBe(400);
     });
 
+    // 알려진 불일치 — #37
     it.fails('rejects a fractional limit with 400 [unlisted]', async () => {
       const res = await api().get('/api/projects?limit=2.7');
 
       expect(res.status).toBe(400);
     });
 
+    // 알려진 불일치 — #37
     // Same root cause: parseInt stops at the first non-digit, so "3abc" becomes 3.
     it.fails('rejects a trailing-garbage page like 3abc with 400 [unlisted]', async () => {
       const res = await api().get('/api/projects?page=3abc');
@@ -660,6 +663,7 @@ describe('GET /api/projects', () => {
       expect(res.body.projects).toEqual([]);
     });
 
+    // 알려진 불일치 D16 — #11
     // Current behavior: `skills[0][0]=React` parses to `[['React']]`, so the element handed to
     // `.trim()` is an array → `TypeError: skill.trim is not a function` → 500
     // `{ error: { message: 'skill.trim is not a function' } }`. Same defect as D16, on the read

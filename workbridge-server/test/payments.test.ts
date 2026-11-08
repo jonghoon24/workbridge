@@ -453,7 +453,8 @@ describe('POST /api/payments', () => {
     expect(await prisma.payment.count()).toBe(1);
   });
 
-  // [D13] `Payment.milestoneId` is unique and `createPayment` never catches P2002, so when two
+  // 알려진 불일치 D13 — #8
+  // `Payment.milestoneId` is unique and `createPayment` never catches P2002, so when two
   // requests both read "no payment yet" the loser's `prisma.payment.create` rejects and reaches
   // `errorHandler` without a `statusCode`.
   //
@@ -490,7 +491,8 @@ describe('POST /api/payments', () => {
     },
   );
 
-  // [D14] `errorHandler` renders `err.message` verbatim, and Prisma formats its errors with the
+  // 알려진 불일치 D14 — #9
+  // `errorHandler` renders `err.message` verbatim, and Prisma formats its errors with the
   // **absolute source path**, a source excerpt and the offending argument. A non-string
   // `milestoneId` survives `!milestoneId` and makes Prisma reject the milestone lookup.
   //
@@ -514,7 +516,8 @@ describe('POST /api/payments', () => {
     },
   );
 
-  // [D14] The same leak on the money path specifically: the D13 collision's 500 body carries
+  // 알려진 불일치 D14 — #9
+  // The same leak on the money path specifically: the D13 collision's 500 body carries
   // `Invalid \`prisma.payment.create()\` invocation in /Users/…/src/controllers/
   // payments.controller.ts:…`, the surrounding source lines, and
   // ``Unique constraint failed on the fields: (`milestoneId`)`` — i.e. the schema's column name.
@@ -886,7 +889,8 @@ describe('POST /api/payments/confirm', () => {
     expect(await prisma.payment.count()).toBe(1);
   });
 
-  // [D8] `catch (tossError)` discards its argument and nothing is logged, so a network fault
+  // 알려진 불일치 D8 — #3
+  // `catch (tossError)` discards its argument and nothing is logged, so a network fault
   // and a provider-reported amount mismatch produce byte-identical output: 400
   // 'Payment verification failed' with the payment FAILED. The fix must log the cause at `warn`
   // — rule 1 forbids an error-level line for a 4xx, and rule 9 sends `warn` to `console.log` —
@@ -926,7 +930,8 @@ describe('POST /api/payments/confirm', () => {
     }
   });
 
-  // [D18] The replay guard is `if (payment.status !== 'PENDING') throw 409` — a read, then a
+  // 알려진 불일치 D18 — #13
+  // The replay guard is `if (payment.status !== 'PENDING') throw 409` — a read, then a
   // separate unlocked `update`. Nothing serializes the two, so two concurrent confirms both read
   // `PENDING`, both pass the guard, both call TossPayments, and both write `COMPLETED`.
   //
@@ -1423,7 +1428,8 @@ describe('POST /api/payments/dev-complete', () => {
       expect(after.status).toBe('REFUNDED');
     });
 
-    // [D22] With no payment row yet, two concurrent dev-completes both read "no payment" and
+    // 알려진 불일치 D22 — #17
+    // With no payment row yet, two concurrent dev-completes both read "no payment" and
     // both `tx.payment.create` — the loser hits the unique `milestoneId` inside its transaction
     // (P2002) and answers 500. Same class as D13, on the dev-only route. Several rounds, because
     // a serialized pair produces 201 then 200 and no collision at all.

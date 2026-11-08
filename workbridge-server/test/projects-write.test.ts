@@ -177,7 +177,8 @@ describe('POST /api/projects', () => {
     expect(await prisma.project.count()).toBe(0);
   });
 
-  // [D15] Boundary. The spec specifies `budget` as a **non-negative** number, so `0` is a
+  // 알려진 불일치 D15 — #10
+  // Boundary. The spec specifies `budget` as a **non-negative** number, so `0` is a
   // valid budget and must be created. Actual: the required-field guard is `!budget` and `0` is
   // falsy, so this returns 400 `All fields are required` and writes nothing. (Contrast the
   // review `rating: 0` case, which the spec documents as intentionally caught by the
@@ -324,7 +325,8 @@ describe('POST /api/projects', () => {
     expect(res.body.requiredSkills).toEqual(['React', 'SQL']);
   });
 
-  // [D16] Cross-cutting rule 8: a malformed value is a 400, never a 500. Actual:
+  // 알려진 불일치 D16 — #11
+  // Cross-cutting rule 8: a malformed value is a 400, never a 500. Actual:
   // `normalizeSkillList` calls `.trim()` on every element, so a numeric array throws
   // `TypeError: skill.trim is not a function`, which reaches `errorHandler` with no
   // `statusCode` → 500 (and gets logged, hence the console.error spy).
@@ -534,7 +536,8 @@ describe('PATCH /api/projects/:id', () => {
     expect(stored.requiredSkills).toEqual(['SQL', 'React']);
   });
 
-  // [D16] Same defect as on `POST`, reached through the other `normalizeSkillList` call site.
+  // 알려진 불일치 D16 — #11
+  // Same defect as on `POST`, reached through the other `normalizeSkillList` call site.
   // Actual: `TypeError: skill.trim is not a function` → 500.
   it.fails('rejects a non-string requiredSkills array with 400, not a 500 [D16]', async () => {
     const { client, project } = await ownedProject();
@@ -832,7 +835,7 @@ describe('PATCH /api/projects/:id', () => {
 
     // `getProjectStatusForRecruitmentStart` only ever answers UPCOMING or OPEN, so moving the
     // deadline into the past does not close the project on the spot — the lazy sweep (§ 7)
-    // converges it on the next read. Only the converged state is asserted; see the report.
+    // converges it on the next read. Only the converged state is asserted.
     it('converges to CLOSED on the next read when the deadline is moved into the past', async () => {
       const { client, project } = await ownedProject({
         status: 'OPEN',
@@ -966,7 +969,8 @@ describe('DELETE /api/projects/:id', () => {
     expect(stored).not.toBeNull();
   });
 
-  // [D11] `deleteProject` checks only existence and ownership, so the project is soft-deleted
+  // 알려진 불일치 D11 — #6
+  // `deleteProject` checks only existence and ownership, so the project is soft-deleted
   // (200) and the PENDING contract is left pointing at a deleted project.
   it.fails('refuses deletion with 409 when the contract is PENDING [D11]', async () => {
     const { client, project, contract } = await projectWithContract('PENDING');
@@ -980,7 +984,8 @@ describe('DELETE /api/projects/:id', () => {
     expect(storedContract.status).toBe('PENDING');
   });
 
-  // [D11] Same for an ACTIVE contract: work is underway, yet the delete currently returns 200.
+  // 알려진 불일치 D11 — #6
+  // Same for an ACTIVE contract: work is underway, yet the delete currently returns 200.
   it.fails('refuses deletion with 409 when the contract is ACTIVE [D11]', async () => {
     const { client, project } = await projectWithContract('ACTIVE');
 
@@ -989,7 +994,8 @@ describe('DELETE /api/projects/:id', () => {
     expect(res.status).toBe(409);
   });
 
-  // [D11] The row must survive untouched when deletion is refused.
+  // 알려진 불일치 D11 — #6
+  // The row must survive untouched when deletion is refused.
   it.fails('leaves deletedAt null when deletion is refused for a live contract [D11]', async () => {
     const { client, project } = await projectWithContract('ACTIVE');
 
@@ -1542,8 +1548,9 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(stored.summary).toBe('두 번째 요약');
   });
 
+  // 알려진 불일치 — #38
   // Spec § 8: "Upstream provider failure (OpenAI, TossPayments) → 502 or 400, never 500."
-  // Not in the Known-divergences table, so these carry no [Dn] tag — see the report.
+  // Not numbered in Known divergences (listed under "Found by the suite"), hence `[unlisted]`.
   // Actual: `JSON.parse` throws a bare SyntaxError, which reaches errorHandler without a
   // statusCode → 500 with the parser's message in the envelope.
   it.fails('returns 502 rather than 500 when the model returns non-JSON content [unlisted]', async () => {
@@ -1556,6 +1563,7 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(res.status).toBe(502);
   });
 
+  // 알려진 불일치 — #38
   // Actual: `completion.choices[0]` is undefined, so reading `.message` throws a TypeError → 500.
   it.fails('returns 502 rather than 500 when the model returns no choices [unlisted]', async () => {
     openaiCreate.mockResolvedValue({ choices: [] });
@@ -1567,6 +1575,7 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(res.status).toBe(502);
   });
 
+  // 알려진 불일치 — #38
   // Actual: the provider's own error propagates untouched → 500 with its message.
   it.fails('returns 502 rather than 500 when the provider call itself fails [unlisted]', async () => {
     openaiCreate.mockRejectedValue(new Error('socket hang up'));

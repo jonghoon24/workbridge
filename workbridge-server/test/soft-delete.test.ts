@@ -443,6 +443,7 @@ const mutations: Mutation[] = [
 
 describe('a soft-deleted principal must not be able to write anything (D12)', () => {
   /**
+   * 알려진 불일치 D12 — #7
    * Cross-cutting rule 5: "Every read and write must filter `deletedAt: null`." D1 fixed the
    * authentication and profile *read* paths; **no write path re-checks the actor**, which is
    * what D12 records.
@@ -1178,6 +1179,7 @@ describe('a soft-deleted project', () => {
  * project with a live contract is blocked, this state becomes much harder to reach.
  */
 describe('a contract whose project is soft-deleted (D21)', () => {
+  // 알려진 불일치 D21 — #16
   it.fails('is not served by GET /api/contracts/:id [D21]', async () => {
     const { client, project, contract } = await makeContractScenario();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
@@ -1188,6 +1190,7 @@ describe('a contract whose project is soft-deleted (D21)', () => {
     expect(res.body).toEqual({ error: { message: expect.any(String) } });
   });
 
+  // 알려진 불일치 D21 — #16
   it.fails('cannot be signed: 404 and no signature recorded [D21]', async () => {
     const { freelancer, project, contract } = await makeContractScenario();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
