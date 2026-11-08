@@ -50,6 +50,8 @@
 **한계.** Bash 규칙은 명령 텍스트를 본다. `bash -c '…'`나 `/usr/bin/…`처럼 다른 형태로 부르면 걸리지
 않는다(공식 문서의 "What a Bash rule doesn't match"). 보안 경계가 아니라 흔한 실수를 막는 장치다.
 `TRUNCATE` 규칙은 `grep -rn TRUNCATE test/` 같은 검색 명령도 막는다. 그럴 때는 Grep 도구를 쓴다.
+또 규칙은 `&&`로 이은 복합 명령 전체를 한 문자열로 보기 때문에, `git push origin main && git worktree remove --force …`처럼
+`git push`와 `--force`가 한 명령에 같이 있으면 `git push *--force*`에 걸린다(실제로 겪었다). 푸시는 다른 명령과 묶지 않는다.
 
 ## 4. 훅 (`.claude/settings.json` → `hooks`, 스크립트는 `.claude/hooks/`)
 
