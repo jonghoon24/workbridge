@@ -44,7 +44,7 @@
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | 백엔드 API URL (기본 http://localhost:4000) |
 | `API_URL` | 서버 쪽(Next 프록시 라우트와 SSR)에서만 쓰는 백엔드 URL. 있으면 `NEXT_PUBLIC_API_URL`보다 먼저 쓴다(선택) |
-| `API_URL_TEMPLATE` | 서버 쪽 전용(선택). `{branch}`가 든 백엔드 URL 템플릿으로, Vercel이 넣어 주는 `VERCEL_GIT_COMMIT_REF`가 있을 때만 `{branch}`를 브랜치 슬러그로 바꿔 쓴다. 우선순위는 `API_URL` 다음, `NEXT_PUBLIC_API_URL` 앞이다. Vercel Preview에는 `https://workbridge-server-git-{branch}-jonghoon24s-projects.vercel.app`이 들어 있어 클라이언트 프리뷰가 같은 브랜치의 서버 프리뷰를 부른다. 브랜치 이름은 20자 안팎으로 짧게([DEPLOYMENT.md](DEPLOYMENT.md#프론트엔드)). 로컬에서는 비워 둔다 |
+| (프리뷰 백엔드 주소) | 프리뷰에서는 Vercel Related Projects(`workbridge-client/vercel.json`)가 넣어 주는 `VERCEL_RELATED_PROJECTS`로 같은 브랜치의 서버 프리뷰를 찾는다. 환경변수로 넣을 것은 없다. 우선순위는 `API_URL` 다음, `NEXT_PUBLIC_API_URL` 앞이다([DEPLOYMENT.md](DEPLOYMENT.md#프론트엔드)) |
 | `NEXT_PUBLIC_TOSS_CLIENT_KEY` | 토스페이먼츠 클라이언트 키 (test_ck_...) |
 | `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` | 로컬·E2E에서 `true`로 설정하면 결제 페이지에 개발용 결제 완료 버튼 표시. 실제 운영 서비스에서는 `false` 유지 |
 
