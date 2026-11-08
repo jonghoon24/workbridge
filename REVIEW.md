@@ -9,7 +9,7 @@
    - 확인: `git diff origin/main...HEAD -- workbridge-server/src/routes`에서 새 `router.<method>(`마다 가드 순서와 `validate(`를 본다. `router.use(`로 가드를 거는 것도 위반이다(Q10).
 
 2. **기존 컨트롤러(auth, users, projects, applications, contracts, payments, reviews, notifications)에 zod `validate()`, 서비스 레이어, `requireActiveUser`를 추가하지 않는다.**
-   - 왜: `test/soft-delete.test.ts`의 `mutations`(D12) 같은 `it.fails` 핀이 기존 동작에 묶여 있다. 가드를 하나 붙이면 핀이 예기치 않게 통과해 스위트가 깨지고, 불일치 수정은 따로 결정할 일이다.
+   - 왜: `test/soft-delete.test.ts`의 `mutations`(D12) 같은 `it.fails` 핀이 기존 동작에 묶여 있다. 정리 목적으로 가드를 하나 붙이면 핀이 예기치 않게 통과해 스위트가 깨진다. 예외는 D12 같은 불일치를 의도적으로 고치는 변경뿐이고, 그때는 같은 PR에서 핀을 `it`으로 뒤집고 BEHAVIOR.md의 Resolved 표로 옮겨야 한다(`fix-divergence` 스킬).
    - 확인: diff에서 위 8개 도메인의 `*.routes.ts`/`*.controller.ts`에 `requireActiveUser`, `validate(`, `from '../services/`가 새로 생겼는지 grep한다.
 
 3. **금액 계산(수수료, 부가세, 반올림)은 `lib/money.ts`만 쓴다.**

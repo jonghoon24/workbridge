@@ -12,7 +12,7 @@ paths:
 - Expansion domains (milestones, settlements, payout account, contract list, conversations,
   portfolio/careers, recommendations, notification preferences) use
   `routes → controllers → services → lib` with zod schemas in `src/schemas/`.
-- Do not add zod `validate()`, a service layer, or `requireActiveUser` to the pre-existing controllers (auth, users, projects, applications, contracts, payments, reviews, notifications).
+- Do not add zod `validate()`, a service layer, or `requireActiveUser` to the pre-existing controllers (auth, users, projects, applications, contracts, payments, reviews, notifications) as a clean-up; the `it.fails` pins (e.g. D12 in `soft-delete.test.ts`) depend on today's behavior. The only exception is a deliberate divergence fix (`fix-divergence` skill) that flips those pins in the same change.
 - Why: the `it.fails` pins depend on the old behavior — e.g. D12 in `test/soft-delete.test.ts`
   (`mutations`): a soft-deleted user can still write on old routes. Guarding one makes the pin
   pass unexpectedly and fails the suite. Fixing a divergence is a separate task (`fix-divergence` skill).
