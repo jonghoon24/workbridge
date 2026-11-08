@@ -93,6 +93,26 @@ function parseAnalysisAmount(value: unknown) {
   return Math.round(parsed);
 }
 
+/** A won amount in model prose: `11,000,000원`, `1100만 원`, `1.2억원`, `3천만원`. */
+const WON_AMOUNT = /\d[\d,]*(?:\.\d+)?\s*(?:억|천만|백만|만|천)?\s*원/;
+
+/**
+ * The model's summary without the sentences that state an amount. The model's own arithmetic
+ * is not trusted (`totalAmount` is recomputed from the features), and a summary saying
+ * "총 11,000,000원" under a recomputed total of 10,000,000원 contradicts the screen. Nothing
+ * left → `null`.
+ */
+function summaryWithoutAmounts(value: unknown): string | null {
+  if (!value) return null;
+  const kept = String(value)
+    .trim()
+    .split(/(?<=[.!?。])\s+/)
+    .filter((sentence) => !WON_AMOUNT.test(sentence))
+    .join(' ')
+    .trim();
+  return kept || null;
+}
+
 function normalizePricingAnalysisData(data: RawPricingAnalysis): PricingAnalysisData {
   const features = (Array.isArray(data?.features) ? data.features : [])
     .map((feature, index) => ({
@@ -111,7 +131,7 @@ function normalizePricingAnalysisData(data: RawPricingAnalysis): PricingAnalysis
   return {
     features,
     totalAmount: features.reduce((sum, feature) => sum + feature.estimatedCost, 0),
-    summary: data?.summary ? String(data.summary).trim() : null,
+    summary: summaryWithoutAmounts(data?.summary),
     marketReference: data?.marketReference ? String(data.marketReference).trim() : null,
   };
 }
@@ -517,6 +537,9 @@ export async function analyzeProject(req: AuthedRequest, res: Response, next: Ne
 클라이언트가 입력한 희망 예산은 제공하지 않습니다.
 기존 예산이나 임의의 목표 금액에 맞추지 말고, 프로젝트 범위, 기능, 기술 난이도, 예상 작업량을 기준으로 독립적인 시장 적정가를 산정하세요.
 각 기능별 estimatedCost의 합계가 totalAmount와 반드시 일치해야 합니다.
+summary에는 금액을 쓰지 마세요. 총액은 기능별 금액의 합계로 화면에 따로 표시됩니다.
+marketReference에는 유사 프로젝트의 시장 가격대만 쓰고, 이 프로젝트의 총액은 쓰지 마세요.
+summary, marketReference, rationale은 '~합니다' 체의 완결된 문장으로 쓰세요.
 
 다음 JSON 형식으로만 응답해주세요:
 {

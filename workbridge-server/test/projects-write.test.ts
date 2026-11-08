@@ -1451,6 +1451,39 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(stored.totalAmount).toBe(3_000_000);
   });
 
+  it('drops the summary sentences that state an amount, so the summary cannot contradict the recomputed total', async () => {
+    openaiCreate.mockResolvedValue(modelResponse({
+      ...twoFeatures,
+      summary: '쇼핑몰 리뉴얼 프로젝트입니다. 총 11,000,000원이 예상됩니다. 디자인 비중이 큽니다! 결제는 1100만 원 수준입니다.',
+    }));
+
+    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.totalAmount).toBe(3_000_000);
+    expect(res.body.summary).toBe('쇼핑몰 리뉴얼 프로젝트입니다. 디자인 비중이 큽니다!');
+    const stored = await prisma.pricingAnalysis.findUniqueOrThrow({ where: { projectId: project.id } });
+    expect(stored.summary).toBe('쇼핑몰 리뉴얼 프로젝트입니다. 디자인 비중이 큽니다!');
+  });
+
+  it('stores a null summary when every sentence states an amount', async () => {
+    openaiCreate.mockResolvedValue(modelResponse({ ...twoFeatures, summary: '예상 총액은 1.2억원입니다.' }));
+
+    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.summary).toBeNull();
+  });
+
+  it('asks the model to keep amounts out of the summary', async () => {
+    openaiCreate.mockResolvedValue(modelResponse(twoFeatures));
+
+    await authed(client).post(`/api/projects/${project.id}/analyze`);
+
+    const prompt = (openaiCreate.mock.calls[0][0] as CreateArgs).messages.map((m) => m.content).join('\n');
+    expect(prompt).toContain('summary에는 금액을 쓰지 마세요');
+  });
+
   it('drops features whose estimatedCost is zero or negative and re-sums the rest', async () => {
     openaiCreate.mockResolvedValue(
       modelResponse({

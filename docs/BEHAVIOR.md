@@ -457,6 +457,9 @@ Runs the lifecycle sweep, then returns the project with its client, application 
   `{ name, description, estimatedCost, rationale, duration }`, features with
   `estimatedCost <= 0` dropped, and `totalAmount` **recomputed as the sum of the surviving
   features** rather than taken from the model.
+- `summary` is model prose and its arithmetic is not trusted either: its sentences that state a
+  won amount (`11,000,000원`, `1100만 원`, …) are dropped, so it cannot contradict the
+  recomputed `totalAmount`; nothing left → `null`. `marketReference` is stored as written.
 - Empty response → **502** `AI analysis did not return a response`. No usable features → **502**
   `AI analysis did not return valid feature pricing`. Neither may be a 500.
 - Result is **upserted**, so re-analyzing replaces the previous analysis rather than duplicating it.
