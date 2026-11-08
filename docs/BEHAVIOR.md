@@ -647,7 +647,7 @@ client funds milestones one at a time, in sequence order (M13). **[C1]**
   when the provider accepts both calls (the no-op funding step, PY7) and when it **rejects the
   second** (the conditional `FAILED` write, PY8). These are required behavior, not a divergence.
 
-### `POST /dev-complete` — local/demo shortcut
+### `POST /dev-complete` — local development shortcut
 - **PY10** — Check order and messages:
   1. **403 `Payment bypass is disabled` unless `ALLOW_PAYMENT_BYPASS === 'true'`**, before
      anything else. This must be `false` in production, and the check must be evaluated per

@@ -161,8 +161,8 @@ describe('GET /api/projects/:id/bookmark', () => {
     expect(res.body).toEqual({ bookmarked: false });
   });
 
-  // ---- D19: rule 5 is unconditional — a soft-deleted project is invisible to bookmarking ------
-  // Today: `getProjectBookmark` looks up only the (projectId, userId) bookmark row and never
+  // 알려진 불일치 D19 — #14
+  // Rule 5 is unconditional — a soft-deleted project is invisible to bookmarking. Today: `getProjectBookmark` looks up only the (projectId, userId) bookmark row and never
   // touches the project, so there is no `deletedAt: null` filter and the answer is
   // 200 `{ bookmarked: true }`. Not the Q6 case: rule 5 already decides the soft-deleted one.
   it.fails('[D19] GET bookmark for a soft-deleted project must 404', async () => {
@@ -284,7 +284,7 @@ describe('POST /api/projects/:id/bookmark', () => {
     expect(await countBookmarks()).toBe(1);
   });
 
-  // UNDOCUMENTED DIVERGENCE (not in the [D*] table — reported to the coordinator).
+  // 알려진 불일치 — #39
   // The "idempotent (upsert)" guarantee and cross-cutting rule 8 ("unique-constraint collision →
   // 409, never 500") both break when two writes overlap: `prisma.projectBookmark.upsert` is a
   // find-then-insert, not `INSERT … ON CONFLICT`, so a POST that misses the row and then loses the
@@ -394,7 +394,7 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     expect(res.body).toEqual({ bookmarked: false });
   });
 
-  // ---- D19 ------------------------------------------------------------------------------------
+  // 알려진 불일치 D19 — #14
   // Today: `deleteProjectBookmark` runs `deleteMany` on (projectId, userId) with no project
   // lookup, so a soft-deleted project's bookmark is removed and the call answers
   // 200 `{ bookmarked: false }`. Rule 5 requires the project to be invisible here, so the write

@@ -115,10 +115,11 @@ describe('normalizeSkill', () => {
     expect(normalizeSkill('')).toBe('');
   });
 
+  // 알려진 불일치 — #37
   // The lookup is a bare object literal, so inherited Object.prototype members are
   // truthy hits: `SKILL_ALIASES['constructor']` returns the Object constructor, not
   // undefined. Intended behavior is "unknown skills pass through unchanged", so this
-  // asserts the intent and fails today. Undocumented in BEHAVIOR.md — see report.
+  // asserts the intent and fails today. Listed under BEHAVIOR.md "Found by the suite".
   it.fails('passes a skill named like an Object.prototype member through unchanged [unlisted]', () => {
     expect(normalizeSkill('constructor')).toBe('constructor');
     expect(normalizeSkill('toString')).toBe('toString');
@@ -187,7 +188,7 @@ describe('normalizeSkillList', () => {
     expect(input).toEqual(['PostgreSQL', 'MySQL']);
   });
 
-  it('throws on a non-string array element (unspecified in BEHAVIOR.md — see report)', () => {
+  it('throws on a non-string array element (not specified at this layer)', () => {
     // Documenting current behavior on an input the spec does not cover: `skill.trim()`
     // assumes strings, so a JSON body like `{ "skills": [1] }` throws a TypeError.
     // Not asserted as *desirable* — §8 says malformed values should be 400 — but the
@@ -195,6 +196,7 @@ describe('normalizeSkillList', () => {
     expect(() => normalizeSkillList([1, 2])).toThrow(TypeError);
   });
 
+  // 알려진 불일치 — #37
   // Same Object.prototype leak as `normalizeSkill`, with a worse consequence: the
   // returned array is typed `string[]` but contains a function, which then reaches
   // Prisma as a `String[]` column value.
@@ -446,7 +448,7 @@ describe('getProjectStatusForRecruitmentStart', () => {
     expect(getProjectStatusForRecruitmentStart(new Date(now.getTime() - 1), now)).toBe('OPEN');
   });
 
-  it('returns OPEN for an unparseable date (unspecified in BEHAVIOR.md — see report)', () => {
+  it('returns OPEN for an unparseable date (not specified at this layer)', () => {
     // Documenting current behavior: `new Date('nope') > now` is false because every
     // comparison with NaN is false, so garbage silently reads as "already recruiting".
     // §8 wants malformed values rejected with 400, but that guard belongs to the controller.

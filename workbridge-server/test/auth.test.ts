@@ -863,7 +863,8 @@ describe('GET /api/auth/google/callback', () => {
     expect(await prisma.user.count()).toBe(1);
   });
 
-  // [D5] An existing password account is matched by email alone and has `googleId` attached,
+  // 알려진 불일치 D5 — #2
+  // An existing password account is matched by email alone and has `googleId` attached,
   // so anyone who knows the address can sign in as that user through Google. Asserted with
   // `verified_email: false` so no linking mechanism — not even trusting Google's own verified
   // flag — could justify the link. Today the account is linked and a token is issued for it.
@@ -878,7 +879,8 @@ describe('GET /api/auth/google/callback', () => {
     expect(res.headers.location).not.toContain('/auth/callback');
   });
 
-  // [D5] Same defect stated as the session it hands out: even with `verified_email: true`,
+  // 알려진 불일치 D5 — #2
+  // Same defect stated as the session it hands out: even with `verified_email: true`,
   // Google's assertion is about the Google account, not about control of a pre-existing
   // WorkBridge password account, so linking must be an explicit, authenticated action.
   // Today the redirect carries an access token whose `id` is the password account's.

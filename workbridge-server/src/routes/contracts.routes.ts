@@ -24,7 +24,7 @@ router.put(
 );
 router.get('/:id/conversation', authenticate, requireActiveUser, getConversationOfContract);
 
-// Pre-existing routes: `authenticate` only (D12, D21).
+// Pre-existing routes: `authenticate` only — 알려진 불일치 D12 (#7), D21 (#16).
 router.get('/:id', authenticate, getContract);
 router.patch('/:id', authenticate, completeContract);
 router.post('/:id/sign', authenticate, signContract);

@@ -176,7 +176,8 @@ describe('POST /api/projects/:id/applications', () => {
     }
   }
 
-  // [unlisted] Cross-cutting rule 8: a malformed value must be 400, never 500. `coverLetter` and
+  // 알려진 불일치 — #37
+  // Cross-cutting rule 8: a malformed value must be 400, never 500. `coverLetter` and
   // `expectedDuration` are only truthiness-checked, so any truthy non-string reaches
   // `tx.application.create` and Prisma rejects it — 500. Same defect class as D16/D17 (a
   // non-string inside an array reaching Prisma), on fields the divergence table does not list.
@@ -187,7 +188,8 @@ describe('POST /api/projects/:id/applications', () => {
     expect(await prisma.application.count()).toBe(0);
   });
 
-  // [D14] The same request also shows the leak: `errorHandler` renders `err.message` verbatim and
+  // 알려진 불일치 D14 — #9
+  // The same request also shows the leak: `errorHandler` renders `err.message` verbatim and
   // Prisma's formatted message embeds the absolute source path plus a source excerpt of the
   // controller. Asserted separately from the status above so each test fails for one reason —
   // this one stays failing even if rule 8 is fixed with a still-leaky message.
@@ -309,12 +311,13 @@ describe('POST /api/projects/:id/applications', () => {
     expect(await prisma.application.count({ where: { freelancerId: applicant.id } })).toBe(0);
   });
 
-  // [unlisted] `apply` runs `closeExpiredOpenProjects()` before reading the project, so by the
+  // 알려진 불일치 — #39
+  // `apply` runs `closeExpiredOpenProjects()` before reading the project, so by the
   // time the `deadline < now` branch is evaluated the project is already CLOSED and its guard
   // (`project.status === 'OPEN' && project.deadline < new Date()`) cannot hold. That branch, its
   // in-handler transaction and its message are all dead code with zero coverage — nothing in this
   // file exercises them, and nothing can; the request falls through to the not-OPEN guard and
-  // answers 'Project is not accepting applications'. Not in the divergence table; see report.
+  // answers 'Project is not accepting applications'. Listed under BEHAVIOR.md "Found by the suite".
   it.fails('reports "Project deadline has passed" for an expired OPEN project [unlisted]', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, {
@@ -470,7 +473,8 @@ describe('POST /api/projects/:id/applications', () => {
     expect(await prisma.notification.count({ where: { userId: client.id } })).toBe(2);
   });
 
-  // [D10] `res.status(201).json(application)` sits inside `apply`'s inner `try`, so a throw from
+  // 알려진 불일치 D10 — #5
+  // `res.status(201).json(application)` sits inside `apply`'s inner `try`, so a throw from
   // the send path is re-thrown to the outer `catch`, reaches `errorHandler`, and `errorHandler`
   // attempts a second write on an already-sent response.
   //
@@ -1210,7 +1214,8 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(accepted).toBe(1);
     });
 
-    // [D20] Of several simultaneous accepts on one project, every loser should be a 409 per
+    // 알려진 불일치 D20 — #15
+    // Of several simultaneous accepts on one project, every loser should be a 409 per
     // cross-cutting rule 8. Instead the three transactions can deadlock: Postgres raises `40P01`,
     // which Prisma surfaces as `PrismaClientUnknownRequestError` and `errorHandler` renders as a
     // 500. The D4 fix catches only `P2002`, so this class escapes it.

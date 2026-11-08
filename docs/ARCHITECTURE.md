@@ -29,7 +29,8 @@ WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 동작의 기�
 확장 라우트가 기존 라우터 파일에 들어간 곳도 있다(지급 계좌 `users.routes.ts`, 계약 목록 `contracts.routes.ts`,
 추천 프리랜서 `projects.routes.ts`). 혼재는 의도된 것이다. 기존 동작 가운데 명세와 다른 것은 `it.fails` 핀으로
 고정돼 있어서, 기존 컨트롤러를 확장 방식으로 "정리"하면 핀이 예기치 않게 통과해 스위트가 깨진다. 기존 도메인은
-불일치를 하나씩 고치는 별도 작업으로만 바꾼다(BEHAVIOR.md 규칙 12, `fix-divergence` 스킬).
+불일치를 하나씩 고치는 별도 작업으로만 바꾼다(BEHAVIOR.md 규칙 12, `fix-divergence` 스킬). 도메인별로 불일치를
+먼저 고치고 services + zod로 옮기는 계획과 순서는 [#40](https://github.com/jonghoon24/workbridge/issues/40)에 있다.
 
 ### 인증과 권한
 

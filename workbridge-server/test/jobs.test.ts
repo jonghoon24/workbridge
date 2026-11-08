@@ -16,8 +16,8 @@ import { runWithContext } from '../src/lib/requestContext';
 /**
  * The Postgres job queue — BEHAVIOR.md rule 11 and "Background jobs".
  *
- * Phase 0 has only recurring job types, so the generic queue tests below run
- * `maintenance.cleanup` jobs with its handler replaced by a spy. Claiming a recurring job also
+ * The generic queue tests below run `maintenance.cleanup` jobs with its handler replaced by a
+ * spy. Claiming a recurring job also
  * enqueues its next slot, which is why these tests look rows up by id rather than counting.
  */
 

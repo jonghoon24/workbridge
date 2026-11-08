@@ -60,8 +60,8 @@ export interface Recipient {
 }
 
 /**
- * Notifies every recipient that is **not soft-deleted** (BEHAVIOR.md rule 5: Phase 1 and later
- * notifications are never addressed to a deleted user; the state change still happens).
+ * Notifies every recipient that is **not soft-deleted** (BEHAVIOR.md rule 5: notifications
+ * created by expansion code are never addressed to a deleted user; the state change still happens).
  * Returns how many in-app rows were written.
  */
 export async function notifyRecipients(

@@ -9,7 +9,7 @@ import { MINUTE_MS } from '../src/lib/time';
 
 /**
  * Unread state — BEHAVIOR.md MG4 (`readByCounterpart`), MG8, MG16 — and the unread-message
- * digest job's Phase 2A half (J8 steps 1–2, MG21), driven with `runDueJobs({ now })`.
+ * digest job's first half (J8 steps 1–2, MG21), driven with `runDueJobs({ now })`.
  */
 
 type Scenario = Awaited<ReturnType<typeof makeContractScenario>>;
@@ -194,7 +194,7 @@ describe('readByCounterpart', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// J8 — message.unreadDigest, Phase 2A (steps 1–2)
+// J8 — message.unreadDigest, steps 1–2
 // ---------------------------------------------------------------------------------------------
 
 describe('message.unreadDigest (J8)', () => {

@@ -10,7 +10,7 @@ import type { Logger } from '../lib/logger';
 export interface JobPayloads {
   'project.lifecycleSweep': Record<string, never>;
   'maintenance.cleanup': Record<string, never>;
-  // Phase 1 (BEHAVIOR.md "Background jobs", J1–J7)
+  // Milestones and settlements (BEHAVIOR.md "Background jobs", J1–J7)
   'milestone.autoApprove': { milestoneId: string; round: number };
   'milestone.autoApproveReminder': { milestoneId: string; round: number };
   'milestone.dueSoon': { milestoneId: string };
@@ -19,9 +19,9 @@ export interface JobPayloads {
   'settlement.weeklyBatch': Record<string, never>;
   /** `scheduledPayoutAt` is an ISO-8601 string; a mismatch with the row means "rescheduled". */
   'settlement.payout': { settlementId: string; scheduledPayoutAt: string };
-  // Phase 2A (BEHAVIOR.md J8). No dedupeKey: the enqueue rule matches PENDING jobs on the payload.
+  // Messaging (BEHAVIOR.md J8). No dedupeKey: the enqueue rule matches PENDING jobs on the payload.
   'message.unreadDigest': { conversationId: string; recipientId: string };
-  // Phase 3 (BEHAVIOR.md J9). dedupeKey `notification.email:<deliveryId>`, enqueued by notify().
+  // Notification channels (BEHAVIOR.md J9). dedupeKey `notification.email:<deliveryId>`, enqueued by notify().
   'notification.email': { deliveryId: string };
 }
 

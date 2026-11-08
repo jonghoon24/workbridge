@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // fail spuriously about once every 20 runs.
 import {
   api,
+  app,
   authed,
   expiredToken,
   tokenFor,
@@ -35,9 +36,10 @@ import { generateRefreshToken } from '../src/lib/jwt';
  * This file exists as the compensating control for a deliberate type-safety tradeoff: the
  * codebase augments `Express.Request.user` as **non-optional**, so the compiler cannot warn
  * when a public handler reads `req.user`, nor when a protected route loses its `authenticate`
- * middleware. Only a test that walks every route can catch that, so the route table below is
- * transcribed from the files in `src/routes/` and every assertion is driven off it.
- * Adding a route to the table adds coverage everywhere automatically.
+ * middleware. Only a test that walks every route can catch that, so every assertion below is
+ * driven off two route tables, PROTECTED_ROUTES and PUBLIC_ROUTES. `the route table itself`
+ * compares them with the routes the Express app actually mounts, so a new route that is in
+ * neither table fails the suite until it is added — and adding it adds coverage everywhere.
  */
 
 // No test may reach a real external service. The route-level role and ownership checks all
@@ -135,13 +137,9 @@ const MISSING: Ids = {
 const GHOST: Principal = { id: 'ghost-user-id', email: 'ghost@test.local', role: 'CLIENT' };
 
 /**
- * Every route that mounts `authenticate`, transcribed from `src/routes/*.ts`.
- * 63 routes: auth 2, users 8 (incl. payout account 3), projects 8, applications 3,
- * contracts 7 (incl. list, milestone plan 3 and conversation 1), milestones 4, payments 4,
- * settlements 3, reviews 1, notifications 4, conversations 7 (Phase 2A, +8),
- * profile.routes.ts 9 (portfolio 4, careers 3, profile completion 1, recommended projects 1)
- * and projects.routes.ts recommended freelancers 1 (Phase 2B, +10), and notification
- * preferences 2 (Phase 3, +2: GET/PUT /api/notifications/preferences, either role).
+ * Every route that mounts `authenticate`, grouped by the file in `src/routes/` that declares it.
+ * The label is `METHOD /mounted/path` with the router's own parameter names — `the route table
+ * itself` matches it against the app's router stack.
  */
 const PROTECTED_ROUTES: RouteSpec[] = [
   // auth.routes.ts
@@ -209,7 +207,7 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     gate: 'middleware',
   },
 
-  // profile.routes.ts (Phase 2B; the two public GETs are in PUBLIC_ROUTES)
+  // profile.routes.ts (the two public GETs are in PUBLIC_ROUTES)
   {
     label: 'POST /api/users/me/portfolio',
     method: 'post',
@@ -545,7 +543,7 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     role: null,
     gate: null,
   },
-  // Phase 3 (NC5–NC8)
+  // notifications.routes.ts — preferences (NC5–NC8)
   {
     label: 'GET /api/notifications/preferences',
     method: 'get',
@@ -609,7 +607,126 @@ const PROTECTED_ROUTES: RouteSpec[] = [
   },
 ];
 
+interface PublicSpec {
+  label: string;
+  method: HttpMethod;
+  path: () => string;
+  body?: () => Record<string, unknown>;
+  cookies?: () => string[];
+  /** Deterministic status given the `pub` fixtures. */
+  expected: number;
+}
+
+/** Fixtures for PUBLIC_ROUTES, rebuilt before each test in `the public surface`. */
+let pub: { user: { id: string }; projectId: string; refreshCookie: string };
+
+/** Every route reachable without a JWT. */
+const PUBLIC_ROUTES: PublicSpec[] = [
+  // Missing fields, so 400 — the point is that it is the validator answering, not `authenticate`.
+  { label: 'POST /api/auth/signup', method: 'post', path: () => '/api/auth/signup', expected: 400 },
+  { label: 'POST /api/auth/login', method: 'post', path: () => '/api/auth/login', expected: 400 },
+  {
+    label: 'POST /api/auth/refresh',
+    method: 'post',
+    path: () => '/api/auth/refresh',
+    cookies: () => [pub.refreshCookie],
+    expected: 200,
+  },
+  { label: 'GET /api/auth/google', method: 'get', path: () => '/api/auth/google', expected: 302 },
+  {
+    label: 'GET /api/auth/google/callback',
+    method: 'get',
+    path: () => '/api/auth/google/callback',
+    expected: 302,
+  },
+  { label: 'GET /api/projects', method: 'get', path: () => '/api/projects', expected: 200 },
+  {
+    label: 'GET /api/projects/:id',
+    method: 'get',
+    path: () => `/api/projects/${pub.projectId}`,
+    expected: 200,
+  },
+  { label: 'GET /api/users/:id', method: 'get', path: () => `/api/users/${pub.user.id}`, expected: 200 },
+  {
+    label: 'GET /api/users/:id/reviews',
+    method: 'get',
+    path: () => `/api/users/${pub.user.id}/reviews`,
+    expected: 200,
+  },
+  {
+    label: 'GET /api/reviews/users/:id',
+    method: 'get',
+    path: () => `/api/reviews/users/${pub.user.id}`,
+    expected: 200,
+  },
+  // profile.routes.ts — PF16, PF17. The fixture user is a CLIENT, so both lists are empty.
+  {
+    label: 'GET /api/users/:id/portfolio',
+    method: 'get',
+    path: () => `/api/users/${pub.user.id}/portfolio`,
+    expected: 200,
+  },
+  {
+    label: 'GET /api/users/:id/careers',
+    method: 'get',
+    path: () => `/api/users/${pub.user.id}/careers`,
+    expected: 200,
+  },
+  // internal.routes.ts — guarded by `X-Internal-Token`, not a JWT. `INTERNAL_JOB_TOKEN` is
+  // unset under test, so the endpoint does not exist (404); `jobs.test.ts` covers the rest.
+  {
+    label: 'POST /api/internal/jobs/run',
+    method: 'post',
+    path: () => '/api/internal/jobs/run',
+    expected: 404,
+  },
+];
+
 const ROLE_GATED_ROUTES = PROTECTED_ROUTES.filter((route) => route.role !== null);
+
+/** Mounted outside `src/routes/` and outside both tables: the load balancer's liveness probe. */
+const UNTABLED_ROUTES = ['GET /health'];
+
+interface RouterLayer {
+  name: string;
+  regexp: RegExp & { fast_slash?: boolean };
+  keys: unknown[];
+  route?: { path: unknown; methods: Record<string, boolean> };
+  handle: { stack?: RouterLayer[] };
+}
+
+/** The literal prefix a `app.use(path, router)` layer matches (Express 4 compiles it to a regexp). */
+function mountPathOf(layer: RouterLayer): string {
+  if (layer.regexp.fast_slash) return '';
+  const path = layer.regexp.source
+    .replace(/^\^/, '')
+    .replace(/\\\/\?\(\?=\\\/\|\$\)$/, '')
+    .replace(/\\\//g, '/');
+  if (layer.keys.length > 0 || /[\\^$()[\]{}*+?|]/.test(path)) {
+    throw new Error(`cannot read a literal mount path from ${layer.regexp}`);
+  }
+  return path;
+}
+
+/** Every `METHOD /path` the app serves, read from its router stack (nested routers included). */
+function mountedRoutes(): string[] {
+  const routes: string[] = [];
+  const walk = (stack: RouterLayer[], prefix: string) => {
+    for (const layer of stack) {
+      if (layer.route) {
+        const { path, methods } = layer.route;
+        if (typeof path !== 'string') throw new Error(`non-string route path under ${prefix}`);
+        for (const method of Object.keys(methods)) {
+          routes.push(`${method.toUpperCase()} ${prefix}${path === '/' && prefix ? '' : path}`);
+        }
+      } else if (layer.name === 'router' && layer.handle.stack) {
+        walk(layer.handle.stack, prefix + mountPathOf(layer));
+      }
+    }
+  };
+  walk((app as unknown as { _router: { stack: RouterLayer[] } })._router.stack, '');
+  return routes;
+}
 
 type ApiResponse = { status: number; body: any; headers?: Record<string, string> };
 
@@ -640,9 +757,19 @@ function expectErrorEnvelope(res: ApiResponse, status: number) {
 }
 
 describe('the route table itself', () => {
-  it('covers every protected route in src/routes, and none twice', () => {
-    expect(PROTECTED_ROUTES).toHaveLength(63);
-    expect(new Set(PROTECTED_ROUTES.map((r) => r.label)).size).toBe(PROTECTED_ROUTES.length);
+  it('lists every route the app mounts — each in exactly one table, none twice', () => {
+    const tabled = [...PROTECTED_ROUTES, ...PUBLIC_ROUTES].map((r) => r.label).concat(UNTABLED_ROUTES);
+
+    // Compared as sorted lists, not sets: a label in both tables, or a route mounted twice, fails.
+    expect(mountedRoutes().sort()).toEqual(tabled.sort());
+  });
+
+  it('reads the mounted routes from the app rather than an empty or partial stack', () => {
+    const mounted = mountedRoutes();
+
+    expect(mounted).toContain('DELETE /api/conversations/:id/messages/:messageId');
+    expect(mounted).toContain('GET /api/contracts');
+    expect(mounted.length).toBeGreaterThan(70);
   });
 
   it('records a role gate for exactly the 33 role-gated routes', () => {
@@ -1049,19 +1176,7 @@ describe('authorization — profile completeness (rule 4)', () => {
 // §2/§3 The public surface — these routes must stay reachable without a token
 // ---------------------------------------------------------------------------------------------
 
-interface PublicSpec {
-  label: string;
-  method: HttpMethod;
-  path: () => string;
-  body?: () => Record<string, unknown>;
-  cookies?: () => string[];
-  /** Deterministic status given the fixtures below. */
-  expected: number;
-}
-
 describe('the public surface', () => {
-  let pub: { user: { id: string }; projectId: string; refreshCookie: string };
-
   beforeEach(async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, { status: 'OPEN' });
@@ -1075,67 +1190,6 @@ describe('the public surface', () => {
       })}`,
     };
   });
-
-  const PUBLIC_ROUTES: PublicSpec[] = [
-    // Missing fields, so 400 — the point is that it is the validator answering, not `authenticate`.
-    { label: 'POST /api/auth/signup', method: 'post', path: () => '/api/auth/signup', expected: 400 },
-    { label: 'POST /api/auth/login', method: 'post', path: () => '/api/auth/login', expected: 400 },
-    {
-      label: 'POST /api/auth/refresh',
-      method: 'post',
-      path: () => '/api/auth/refresh',
-      cookies: () => [pub.refreshCookie],
-      expected: 200,
-    },
-    { label: 'GET /api/auth/google', method: 'get', path: () => '/api/auth/google', expected: 302 },
-    {
-      label: 'GET /api/auth/google/callback',
-      method: 'get',
-      path: () => '/api/auth/google/callback',
-      expected: 302,
-    },
-    { label: 'GET /api/projects', method: 'get', path: () => '/api/projects', expected: 200 },
-    {
-      label: 'GET /api/projects/:id',
-      method: 'get',
-      path: () => `/api/projects/${pub.projectId}`,
-      expected: 200,
-    },
-    { label: 'GET /api/users/:id', method: 'get', path: () => `/api/users/${pub.user.id}`, expected: 200 },
-    {
-      label: 'GET /api/users/:id/reviews',
-      method: 'get',
-      path: () => `/api/users/${pub.user.id}/reviews`,
-      expected: 200,
-    },
-    {
-      label: 'GET /api/reviews/users/:id',
-      method: 'get',
-      path: () => `/api/reviews/users/${pub.user.id}`,
-      expected: 200,
-    },
-    // profile.routes.ts (Phase 2B) — PF16, PF17. The fixture user is a CLIENT, so both lists are empty.
-    {
-      label: 'GET /api/users/:id/portfolio',
-      method: 'get',
-      path: () => `/api/users/${pub.user.id}/portfolio`,
-      expected: 200,
-    },
-    {
-      label: 'GET /api/users/:id/careers',
-      method: 'get',
-      path: () => `/api/users/${pub.user.id}/careers`,
-      expected: 200,
-    },
-    // internal.routes.ts — guarded by `X-Internal-Token`, not a JWT. `INTERNAL_JOB_TOKEN` is
-    // unset under test, so the endpoint does not exist (404); `jobs.test.ts` covers the rest.
-    {
-      label: 'POST /api/internal/jobs/run',
-      method: 'post',
-      path: () => '/api/internal/jobs/run',
-      expected: 404,
-    },
-  ];
 
   it('enumerates thirteen public routes (twelve handlers; the review list is mounted twice)', () => {
     expect(PUBLIC_ROUTES).toHaveLength(13);
@@ -1802,7 +1856,7 @@ describe('unmatched paths and methods bypass errorHandler (Q10)', () => {
    */
   const UNMATCHED = [
     {
-      // Was `GET /api/contracts` until Phase 1 gave that router an index route (CT1).
+      // Was `GET /api/contracts` until the contract list (CT1) gave that router an index route.
       label: 'GET /api/users (mounted router, no index route)',
       method: 'get' as HttpMethod,
       path: '/api/users',

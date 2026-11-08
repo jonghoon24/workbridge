@@ -25,7 +25,7 @@ function parse(schema: ZodTypeAny, value: unknown): unknown {
 
 /**
  * zod request validation — **expansion routes only** (BEHAVIOR.md rule 12). Pre-existing
- * controllers keep their hand-written checks; the mix is intended.
+ * controllers still validate by hand until they move to services + zod (#40).
  *
  * Parsed values land in `req.body`, `res.locals.query` and `res.locals.params`. Express 4's
  * `req.query` is a getter-backed object that should not be reassigned, so parsed queries go to

@@ -129,8 +129,8 @@ beforeEach(() => {
  * invariant that matters: **nothing the request would have written landed.** That assertion is
  * what flips when a guard is added; the status code is the secondary signal.
  *
- * `PATCH /api/contracts/:id` left this table in Phase 1: it answers 410 to everyone (CT11), so it
- * writes nothing and is no longer a D12 vector.
+ * `PATCH /api/contracts/:id` left this table when milestones took over completion: it answers
+ * 410 to everyone (CT11), so it writes nothing and is no longer a D12 vector.
  *
  * Three mutating routes are deliberately absent, none of which can exhibit D12:
  * - `POST /api/auth/logout` — clears a cookie and writes no row.
@@ -443,6 +443,7 @@ const mutations: Mutation[] = [
 
 describe('a soft-deleted principal must not be able to write anything (D12)', () => {
   /**
+   * 알려진 불일치 D12 — #7
    * Cross-cutting rule 5: "Every read and write must filter `deletedAt: null`." D1 fixed the
    * authentication and profile *read* paths; **no write path re-checks the actor**, which is
    * what D12 records.
@@ -516,11 +517,10 @@ describe('a soft-deleted principal must not be able to write anything (D12)', ()
  * but run with a plain `it.each`: these routes put `requireActiveUser` behind `authenticate`,
  * so a soft-deleted caller is refused with 401 and nothing lands.
  *
- * Every expansion phase adds a row here for each new mutating route. **Never add an expansion
- * route to `mutations`** — that table is `it.fails`, and a guarded route would break it with an
- * unexpected pass. Phase 1 adds the milestone, plan and payout-account writes; Phase 2 adds the
- * conversation, message, portfolio and career writes; Phase 3 adds the notification-preferences
- * write.
+ * Every new mutating expansion route gets a row here. **Never add an expansion route to
+ * `mutations`** — that table is `it.fails`, and a guarded route would break it with an
+ * unexpected pass. Rows are grouped by domain: milestones, plan and payout account;
+ * conversations and messages; portfolio and careers; notification preferences.
  */
 const activeContract = () => makeContractScenario({
   contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
@@ -623,7 +623,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Phase 2A — conversations and messages (MG10).
+  // Conversations and messages (MG10).
   {
     label: 'POST /api/conversations/:id/messages',
     async setup() {
@@ -667,7 +667,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Phase 2B — portfolio and careers (PF20).
+  // Portfolio and careers (PF20).
   {
     label: 'POST /api/users/me/portfolio',
     async setup() {
@@ -771,7 +771,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Phase 3 — notification preferences (NC7).
+  // Notification preferences (NC7).
   {
     label: 'PUT /api/notifications/preferences',
     async setup() {
@@ -1173,11 +1173,12 @@ describe('a soft-deleted project', () => {
  * consult `deletedAt` on the joined project. Rule 5 ("every read and write must filter
  * `deletedAt: null`") decides the soft-deleted case, so a contract whose project is gone must be
  * invisible. Today both succeed: the contract is served with the deleted project embedded in
- * the body, and it can be signed. Completion moved to the milestone routes in Phase 1, which do
+ * the body, and it can be signed. Completion moved to the milestone routes (C3), which do
  * filter — that half of D21 is now a passing test. Interacts with D11/Q4 — once deleting a
  * project with a live contract is blocked, this state becomes much harder to reach.
  */
 describe('a contract whose project is soft-deleted (D21)', () => {
+  // 알려진 불일치 D21 — #16
   it.fails('is not served by GET /api/contracts/:id [D21]', async () => {
     const { client, project, contract } = await makeContractScenario();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
@@ -1188,6 +1189,7 @@ describe('a contract whose project is soft-deleted (D21)', () => {
     expect(res.body).toEqual({ error: { message: expect.any(String) } });
   });
 
+  // 알려진 불일치 D21 — #16
   it.fails('cannot be signed: 404 and no signature recorded [D21]', async () => {
     const { freelancer, project, contract } = await makeContractScenario();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });

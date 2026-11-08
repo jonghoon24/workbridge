@@ -1,8 +1,8 @@
 /**
  * Money rules of the expansion domains (BEHAVIOR.md "Money and milestone rules"). Every amount
  * here is a whole number of won and every calculation is integer arithmetic on basis points, so
- * there is no floating-point drift even though the columns are `Float` (a pre-existing debt that
- * is deliberately left alone). New code computes fees and rounding **only** through this file.
+ * there is no floating-point drift even though the columns are `Float` (a pre-existing debt,
+ * docs/DATABASE.md "금액이 `Float`인 부채"). New code computes fees and rounding **only** through this file.
  */
 
 /** M1: the platform fee, 10% of the approved milestone amount, in basis points. */

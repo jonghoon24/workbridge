@@ -276,7 +276,8 @@ describe('PATCH /api/users/me', () => {
   });
 
   /*
-   * [D3] There is no 500 here, contrary to what BEHAVIOR.md used to claim. `parseInt('abc')` is
+   * 알려진 불일치 D3 — #1
+   * There is no 500 here, contrary to what BEHAVIOR.md used to claim. `parseInt('abc')` is
    * NaN and `experienceYears` is a **nullable** column, so Prisma serializes NaN to `null` and the
    * write *succeeds*: the response is **200**, the other fields in the same request are persisted,
    * and the stored `experienceYears` is silently wiped to `null`. That is worse than a 500 —
@@ -296,7 +297,8 @@ describe('PATCH /api/users/me', () => {
     expect(stored.experienceYears).toBe(3);
   });
 
-  // [D3] `parseFloat('abc')` is NaN and `hourlyRate` is nullable too, so the same silent wipe
+  // 알려진 불일치 D3 — #1
+  // `parseFloat('abc')` is NaN and `hourlyRate` is nullable too, so the same silent wipe
   // happens on the money field: 200 today, with the stored rate replaced by null.
   it.fails('rejects a non-numeric hourlyRate with 400 and does not null it [D3]', async () => {
     const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
@@ -308,7 +310,8 @@ describe('PATCH /api/users/me', () => {
     expect(stored.hourlyRate).toBe(50_000);
   });
 
-  // [D3] The blast radius: today the whole request is applied, so `name` is written *and*
+  // 알려진 불일치 D3 — #1
+  // The blast radius: today the whole request is applied, so `name` is written *and*
   // `experienceYears` is nulled. A rejected request must leave every field as it was.
   it.fails('leaves the profile untouched when a non-numeric experienceYears is submitted [D3]', async () => {
     const freelancer = await makeFreelancer({ name: 'Unchanged', experienceYears: 3 });
@@ -322,7 +325,8 @@ describe('PATCH /api/users/me', () => {
     expect(stored.experienceYears).toBe(3);
   });
 
-  // [D3] Same blast radius on the other numeric field: the sibling `name` sticks while the
+  // 알려진 불일치 D3 — #1
+  // Same blast radius on the other numeric field: the sibling `name` sticks while the
   // stored `hourlyRate` is replaced by null.
   it.fails('leaves the profile untouched when a non-numeric hourlyRate is submitted [D3]', async () => {
     const freelancer = await makeFreelancer({ name: 'Unchanged', hourlyRate: 50_000 });
@@ -336,7 +340,8 @@ describe('PATCH /api/users/me', () => {
     expect(stored.hourlyRate).toBe(50_000);
   });
 
-  // [D16] `normalizeSkillList` maps `.trim()` over every element, so a non-string element throws
+  // 알려진 불일치 D16 — #11
+  // `normalizeSkillList` maps `.trim()` over every element, so a non-string element throws
   // `TypeError: skill.trim is not a function` inside the controller, before Prisma is reached.
   // With no `statusCode` on the error, `errorHandler` renders it as **500**; cross-cutting rule 8
   // requires 400 for a malformed value.
@@ -532,7 +537,8 @@ describe('PATCH /api/users/me', () => {
       expect(supabaseUpload).not.toHaveBeenCalled();
     });
 
-    // [D6] the fileFilter's plain `Error` has no statusCode, so errorHandler renders 500.
+    // 알려진 불일치 D6
+    // The fileFilter's plain `Error` has no statusCode, so errorHandler renders 500.
     it.fails('rejects a non-image upload with 400 [D6]', async () => {
       const freelancer = await makeFreelancer();
 
@@ -561,7 +567,8 @@ describe('PATCH /api/users/me', () => {
       expect(stored.profileImage).toBeNull();
     });
 
-    // [D6] multer's LIMIT_FILE_SIZE MulterError has no statusCode, so errorHandler renders 500.
+    // 알려진 불일치 D6
+    // Multer's LIMIT_FILE_SIZE MulterError has no statusCode, so errorHandler renders 500.
     it.fails('rejects an upload over the 5 MB limit with 413 or 400 [D6]', async () => {
       const freelancer = await makeFreelancer();
 
@@ -575,7 +582,8 @@ describe('PATCH /api/users/me', () => {
       expect([400, 413]).toContain(res.status);
     });
 
-    // [D6] the raw Supabase error is rethrown as-is, so it has no statusCode and renders 500.
+    // 알려진 불일치 D6
+    // The raw Supabase error is rethrown as-is, so it has no statusCode and renders 500.
     it.fails('surfaces a storage failure as an upstream error, not 500 [D6]', async () => {
       const freelancer = await makeFreelancer();
       supabaseUpload.mockResolvedValue({ data: null, error: new Error('bucket unavailable') });

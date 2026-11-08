@@ -362,7 +362,7 @@ export function digestContextKey(conversationId: string): string {
 }
 
 /**
- * J8 (steps 1–2 Phase 2A, steps 3–4 Phase 3, NC16). One transaction: lock the recipient's
+ * J8 (steps 1–4, NC16). One transaction: lock the recipient's
  * participant row (a concurrent `POST …/read` writes the same row), then decide. `throttled`
  * re-enqueues for one throttle period after the last digest; `notified` handed the digest to
  * `notify()`, which creates the email (or nothing, when the recipient turned the digest off).
