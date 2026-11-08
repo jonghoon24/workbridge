@@ -9,16 +9,12 @@ import Card from '@/components/ui/Card';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { BellIcon } from '@/components/ui/Icons';
+import { toUserMessage } from '@/lib/errorMessages';
+import { formatDateTime } from '@/lib/format';
 
-function formatDate(value) {
-  return new Date(value).toLocaleString('ko-KR', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
+// 서버는 한 번에 최대 50개까지 준다(limit). 20개씩 늘려 가며 다시 받는다.
+const PAGE_SIZE = 20;
+const MAX_LIMIT = 50;
 
 // 알림 type별 분류 라벨(BEHAVIOR.md Notifications 표, 19종). 이동할 화면은 서버가 준 href를 그대로 쓴다.
 const TYPE_CATEGORIES = {
@@ -58,19 +54,35 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState('');
   const [error, setError] = useState('');
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
-    api.get('/api/notifications')
+  }, []);
+
+  useEffect(() => {
+    api.get('/api/notifications', { params: { limit } })
       .then(({ data }) => {
         setNotifications(data.notifications || []);
         setUnreadCount(data.unreadCount || 0);
       })
       .catch((err) => {
-        setError(err.response?.data?.error?.message || '알림을 불러오지 못했습니다');
+        setError(toUserMessage(err, '알림을 불러오지 못했습니다'));
       })
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => {
+        setLoading(false);
+        setLoadingMore(false);
+      });
+  }, [limit]);
+
+  function handleLoadMore() {
+    setLoadingMore(true);
+    setLimit((prev) => Math.min(prev + PAGE_SIZE, MAX_LIMIT));
+  }
+
+  const hasMore = notifications.length >= limit && limit < MAX_LIMIT;
+  const reachedMax = notifications.length >= MAX_LIMIT;
 
   async function handleMarkRead(notification) {
     if (notification.readAt || updating) return;
@@ -82,7 +94,7 @@ export default function NotificationsPage() {
       setUnreadCount((prev) => Math.max(prev - 1, 0));
       window.dispatchEvent(new Event('notifications:changed'));
     } catch (err) {
-      setError(err.response?.data?.error?.message || '알림 상태를 변경하지 못했습니다');
+      setError(toUserMessage(err, '알림 상태를 변경하지 못했습니다'));
     } finally {
       setUpdating('');
     }
@@ -99,7 +111,7 @@ export default function NotificationsPage() {
       setUnreadCount(0);
       window.dispatchEvent(new Event('notifications:changed'));
     } catch (err) {
-      setError(err.response?.data?.error?.message || '알림 상태를 변경하지 못했습니다');
+      setError(toUserMessage(err, '알림 상태를 변경하지 못했습니다'));
     } finally {
       setUpdating('');
     }
@@ -114,7 +126,7 @@ export default function NotificationsPage() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">알림</h1>
-          <p className="text-gray-600 mt-1">지원, 계약, 마일스톤, 정산 소식을 확인하세요</p>
+          <p className="text-gray-600 mt-1">지원, 계약, 마일스톤, 정산 소식을 모아 보여 드립니다</p>
         </div>
         <div className="flex gap-2">
           <Link href="/my/notifications/settings">
@@ -150,7 +162,7 @@ export default function NotificationsPage() {
             return (
               <Card
                 key={notification.id}
-                className={`p-5 ${unread ? 'border-primary-200 bg-primary-50/50 shadow-[inset_3px_0_0_0_theme(colors.primary.500)]' : ''}`}
+                className={`relative p-5 transition-colors ${notification.href ? 'hover:border-primary-300' : ''} ${unread ? 'border-primary-200 bg-primary-50/50 shadow-[inset_3px_0_0_0_theme(colors.primary.500)]' : ''}`}
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
@@ -167,20 +179,26 @@ export default function NotificationsPage() {
                           {TYPE_CATEGORIES[notification.type]}
                         </span>
                       )}
-                      <h2 className="font-semibold text-gray-900">{notification.title}</h2>
+                      <h2 className="font-semibold text-gray-900">
+                        {notification.href ? (
+                          // 카드 전체를 누르면 읽음 처리하고 관련 화면으로 간다(after:inset-0로 링크 영역을 카드 전체로 넓힘).
+                          <Link
+                            href={notification.href}
+                            onClick={() => handleMarkRead(notification)}
+                            className="after:absolute after:inset-0 after:rounded-[inherit] focus:outline-none focus-visible:underline"
+                          >
+                            {notification.title}
+                          </Link>
+                        ) : (
+                          notification.title
+                        )}
+                      </h2>
                     </div>
                     <p className="text-sm leading-relaxed text-gray-700">{notification.message}</p>
-                    <p className="text-xs text-gray-500 mt-2">{formatDate(notification.createdAt)}</p>
+                    <p className="text-xs text-gray-500 mt-2">{formatDateTime(notification.createdAt)}</p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 sm:justify-end">
-                    {notification.href && (
-                      <Link href={notification.href}>
-                        <Button variant="secondary" size="sm" onClick={() => handleMarkRead(notification)}>
-                          관련 화면
-                        </Button>
-                      </Link>
-                    )}
+                  <div className="relative z-10 flex flex-wrap gap-2 sm:justify-end">
                     {unread && (
                       <Button
                         variant="ghost"
@@ -196,6 +214,16 @@ export default function NotificationsPage() {
               </Card>
             );
           })}
+          {hasMore && (
+            <div className="pt-2 text-center">
+              <Button variant="secondary" onClick={handleLoadMore} loading={loadingMore}>
+                이전 알림 더 보기
+              </Button>
+            </div>
+          )}
+          {reachedMax && (
+            <p className="pt-2 text-center text-sm text-gray-500">최근 알림 {MAX_LIMIT}개까지 보여 드립니다.</p>
+          )}
         </div>
       )}
     </div>
