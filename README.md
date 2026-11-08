@@ -64,6 +64,7 @@ npm run lint && npm run build
 
 | 문서 | 설명 |
 | --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 구조: 레이어, 요청 흐름, 작업 큐, 클라이언트, 환경 |
 | [docs/BEHAVIOR.md](docs/BEHAVIOR.md) | API 동작 명세 (영문, 테스트의 기준). 알려진 불일치(D)와 미결 질문(Q) |
 | [docs/API.md](docs/API.md) | API 엔드포인트 목록 |
 | [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 모델과 불변식 |
