@@ -167,7 +167,8 @@ function setOAuthStateCookie(response, value, maxAge) {
  */
 export async function proxyGoogleRedirect(request, path) {
   const isCallback = path === 'google/callback';
-  const headers = new Headers();
+  // The usual forward headers too, so the backend's access log has the browser's address.
+  const headers = buildForwardHeaders(request);
   const state = request.cookies.get(OAUTH_STATE_COOKIE_NAME)?.value;
   if (isCallback && state) headers.set('cookie', `${OAUTH_STATE_COOKIE_NAME}=${state}`);
 
