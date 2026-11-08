@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.test)",
+      "Read(**/.env.*.local)",
+      "Read(**/.env.production*)",
+      "Bash(*prisma migrate reset*)",
+      "Bash(*--force-reset*)",
+      "Bash(*--accept-data-loss*)",
+      "Bash(*dropdb*)",
+      "Bash(*DROP TABLE*)",
+      "Bash(*drop table*)",
+      "Bash(*TRUNCATE*)",
+      "Bash(git push -f*)",
+      "Bash(git push * -f*)",
+      "Bash(git push *--force*)",
+      "Bash(*supabase.co*)",
+      "Bash(*supabase.com*)"
+    ],
+    "allow": [
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx vitest run:*)",
+      "Bash(npx prisma validate:*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx playwright test:*)",
+      "Bash(bash scripts/e2e.sh:*)",
+      "Bash(bash scripts/test-db.sh:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git ls-files:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git remote:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-migrations.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/server-rules.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-check.sh",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
