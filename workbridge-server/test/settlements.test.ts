@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 
 import { authed } from './helpers/api';
-import { prisma } from './helpers/db';
+import { prisma, sideClient } from './helpers/db';
 import { jobsOf, runJobs } from './helpers/jobs';
 import { makeClient, makeContractScenario, makeFreelancer, makePayoutAccount } from './helpers/factories';
 import { enqueueJob } from '../src/jobs/queue';
@@ -453,7 +453,10 @@ describe('settlement.payout (S7–S12, J7)', () => {
     const freelancer = await makeFreelancer();
     const settlement = await scheduled(freelancer);
     await Promise.all([1, 2, 3].map(() => authed(freelancer).get('/api/users/me/payout-account')));
-    const waiting = async () => (await prisma.$queryRaw<{ n: number }[]>`
+    // The holder and the poll run on their own pool, so the app's pool only has to fit the
+    // payout's and the PUT's transactions — see `sideClient`.
+    const side = sideClient();
+    const waiting = async () => (await side.$queryRaw<{ n: number }[]>`
       SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`)[0].n;
     const until = async (done: () => Promise<boolean> | boolean) => {
       for (const deadline = Date.now() + 3_000; Date.now() < deadline && !(await done());) {
@@ -461,31 +464,38 @@ describe('settlement.payout (S7–S12, J7)', () => {
       }
     };
 
-    let release!: () => void;
+    let release = () => {};
     let holding!: () => void;
     const held = new Promise<void>((resolve) => { holding = resolve; });
-    const holder = prisma.$transaction(async (tx) => {
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const holder = side.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Settlement" WHERE id = ${settlement.id} FOR UPDATE`;
       holding();
-      await new Promise<void>((resolve) => { release = resolve; });
+      await released;
     }, { timeout: 10_000 });
-    await held;
+    try {
+      await held;
 
-    const payout = runPayout(settlement.id, settlement.scheduledPayoutAt.toISOString(), PAYOUT_AT);
-    await until(async () => (await waiting()) >= 1); // the payout is parked on its ON_HOLD write
-    let putDone = false;
-    const put = authed(freelancer).put('/api/users/me/payout-account')
-      .send({ bankCode: '004', accountNumber: '110123456789', holderName: freelancer.name })
-      .then((res) => { putDone = true; return res; });
-    await until(async () => putDone || (await waiting()) >= 2); // committed, or queued on the user row
-    release();
-    await holder;
-    const [outcome, res] = await Promise.all([payout, put]);
+      const payout = runPayout(settlement.id, settlement.scheduledPayoutAt.toISOString(), PAYOUT_AT);
+      await until(async () => (await waiting()) >= 1); // the payout is parked on its ON_HOLD write
+      let putDone = false;
+      const put = authed(freelancer).put('/api/users/me/payout-account')
+        .send({ bankCode: '004', accountNumber: '110123456789', holderName: freelancer.name })
+        .then((res) => { putDone = true; return res; });
+      await until(async () => putDone || (await waiting()) >= 2); // committed, or queued on the user row
+      release();
+      await holder;
+      const [outcome, res] = await Promise.all([payout, put]);
 
-    expect(outcome).toBe('on_hold');
-    expect(res.status).toBe(200);
-    expect(await prisma.payoutAccount.count({ where: { userId: freelancer.id } })).toBe(1);
-    expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).status).toBe('SCHEDULED');
+      expect(outcome).toBe('on_hold');
+      expect(res.status).toBe(200);
+      expect(await prisma.payoutAccount.count({ where: { userId: freelancer.id } })).toBe(1);
+      expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).status).toBe('SCHEDULED');
+    } finally {
+      release();
+      await holder.catch(() => {});
+      await side.$disconnect();
+    }
   });
 
   it('transfers the netAmount of the settlement it moved to PROCESSING [S9]', async () => {
