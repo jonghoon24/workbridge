@@ -1,0 +1,58 @@
+name: 버그
+description: 의도와 다르게 동작하는 것
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        명세와 구현이 다른 경우(BEHAVIOR.md에 D번호가 있거나 있어야 하는 경우)는 "명세 불일치" 양식을 쓴다.
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영역
+      options:
+        - 서버 (workbridge-server)
+        - 클라이언트 (workbridge-client)
+        - 둘 다 / 모름
+    validations:
+      required: true
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 현상
+      description: 무엇이 일어났는지. 응답 상태 코드와 본문, 화면 문구를 그대로 옮긴다.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 절차
+      description: 계정 역할(CLIENT/FREELANCER), 요청(curl 또는 화면 경로), 순서.
+      placeholder: |
+        1. FREELANCER로 로그인
+        2. PATCH /api/users/me ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+      description: 근거가 되는 문서 절이 있으면 함께 적는다(docs/API.md, docs/BEHAVIOR.md).
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 환경
+      description: 로컬/운영, 브라우저, 커밋 해시, 관련 환경변수(비밀값 제외).
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: 로그 / 요청 id
+      description: 응답 헤더의 X-Request-Id와 같은 requestId를 가진 서버 로그 줄. 토큰·비밀번호·계좌번호는 지운다.
+      render: text
+    validations:
+      required: false
