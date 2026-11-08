@@ -30,19 +30,6 @@ export function buildForwardHeaders(request) {
   if (requestId) headers.set('x-request-id', requestId);
   if (chain) headers.set('x-forwarded-for', chain);
 
-  // TEMP(authinfra): IP header probe — reverted after the preview check.
-  console.log(JSON.stringify({
-    msg: 'ipprobe.client',
-    path: request.nextUrl?.pathname,
-    xff: request.headers.get('x-forwarded-for'),
-    xRealIp: request.headers.get('x-real-ip'),
-    xVercelForwardedFor: request.headers.get('x-vercel-forwarded-for'),
-    xVercelProxiedFor: request.headers.get('x-vercel-proxied-for'),
-    xVercelId: request.headers.get('x-vercel-id'),
-    requestIp: request.ip,
-    headerNames: [...request.headers.keys()].sort().join(','),
-  }));
-
   return headers;
 }
 
