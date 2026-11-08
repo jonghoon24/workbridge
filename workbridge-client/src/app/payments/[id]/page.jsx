@@ -12,6 +12,7 @@ import MilestoneStatusBadge from '@/components/milestones/MilestoneStatusBadge';
 import { formatDate, formatKRW } from '@/lib/format';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
+import { toUserMessage } from '@/lib/errorMessages';
 
 const paymentBypassEnabled =
   process.env.NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS === 'true';
@@ -23,21 +24,28 @@ function buildOrderName(projectTitle, milestoneTitle) {
 }
 
 export default function PaymentPage() {
-  const { id } = useParams(); // milestone id (P1부터 결제는 마일스톤 단위다)
+  const { id } = useParams(); // milestone id (결제는 마일스톤 단위다)
   const router = useRouter();
   const [milestone, setMilestone] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [sdkReady, setSdkReady] = useState(false);
+
+  // 다른 화면에서 이미 SDK를 불러온 경우(뒤로 갔다 다시 들어올 때) Script의 onReady가 다시 불리지만,
+  // 전역 객체가 이미 있으면 바로 준비 상태로 둔다.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.TossPayments) setSdkReady(true);
+  }, []);
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
     api.get(`/api/milestones/${id}`)
       .then(({ data }) => setMilestone(data))
       .catch((err) => {
-        setLoadError(err.response?.data?.error?.message || '결제할 마일스톤을 불러오지 못했습니다');
+        setLoadError(toUserMessage(err, '결제할 마일스톤을 불러오지 못했습니다'));
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -47,12 +55,13 @@ export default function PaymentPage() {
 
   async function handlePayment() {
     if (!sdkReady || !window.TossPayments) {
-      alert('결제 SDK가 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
+      setError('결제 모듈을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
       return;
     }
 
     setPaymentLoading(true);
     setError('');
+    setNotice('');
     try {
       const { data } = await api.post('/api/payments', { milestoneId: id });
       const { orderId, amount } = data;
@@ -68,8 +77,13 @@ export default function PaymentPage() {
         failUrl: `${window.location.origin}/payments/result?status=fail&${resultQuery}`,
       });
     } catch (err) {
-      if (err.code !== 'USER_CANCEL') {
-        setError(err.response?.data?.error?.message || err.message || '결제에 실패했습니다');
+      if (err.code === 'USER_CANCEL' || err.code === 'PAY_PROCESS_CANCELED') {
+        setNotice('결제를 취소했습니다. 결제하려면 다시 버튼을 눌러 주세요.');
+      } else if (err.response || err.request) {
+        setError(toUserMessage(err, '결제를 시작하지 못했습니다'));
+      } else {
+        // 토스페이먼츠 SDK 오류는 한국어 message를 준다.
+        setError(err.message || '결제를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } finally {
       setPaymentLoading(false);
@@ -83,7 +97,7 @@ export default function PaymentPage() {
       await api.post('/api/payments/dev-complete', { milestoneId: id });
       router.push(`/payments/result?status=dev-success&${resultQuery}`);
     } catch (err) {
-      setError(err.response?.data?.error?.message || '개발용 결제 완료 처리에 실패했습니다');
+      setError(toUserMessage(err, '개발용 결제 완료 처리에 실패했습니다'));
     } finally {
       setPaymentLoading(false);
     }
@@ -121,7 +135,7 @@ export default function PaymentPage() {
       <Script
         src="https://js.tosspayments.com/v1/payment"
         strategy="lazyOnload"
-        onLoad={() => setSdkReady(true)}
+        onReady={() => setSdkReady(true)}
       />
       <div className="max-w-lg mx-auto px-4 sm:px-6 py-8">
         <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">마일스톤 결제</h1>
@@ -153,10 +167,16 @@ export default function PaymentPage() {
             </div>
           </dl>
           <p className="mt-4 text-xs text-gray-500">
-            결제한 금액은 플랫폼이 보관하고, 산출물을 승인하면(또는 검수 기한이 지나 자동 승인되면) 프리랜서에게 정산됩니다.
-            마일스톤은 순서대로만 결제할 수 있습니다.
+            안전결제: 결제한 금액은 WorkBridge가 보관하다가 의뢰인이 결과물을 승인하면(검수 기한이 지나 자동 승인되는 경우 포함)
+            프리랜서에게 정산됩니다. 마일스톤은 순서대로만 결제할 수 있습니다.
           </p>
         </Card>
+
+        {notice && (
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm mb-4">
+            {notice}
+          </div>
+        )}
 
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">

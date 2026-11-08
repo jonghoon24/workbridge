@@ -1,11 +1,16 @@
 'use client';
 
 import { useEffect, useRef, useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { toUserMessage } from '@/lib/errorMessages';
+
+// 토스 결제창에서 사용자가 직접 닫거나 취소했을 때 failUrl에 붙는 코드.
+const CANCEL_CODES = new Set(['PAY_PROCESS_CANCELED', 'USER_CANCEL']);
 
 function PaymentResultContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const status = searchParams.get('status');
   const orderId = searchParams.get('orderId');
@@ -15,6 +20,7 @@ function PaymentResultContent() {
   const milestoneId = searchParams.get('milestoneId');
   const contractId = searchParams.get('contractId');
   // Toss failUrl은 code와 message를 붙여 돌려준다.
+  const failCode = searchParams.get('code');
   const failMessage = searchParams.get('message');
 
   const [result, setResult] = useState(null);
@@ -24,25 +30,50 @@ function PaymentResultContent() {
   const confirmStarted = useRef(false);
 
   useEffect(() => {
+    // 결제가 이미 반영됐는지는 마일스톤 상태로 판단한다(PENDING이 아니면 결제 완료).
+    const isFunded = () => (milestoneId
+      ? api.get(`/api/milestones/${milestoneId}`).then(({ data }) => data.status !== 'PENDING').catch(() => false)
+      : Promise.resolve(false));
+    // 승인이 끝나면 paymentKey가 든 주소를 바꿔 둔다. 새로고침하거나 뒤로 와도 승인을 다시 요청하지 않는다.
+    const showDone = () => {
+      setResult('success');
+      const query = new URLSearchParams({ status: 'done' });
+      if (milestoneId) query.set('milestoneId', milestoneId);
+      if (contractId) query.set('contractId', contractId);
+      router.replace(`/payments/result?${query}`);
+    };
+
     if (status === 'dev-success') {
       setResult('success');
       setLoading(false);
+    } else if (status === 'done') {
+      isFunded()
+        .then((funded) => setResult(funded ? 'success' : 'fail'))
+        .finally(() => setLoading(false));
     } else if (status === 'success' && orderId && paymentKey && amount) {
       if (confirmStarted.current) return;
       confirmStarted.current = true;
-      api.post('/api/payments/confirm', { orderId, paymentKey, amount: parseInt(amount) })
-        .then(() => setResult('success'))
-        .catch((err) => {
-          setErrorMessage(err.response?.data?.error?.message || '');
+      api.post('/api/payments/confirm', { orderId, paymentKey, amount: parseInt(amount, 10) })
+        .then(showDone)
+        .catch(async (err) => {
+          // 이미 승인된 결제를 다시 확인하면 서버는 409를 준다. 마일스톤이 결제됐으면 성공으로 보여 준다.
+          if (err.response?.status === 409 && (await isFunded())) {
+            showDone();
+            return;
+          }
+          setErrorMessage(toUserMessage(err, '결제 승인을 확인하지 못했습니다.'));
           setResult('fail');
         })
         .finally(() => setLoading(false));
+    } else if (CANCEL_CODES.has(failCode)) {
+      setResult('cancel');
+      setLoading(false);
     } else {
       setErrorMessage(failMessage || '');
       setResult('fail');
       setLoading(false);
     }
-  }, [status, orderId, paymentKey, amount, failMessage]);
+  }, [status, orderId, paymentKey, amount, failCode, failMessage, milestoneId, contractId, router]);
 
   if (loading) {
     return (
@@ -70,6 +101,16 @@ function PaymentResultContent() {
               결제가 완료되었습니다. 프리랜서가 이 마일스톤 작업을 시작할 수 있습니다.
             </p>
           </>
+        ) : result === 'cancel' ? (
+          <>
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </div>
+            <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-2">결제 취소</h1>
+            <p className="text-gray-600 mb-6">결제를 취소했습니다. 결제된 금액은 없습니다.</p>
+          </>
         ) : (
           <>
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -78,7 +119,7 @@ function PaymentResultContent() {
               </svg>
             </div>
             <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-2">결제 실패</h1>
-            <p className={`text-gray-600 ${errorMessage ? 'mb-2' : 'mb-6'}`}>결제 처리 중 오류가 발생했습니다.</p>
+            <p className={`text-gray-600 ${errorMessage ? 'mb-2' : 'mb-6'}`}>결제를 완료하지 못했습니다.</p>
             {errorMessage && <p className="text-sm text-gray-500 mb-6">{errorMessage}</p>}
           </>
         )}
