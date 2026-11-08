@@ -28,7 +28,7 @@ export default function MilestoneCard({
     && new Date(milestone.dueDate).getTime() < Date.now();
 
   return (
-    <div className="rounded-lg border border-gray-200 p-4">
+    <div data-testid="milestone-card" className="rounded-lg border border-gray-200 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
