@@ -23,7 +23,7 @@
 | `tests.md` | `workbridge-server/test/**`, `vitest.config.ts`, `docs/BEHAVIOR.md` | 실제 Postgres, 팩토리, 가짜 타이머 금지, `it.fails` 핀은 수정과 함께만 뒤집기, 공통 관심사는 중앙 매트릭스에서 한 번 |
 | `prisma.md` | `workbridge-server/prisma/**`, `docs/DATABASE.md` | 적용된 마이그레이션 불변, `seed.js`는 CommonJS, `deletedAt: null`(D1, D19, D21) |
 | `client.md` | `workbridge-client/**` | JSX 유지, `lib/api.js`만, `middleware.js`는 쿠키 존재만 봄, 문구를 바꾸면 E2E도 함께 |
-| `deploy.md` | `vercel.json`, `index.ts`, `env.ts`, `package.json`, 워크플로, `DEPLOYMENT.md`, `ENV.md` | `vercel.json`의 진입점 두 곳, `dist/` 없음, Preview/Production이 서로 다른 Supabase 프로젝트 |
+| `deploy.md` | `vercel.json`, `index.ts`, `env.ts`, `package.json`, 워크플로, `DEPLOYMENT.md`, `ENV.md` | `vercel.json`의 진입점 두 곳, `dist/` 없음(Prisma 생성은 `postinstall`), Preview/Production이 서로 다른 Supabase 프로젝트, 원격 마이그레이션은 `migrate.yml`만 |
 
 **한계.** 경로가 맞는 파일을 읽어야 들어온다. 파일을 읽지 않고 답하는 질문에는 rules가 없다.
 
@@ -74,16 +74,34 @@
 로컬 `pre-pr-review`와 CI 리뷰어가 같은 번호 항목을 읽는다. 항목마다 규칙 한 줄, 이 코드베이스의 근거
 (D1·D4·D12·D13·D19·D21·D22, M3/M5, NC9, PA7/S17/PF8 등), diff에서 확인하는 방법이 있다.
 
-## 7. MCP — `.mcp.json`
+## 7. GitHub 워크플로 — `.github/workflows/`
 
-Playwright MCP 서버(프로젝트 설치 범위). 클라이언트에는 단위 테스트가 없어서 UI 변경은 실제 브라우저로 봐야 한다.
+| 파일 | 트리거 | 왜 있는가 |
+|---|---|---|
+| `ci.yml` | PR, `main` 푸시 | 서버 typecheck·`prisma validate`·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint(`--max-warnings=0`)·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
+| `e2e.yml` | PR, `main` 푸시 | Playwright E2E. 클라이언트에 단위 테스트가 없어서 핵심 흐름은 브라우저로만 확인된다 |
+| `claude-code-review.yml` | PR opened·synchronize·ready_for_review·reopened(드래프트 제외) | Claude가 `REVIEW.md`·`CLAUDE.md`와 바뀐 경로의 rules를 읽고 diff를 리뷰한다. 지적은 인라인 코멘트로 달고 `REVIEW.md` 위반에는 `REVIEW #n`을 붙인다. 지적이 없으면 코멘트 하나. 승인·변경 요청·코드 수정·푸시는 하지 않는다 — 머지 결정은 사람 몫이다 |
+| `claude.yml` | 이슈·PR 코멘트, PR 리뷰·리뷰 코멘트의 `@claude` 멘션, 이슈 opened·assigned(제목이나 본문에 `@claude`) | 멘션에 답하거나 작업을 맡아 브랜치를 만들고 PR을 연다. 저장소의 `CLAUDE.md`·rules·스킬을 그대로 읽는다. 허용 커맨드는 typecheck·lint·`vitest run`·git·`gh pr`·`gh issue view`. 트리거한 사람에게 쓰기 권한이 있어야 돈다 |
+| `migrate.yml` | `main` 푸시 중 `workbridge-server/prisma/migrations/**` 변경, 수동 | 원격 DB에 마이그레이션을 적용하는 유일한 경로. 프리뷰 → 운영 순서로 `prisma migrate deploy`, `concurrency: migrate`. 권한 규칙이 Supabase 접속을 막으므로 로컬 세션은 원격 DB에 닿지 못한다 |
+| `seed.yml` | 수동 전용(`environment`, `confirm=seed`) | 프리뷰·운영 DB를 시드로 되돌린다. 모든 테이블을 비우므로 확인 입력이 있어야 돈다 |
+
+두 Claude 워크플로는 구독 토큰 시크릿 `CLAUDE_CODE_OAUTH_TOKEN`으로 `anthropics/claude-code-action@v1`을 돌린다.
+
+**한계.** CI 리뷰어도 `REVIEW.md`와 rules가 다루는 것만 일관되게 본다. 리뷰 코멘트는 머지를 막지 않는다.
+
+## 8. MCP — `.mcp.json`
+
+| 서버 | 왜 있는가 |
+|---|---|
+| Playwright(stdio, `@playwright/mcp`) | 클라이언트에는 단위 테스트가 없어서 UI 변경은 실제 브라우저로 봐야 한다 |
+| Sentry(http, `https://mcp.sentry.dev/mcp`) | 운영·프리뷰 서버 오류를 Sentry 프로젝트 `workbridge-server`에서 조회해 원인을 찾고 고친다. 사용자마다 OAuth 로그인이 필요하다 |
 
 ## 두지 않은 것
 
 - **서브에이전트 정의** — 반복해서 맡기는 작업이 아직 없다. 리뷰는 `/code-review`와 `REVIEW.md`로 충분하다.
 - **테스트를 돌리는 훅** — 실제 DB와 90초가 필요하다. Stop 훅은 정적 검사만 한다.
 - **포매터/린터 PostToolUse 훅** — Prettier 설정이 없고, 클라이언트 lint는 Stop 훅에서 한 번 돈다.
-- **외부 리뷰 봇** — 같은 `REVIEW.md`를 읽는 Claude 리뷰어를 CI에 둔다. 기준이 두 곳으로 갈라지지 않게 한다.
+- **CodeRabbit 같은 외부 리뷰 봇** — CI 리뷰어는 같은 `REVIEW.md`를 읽는 Claude(`claude-code-review.yml`)다. 기준이 두 곳으로 갈라지지 않는다.
 - **`req.user`, `deletedAt: null`, `notify()`를 검사하는 훅** — 텍스트 패턴으로는 오탐이 많다. rules, `REVIEW.md`, 중앙 매트릭스 테스트가 맡는다.
 - **소문자 `truncate` deny** — 같은 이름의 유닉스 커맨드가 있다.
 - **샌드박스 설정** — 목적이 실수 방지라 OS 수준 격리는 넣지 않았다.

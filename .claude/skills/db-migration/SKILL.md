@@ -7,8 +7,8 @@ argument-hint: <short_snake_case_name> — <바뀌는 것>
 # 데이터베이스 마이그레이션
 
 모든 작업은 `workbridge-server/` 안에서 `.env`의 **로컬** Postgres(`localhost`)를 대상으로 한다.
-preview와 production DB는 여기서 절대 건드리지 않는다: `main`에 머지될 때 CI가 두 DB에 적용하는
-것이 정해진 절차다(8단계 참고).
+preview와 production DB는 여기서 절대 건드리지 않는다: `main`에 머지될 때 CI(`migrate.yml`)가 두 DB에
+적용한다(8단계 참고).
 
 ## 0. 기본 규칙
 
@@ -82,9 +82,9 @@ npm test
 ## 8. 배포
 
 - `schema.prisma`와 새 마이그레이션 폴더 전체를 그것을 쓰는 코드와 함께 커밋한다.
-- `main`에 머지되면 CI의 마이그레이션 작업이 **preview와 production** DB(서로 다른 Supabase 프로젝트)에
-  `prisma migrate deploy`를 돌린다(아직 워크플로로 만들지 않았다 — `docs/DEPLOYMENT.md`). 손으로 돌리지
-  않고, 그 접속 문자열을 커맨드에 넣지 않는다.
+- `main`에 머지되면 `.github/workflows/migrate.yml`이 **preview와 production** DB(서로 다른 Supabase
+  프로젝트)에 차례로 `prisma migrate deploy`를 돌린다. 손으로 돌리지 않고, 그 접속 문자열을 커맨드에
+  넣지 않는다.
 - 이전 버전 코드가 아직 서비스하는 동안에도 안전한 마이그레이션이어야 한다(Vercel은 마이그레이션
   뒤에 전환된다): 컬럼은 nullable이나 기본값을 두고 추가하고, 옛 컬럼은 다음 릴리스에서 지운다.
 

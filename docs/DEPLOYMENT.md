@@ -9,14 +9,31 @@
 | 프리뷰 | PR마다 | Vercel Preview 배포 | Supabase 프리뷰 프로젝트 |
 | 운영 | `main` 머지 | Vercel Production 배포 | Supabase 운영 프로젝트 |
 
-프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰므로 환경변수([ENV.md](ENV.md))도 Vercel의 Preview·Production 환경에 따로 넣는다. 마이그레이션은 `main`에 머지될 때 CI 작업이 프리뷰와 운영 두 DB에 `prisma migrate deploy`로 적용하는 것이 정해진 절차다(이 작업은 아직 워크플로로 만들어지지 않았다). 그래서 이미 커밋된 마이그레이션은 고치지 않고 새 마이그레이션을 추가한다.
+프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰므로 환경변수([ENV.md](ENV.md))도 Vercel의 Preview·Production 환경에 따로 넣는다. 마이그레이션은 `.github/workflows/migrate.yml`이 적용한다. `main`에 푸시된 커밋이 `workbridge-server/prisma/migrations/**`를 바꾸면(또는 Actions에서 수동 `workflow_dispatch`) 프리뷰 DB → 운영 DB 순서로 `prisma migrate deploy`를 돌린다. 운영 작업은 프리뷰 작업이 성공해야 시작한다. 시크릿 `PREVIEW_DIRECT_URL`·`PROD_DIRECT_URL`은 pgbouncer를 거치지 않는 Session mode(5432) 연결이고, `concurrency: migrate`로 두 실행이 겹치지 않는다. 원격 DB에 마이그레이션을 적용하는 경로는 이것뿐이다. 그래서 이미 커밋된 마이그레이션은 고치지 않고 새 마이그레이션을 추가한다.
+
+### Vercel 프로젝트
+
+| 프로젝트 | 운영 주소 |
+| --- | --- |
+| 서버 | https://workbridge-server-tau.vercel.app |
+| 클라이언트 | https://workbridge-client-alpha.vercel.app |
+
+둘 다 Vercel 팀 `jonghoon24s-projects`에 있고 Preview·Production 환경변수는 넣어 두었다. Git 연결은 Vercel GitHub 앱을 설치한 뒤에 된다(아직 연결 전). 연결하면 PR마다 두 프로젝트가 프리뷰 배포되고 `main` 머지는 운영 배포가 된다.
+
+### 시드 리셋 — `seed.yml`
+
+프리뷰나 운영 DB를 시드 데이터([SEED_DATA.md](SEED_DATA.md))로 되돌리는 수동 실행 전용 워크플로다. 입력 `environment`(`preview`|`production`)와 `confirm`(`seed`를 넣어야 돈다)을 받고, 마이그레이션을 먼저 적용한 뒤 `npm run db:seed`를 돌린다. **시드는 모든 테이블을 비운다.** `migrate.yml`과 같은 `concurrency: migrate` 그룹이다.
+
+```bash
+gh workflow run seed.yml -f environment=preview -f confirm=seed
+```
 
 ## 백엔드
 
 - `vercel.json`이 이미 설정되어 있음(`src/index.ts`를 `@vercel/node`가 서버리스 함수로 직접 트랜스파일한다. 빌드 단계와 `dist/`는 없다)
 - Vercel 대시보드에서 환경변수 설정([ENV.md](ENV.md))
-- Build Command: `npx prisma generate` (대시보드에 있고 리포지토리에는 없다)
-- 마이그레이션 적용 명령은 `DATABASE_URL=… DIRECT_URL=… npx prisma migrate deploy`다. `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 또는 5432)이어야 한다. 위의 CI 작업이 생기기 전까지는 스키마가 바뀐 배포 전에 프리뷰·운영 DB에 직접 적용한다
+- Prisma 클라이언트는 `package.json`의 `postinstall: prisma generate`가 설치 단계에서 만든다. 대시보드의 Build Command에도 `npx prisma generate`가 있지만 `vercel.json`에 `builds`가 있으면 대시보드 빌드 설정은 무시되므로 실제로 동작하는 것은 `postinstall`이다
+- 마이그레이션은 손으로 적용하지 않는다. 위 `migrate.yml`이 `prisma migrate deploy`를 돌리며, 이때 `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 5432)이어야 한다
 - 운영(`NODE_ENV=production`)에서는 `app.listen()`도 작업 큐 워커도 시작하지 않는다
 
 ## 프론트엔드
