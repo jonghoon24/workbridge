@@ -159,3 +159,32 @@ describe('access log', () => {
     expect(err).toEqual([]);
   });
 });
+
+describe('CORS', () => {
+  it('answers a disallowed Origin without CORS headers — not a 500, no error log [C7]', async () => {
+    const { result: res, err } = await captureLogs('info', () =>
+      api().get('/health').set('Origin', 'https://evil.example'));
+
+    expect(res.status).toBe(200);
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+    expect(res.headers['access-control-allow-credentials']).toBeUndefined();
+    expect(err).toEqual([]);
+  });
+
+  it('answers a disallowed preflight without CORS headers, so the browser blocks the request', async () => {
+    const res = await api()
+      .options('/api/auth/login')
+      .set('Origin', 'https://evil.example')
+      .set('Access-Control-Request-Method', 'POST');
+
+    expect(res.status).toBeLessThan(500);
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('echoes an allowed Origin with credentials', async () => {
+    const res = await api().get('/health').set('Origin', 'http://localhost:3000');
+
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+  });
+});

@@ -40,6 +40,11 @@ exactly once per request, by `errorHandler` — and a 4xx never produces an erro
 Every request additionally produces one info-level access-log line whatever its status
 (rule 9). **[C7]**
 
+A request whose `Origin` is not allowed (`CLIENT_URL`, `CORS_ORIGINS`, plus
+`http://localhost:3000` outside production) is **not an error**: it is answered normally but
+without CORS headers, so the browser keeps the response from the page. It is never a 500 and
+never logged at error level.
+
 ### 2. Authentication
 - A Bearer access token in `Authorization` is required for every protected route.
 - Missing header, malformed header (not `Bearer <token>`), expired token, or a token signed with
