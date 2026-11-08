@@ -31,6 +31,8 @@
 | `MILESTONE_AUTO_APPROVE_DAYS` | 산출물 제출 후 자동 승인까지의 일수(양의 정수, 기본 7). 24시간 단위로 센다. 양의 정수가 아니면 7(BEHAVIOR.md M14) |
 | `MAIL_PROVIDER` | 이메일 발송 provider. 비우거나 `log`면 로그 provider로, 메일을 보내지 않고 받는 주소와 본문 전체를 `info` 로그 `mail.sent` 한 줄로 남긴다(개발용, BEHAVIOR.md NC14·Q24). 실제 메일 서비스는 연결돼 있지 않다. 그 밖의 값은 지원하지 않아 서버·`jobs:run`·`jobs:worker` 시작 때 `warn` 한 줄을 남기고, 발송마다 해당 delivery가 `FAILED`가 된다. 발송할 때마다 읽는다 |
 | `MAIL_FROM` | 이메일 발신자(기본 `WorkBridge <no-reply@workbridge.local>`). 메일 본문의 링크 기준 주소는 `CLIENT_URL`이다 |
+| `SENTRY_DSN` | Sentry DSN(선택). 비우면 오류 보고가 꺼지고 `@sentry/node`를 아예 불러오지 않는다. 설정하면 500 응답과 최종 실패한 작업만 보낸다([DEPLOYMENT.md](DEPLOYMENT.md#sentry)). 호출마다 읽는다 |
+| `SENTRY_ENVIRONMENT` | Sentry `environment`(선택). 비우면 `VERCEL_ENV` → `NODE_ENV` → `development` 순으로 정한다. `release`는 Vercel이 넣어 주는 `VERCEL_GIT_COMMIT_SHA`가 있으면 그 값이다 |
 
 작업 큐는 개발 서버 워커 외에 `npm run jobs:run`(한 번 실행)과 `npm run jobs:worker`(단독 워커)로도 돌릴 수 있다. 운영(Vercel)에는 상주 워커가 없고, 외부 스케줄러가 내부 엔드포인트를 부르는 방식은 아직 정하지 않았다.
 

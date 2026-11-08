@@ -2,6 +2,8 @@
 // before the ones below it, and `lib/openai.ts` / `middlewares/upload.ts` read
 // `process.env` at module-evaluation time — so moving it breaks boot.
 import 'dotenv/config';
+// Second, right after the env is loaded. Without `SENTRY_DSN` this loads nothing more.
+import { initSentry } from './lib/sentry';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -26,6 +28,8 @@ import { accessLog } from './middlewares/accessLog';
 import { bindRequestContext, requestId } from './middlewares/requestId';
 import { startJobWorker } from './jobs/worker';
 import { warnIfUnsupportedMailProvider } from './lib/mail/provider';
+
+initSentry();
 
 const app = express();
 

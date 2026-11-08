@@ -129,6 +129,22 @@ export const env = {
   get JOB_WORKER_ENABLED(): string | undefined {
     return process.env.JOB_WORKER_ENABLED;
   },
+  /** Sentry DSN. Unset → error reporting is off and `@sentry/node` is never loaded. Read per call. */
+  get SENTRY_DSN(): string | undefined {
+    return process.env.SENTRY_DSN;
+  },
+  /** Sentry `environment`. Unset → `VERCEL_ENV`, then `NODE_ENV`, then `development` (`lib/sentry.ts`). */
+  get SENTRY_ENVIRONMENT(): string | undefined {
+    return process.env.SENTRY_ENVIRONMENT;
+  },
+  /** Set by Vercel (`production` / `preview` / `development`). */
+  get VERCEL_ENV(): string | undefined {
+    return process.env.VERCEL_ENV;
+  },
+  /** Set by Vercel for Git deployments; the Sentry `release`. */
+  get VERCEL_GIT_COMMIT_SHA(): string | undefined {
+    return process.env.VERCEL_GIT_COMMIT_SHA;
+  },
 
   // --- Derived --------------------------------------------------------------
   get isProduction(): boolean {

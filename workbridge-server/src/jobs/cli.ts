@@ -1,5 +1,6 @@
 // `dotenv/config` must stay the first import — see `src/index.ts`.
 import 'dotenv/config';
+import { initSentry } from '../lib/sentry';
 
 import prisma from '../lib/prisma';
 import { warnIfUnsupportedMailProvider } from '../lib/mail/provider';
@@ -14,6 +15,7 @@ import { startJobWorker } from './worker';
  * Lives under `src/` so typecheck covers it.
  */
 async function main() {
+  initSentry();
   // NC14: once per process, for both `jobs:run` and `jobs:worker`.
   warnIfUnsupportedMailProvider();
 
