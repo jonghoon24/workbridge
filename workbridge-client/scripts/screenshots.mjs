@@ -1,7 +1,7 @@
 // Usage: node scripts/screenshots.mjs <outDir> [--base http://localhost:3001] [--roles guest,client,freelancer] [--viewports desktop,mobile] [--only name1,name2]
 // Logs in through the UI with the seed accounts (kim@example.com = client, park@example.com = freelancer, password123),
 // discovers seed ids (contracts, milestones, conversations, settlements, users) through the API, then captures every
-// page under src/app/ as full-page PNGs named <role>-<viewport>-<route>.png (route slashes → "_", "index" for "/").
+// page under src/app/ (+ 404 and the opened header menu) as PNGs named <role>-<viewport>-<route>.png (route "/" → "_", "/" alone → "index").
 // Needs both dev servers running and a seeded DB (see .claude/skills/run-workbridge); @playwright/test provides Chromium.
 import { chromium } from '@playwright/test';
 import fs from 'node:fs';
@@ -160,6 +160,19 @@ try {
           shots += 1;
         } catch (err) {
           console.warn(`! ${role}-${vp}-${name}: ${err.message.split('\n')[0]}`);
+        }
+      }
+      // Logged-in only: the header user menu, opened, as a viewport shot.
+      if (role !== 'guest' && (!ONLY || ONLY.includes('header-menu'))) {
+        try {
+          await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
+          await settle(page);
+          await page.locator('header button[aria-haspopup], header button:has(div.rounded-full)').first().click();
+          await page.waitForTimeout(300);
+          await page.screenshot({ path: path.join(outDir, `${role}-${vp}-header-menu.png`) });
+          shots += 1;
+        } catch (err) {
+          console.warn(`! ${role}-${vp}-header-menu: ${err.message.split('\n')[0]}`);
         }
       }
       await ctx.close();
