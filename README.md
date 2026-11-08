@@ -54,11 +54,11 @@ npm run lint && npm run build
 
 - 서버 테스트는 [docs/BEHAVIOR.md](docs/BEHAVIOR.md)를 기준으로 단언하고, 알려진 불일치(D)는 실패가 예상되는 테스트로 고정합니다. 테스트마다 모든 테이블을 비우므로 이름에 `test`가 들어간 DB에서만 돕니다.
 - E2E는 로그인, 프로젝트 등록, 지원, 수락·서명, 마일스톤 결제·제출·승인을 브라우저로 확인합니다([workbridge-client/e2e/README.md](workbridge-client/e2e/README.md)).
-- CI: `.github/workflows/ci.yml`(서버 typecheck·`prisma validate`·테스트, 클라이언트 lint·빌드)과 `e2e.yml`(Playwright)이 PR과 `main` 푸시마다 Postgres 서비스 컨테이너로 돕니다.
+- CI: `.github/workflows/ci.yml`(서버 typecheck·`prisma validate`·테스트, 클라이언트 lint·빌드)과 `e2e.yml`(Playwright)이 PR과 `main` 푸시마다 Postgres 서비스 컨테이너로 돕니다. PR마다 Claude가 `REVIEW.md` 기준으로 AI 리뷰를 남기고(`claude-code-review.yml`), 이슈·PR에서 `@claude`를 멘션해 작업을 맡길 수 있습니다(`claude.yml`).
 
 ## 배포
 
-백엔드와 프론트엔드를 각각 Vercel에 배포합니다. 환경(로컬, CI, 프리뷰, 운영), 마이그레이션, Sentry, 운영 환경의 한계(작업 큐 스케줄러 미연결 등)는 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)에 있습니다.
+백엔드와 프론트엔드를 각각 Vercel에 배포합니다. 환경(로컬, CI, 프리뷰, 운영), 마이그레이션, Sentry, 운영 환경의 한계(작업 큐 스케줄러 미연결 등)와 프리뷰·운영 주소는 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)에 있습니다.
 
 ## 문서
 

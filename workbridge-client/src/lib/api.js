@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { getApiUrl } from './apiUrl';
 
 function getBaseURL() {
   if (typeof window === 'undefined') {
-    return (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
+    return getApiUrl();
   }
 
   return '';

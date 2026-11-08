@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { buildForwardHeaders, buildResponseHeaders, getApiUrl } from '@/lib/server/authProxy';
+import { getApiUrl } from '@/lib/apiUrl';
+import { buildForwardHeaders, buildResponseHeaders } from '@/lib/server/authProxy';
 
 function buildBackendUrl(request, path) {
   const backendPath = path.map(encodeURIComponent).join('/');
