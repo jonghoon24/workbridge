@@ -19,8 +19,11 @@ Thumbs.db
 .agents/
 skills-lock.json
 
-# .claude/ is local-only, except the shared skills subtree
+# .claude/ is local-only, except the shared harness (settings, rules, hooks, skills)
 .claude/*
+!.claude/settings.json
+!.claude/rules/
+!.claude/hooks/
 !.claude/skills/
 !.claude/skills/**
 
