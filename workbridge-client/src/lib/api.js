@@ -78,7 +78,9 @@ api.interceptors.response.use(
         if (typeof window !== 'undefined') {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('user');
-          window.location.href = '/login';
+          // 로그인한 뒤 지금 보던 화면으로 돌아오게 한다.
+          const here = `${window.location.pathname}${window.location.search}`;
+          window.location.href = here.startsWith('/login') ? '/login' : `/login?redirect=${encodeURIComponent(here)}`;
         }
         return Promise.reject(refreshError);
       } finally {

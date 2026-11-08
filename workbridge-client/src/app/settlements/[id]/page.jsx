@@ -12,6 +12,7 @@ import { formatDate, formatDateTime, formatKRW } from '@/lib/format';
 import { MAX_PAYOUT_ATTEMPTS } from '@/constants/milestones';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
+import { toUserMessage } from '@/lib/errorMessages';
 
 
 export default function SettlementDetailPage() {
@@ -31,7 +32,7 @@ export default function SettlementDetailPage() {
     api.get(`/api/settlements/${id}`)
       .then(({ data }) => setSettlement(data))
       .catch((err) => {
-        setError(err.response?.data?.error?.message || '정산 내역을 불러오지 못했습니다');
+        setError(toUserMessage(err, '정산 내역을 불러오지 못했습니다'));
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -85,8 +86,13 @@ export default function SettlementDetailPage() {
           <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             {retrying
               ? `지급에 실패했습니다. ${formatDateTime(settlement.scheduledPayoutAt)}에 다시 시도합니다 (${settlement.payoutAttempts}/${MAX_PAYOUT_ATTEMPTS}회 시도).`
-              : `지급에 ${MAX_PAYOUT_ATTEMPTS}회 실패했습니다. 운영팀이 확인 후 처리합니다.`}
+              : `지급에 ${MAX_PAYOUT_ATTEMPTS}회 실패했습니다. 지급 계좌 정보(은행, 계좌번호, 예금주)가 맞는지 확인해 주세요.`}
             {settlement.failureReason && <span className="block mt-1 text-red-600">사유: {settlement.failureReason}</span>}
+            {!retrying && (
+              <Link href="/settlements/account" className="mt-2 inline-block font-medium text-red-800 hover:underline">
+                지급 계좌 확인하기 →
+              </Link>
+            )}
           </div>
         )}
 
@@ -155,7 +161,7 @@ export default function SettlementDetailPage() {
                   <dd className="text-right text-gray-700">{formatKRW(item.grossAmount)}</dd>
                   <dt className="text-gray-500">수수료 ({item.feeRateBps / 100}%)</dt>
                   <dd className="text-right text-gray-700">{formatKRW(item.feeAmount)}</dd>
-                  <dt className="text-gray-500">VAT</dt>
+                  <dt className="text-gray-500">부가세</dt>
                   <dd className="text-right text-gray-700">{formatKRW(item.feeVatAmount)}</dd>
                   <dt className="text-gray-500">실지급</dt>
                   <dd className="text-right font-medium text-gray-900">{formatKRW(item.netAmount)}</dd>
@@ -166,7 +172,7 @@ export default function SettlementDetailPage() {
               <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-semibold text-gray-900">
                 <dt>합계 총액</dt>
                 <dd className="text-right">{formatKRW(settlement.grossAmount)}</dd>
-                <dt>수수료 · VAT</dt>
+                <dt>수수료 · 부가세</dt>
                 <dd className="text-right">{formatKRW(settlement.feeAmount)} · {formatKRW(settlement.feeVatAmount)}</dd>
                 <dt>실지급</dt>
                 <dd className="text-right text-primary-600">{formatKRW(settlement.netAmount)}</dd>
@@ -181,7 +187,7 @@ export default function SettlementDetailPage() {
                   <th className="py-3 pr-4">승인일</th>
                   <th className="py-3 pr-4 text-right">총액</th>
                   <th className="py-3 pr-4 text-right">수수료</th>
-                  <th className="py-3 pr-4 text-right">VAT</th>
+                  <th className="py-3 pr-4 text-right">부가세</th>
                   <th className="py-3 text-right">실지급</th>
                 </tr>
               </thead>

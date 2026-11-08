@@ -1,6 +1,6 @@
-// 메시지 화면 전용 상수와 헬퍼. 공용 lib/format.js는 읽기만 한다(P2 소유권 규칙).
+// 메시지 화면 전용 상수와 헬퍼. 공용 lib/format.js는 수정하지 않고 가져다 쓴다.
 import { formatDate, toKstDateInput } from '@/lib/format';
-import { describeServerError } from '@/lib/serverErrors';
+import { toUserMessage } from '@/lib/errorMessages';
 
 // BEHAVIOR.md MG1. 화면 검사는 안내용이고 최종 판단은 서버가 한다.
 export const MESSAGE_LIMITS = {
@@ -29,25 +29,17 @@ export const CLOSED_REASON_TEXT = {
   COUNTERPART_INACTIVE: '상대방이 탈퇴하여 더 이상 메시지를 보낼 수 없습니다.',
 };
 
-// 예측 가능한 서버 오류(MG9, MG15, MG17, rule 12 업로드 정책)를 한국어로 바꾼다.
+// 메시지 화면에서만 다르게 안내할 서버 오류(MG9, MG15, MG17). 나머지는 공용 변환표가 맡는다.
 const ERROR_TEXT = {
   'This conversation is closed': CLOSED_REASON_TEXT.CONTRACT_CLOSED,
   'The other participant is no longer active': CLOSED_REASON_TEXT.COUNTERPART_INACTIVE,
-  'Messages can only be deleted within 5 minutes': '보낸 지 5분이 지난 메시지는 삭제할 수 없습니다.',
-  'body: Message or attachment is required': '메시지를 입력하거나 파일을 첨부해주세요.',
-  'body: Message must be at most 5000 characters': '메시지는 5,000자 이하로 입력해주세요.',
-  'Conversation not found': '대화방을 찾을 수 없습니다.',
-  'Message not found': '메시지를 찾을 수 없습니다.',
   'Not authorized': '이 대화방에 접근할 권한이 없습니다.',
-  'File upload failed': '파일 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.',
-  'Too many files (max 5)': '파일은 최대 5개까지 첨부할 수 있습니다.',
 };
 
 export function messageErrorText(err, fallback) {
-  return describeServerError(err, fallback, {
+  return toUserMessage(err, fallback, {
     status: { 413: '파일은 개당 10MB 이하여야 합니다.' },
     messages: ERROR_TEXT,
-    patterns: [[/^Unsupported file type/, '지원하지 않는 파일 형식입니다. 이미지, PDF, ZIP, 텍스트, 오피스 문서, HWP만 보낼 수 있습니다.']],
   });
 }
 

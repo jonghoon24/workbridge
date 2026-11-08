@@ -6,6 +6,7 @@ import authApi from '@/lib/authApi';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { toUserMessage } from '@/lib/errorMessages';
 
 const ROLE_OPTIONS = [
   { value: 'CLIENT', label: '의뢰인', desc: '프로젝트를 등록하고 프리랜서를 찾습니다' },
@@ -32,7 +33,7 @@ export default function SelectRolePage() {
     setError('');
 
     if (!role) {
-      setError('역할을 선택하세요');
+      setError('역할을 선택해 주세요');
       return;
     }
 
@@ -42,7 +43,7 @@ export default function SelectRolePage() {
       setAuth(data.user, data.accessToken);
       router.push('/profile');
     } catch (err) {
-      setError(err.response?.data?.error?.message || '역할 선택에 실패했습니다');
+      setError(toUserMessage(err, '역할 선택에 실패했습니다'));
     } finally {
       setLoading(false);
     }
@@ -52,7 +53,7 @@ export default function SelectRolePage() {
     <div className="max-w-md mx-auto px-4 sm:px-6 py-12">
       <Card className="p-6">
         <h1 className="text-xl font-bold text-gray-900 mb-2">역할 선택</h1>
-        <p className="text-sm text-gray-600 mb-6">WorkBridge에서 사용할 역할을 선택해주세요.</p>
+        <p className="text-sm text-gray-600 mb-6">WorkBridge에서 사용할 역할을 선택해 주세요.</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (

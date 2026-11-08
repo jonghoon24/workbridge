@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import useAuthStore from '@/store/authStore';
 import authApi from '@/lib/authApi';
+import { toUserMessage } from '@/lib/errorMessages';
 
 export default function SignupForm() {
   const router = useRouter();
@@ -18,10 +19,10 @@ export default function SignupForm() {
 
   function validate() {
     const errs = {};
-    if (!form.name.trim()) errs.name = '이름을 입력하세요';
-    if (!form.email.trim()) errs.email = '이메일을 입력하세요';
+    if (!form.name.trim()) errs.name = '이름을 입력해 주세요';
+    if (!form.email.trim()) errs.email = '이메일을 입력해 주세요';
     if (!form.password || form.password.length < 6) errs.password = '비밀번호는 6자 이상이어야 합니다';
-    if (!form.role) errs.role = '역할을 선택하세요';
+    if (!form.role) errs.role = '역할을 선택해 주세요';
     return errs;
   }
 
@@ -39,7 +40,7 @@ export default function SignupForm() {
       setAuth(data.user, data.accessToken);
       router.push('/');
     } catch (err) {
-      setErrors({ submit: err.response?.data?.error?.message || '회원가입에 실패했습니다' });
+      setErrors({ submit: toUserMessage(err, '회원가입에 실패했습니다') });
     } finally {
       setLoading(false);
     }
@@ -79,7 +80,7 @@ export default function SignupForm() {
         value={form.password}
         onChange={(e) => setForm({ ...form, password: e.target.value })}
         error={errors.password}
-        placeholder="6자 이상 입력하세요"
+        placeholder="6자 이상 입력해 주세요"
       />
 
       <div>

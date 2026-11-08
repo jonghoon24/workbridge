@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import api from '@/lib/api';
 import Button from '@/components/ui/Button';
 import { formatKRW, kstToday, toKstDateInput } from '@/lib/format';
-import { describeServerError } from '@/lib/serverErrors';
+import { toUserMessage, translateServerMessage } from '@/lib/errorMessages';
 import { MILESTONE_LIMITS } from '@/constants/milestones';
 
 let rowKey = 0;
@@ -30,12 +30,13 @@ const FIELD_LABELS = {
   dueDate: '기한',
 };
 
-// 서버 검증 메시지 `milestones.2.amount: …`를 "3번 마일스톤 금액: …"으로 바꿔 보여준다.
+// 서버 검증 메시지 `milestones.2.amount: …`를 "3번 마일스톤 금액: …"으로 바꿔 보여 준다.
 function describeMilestoneField(message) {
-  const match = /^milestones\.(\d+)\.(\w+): (.*)$/.exec(message);
+  const match = /^milestones\.(\d+)\.(\w+): (.*)$/.exec(message || '');
   if (!match) return null;
   const [, index, field, rest] = match;
-  return `${Number(index) + 1}번 마일스톤 ${FIELD_LABELS[field] || field}: ${rest}`;
+  const label = `${Number(index) + 1}번 마일스톤 ${FIELD_LABELS[field] || ''}`.trim();
+  return `${label}: ${translateServerMessage(rest) || '입력한 내용을 다시 확인해 주세요.'}`;
 }
 
 // 계약 PENDING 동안 의뢰인이 계획 전체를 교체한다(PUT /api/contracts/:id/milestones, BEHAVIOR.md MS7).
@@ -100,16 +101,16 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
       const label = `${i + 1}번 마일스톤`;
       const title = row.title.trim();
       const amount = Number(row.amount);
-      if (!title) return `${label}: 제목을 입력해주세요.`;
+      if (!title) return `${label}: 제목을 입력해 주세요.`;
       if (title.length > MILESTONE_LIMITS.titleMax) return `${label}: 제목은 ${MILESTONE_LIMITS.titleMax}자 이하여야 합니다.`;
       if (row.description.trim().length > MILESTONE_LIMITS.descriptionMax) {
         return `${label}: 설명은 ${MILESTONE_LIMITS.descriptionMax.toLocaleString()}자 이하여야 합니다.`;
       }
-      if (row.amount === '' || !Number.isInteger(amount)) return `${label}: 금액은 원 단위 정수로 입력해주세요.`;
+      if (row.amount === '' || !Number.isInteger(amount)) return `${label}: 금액은 원 단위 정수로 입력해 주세요.`;
       if (amount < MILESTONE_LIMITS.minAmount) {
         return `${label}: 금액은 ${formatKRW(MILESTONE_LIMITS.minAmount)} 이상이어야 합니다.`;
       }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.dueDate)) return `${label}: 기한을 선택해주세요.`;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(row.dueDate)) return `${label}: 기한을 선택해 주세요.`;
       if (row.dueDate < today) return `${label}: 기한은 오늘 이후여야 합니다.`;
       if (i > 0 && row.dueDate < rows[i - 1].dueDate) {
         return `${label}: 기한은 앞 마일스톤보다 빠를 수 없습니다.`;
@@ -144,7 +145,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
       });
       onSaved?.(data, { signaturesReset: hasSignature });
     } catch (err) {
-      setError(describeServerError(err, '마일스톤 계획 저장에 실패했습니다', { rewrite: describeMilestoneField }));
+      setError(describeMilestoneField(err.response?.data?.error?.message) || toUserMessage(err, '마일스톤 계획을 저장하지 못했습니다'));
     } finally {
       setSaving(false);
     }
@@ -212,7 +213,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
                   value={row.description}
                   rows={2}
                   onChange={(e) => updateRow(row.key, 'description', e.target.value)}
-                  placeholder="이 단계에서 전달할 산출물"
+                  placeholder="이 단계에서 전달할 결과물"
                   className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 />
               </div>

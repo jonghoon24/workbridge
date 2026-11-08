@@ -26,9 +26,11 @@ export default function SettlementSummaryCard({ summary }) {
         <Stat
           label="미정산 (다음 정산 대기)"
           value={formatKRW(unsettled.net || 0)}
-          sub={`승인 ${unsettled.count || 0}건 · 총액 ${formatKRW(unsettled.gross || 0)}에서 수수료 ${formatKRW(
-            (unsettled.fee || 0) + (unsettled.vat || 0)
-          )} 차감`}
+          sub={unsettled.count
+            ? `승인 ${unsettled.count}건 · 총액 ${formatKRW(unsettled.gross || 0)}에서 수수료·부가세 ${formatKRW(
+              (unsettled.fee || 0) + (unsettled.vat || 0)
+            )} 차감`
+            : '대기 중인 승인 건이 없습니다'}
         />
         <Stat
           label="지급 예정"

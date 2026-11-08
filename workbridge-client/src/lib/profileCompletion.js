@@ -31,12 +31,12 @@ export function isProfileComplete(user) {
 
 export function getProfileCompletionMessage(role) {
   if (role === 'CLIENT') {
-    return '프로젝트를 등록하려면 회사명과 사업 분야를 먼저 입력해주세요.';
+    return '프로젝트를 등록하려면 회사명과 사업 분야를 먼저 입력해 주세요.';
   }
 
   if (role === 'FREELANCER') {
-    return '프로젝트에 지원하려면 기술 스택, 활동 카테고리, 경력, 시간당 단가를 먼저 입력해주세요.';
+    return '프로젝트에 지원하려면 기술 스택, 활동 카테고리, 경력, 시간당 단가를 먼저 입력해 주세요.';
   }
 
-  return '프로필을 먼저 완성해주세요.';
+  return '프로필을 먼저 완성해 주세요.';
 }
