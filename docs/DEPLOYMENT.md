@@ -1,11 +1,22 @@
 # 배포 (Vercel)
 
+## 환경
+
+| 환경 | 언제 | 앱 | DB |
+| --- | --- | --- | --- |
+| 로컬 | 개발 | `npm run dev` (서버 :4000, 클라이언트 :3000) | 로컬 Postgres. 테스트는 이름에 `test`가 들어간 별도 DB(`scripts/test-db.sh`), E2E는 `workbridge_e2e` |
+| CI | PR과 `main` 푸시 | GitHub Actions(`ci.yml`, `e2e.yml`) | 워크플로마다 띄우는 Postgres 서비스 컨테이너 |
+| 프리뷰 | PR마다 | Vercel Preview 배포 | Supabase 프리뷰 프로젝트 |
+| 운영 | `main` 머지 | Vercel Production 배포 | Supabase 운영 프로젝트 |
+
+프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰므로 환경변수([ENV.md](ENV.md))도 Vercel의 Preview·Production 환경에 따로 넣는다. 마이그레이션은 `main`에 머지될 때 CI 작업이 프리뷰와 운영 두 DB에 `prisma migrate deploy`로 적용하는 것이 정해진 절차다(이 작업은 아직 워크플로로 만들어지지 않았다). 그래서 이미 커밋된 마이그레이션은 고치지 않고 새 마이그레이션을 추가한다.
+
 ## 백엔드
 
 - `vercel.json`이 이미 설정되어 있음(`src/index.ts`를 `@vercel/node`가 서버리스 함수로 직접 트랜스파일한다. 빌드 단계와 `dist/`는 없다)
 - Vercel 대시보드에서 환경변수 설정([ENV.md](ENV.md))
 - Build Command: `npx prisma generate` (대시보드에 있고 저장소에는 없다)
-- 스키마가 바뀐 배포 전에는 운영 DB에 마이그레이션을 적용한다: `DATABASE_URL=… DIRECT_URL=… npx prisma migrate deploy`. `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 또는 5432)이어야 한다
+- 마이그레이션 적용 명령은 `DATABASE_URL=… DIRECT_URL=… npx prisma migrate deploy`다. `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 또는 5432)이어야 한다. 위의 CI 작업이 생기기 전까지는 스키마가 바뀐 배포 전에 프리뷰·운영 DB에 직접 적용한다
 - 운영(`NODE_ENV=production`)에서는 `app.listen()`도 작업 큐 워커도 시작하지 않는다
 
 ## 프론트엔드
@@ -31,7 +42,7 @@
 - **서버리스에서는 응답 직후 함수가 멈출 수 있어서** 500 응답을 보내기 전에 최대 2초 `flush`한다. 작업 큐도 `runDueJobs` 한 번이 끝날 때 `flush`하므로 `POST /api/internal/jobs/run`과 `npm run jobs:run`에서 이벤트가 사라지지 않는다. 2초 안에 못 보내면 `warn` 한 줄을 남기고 응답은 그대로 나간다(그 이벤트는 잃을 수 있다).
 - 기존 `error` 로그 한 줄은 그대로 남는다. Sentry 자체의 실패는 `warn`이다.
 
-## 운영 환경의 한계 (확장 이후)
+## 운영 환경의 한계
 
 로컬 개발에서는 다 동작하지만 운영(Vercel)에서는 아직 막혀 있거나 손이 필요한 것들이다. 각각 의도된 현재 상태이고, 해결은 배포 결정과 함께 한다.
 
@@ -45,7 +56,7 @@ Vercel에는 상주 프로세스가 없어서 개발 서버가 띄우는 워커(
 | `npm run jobs:run` | 한 번 실행하는 CLI. 운영 DB 연결 정보를 가진 곳에서 수동으로 |
 | `npm run jobs:worker` | 상주 워커 CLI. 상주 서버가 있을 때 |
 
-**어떤 외부 스케줄러가 엔드포인트를 부를지는 아직 정하지 않았다**(오케스트레이터 결정, `docs/expansion/DECISIONS.md`). 연결하기 전까지 운영에서는 다음이 **일어나지 않는다**.
+**어떤 외부 스케줄러가 엔드포인트를 부를지는 아직 정하지 않았다**([#23 작업 큐를 실행할 외부 스케줄러가 없다](https://github.com/jonghoon24/workbridge/issues/23)). 연결하기 전까지 운영에서는 다음이 **일어나지 않는다**.
 
 - 마일스톤 자동 승인(제출 7일 뒤)과 자동 승인 48시간 전 리마인더 — 의뢰인이 검수하지 않으면 마일스톤이 `SUBMITTED`에 머문다
 - 마일스톤 기한 임박·기한 경과 알림

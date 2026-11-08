@@ -19,7 +19,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 
 ## 모델
 
-### 사용자와 프로젝트 (기존)
+### 사용자와 프로젝트
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
@@ -31,7 +31,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | **Review** | 계약 완료 후 상호 리뷰 | `rating` 1~5, `tags String[]`, `(contractId, reviewerId)` unique — 당사자마다 1개 |
 | **Notification** | 인앱 알림 | `type String`(TS 유니온, 19종), `title`, `message`, `href`, `readAt`. 인덱스 `[userId, readAt, createdAt]` |
 
-### 계약, 마일스톤, 결제 (P1)
+### 계약, 마일스톤, 결제
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
@@ -41,7 +41,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | **MilestoneAttachment** | 제출 첨부 파일 | `url`(공개 URL), `fileName`(원래 이름, UTF-8), `mimeType`, `size` |
 | **Payment** | 마일스톤 결제 | `contractId`, `milestoneId` unique, `clientId`, `amount Float`(= 마일스톤 금액), `status`, `paymentKey`, `orderId` unique |
 
-### 정산 (P1)
+### 정산
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
@@ -49,7 +49,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | **Settlement** | 프리랜서별 주간 정산 | `periodStart`(월요일 00:00 KST), `periodEnd`(다음 월요일, 미포함), `scheduledPayoutAt`, `status`, `itemCount`, 금액 합계 4개, `payoutAttempts`(최대 3), 지급 시점 계좌 스냅샷 `bankName`/`accountNumberMasked`/`accountHolder`, `providerReference`, `failureReason`, `paidAt`. `(freelancerId, periodStart)` unique, 인덱스 `[status, scheduledPayoutAt]` |
 | **PayoutAccount** | 프리랜서 지급 계좌 | `userId` unique(1인 1계좌), `bankCode`(`lib/banks.ts` 목록), `accountNumber`(숫자만, **평문 저장**, 응답에서는 마스킹, Q22), `holderName` |
 
-### 메시지 (P2A)
+### 메시지
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
@@ -58,21 +58,21 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | **Message** | 메시지 | `kind`(`TEXT`/`SYSTEM`), `senderId`(SYSTEM이면 null), `systemEvent`(SYSTEM만, bare String), `body`(첨부만 있으면 `''`), `deletedAt`(보낸 사람이 5분 안에 삭제), `createdAt`. 인덱스 `[conversationId, createdAt]` |
 | **MessageAttachment** | 메시지 첨부 | `url`, `fileName`, `mimeType`, `size` |
 
-### 프로필 확장 (P2B)
+### 프로필 확장
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
 | **PortfolioItem** | 포트폴리오 항목(최대 20) | `title`, `description`, `url`, `imageUrl`, `role`, `skills String[]`(정규화), `startedAt`/`endedAt`(KST 그 달 1일 0시, API에서는 `YYYY-MM`), `sortOrder`. 인덱스 `[userId, sortOrder]` |
 | **Career** | 경력(최대 30) | `company`, `position`, `employmentType`, `startDate`, `endDate`(null = 재직 중), `description`. 인덱스 `[userId, startDate]` |
 
-### 알림 채널 (P3)
+### 알림 채널
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
 | **NotificationPreference** | 사용자별 알림 설정 중 기본값과 **다른 것만** | `type String`, `inApp Boolean?`, `email Boolean?` — null은 "정책 기본값을 따른다". 두 채널이 모두 null이 되면 row를 지운다. `(userId, type)` unique |
 | **EmailDelivery** | 이메일 한 통의 발송 기록(감사용) | `notificationId`(같은 `notify()`가 만든 인앱 row, 없으면 null), `type`, `toAddress`(생성 시점 주소), `subject`, `body`, `contextKey`(다이제스트만 `conversation:<id>`), `status`, `attempts`, `provider`, `providerMessageId`, `error`(≤2,000자), `sentAt`. 인덱스 `[userId, type, contextKey, createdAt]`(다이제스트 60분 제한 조회), `[userId, createdAt]`, `[status]`. 읽는 API가 없고 아무것도 지우지 않는다(Q24) |
 
-### 인프라 (P0)
+### 인프라
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |

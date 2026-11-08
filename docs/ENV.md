@@ -1,5 +1,7 @@
 # 환경변수
 
+환경(로컬, CI, 프리뷰, 운영)의 구분은 [DEPLOYMENT.md](DEPLOYMENT.md#환경)에 있다. 프리뷰와 운영은 Vercel의 Preview·Production 환경에 각각 값을 넣고, DB 변수는 각 환경의 Supabase 프로젝트를 가리킨다.
+
 ## 서버 (.env)
 
 | 변수 | 설명 |
@@ -17,14 +19,14 @@
 | `GOOGLE_CALLBACK_URL` | Google OAuth 콜백 URL. 프론트엔드 `/api/auth/google/callback` URL 사용 |
 | `OPENAI_API_KEY` | OpenAI API 키. **모듈을 읽을 때 클라이언트를 만들므로 비어 있으면 서버가 뜨지 않는다**(테스트처럼 더미 값이면 된다) |
 | `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키 (test_sk_...) |
-| `ALLOW_PAYMENT_BYPASS` | 데모/로컬에서 `true`로 설정하면 토스 결제창 없이 결제 완료 처리 가능. 실제 운영 서비스에서는 `false` 유지 |
+| `ALLOW_PAYMENT_BYPASS` | 로컬·E2E에서 `true`로 설정하면 토스 결제창 없이 결제 완료 처리 가능. 실제 운영 서비스에서는 `false` 유지 |
 | `CLIENT_URL` | 프론트엔드 URL. CORS 허용 출처이자 OAuth 리디렉션 대상이다. CORS와 메일 링크는 쉼표 목록을 받지만, **OAuth 리디렉션은 값을 그대로 이어 붙인다**(`${CLIENT_URL}/auth/callback…`). 그래서 쉼표 목록이면 OAuth 리디렉션이 깨진다(BEHAVIOR.md Q26) — 여러 출처가 필요하면 `CLIENT_URL`은 하나로 두고 나머지는 `CORS_ORIGINS`에 둔다. 메일 본문 링크의 기준 주소는 **첫 항목**에서 끝의 `/`를 뗀 값이다(비어 있으면 `http://localhost:3000`, BEHAVIOR.md NC1·NC13). 비어 있으면 OAuth 리디렉션이 `undefined/…`가 된다(Q20) |
 | `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 개발 환경에서는 `http://localhost:3000`이 항상 허용된다 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL. `OPENAI_API_KEY`처럼 모듈을 읽을 때 쓰이므로 서버를 띄우려면 필요하다(더미 값 가능) |
 | `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음) |
 | `LOG_LEVEL` | 로그 레벨 `debug`/`info`/`warn`/`error`/`silent` (기본 `info`). JSON 한 줄씩 출력하며 `error`만 stderr로 간다. 테스트는 `error` |
 | `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(레이트 리밋 키)로 쓴다. 비우면 소켓 주소를 쓰고 `X-Forwarded-For`는 무시. Next.js 프록시는 받은 `X-Forwarded-For`를 그대로 넘기므로 `loopback`은 **Next 포트(:3000)에 신뢰하는 클라이언트만 닿을 때만 안전하다**. 그렇지 않으면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다(BEHAVIOR.md Q23). 로컬 로그인은 어차피 전부 루프백 한 주소로 세어진다 |
-| `RATE_LIMIT_ENABLED` | `false`면 레이트 리밋(로그인, AI 단가 분석)을 끈다. 기본 켜짐. 요청마다 읽는다. 로컬에서 로그인을 여러 번 하는 시연·스크립트는 `false`로 둔다(머신 전체가 15분에 20회를 나눠 쓴다) |
+| `RATE_LIMIT_ENABLED` | `false`면 레이트 리밋(로그인, AI 단가 분석)을 끈다. 기본 켜짐. 요청마다 읽는다. 로컬에서 로그인을 여러 번 하는 수동 확인·스크립트는 `false`로 둔다(머신 전체가 15분에 20회를 나눠 쓴다) |
 | `INTERNAL_JOB_TOKEN` | `POST /api/internal/jobs/run`의 `X-Internal-Token` 값. 비우면 엔드포인트가 404(존재를 숨김) |
 | `JOB_WORKER_ENABLED` | `false`면 개발 서버(`npm run dev`)가 작업 큐 워커를 띄우지 않는다. 기본 켜짐. 운영과 테스트에서는 어차피 뜨지 않는다 |
 | `JOB_POLL_INTERVAL_MS` | 개발 워커의 폴링 간격(ms, 기본 5000) |
@@ -34,7 +36,7 @@
 | `SENTRY_DSN` | Sentry DSN(선택). 비우면 오류 보고가 꺼지고 `@sentry/node`를 아예 불러오지 않는다. 설정하면 500 응답과 최종 실패한 작업만 보낸다([DEPLOYMENT.md](DEPLOYMENT.md#sentry)). 호출마다 읽는다 |
 | `SENTRY_ENVIRONMENT` | Sentry `environment`(선택). 비우면 `VERCEL_ENV` → `NODE_ENV` → `development` 순으로 정한다. `release`는 Vercel이 넣어 주는 `VERCEL_GIT_COMMIT_SHA`가 있으면 그 값이다 |
 
-작업 큐는 개발 서버 워커 외에 `npm run jobs:run`(한 번 실행)과 `npm run jobs:worker`(단독 워커)로도 돌릴 수 있다. 운영(Vercel)에는 상주 워커가 없고, 외부 스케줄러가 내부 엔드포인트를 부르는 방식은 아직 정하지 않았다.
+작업 큐는 개발 서버 워커 외에 `npm run jobs:run`(한 번 실행)과 `npm run jobs:worker`(단독 워커)로도 돌릴 수 있다. 운영(Vercel)에는 상주 워커가 없고, 외부 스케줄러가 내부 엔드포인트를 부르는 방식은 아직 정하지 않았다([#23](https://github.com/jonghoon24/workbridge/issues/23), [DEPLOYMENT.md](DEPLOYMENT.md#1-작업-큐를-실행하는-주체가-없다)).
 
 ## 클라이언트 (.env.local)
 
@@ -43,7 +45,21 @@
 | `NEXT_PUBLIC_API_URL` | 백엔드 API URL (기본 http://localhost:4000) |
 | `API_URL` | 서버 쪽(Next 프록시 라우트와 SSR)에서만 쓰는 백엔드 URL. 있으면 `NEXT_PUBLIC_API_URL`보다 먼저 쓴다(선택) |
 | `NEXT_PUBLIC_TOSS_CLIENT_KEY` | 토스페이먼츠 클라이언트 키 (test_ck_...) |
-| `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` | 데모/로컬에서 `true`로 설정하면 결제 페이지에 개발용 결제 완료 버튼 표시. 실제 운영 서비스에서는 `false` 유지 |
+| `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` | 로컬·E2E에서 `true`로 설정하면 결제 페이지에 개발용 결제 완료 버튼 표시. 실제 운영 서비스에서는 `false` 유지 |
+
+## E2E (`scripts/e2e.sh`)
+
+`bash scripts/e2e.sh`는 서버·클라이언트 변수를 스크립트 안에서 직접 정하고(더미 키, 결제 우회 켬, 작업 워커와 요청 제한 끔) 호출한 셸의 `DATABASE_URL`은 읽지 않는다. 바꿀 수 있는 것은 아래뿐이고 모두 선택이다.
+
+| 변수 | 설명 |
+| --- | --- |
+| `E2E_DB` | DB 이름 (기본 `workbridge_e2e`). **시드가 모든 테이블을 비우므로** 다른 DB를 가리키지 않는다 |
+| `E2E_DATABASE_URL` | Postgres 전체 URL (기본 `postgresql://$USER@localhost:5432/$E2E_DB`). CI는 서비스 컨테이너 주소를 넣는다 |
+| `E2E_SERVER_PORT` / `E2E_CLIENT_PORT` | API·클라이언트 포트 (기본 4002 / 3002) |
+| `E2E_CLIENT_MODE` | `dev`(`next dev`) 또는 `prod`(`next build && next start`). 기본은 `CI=true`면 `prod`, 아니면 `dev` |
+| `E2E_SKIP_SEED` | `1`이면 마이그레이션과 시드를 건너뛰고 지금 DB를 그대로 쓴다 |
+| `E2E_LOG_DIR` | 서버·클라이언트 로그 위치 (기본 `workbridge-client/test-results/e2e-logs`) |
+| `E2E_BASE_URL` | Playwright가 여는 클라이언트 주소. 스크립트가 `http://localhost:$E2E_CLIENT_PORT`로 정한다. 이미 떠 있는 앱에 `npm run e2e`(클라이언트)로 직접 돌릴 때만 넣는다 (기본 `http://localhost:3002`) |
 
 ## 외부 서비스 설정
 
@@ -66,7 +82,7 @@
 
 ### 결제 우회 테스트
 
-실제 결제창을 사용할 수 없는 데모/로컬 환경에서는 서버 `.env`의 `ALLOW_PAYMENT_BYPASS=true`와 클라이언트 `.env.local`의 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true`를 함께 설정합니다. 결제 페이지에서 "개발용 결제 완료 처리"를 누르면 서버가 그 마일스톤의 개발용 완료 결제 레코드를 만들고 마일스톤을 결제 완료(`FUNDED`)로 바꿉니다(`POST /api/payments/dev-complete`, 마일스톤 순서대로). 이후 프리랜서가 산출물을 제출하고 의뢰인이 승인하면, 마지막 마일스톤 승인 때 계약이 자동으로 완료되어 리뷰를 쓸 수 있습니다. 실제 운영 서비스에서는 두 값을 모두 `false`로 유지합니다.
+실제 결제창을 사용할 수 없는 로컬·E2E 환경에서는 서버 `.env`의 `ALLOW_PAYMENT_BYPASS=true`와 클라이언트 `.env.local`의 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true`를 함께 설정합니다. 결제 페이지에서 "개발용 결제 완료 처리"를 누르면 서버가 그 마일스톤의 개발용 완료 결제 레코드를 만들고 마일스톤을 결제 완료(`FUNDED`)로 바꿉니다(`POST /api/payments/dev-complete`, 마일스톤 순서대로). 이후 프리랜서가 산출물을 제출하고 의뢰인이 승인하면, 마지막 마일스톤 승인 때 계약이 자동으로 완료되어 리뷰를 쓸 수 있습니다. 실제 운영 서비스에서는 두 값을 모두 `false`로 유지합니다.
 
 ### OpenAI
 
