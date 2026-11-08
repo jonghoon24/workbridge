@@ -9,7 +9,7 @@
 | 프리뷰 | PR마다 | Vercel Preview 배포 | Supabase 프리뷰 프로젝트 |
 | 운영 | `main` 머지 | Vercel Production 배포 | Supabase 운영 프로젝트 |
 
-프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰므로 환경변수([ENV.md](ENV.md))도 Vercel의 Preview·Production 환경에 따로 넣는다. 마이그레이션은 `.github/workflows/migrate.yml`이 적용한다. `main`에 푸시된 커밋이 `workbridge-server/prisma/migrations/**`를 바꾸면(또는 Actions에서 수동 `workflow_dispatch`) 프리뷰 DB → 운영 DB 순서로 `prisma migrate deploy`를 돌린다. 운영 작업은 프리뷰 작업이 성공해야 시작한다. 시크릿 `PREVIEW_DIRECT_URL`·`PROD_DIRECT_URL`은 pgbouncer를 거치지 않는 Session mode(5432) 연결이고, `concurrency: migrate`로 두 실행이 겹치지 않는다. 원격 DB에 마이그레이션을 적용하는 경로는 이것뿐이다. 그래서 이미 커밋된 마이그레이션은 고치지 않고 새 마이그레이션을 추가한다.
+프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰므로 환경변수([ENV.md](ENV.md))도 Vercel의 Preview·Production 환경에 따로 넣는다. 마이그레이션은 `.github/workflows/migrate.yml`이 적용한다. `main`에 푸시된 커밋이 `workbridge-server/prisma/migrations/**`를 바꾸면(또는 Actions에서 수동 `workflow_dispatch`) 프리뷰 DB → 운영 DB 순서로 `prisma migrate deploy`를 돌린다. 운영 작업은 프리뷰 작업이 성공해야 시작한다. 시크릿 `PREVIEW_DIRECT_URL`·`PROD_DIRECT_URL`은 pgbouncer를 거치지 않는 Session mode(5432) 연결이고, `concurrency: migrate`로 두 실행이 겹치지 않는다. 원격 DB에 마이그레이션을 적용하는 경로는 이것뿐이다. 그래서 이미 커밋된 마이그레이션은 고치지 않고 새 마이그레이션을 추가한다. 주의할 점 둘: 같은 `main` 푸시에서 Vercel 운영 배포와 이 워크플로가 따로 돌고 순서를 맞추는 장치가 없어서 새 코드가 마이그레이션 전의 DB를 잠깐 상대할 수 있다(그래서 마이그레이션은 이전 코드와 새 코드 모두에 안전해야 한다). 또 스키마를 바꾸는 PR의 서버 프리뷰는 머지 전까지 마이그레이션되지 않은 프리뷰 DB를 상대한다.
 
 ### Vercel 프로젝트
 
