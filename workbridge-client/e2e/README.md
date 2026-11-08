@@ -3,7 +3,7 @@
 핵심 흐름 5개를 실제 서버·DB에 대고 브라우저로 확인한다: 로그인(`auth`), 프로젝트 등록(`project-create`), 지원(`apply`), 수락·서명(`accept-contract`), 마일스톤 결제·제출·승인(`milestone`).
 
 ```bash
-bash scripts/e2e.sh                 # 저장소 루트에서. DB 생성·마이그레이션·시드 → 서버 :4002, 클라이언트 :3002 → 테스트 → 종료
+bash scripts/e2e.sh                 # 리포지토리 루트에서. DB 생성·마이그레이션·시드 → 서버 :4002, 클라이언트 :3002 → 테스트 → 종료
 bash scripts/e2e.sh e2e/apply.spec.js --headed   # 뒤의 인자는 playwright test로 넘어간다
 E2E_SKIP_SEED=1 bash scripts/e2e.sh # 시드 없이 같은 DB로 다시 돌린다(재실행 확인)
 ```

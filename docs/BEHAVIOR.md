@@ -19,9 +19,9 @@ of its bullet: **M** money and milestone rules, **CT** contracts, **PY** payment
 milestones, **S** settlements, **PA** payout account, **J** job handlers (`M3`, `MS14`, …). A
 test that pins a rule carries the identifier in brackets in its name — `it('… [MS14]')` — the
 same way D/Q/C tags are used. Identifiers are never renumbered; a withdrawn rule leaves a gap.
-Phase 2 adds **MG** conversations and messages, **PF** portfolio, careers and profile completion,
-and **RC** recommendations; its job handler continues the **J** series (`J8`). Phase 3 adds
-**NC** notification channels (preferences and email); its email handler is `J9`.
+Later sections add **MG** conversations and messages, **PF** portfolio, careers and profile
+completion, and **RC** recommendations, whose job handler continues the **J** series (`J8`), and
+**NC** notification channels (preferences and email), whose email handler is `J9`.
 
 Scope: the `workbridge-server` HTTP API. The Next.js client is out of scope. Written in English
 (unlike the rest of `docs/`) because it is consumed as a test specification.
@@ -92,7 +92,7 @@ Expansion resources follow their contract's project:
   project is deleted: one settlement bundles items from several contracts, and the project of a
   completed contract may legitimately be deleted (S2).
 - Expansion routes also re-check the *caller* (`requireActiveUser`, rule 12).
-- Notifications created by Phase 1 code are **never addressed to a soft-deleted user**. The state
+- Notifications created by expansion code are **never addressed to a soft-deleted user**. The state
   change still happens; only that user's notification is skipped.
 - Conversations follow their contract's project the same way: 404 on every route, left out of
   lists and unread totals (MG10). Portfolio items and career entries follow their owner: they are
@@ -110,10 +110,10 @@ settlement item, notifications, contract and project completion) and rejecting a
 freelancer's share of the weekly settlement batch, each settlement state change, registering a
 payout account (including the rescheduling of held settlements), and the lazy lifecycle sweep.
 Notifications and jobs caused by a change are written in that change's transaction (rule 11).
-Phase 2 adds: accepting also creates the conversation (MG3); every system message is written in
+Messaging and portfolios add: accepting also creates the conversation (MG3); every system message is written in
 the transaction of the event it records (MG6); sending a message (message, attachments, digest
 job, MG15); and creating a portfolio item or career entry or reordering the portfolio (PF8).
-Phase 3 adds: every `notify()` call writes its in-app row, its email delivery and that delivery's
+Notification channels add: every `notify()` call writes its in-app row, its email delivery and that delivery's
 `notification.email` job in the caller's transaction (NC9); and updating notification
 preferences (NC7).
 
@@ -164,7 +164,7 @@ worker, so the lazy sweep on read paths remains the guarantee. **[C6]**
 - A job enqueued while serving a request records that request's id as its `traceId`; lines
   logged while a job runs — by its handler or by the runner about it — carry its `jobId` and, as
   `requestId`, that `traceId`.
-- **Email (Phase 3).** The log mail provider writes each email as one `info` line `mail.sent`
+- **Email.** The log mail provider writes each email as one `info` line `mail.sent`
   (NC14), with the recipient address and the full text — which is why it is a development
   provider (Q24). An unsupported `MAIL_PROVIDER` is reported once per process, as a `warn` line
   at start (NC14). A send that will be retried leaves the queue's `warn` line, and a delivery that
@@ -710,7 +710,7 @@ type, the email-only `MESSAGE_UNREAD_DIGEST`, never creates a row here. Every no
 created through `notify()`, which decides per recipient and type whether it becomes an in-app
 row, an email, or both, from the policy table and the recipient's preferences
 ([Notification channels](#notification-channels--apinotificationspreferences), NC2–NC3). The four
-pre-existing types keep their inline wording; the Phase 1 types are never addressed to a
+pre-existing types keep their inline wording; the expansion types are never addressed to a
 soft-deleted recipient (rule 5). Tests assert `type`, recipient and `href`, not the Korean
 `title`/`message` text. **[C9]**
 
@@ -1181,7 +1181,7 @@ expansion routes (rule 12) open to either role; the only authorization is being 
   | conversation list | `page` and `limit` exactly as CT2 (default 20, capped at 50) |
   | message page | `limit` default 30, capped at 100 (a larger value yields 100) |
   | unread digest delay | 10 minutes after the message (J8) |
-  | unread digest throttle | at most one digest email per conversation and recipient per 60 minutes (J8, Phase 3) |
+  | unread digest throttle | at most one digest email per conversation and recipient per 60 minutes (J8, NC16) |
   | polling | open thread every 5 s while the page is visible; unread badge every 30 s (MG20) |
 
 ### Objects and invariants
@@ -1373,12 +1373,10 @@ expansion routes (rule 12) open to either role; the only authorization is being 
   screen; the unread badge calls `GET /api/conversations/unread-count` every 30 s and after a
   thread is read. Every `GET` in this section is read-only (contrast rule 7), so polling never
   writes.
-- **MG21** — The out-of-band signal is a digest email of unread messages (J8), split across phases:
-  **Phase 2A** schedules it (MG15) and implements the handler's steps 1–2 — so the job runs and
-  ends as a no-op or a success without sending; **Phase 3** adds steps 3–4 — the 60-minute
-  throttle and the email-only `MESSAGE_UNREAD_DIGEST` through `notify()`, recorded as an
-  `EmailDelivery` with `contextKey = conversation:<id>`. Until Phase 3 no email exists and the job
-  writes nothing.
+- **MG21** — The out-of-band signal is a digest email of unread messages (J8). MG15 schedules it;
+  the handler's steps 1–2 decide whether a send is still due, and steps 3–4 (NC16) apply the
+  60-minute throttle and send the email-only `MESSAGE_UNREAD_DIGEST` through `notify()`, recorded
+  as an `EmailDelivery` with `contextKey = conversation:<id>`.
 
 ---
 
@@ -1755,8 +1753,8 @@ are expansion routes (rule 12) open to either role. **[C9]**
 
 ### Delivery through `notify()`
 - **NC9** — `notify()` (one recipient) and `notifyMany()` (several, with one query per table
-  rather than per recipient) are the only way notifications are created. Phase 3 routes the four
-  pre-existing types through them too — applying, accepting and rejecting an application, closing
+  rather than per recipient) are the only way notifications are created. The four
+  pre-existing types go through them too — applying, accepting and rejecting an application, closing
   a project by hand — keeping their inline Korean wording, so preferences and email apply to
   every type. **[C9]** The signatures are `notify(client, input, now = new Date()):
   Promise<Notification | null>` — the in-app row, or `null` when in-app is off —
@@ -1778,7 +1776,7 @@ are expansion routes (rule 12) open to either role. **[C9]**
   neither cancels a `PENDING` delivery nor creates a missed one.
 - **NC10** — **Soft-deleted recipients.** `notify()` never creates an `EmailDelivery` for a
   soft-deleted user, and J9 skips a delivery whose recipient was soft-deleted after it was
-  created. The in-app rule is unchanged: Phase 1 and later callers leave soft-deleted recipients
+  created. The in-app rule is unchanged: expansion callers leave soft-deleted recipients
   out (rule 5), while the four pre-existing types still create the in-app row — the pinned Q11
   behavior of applying to a project whose client is soft-deleted. Preference rows outlive a soft
   deletion and apply again after a restore.
@@ -1834,7 +1832,7 @@ are expansion routes (rule 12) open to either role. **[C9]**
   **[Q25]**
 
 ### Unread-message digest (J8 steps 3–4)
-- **NC16** — Phase 3 completes J8 after its step 2, in the same transaction and under the same
+- **NC16** — J8 continues after its step 2, in the same transaction and under the same
   participant lock:
   3. **throttle** — take the newest `EmailDelivery` with this `userId`,
      `type = 'MESSAGE_UNREAD_DIGEST'` and `contextKey = 'conversation:<conversationId>'`, in any
@@ -1861,8 +1859,8 @@ are expansion routes (rule 12) open to either role. **[C9]**
 ## Background jobs
 
 Postgres-backed queue (`Job` table) used by the scheduled sweeps, milestone auto-approval and
-due-date notices, the weekly settlement batch and payouts, the unread-message digest (scheduled
-from Phase 2A, sending from Phase 3, J8), and (Phase 3) email delivery.
+due-date notices, the weekly settlement batch and payouts, the unread-message digest (J8), and
+email delivery (J9).
 
 ### Job states
 
@@ -1875,7 +1873,7 @@ from Phase 2A, sending from Phase 3, J8), and (Phase 3) email delivery.
 | `RUNNING` | `FAILED` | the handler threw a `PermanentJobError`, the type has no handler, or `attempts` reached `maxAttempts`; `lastError` recorded and an error-level log line written |
 | `RUNNING` | `PENDING` | stale-lock recovery: `lockedAt` older than 10 minutes (the runner died) and `attempts < maxAttempts`. `attempts` is not refunded |
 | `RUNNING` | `FAILED` | stale-lock recovery when `attempts >= maxAttempts`: `lastError` = `stale lock, attempts exhausted` and an error-level log line, so a job that kills its runner every time does not return forever |
-| `PENDING` | `CANCELLED` | by domain code that makes a job moot (none yet — Phase 1 handlers re-check state and end as no-ops instead, J1) |
+| `PENDING` | `CANCELLED` | by domain code that makes a job moot (none yet — the milestone and settlement handlers re-check state and end as no-ops instead, J1) |
 
 ### Recurring jobs
 - Each recurring type defines its next slot after a given time and a `dedupeKey` per slot.
@@ -1915,7 +1913,7 @@ endpoint is not decided yet. Until one does, recurring jobs only run where a run
 | `milestone.overdue` | funding (PY7) | `dueDate` | `milestone.overdue:<milestoneId>` | J5 | `MILESTONE_OVERDUE` to both parties |
 | `settlement.weeklyBatch` | recurring | the next Monday 03:00 KST strictly after `now` (M19) | `settlement.weeklyBatch:<periodStart ISO-8601>`, where `periodStart` = the slot's `runAt − 7 days − 3 h`, fixed when the slot is enqueued (e.g. `settlement.weeklyBatch:2026-10-18T15:00:00.000Z` for the slot at `2026-10-25T18:00:00.000Z`) | J6 | the weekly batch (S4–S6) |
 | `settlement.payout` | the batch (S4), payout-account registration (PA4), a failed transfer with attempts left (S11) | the settlement's `scheduledPayoutAt` | `settlement.payout:<settlementId>:<scheduledPayoutAt ISO-8601>` | J7 | the payout (S7–S11) |
-| `message.unreadDigest` | a text message (MG15), unless a `PENDING` one exists for the same conversation and recipient; a re-check (J8 step 2); a throttled run (J8 step 3, Phase 3) | the message's `createdAt` + 10 min; a re-check at the oldest unread message's `createdAt` + 10 min; a throttled re-run at the last digest's time + 60 min | none | J8 | the unread-message digest email (MG21) |
+| `message.unreadDigest` | a text message (MG15), unless a `PENDING` one exists for the same conversation and recipient; a re-check (J8 step 2); a throttled run (J8 step 3) | the message's `createdAt` + 10 min; a re-check at the oldest unread message's `createdAt` + 10 min; a throttled re-run at the last digest's time + 60 min | none | J8 | the unread-message digest email (MG21) |
 | `notification.email` | `notify()` when email is on for the recipient (NC9) | the `now` given to `notify()` | `notification.email:<deliveryId>` | J9 | sends one `EmailDelivery` (NC12) |
 
 Payloads: `milestone.autoApprove` and `milestone.autoApproveReminder` carry
@@ -1927,7 +1925,7 @@ types carry `{}`. All use the default `maxAttempts` of 5. Because the payout key
 `scheduledPayoutAt`, a rescheduled payout (PA4, S11) is a new job and never collides with the one
 it replaces.
 
-### Phase 1 handler rules
+### Milestone and settlement handler rules
 - **J1** — Handlers re-read everything they act on. A job whose state no longer calls for it —
   the milestone moved on, the round is not the latest, the settlement was rescheduled or paid —
   ends **`SUCCEEDED` as a no-op**. A payload naming a milestone or settlement that does not exist
@@ -1950,7 +1948,7 @@ it replaces.
 - **J7** — `settlement.payout` runs S7–S11. A soft-deleted freelancer's settlement goes `ON_HOLD`
   without notification, even if a payout account exists.
 
-### Messaging handler rule (Phase 2A, completed in Phase 3)
+### Messaging handler rule
 - **J8** — `message.unreadDigest`, payload `{ conversationId, recipientId }`, no `dedupeKey`, the
   default `maxAttempts`. **Enqueued** by MG15's transaction for the other participant, with
   `runAt` = the message's `createdAt` + 10 minutes, unless a `PENDING` job of this type with the
@@ -1969,10 +1967,9 @@ it replaces.
      enqueue a new job at that message's `createdAt + 10 min` (unless a `PENDING` one exists for
      the pair; the running job is `RUNNING` and does not count) and end `SUCCEEDED` without
      sending;
-  3. *(Phase 3)* the throttle, and 4. *(Phase 3)* the email — both specified once, in NC16.
+  3. the throttle, and 4. the email — both specified once, in NC16.
 
-  Until Phase 3, steps 3–4 do nothing and the job ends `SUCCEEDED` after step 2. Outcome once
-  complete: a message read within 10 minutes never causes an email; a conversation sends a
+  Outcome: a message read within 10 minutes never causes an email; a conversation sends a
   recipient at most one digest per 60 minutes; unread messages that pile up in between go out
   together 60 minutes after the last digest. A duplicate `PENDING` job (a send racing step 3's
   re-enqueue) is harmless — step 3 throttles it. Example of step 2's re-check: message A at t0
@@ -1980,7 +1977,7 @@ it replaces.
   nothing (A's job is pending); at t0 + 10 the job finds B unread but only 1 minute old, so it
   re-enqueues for t0 + 19 and sends nothing. Tests drive it with `runDueJobs({ now })` alone.
 
-### Email handler rule (Phase 3)
+### Email handler rule
 - **J9** — `notification.email`, payload `{ deliveryId }`, `dedupeKey`
   `notification.email:<deliveryId>`, the default `maxAttempts`, enqueued by `notify()` (NC9). The
   provider call cannot be rolled back, so the handler does **not** run in one transaction; each
@@ -2025,14 +2022,14 @@ Changed bullets end with **[C*n*]**, and so do the names of the tests that pin t
 | ID | Area | Before | Now | Tests |
 |---|---|---|---|---|
 | **C1** | Payments | one payment per contract (`Payment.contractId` unique); body `{ contractId }`; amount = contract amount; dev-complete key `dev_bypass_<contractId>` | one payment per milestone (`Payment.milestoneId` unique, a contract has many); body `{ milestoneId }`; amount = milestone amount; sequential funding (M13), `409 Milestone is already funded`; confirm and dev-complete also fund the milestone and are 404 for a soft-deleted project; a failed confirm marks the payment `FAILED` only if it is still `PENDING` (PY1–PY12) | `payments.test.ts` |
-| **C2** | Apply / accept application | `expectedRate > 0`; five writes in one transaction; contract `endDate` = project deadline | `expectedRate >= 1`; six writes: the default milestone is created after the contract (M9); contract `endDate` = the default milestone's due date; (Phase 2A) a seventh: the contract's conversation, its two participants and the `CONTRACT_CREATED` system message (MG3) | `applications.test.ts` |
+| **C2** | Apply / accept application | `expectedRate > 0`; five writes in one transaction; contract `endDate` = project deadline | `expectedRate >= 1`; six writes: the default milestone is created after the contract (M9); contract `endDate` = the default milestone's due date; a seventh: the contract's conversation, its two participants and the `CONTRACT_CREATED` system message (MG3) | `applications.test.ts` |
 | **C3** | Contract completion | the client's `PATCH /api/contracts/:id { status: COMPLETED }` once the payment was `COMPLETED` | automatic in the transaction that approves the last milestone, manually or automatically (MS17); `PATCH` → **410** (CT11) | `contracts.test.ts`, `milestones.test.ts` |
 | **C4** | Contract shape | `GET /:id` and sign responses carry `payment` | no `payment`; `milestones[]` (each with `payment` and `latestSubmission`) and `milestoneSummary` (CT5, CT6) | `contracts.test.ts` |
 | **C5** | Signing | both flags → `ACTIVE` | a `PENDING` contract needs a valid milestone plan or the signature is refused (CT7); activation notifies both parties (CT8) | `contracts.test.ts`, `milestone-plan.test.ts` |
 | **C6** | Lifecycle | lazy sweep only ("there is no cron") | lazy sweep plus a scheduled sweep every 10 minutes when a runner is active (rule 7) | `jobs.test.ts` |
 | **C7** | Logging | `console.error` on 500 | structured JSON logger, same rule: error level only for a 500, exactly once (rules 1, 9) | `payments.test.ts` (logging block), `request-id.test.ts` |
 | **C8** | Login / analyze | unlimited | 429 with `Retry-After` (rule 10) | `rate-limit.test.ts` |
-| **C9** | Notifications | 4 types, always an in-app row | 20 types: 19 in-app (Phase 1 adds 15, skipped for soft-deleted recipients) and the email-only `MESSAGE_UNREAD_DIGEST` (Phase 3). Every type, the four pre-existing ones included, goes through `notify()`, which applies the per-type policy and the recipient's preferences — optional in-app rows can be turned off (NC2–NC8) — and sends email through a log-only provider (NC9–NC16, J9) | `notifications.test.ts`, `notification-preferences.test.ts`, `email.test.ts`, `message-digest.test.ts` |
+| **C9** | Notifications | 4 types, always an in-app row | 20 types: 19 in-app (15 added with milestones and settlements, skipped for soft-deleted recipients) and the email-only `MESSAGE_UNREAD_DIGEST`. Every type, the four pre-existing ones included, goes through `notify()`, which applies the per-type policy and the recipient's preferences — optional in-app rows can be turned off (NC2–NC8) — and sends email through a log-only provider (NC9–NC16, J9) | `notifications.test.ts`, `notification-preferences.test.ts`, `email.test.ts`, `message-digest.test.ts` |
 | **C10** | Public profile (`GET /api/users/:id`) | profile fields, `receivedReviews`, `avgRating`, `reviewCount` | the same plus `portfolioItems`, `careers` and `careerSummary` (PF18) — additive | `users.test.ts` |
 
 ---
@@ -2069,20 +2066,20 @@ not repairing a live race. The genuine defect was the missing status guard.
 | **D3** | Numeric profile fields unvalidated — **silently destroys data** | Non-numeric `experienceYears`/`hourlyRate`, or an `experienceYears` that is not an integer `>= 0` → 400, row unchanged | `parseInt`/`parseFloat` with no `NaN` guard. Both columns are nullable, so Prisma serializes `NaN` to `null` and **the write succeeds**: `PATCH /me` with `experienceYears: 'abc'` returns **200**, persists the other fields, and wipes `experienceYears` to `null`. Because `requireCompleteProfile` needs an integer `experienceYears >= 0` and a finite `hourlyRate > 0`, one typo silently makes a freelancer's profile incomplete and every later `POST /:id/applications` 403. The same unguarded `parseInt` also accepts out-of-range input: `experienceYears: '-3'` is stored as `-3` (200) and `'2.5'` or `'3abc'` is truncated to an integer, where the spec wants 400 |
 | **D5** | Google account linking by email alone | Linking requires proven control of the address | An existing password account is matched by `email` and has `googleId` attached, enabling takeover of a known address |
 | **D6** | Multer errors have no status | Oversized → 413/400, wrong type → 400 | `LIMIT_FILE_SIZE`, the image-filter `Error`, and the raw Supabase throw reach `errorHandler` without a `statusCode` → 500 |
-| **D8** | Payment failure cause is discarded | Provider faults and amount mismatches are distinguishable in logs: the cause is logged at `warn` (a 4xx never produces an error-level line, rule 1; `warn` goes to `console.log`, rule 9) | `catch (tossError)` ignores its argument; every cause — a provider fault, an amount mismatch, or a database write after capture (payment, milestone funding, notification, job enqueue; PY8) — yields the same 400 and marks the payment `FAILED` (re-pinned in P1) |
+| **D8** | Payment failure cause is discarded | Provider faults and amount mismatches are distinguishable in logs: the cause is logged at `warn` (a 4xx never produces an error-level line, rule 1; `warn` goes to `console.log`, rule 9) | `catch (tossError)` ignores its argument; every cause — a provider fault, an amount mismatch, or a database write after capture (payment, milestone funding, notification, job enqueue; PY8) — yields the same 400 and marks the payment `FAILED` |
 | **D9** | Review rating validated before coercion | Non-numeric rating → 400 | `rating < 1 \|\| rating > 5` runs on an untyped value, so `"abc"` passes both comparisons, then `parseInt` yields `NaN` → 500 |
 | **D10** | `apply` sends its response inside the `try` | A post-response failure must not attempt a second write | `res.status(201).json(...)` sits inside the inner `try`, so a throw after send reaches `errorHandler`, which writes again |
 | **D11** | Project deletion ignores live contracts (decided in Q4) | → 409 when a contract exists and is not `COMPLETED` | `deleteProject` checks only existence and ownership, so a project with a `PENDING` or `ACTIVE` contract can be soft-deleted, leaving the contract referencing a deleted project |
-| **D12** | Soft delete is enforced only on **read** paths, not writes | A soft-deleted principal cannot mutate anything — every write → ≥400 with no row change | The D1 fix covered authentication and profile reads. Write paths never re-check the actor: holding a still-valid access token, a soft-deleted user gets **200** from `PATCH /api/users/me` (and the change persists), **201** from `POST /api/projects/:id/applications` (a real application row is created), **201** from `POST /api/payments` with `{ milestoneId }`, and **200** from `POST /api/contracts/:id/sign`. Only pre-existing routes are affected; expansion routes run `requireActiveUser` (rule 12) (re-pinned in P1). **Fixing it is a deliberate divergence fix, not a clean-up:** the same change mounts the guard on the eight pre-existing route files and flips the `mutations` pins in `soft-delete.test.ts` to `it` (`fix-divergence` skill) |
-| **D13** | Concurrent payment creation collides | Unique-constraint collision → **409** (cross-cutting rule 8) | `Payment.milestoneId` is unique and `createPayment` does not catch P2002. Two simultaneous `POST /api/payments` for one fundable milestone return one **201** and one **500**. Same defect class as D4, which was fixed for contracts but not on the money path (re-pinned in P1) |
-| **D14** | Prisma errors leak internals in the 500 body | A 500 body must not expose file paths, source excerpts, or SQL | `errorHandler` renders `err.message` verbatim, and Prisma's formatted errors embed the **absolute source path and a source excerpt** — e.g. the D13 collision returns `Invalid prisma.payment.create() invocation in /Users/…/src/controllers/payments.controller.ts:…` plus surrounding lines, and `POST /api/payments` with `{ milestoneId: 12345 }` returns the milestone lookup's invocation with the offending argument. Note this is specific to Prisma-formatted errors; a plain `TypeError` such as `skill.trim is not a function` leaks nothing (re-pinned in P1) |
+| **D12** | Soft delete is enforced only on **read** paths, not writes | A soft-deleted principal cannot mutate anything — every write → ≥400 with no row change | The D1 fix covered authentication and profile reads. Write paths never re-check the actor: holding a still-valid access token, a soft-deleted user gets **200** from `PATCH /api/users/me` (and the change persists), **201** from `POST /api/projects/:id/applications` (a real application row is created), **201** from `POST /api/payments` with `{ milestoneId }`, and **200** from `POST /api/contracts/:id/sign`. Only pre-existing routes are affected; expansion routes run `requireActiveUser` (rule 12). **Fixing it is a deliberate divergence fix, not a clean-up:** the same change mounts the guard on the eight pre-existing route files and flips the `mutations` pins in `soft-delete.test.ts` to `it` (`fix-divergence` skill) |
+| **D13** | Concurrent payment creation collides | Unique-constraint collision → **409** (cross-cutting rule 8) | `Payment.milestoneId` is unique and `createPayment` does not catch P2002. Two simultaneous `POST /api/payments` for one fundable milestone return one **201** and one **500**. Same defect class as D4, which was fixed for contracts but not on the money path |
+| **D14** | Prisma errors leak internals in the 500 body | A 500 body must not expose file paths, source excerpts, or SQL | `errorHandler` renders `err.message` verbatim, and Prisma's formatted errors embed the **absolute source path and a source excerpt** — e.g. the D13 collision returns `Invalid prisma.payment.create() invocation in /Users/…/src/controllers/payments.controller.ts:…` plus surrounding lines, and `POST /api/payments` with `{ milestoneId: 12345 }` returns the milestone lookup's invocation with the offending argument. Note this is specific to Prisma-formatted errors; a plain `TypeError` such as `skill.trim is not a function` leaks nothing |
 | **D15** | `POST /api/projects` rejects `budget: 0` | Budget is specified as a **non-negative** number, so `0` → **201** | The required-field guard is `!budget` and `0` is falsy, so it → 400 `All fields are required`. **`PATCH /:id` is already correct** — it gates on `budget !== undefined`, so a zero-budget update succeeds. Only creation is affected. (Contrast the review `rating: 0` case, which the spec documents as intentionally caught by the required-field check.) |
 | **D16** | A skills array of non-strings → 500 | Malformed value → **400** (cross-cutting rule 8) | `normalizeSkillList` calls `.trim()` on each element, so `skills: [1, 2]` throws `TypeError: skill.trim is not a function` → 500. Affects `PATCH /api/users/me`, both `requiredSkills` paths on projects, **and a read path**: `GET /api/projects?skills[0][0]=React` — Express's `qs` parser yields a nested array, which reaches `normalizeSkillList` via `expandSkillSearchTerms` |
 | **D17** | A tags array of non-strings → 500 | Malformed value → **400** | `createReview` passes `tags` straight through when `Array.isArray` is true, so `tags: [1, 2]` reaches Prisma and is rejected as a 500. Non-array tags are handled correctly (coerced to `[]`) |
-| **D18** | `POST /api/payments/confirm` replay guard is not concurrency-safe | Confirmation is non-replayable: of two simultaneous confirms, exactly one succeeds and the other → 409 | The `status !== 'PENDING'` check is a read followed by a separate write with no row lock, so two concurrent confirms can both pass it, both call the provider and both answer 200. The milestone side is safe: funding is a conditional write that is a no-op for the loser (PY7), so the milestone is funded and notified once (PY9) (re-pinned in P1) |
+| **D18** | `POST /api/payments/confirm` replay guard is not concurrency-safe | Confirmation is non-replayable: of two simultaneous confirms, exactly one succeeds and the other → 409 | The `status !== 'PENDING'` check is a read followed by a separate write with no row lock, so two concurrent confirms can both pass it, both call the provider and both answer 200. The milestone side is safe: funding is a conditional write that is a no-op for the loser (PY7), so the milestone is funded and notified once (PY9) |
 | **D19** | A soft-deleted project is still visible to bookmarking | Rule 5 is unconditional: a soft-deleted project must be invisible to listing, fetching, applying, **and bookmarking** | `GET /:id/bookmark` still reports `{ bookmarked: true }` for a soft-deleted project and `DELETE` still removes the row. Only `POST` checks. **This is distinct from Q6** — Q6 defers the narrower question of whether `GET`/`DELETE` should 404 for an id that never existed; rule 5 already decides the soft-deleted case |
 | **D20** | Concurrent accepts **deadlock** and return 500 | Of several simultaneous accepts on one project, one succeeds and the losers → **409** (rule 8) | Three concurrent `PATCH /:projectId/applications/:appId` calls on *different* PENDING applications of the same project deadlock in the accept transaction: Postgres raises **`40P01` deadlock detected**, which surfaces as `PrismaClientUnknownRequestError` → **500**. The D4 fix catches only `P2002`, so this class escapes it. The database invariants still hold (exactly one contract, one ACCEPTED application) — only the status code is wrong. Reproduced in 2 of 16 full-suite runs; needs a warm connection pool to race |
-| **D21** | The pre-existing contract endpoints never filter `deletedAt` at all | Rule 5: every read and write filters `deletedAt: null` | `getContract` and `signContract` use a plain `findUnique` with no soft-delete filter, so a contract whose **project has been soft-deleted** stays readable and signable — and the deleted project is returned inside the response body. Completion now goes through `POST /api/milestones/:id/approve`, which is 404 for a deleted project (MS5), and the auto-approval job, which deliberately completes the contract but never writes the deleted project row (MS17, J2) — D21 remains for `getContract` and `signContract`. Interacts with D11/Q4: once deleting a project with a live contract is blocked, this becomes much harder to reach (re-pinned in P1) |
+| **D21** | The pre-existing contract endpoints never filter `deletedAt` at all | Rule 5: every read and write filters `deletedAt: null` | `getContract` and `signContract` use a plain `findUnique` with no soft-delete filter, so a contract whose **project has been soft-deleted** stays readable and signable — and the deleted project is returned inside the response body. Completion now goes through `POST /api/milestones/:id/approve`, which is 404 for a deleted project (MS5), and the auto-approval job, which deliberately completes the contract but never writes the deleted project row (MS17, J2) — D21 remains for `getContract` and `signContract`. Interacts with D11/Q4: once deleting a project with a live contract is blocked, this becomes much harder to reach |
 | **D22** | Concurrent dev-completes collide | Of two simultaneous `POST /api/payments/dev-complete` for a milestone with no payment row, one creates the payment and the other answers 200 or 409 (rule 8) | Both read "no payment" before their transactions and both `tx.payment.create`; the loser hits the unique `Payment.milestoneId` inside its transaction (P2002) and answers **500**. Same class as D13 on the dev-only bypass route; left unfixed because the route is off in production and fixing it means the same P2002 handling D13 still lacks. Pinned in `payments.test.ts` |
 
 ---

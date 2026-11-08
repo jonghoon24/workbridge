@@ -20,7 +20,7 @@ changed=$( { git diff --name-only HEAD 2>/dev/null; git ls-files --others --excl
 
 fail() { # $1 = label, $2 = output
   {
-    echo "Stop check failed: $1. Fix it before finishing (last lines):"
+    echo "종료 전 검사 실패: $1. 끝내기 전에 고친다 (마지막 줄):"
     tail -n 30 <<<"$2"
   } >&2
   exit 2
@@ -30,7 +30,7 @@ if grep -qE '^workbridge-server/.*\.ts$' <<<"$changed"; then
   if [ -d workbridge-server/node_modules ]; then
     out=$(cd workbridge-server && npm run --silent typecheck 2>&1) || fail "workbridge-server npm run typecheck" "$out"
   else
-    echo "stop-check: workbridge-server/node_modules missing, typecheck skipped (run npm install)" >&2
+    echo "stop-check: workbridge-server/node_modules가 없어 typecheck를 건너뛰었다 (npm install 필요)" >&2
   fi
 fi
 
@@ -38,7 +38,7 @@ if grep -qE '^workbridge-client/src/' <<<"$changed"; then
   if [ -d workbridge-client/node_modules ]; then
     out=$(cd workbridge-client && npm run --silent lint 2>&1) || fail "workbridge-client npm run lint" "$out"
   else
-    echo "stop-check: workbridge-client/node_modules missing, lint skipped (run npm install)" >&2
+    echo "stop-check: workbridge-client/node_modules가 없어 lint를 건너뛰었다 (npm install 필요)" >&2
   fi
 fi
 exit 0

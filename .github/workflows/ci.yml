@@ -13,9 +13,8 @@ jobs:
       run:
         working-directory: workbridge-server
 
-    # The suite runs against a real Postgres rather than a mocked Prisma client: the bugs it
-    # exists to catch are database behaviours — foreign keys, unique constraints, transaction
-    # rollback — and mocks would make every one of them invisible.
+    # 스위트는 Prisma 클라이언트를 모킹하지 않고 실제 Postgres로 돈다. 스위트가 잡으려는 버그가
+    # 외래 키, 유니크 제약, 트랜잭션 롤백 같은 DB 동작이라서, 모킹하면 하나도 보이지 않는다.
     services:
       postgres:
         image: postgres:16
@@ -32,14 +31,14 @@ jobs:
           --health-retries 5
 
     env:
-      # `prisma generate` and `prisma validate` resolve the `env()` references in schema.prisma,
-      # so these must be defined. They also point at the service container above, which the test
-      # step migrates and uses. The database name contains "test" deliberately — `test/helpers/db.ts`
-      # refuses to run against a URL that does not, because it truncates every table.
+      # `prisma generate`와 `prisma validate`가 schema.prisma의 `env()` 참조를 풀기 때문에 값이
+      # 있어야 한다. 위 서비스 컨테이너를 가리키고, 테스트 단계가 이 DB를 마이그레이션해서 쓴다.
+      # DB 이름에 일부러 "test"를 넣었다 — `test/helpers/db.ts`는 모든 테이블을 TRUNCATE하므로
+      # "test"가 없는 URL에서는 돌지 않는다.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_test
       DIRECT_URL: postgresql://ci:ci@localhost:5432/workbridge_test
-      # vitest.config.ts otherwise falls back to `postgresql://$USER@localhost/workbridge_test`,
-      # which does not match this container's credentials.
+      # 없으면 vitest.config.ts가 `postgresql://$USER@localhost/workbridge_test`로 대신하는데,
+      # 이 컨테이너의 계정과 맞지 않는다.
       TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_test
 
     steps:
@@ -51,24 +50,23 @@ jobs:
           cache: npm
           cache-dependency-path: workbridge-server/package-lock.json
 
-      - name: Install dependencies
+      - name: 의존성 설치
         run: npm ci
 
-      # Prisma's generated types must exist before typecheck — the whole data model
-      # is inherited from them.
-      - name: Generate Prisma client
+      # 타입 체크 전에 Prisma가 생성한 타입이 있어야 한다 — 데이터 모델 전체가 거기서 온다.
+      - name: Prisma 클라이언트 생성
         run: npx prisma generate
 
-      - name: Typecheck
+      - name: 타입 체크
         run: npx tsc --noEmit
 
-      - name: Validate Prisma schema
+      - name: Prisma 스키마 검증
         run: npx prisma validate
 
-      - name: Apply migrations to the test database
+      - name: 테스트 DB에 마이그레이션 적용
         run: npx prisma migrate deploy
 
-      - name: Test
+      - name: 테스트
         run: npm test
 
   client:
@@ -87,15 +85,15 @@ jobs:
           cache: npm
           cache-dependency-path: workbridge-client/package-lock.json
 
-      - name: Install dependencies
+      - name: 의존성 설치
         run: npm ci
 
-      - name: Lint
+      - name: 린트
         run: npm run lint -- --max-warnings=0
 
-      # The client has no unit tests; a clean production build is its correctness check
-      # (CLAUDE.md). The API URL is only read at request time, so any value builds.
-      - name: Build
+      # 클라이언트에는 단위 테스트가 없어서 운영 빌드가 깨끗이 끝나는 것이 정합성 검사다
+      # (CLAUDE.md). API URL은 요청 때만 읽으므로 어떤 값이든 빌드된다.
+      - name: 빌드
         run: npm run build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:4000

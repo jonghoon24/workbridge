@@ -1,35 +1,35 @@
 ---
 name: run-workbridge
-description: Build, launch, and drive the WorkBridge app locally — both the Express/Prisma backend (:4000) and the Next.js frontend (:3000). Use when asked to run, start, boot, serve, smoke-test, E2E-test, or screenshot WorkBridge (the freelancer-matching platform / 프리랜서 매칭 플랫폼).
+description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 — Express/Prisma 백엔드(:4000)와 Next.js 프론트엔드(:3000) 둘 다. WorkBridge(프리랜서 매칭 플랫폼, freelancer-matching platform)를 실행·시작·부팅·서빙(run, start, boot, serve)하거나, 스모크 테스트(smoke-test), E2E 테스트(E2E-test), 스크린샷(screenshot)을 요청받으면 쓴다.
 ---
 
-# Run WorkBridge
+# WorkBridge 실행
 
-Two packages, one product: `workbridge-server` (Express + Prisma, **:4000**) and
-`workbridge-client` (Next.js 14, **:3000**). The browser only talks to :3000 — the route handlers
-`src/app/api/[...path]` and `src/app/api/auth/*` forward `/api/*` to :4000.
+패키지 둘, 제품 하나: `workbridge-server`(Express + Prisma, **:4000**)와
+`workbridge-client`(Next.js 14, **:3000**). 브라우저는 :3000하고만 통신한다 — 라우트 핸들러
+`src/app/api/[...path]`와 `src/app/api/auth/*`가 `/api/*`를 :4000으로 전달한다.
 
-Three ways to check it, cheapest first:
-1. `bash .claude/skills/run-workbridge/drive.sh` — API smoke (health, list, seed login, proxy).
-2. `node workbridge-client/scripts/screenshots.mjs` — Playwright screenshots of key pages.
-3. `bash scripts/e2e.sh` (repo root) — Playwright E2E specs in `workbridge-client/e2e/`.
+확인하는 방법은 셋, 가벼운 것부터:
+1. `bash .claude/skills/run-workbridge/drive.sh` — API 스모크(health, 목록, 시드 로그인, 프록시).
+2. `node workbridge-client/scripts/screenshots.mjs` — 주요 페이지의 Playwright 스크린샷.
+3. `bash scripts/e2e.sh`(리포지토리 루트) — `workbridge-client/e2e/`의 Playwright E2E 스펙.
 
-All paths are relative to the repo root.
+경로는 모두 리포지토리 루트 기준이다.
 
-## Prerequisites
+## 준비물
 
-- Node ≥ 18, npm. PostgreSQL on **localhost** (`brew services start postgresql@14`; superuser =
-  your macOS user, no password).
-- Playwright's Chromium for 2 and 3: `(cd workbridge-client && npx playwright install chromium)`.
-- External services (Google OAuth, OpenAI, TossPayments, Supabase Storage) use dummy values:
-  those features fail, every core flow works against the local DB.
+- Node ≥ 18, npm. **localhost**의 PostgreSQL(`brew services start postgresql@14`, 슈퍼유저 =
+  macOS 사용자, 비밀번호 없음).
+- 2와 3에는 Playwright Chromium: `(cd workbridge-client && npx playwright install chromium)`.
+- 외부 서비스(Google OAuth, OpenAI, 토스페이먼츠, Supabase Storage)는 더미 값을 쓴다:
+  그 기능은 실패하지만, 핵심 흐름은 모두 로컬 DB로 동작한다.
 
-## Setup (one-time)
+## 설정 (한 번만)
 
-`.env` files are deny-listed for Claude's file tools (`.claude/settings.json`). If writing them
-is refused, show these blocks to the user and let them create the files.
-Use `localhost` for every URL — any command containing `supabase.co` is denied, because that is
-where the real preview/production databases live.
+`.env` 파일은 Claude의 파일 툴에 대해 거부 목록에 있다(`.claude/settings.json`). 쓰기가 거부되면
+아래 블록을 사용자에게 보여 주고 직접 만들게 한다.
+URL은 모두 `localhost`를 쓴다 — `supabase.co`가 들어간 커맨드는 거부된다. 실제 preview/production
+DB가 거기 있기 때문이다.
 
 ```bash
 createdb workbridge 2>/dev/null || echo "db exists (ok)"
@@ -62,18 +62,17 @@ NEXT_PUBLIC_TOSS_CLIENT_KEY=test_ck_dummy
 NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true
 EOF
 
-(cd workbridge-server && npm install)   # postinstall runs prisma generate
+(cd workbridge-server && npm install)   # postinstall이 prisma generate를 돌린다
 (cd workbridge-client && npm install)
 (cd workbridge-server && npx prisma migrate deploy && npm run db:seed)
 ```
 
-`RATE_LIMIT_ENABLED=false` because every local login comes from loopback and shares one
-20-per-15-min budget (BEHAVIOR.md rule 10). Seed: 8 users, 16 projects, 6 contracts covering every
-milestone/settlement/conversation state, dates relative to now. **Password for all seed accounts
-is `password123`** (`kim@example.com` CLIENT, `park@example.com` FREELANCER; who to use per
-screen: `docs/SEED_DATA.md`).
+`RATE_LIMIT_ENABLED=false`로 두는 이유: 로컬 로그인은 모두 loopback에서 오므로 15분에 20회 한도 하나를
+나눠 쓴다(BEHAVIOR.md 규칙 10). 시드: 사용자 8명, 프로젝트 16개, 계약 6개로 마일스톤/정산/대화의
+모든 상태를 덮고, 날짜는 지금 기준이다. **시드 계정 비밀번호는 모두 `password123`**
+(`kim@example.com` CLIENT, `park@example.com` FREELANCER. 화면별로 어떤 계정을 쓸지는 `docs/SEED_DATA.md`).
 
-## Run
+## 실행
 
 ```bash
 (cd workbridge-server && npm run dev > /tmp/wb-server.log 2>&1 &)
@@ -86,49 +85,49 @@ done
 tail -n2 /tmp/wb-server.log /tmp/wb-client.log
 ```
 
-## Drive
+## 조작
 
-1. **API smoke** — `bash .claude/skills/run-workbridge/drive.sh` → expect `== 4 passed, 0 failed ==`.
-   Other ports: `API_PORT=4001 CLIENT_PORT=3001 bash .claude/skills/run-workbridge/drive.sh`.
-2. **Screenshots** — `node workbridge-client/scripts/screenshots.mjs` (read its header for the page
-   list, output directory and options). It warms each route first (a fresh `next dev` compiles on
-   first hit) and waits for client-side fetches. A non-empty PNG proves nothing: **open the images
-   and look** — a blank frame or error overlay means the page did not hydrate.
-3. **E2E** — `bash scripts/e2e.sh` from the repo root runs the Playwright specs in
-   `workbridge-client/e2e/`. Specs select by visible Korean text, so a wording change in the
-   client must update the spec in the same change.
+1. **API 스모크** — `bash .claude/skills/run-workbridge/drive.sh` → `== 4 passed, 0 failed ==`가 나와야 한다.
+   다른 포트: `API_PORT=4001 CLIENT_PORT=3001 bash .claude/skills/run-workbridge/drive.sh`.
+2. **스크린샷** — `node workbridge-client/scripts/screenshots.mjs`(페이지 목록, 출력 폴더, 옵션은 파일
+   머리 주석에 있다). 경로마다 먼저 한 번 불러 두고(새로 띄운 `next dev`는 처음 요청 때 컴파일한다)
+   클라이언트 쪽 fetch를 기다린다. PNG가 비어 있지 않다고 해서 증명되는 것은 없다: **이미지를 열어서
+   본다** — 빈 화면이나 에러 오버레이면 페이지가 hydrate되지 않은 것이다.
+3. **E2E** — 리포지토리 루트에서 `bash scripts/e2e.sh`가 `workbridge-client/e2e/`의 Playwright 스펙을
+   돌린다. 스펙은 화면의 한국어 텍스트로 요소를 찾으므로, 클라이언트 문구를 바꾸면 같은 변경에서
+   스펙도 고친다.
 
-For an ad-hoc look at one screen, the Playwright MCP server (`.mcp.json`) drives a real browser.
+화면 하나를 그때그때 볼 때는 Playwright MCP 서버(`.mcp.json`)로 실제 브라우저를 조작한다.
 
-Quick manual checks: `curl -s http://localhost:4000/health` → `{"status":"ok"}`;
-`curl -s http://localhost:3000/api/projects | head -c 200` → proxied JSON.
+간단한 수동 확인: `curl -s http://localhost:4000/health` → `{"status":"ok"}`,
+`curl -s http://localhost:3000/api/projects | head -c 200` → 프록시를 거친 JSON.
 
-Non-default ports: server `.env` `PORT=4001`, `CLIENT_URL=http://localhost:3001`; client
-`.env.local` `API_URL`/`NEXT_PUBLIC_API_URL=http://localhost:4001`; start with `npx next dev -p 3001`.
+기본이 아닌 포트: 서버 `.env`에 `PORT=4001`, `CLIENT_URL=http://localhost:3001`, 클라이언트
+`.env.local`에 `API_URL`/`NEXT_PUBLIC_API_URL=http://localhost:4001`, 시작은 `npx next dev -p 3001`.
 
-## Gotchas
+## 주의할 점
 
-- **Seed dates drift.** Projects close on list-read once their deadline passes
-  (`lib/projectLifecycle.ts`). Re-seed: `(cd workbridge-server && npm run db:seed)` — plain
-  `node prisma/seed.js` does not load `.env`.
-- **Payment bypass is ON** locally (both flags). Payments are per milestone:
-  `POST /api/payments/dev-complete` takes `{ milestoneId }`, funded in sequence order.
-- **Uploads need a storage stub.** `SUPABASE_URL=http://localhost:54321` points at nothing until you run:
+- **시드 날짜는 밀린다.** 마감이 지나면 목록을 읽을 때 프로젝트가 닫힌다
+  (`lib/projectLifecycle.ts`). 다시 시드: `(cd workbridge-server && npm run db:seed)` — 그냥
+  `node prisma/seed.js`는 `.env`를 읽지 않는다.
+- **결제 우회가 켜져 있다**(로컬, 플래그 둘 다). 결제는 마일스톤 단위다:
+  `POST /api/payments/dev-complete`가 `{ milestoneId }`를 받고, 순서대로 결제된다.
+- **업로드에는 저장소 스텁이 필요하다.** `SUPABASE_URL=http://localhost:54321`은 아래를 띄우기 전까지 아무것도 가리키지 않는다:
   `node -e "require('http').createServer((q,r)=>{q.resume();q.on('end',()=>{r.writeHead(200,{'content-type':'application/json'});r.end('{\"Key\":\"stub\"}')})}).listen(54321)" &`
-  Without it, milestone attachments answer 502. Stored URLs point at the stub and don't render.
-- **Email is log-only**: `grep mail.sent /tmp/wb-server.log` (dev worker sends within ~5 s).
-- **Jobs on a future clock.** Weekly settlement is Monday 03:00 KST, payout Wednesday 10:00 KST,
-  unread digest 10 min after a message. To see them now, call
-  `runDueJobs({ now: <future>, types: ['settlement.weeklyBatch', 'settlement.payout'] })` from a
-  `tsx` one-off inside `workbridge-server/`, twice (the first pass enqueues the next). Always limit
-  `types`, or the lifecycle sweep closes every project whose deadline precedes that date.
+  없으면 마일스톤 첨부가 502로 답한다. 저장된 URL은 스텁을 가리켜서 이미지가 보이지 않는다.
+- **이메일은 로그로만 남는다**: `grep mail.sent /tmp/wb-server.log`(개발 워커가 ~5초 안에 보낸다).
+- **미래 시각의 작업.** 주간 정산은 월요일 03:00 KST, 지급은 수요일 10:00 KST, 읽지 않은 메시지
+  다이제스트는 메시지 10분 뒤다. 지금 보려면 `workbridge-server/` 안에서 `tsx` 일회성 스크립트로
+  `runDueJobs({ now: <future>, types: ['settlement.weeklyBatch', 'settlement.payout'] })`를 두 번
+  부른다(첫 번째가 다음 작업을 넣는다). `types`는 항상 제한한다. 그러지 않으면 수명주기 스윕이 마감이
+  그 날짜 전인 프로젝트를 모두 닫는다.
 
-## Troubleshooting
+## 문제 해결
 
-- `P1001` can't reach database → Postgres not running, or wrong DB in `DATABASE_URL`.
+- `P1001` can't reach database → Postgres가 꺼져 있거나 `DATABASE_URL`의 DB가 틀렸다.
 - `@prisma/client did not initialize yet` → `(cd workbridge-server && npm run db:generate)`.
 - `relation "Project" does not exist` → `(cd workbridge-server && npx prisma migrate deploy)`.
 - `EADDRINUSE` → `lsof -ti:4000 -ti:3000 | xargs kill`.
-- 429 on login → set `RATE_LIMIT_ENABLED=false` and restart, or
+- 로그인 429 → `RATE_LIMIT_ENABLED=false`로 두고 재시작하거나,
   `psql -d workbridge -c 'DELETE FROM "RateLimitCounter"'`.
-- CORS error → `CLIENT_URL` must be `http://localhost:3000`.
+- CORS 오류 → `CLIENT_URL`이 `http://localhost:3000`이어야 한다.

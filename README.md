@@ -43,7 +43,7 @@ bash scripts/test-db.sh       # workbridge_test 생성·마이그레이션
 npm run typecheck
 npm test
 
-# E2E (Playwright) — 저장소 루트에서. 시드한 workbridge_e2e DB, 서버 :4002, 클라이언트 :3002
+# E2E (Playwright) — 리포지토리 루트에서. 시드한 workbridge_e2e DB, 서버 :4002, 클라이언트 :3002
 cd ..
 bash scripts/e2e.sh
 
@@ -64,6 +64,7 @@ npm run lint && npm run build
 
 | 문서 | 설명 |
 | --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 구조: 레이어, 요청 흐름, 작업 큐, 클라이언트, 환경 |
 | [docs/BEHAVIOR.md](docs/BEHAVIOR.md) | API 동작 명세 (영문, 테스트의 기준). 알려진 불일치(D)와 미결 질문(Q) |
 | [docs/API.md](docs/API.md) | API 엔드포인트 목록 |
 | [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 모델과 불변식 |
