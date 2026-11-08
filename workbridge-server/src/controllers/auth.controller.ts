@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import axios from 'axios';
 import type { NextFunction, Request, Response } from 'express';
@@ -6,6 +7,7 @@ import prisma from '../lib/prisma';
 import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
 import { AppError } from '../lib/errors';
 import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
+import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
 import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index';
 import jwt from 'jsonwebtoken';
@@ -17,6 +19,18 @@ function setRefreshTokenCookie(res: Response, token: string) {
     sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
+}
+
+/**
+ * The Google OAuth `state` cookie (login CSRF defence). Scoped to the two OAuth routes and
+ * short-lived: it only has to survive one trip to Google's consent screen. `SameSite=Lax` still
+ * sends it on Google's top-level redirect back to the callback.
+ */
+export const OAUTH_STATE_COOKIE = 'oauthState';
+const OAUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000;
+
+function oauthStateCookieOptions() {
+  return { httpOnly: true, secure: env.isProduction, sameSite: 'lax' as const, path: '/api/auth/google' };
 }
 
 /** Builds the JWT claims — distinct from {@link authUserPayload}, the HTTP response shape. */
@@ -152,14 +166,20 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
 // response. Do not remove it as dead weight.
 export async function googleAuth(req: Request, res: Response, next: NextFunction) {
   try {
+    // A fresh random `state` per attempt, kept in a cookie and echoed back by Google. The
+    // callback accepts only a `state` equal to this browser's cookie, so a callback URL carrying
+    // someone else's `code` cannot sign this browser in to their account.
+    const state = randomBytes(32).toString('base64url');
     const params = new URLSearchParams({
       client_id: env.GOOGLE_CLIENT_ID,
       redirect_uri: env.GOOGLE_CALLBACK_URL,
       response_type: 'code',
       scope: 'openid email profile',
       access_type: 'offline',
+      state,
     });
 
+    res.cookie(OAUTH_STATE_COOKIE, state, { ...oauthStateCookieOptions(), maxAge: OAUTH_STATE_MAX_AGE_MS });
     res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
   } catch (err) {
     next(err);
@@ -168,8 +188,20 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
 
 export async function googleCallback(req: Request, res: Response, next: NextFunction) {
   try {
-    const { code } = req.query;
+    const { code, state } = req.query;
+    const expectedState: unknown = req.cookies?.[OAUTH_STATE_COOKIE];
+    // One attempt per cookie, whatever the outcome.
+    res.clearCookie(OAUTH_STATE_COOKIE, oauthStateCookieOptions());
+
     if (!code) {
+      return res.redirect(`${env.CLIENT_URL}/login?error=oauth_failed`);
+    }
+
+    if (
+      typeof state !== 'string' || !state
+      || typeof expectedState !== 'string' || !expectedState
+      || !safeEqual(state, expectedState)
+    ) {
       return res.redirect(`${env.CLIENT_URL}/login?error=oauth_failed`);
     }
 

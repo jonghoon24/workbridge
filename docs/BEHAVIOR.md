@@ -298,12 +298,20 @@ Q12/Q13; the mix is intended.
 
 ### `GET /google` — public
 - Redirects (**302**) to Google's consent screen with `client_id`, `redirect_uri`,
-  `response_type=code`, `scope=openid email profile`, `access_type=offline`.
+  `response_type=code`, `scope=openid email profile`, `access_type=offline` and `state`.
+- `state` is fresh and random on every call (at least 32 characters) and is also set as the
+  `oauthState` cookie: `httpOnly`, `SameSite=Lax`, `Secure` in production, path
+  `/api/auth/google`, 10 minutes. The Next.js proxy moves it onto the browser's origin, and on the
+  callback sends it back (login CSRF defence).
 - If Google environment variables are missing, this must return a **500** error response and
   leave the process running — it must never crash the server.
 
 ### `GET /google/callback` — public
 - Missing `code` → redirect to `${CLIENT_URL}/login?error=oauth_failed`.
+- `state` missing, no `oauthState` cookie, or the two not equal (constant-time) → redirect to
+  `${CLIENT_URL}/login?error=oauth_failed` **without exchanging the code**, so a callback URL
+  carrying someone else's `code` cannot sign this browser in to their account.
+- Every callback clears the `oauthState` cookie, whatever the outcome.
 - Exchanges the code, fetches the profile, then links or creates:
   - existing account matched by `googleId` **or** `email` → attaches `googleId`, fills
     `profileImage` if empty, and flags `needsRoleSelection` from `roleSelected`

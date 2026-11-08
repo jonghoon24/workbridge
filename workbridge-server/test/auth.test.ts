@@ -72,6 +72,20 @@ function stubGoogle(profile: Record<string, unknown> = googleProfile()) {
   axiosGet.mockResolvedValue({ data: profile });
 }
 
+/** The `state` the start route would have stored in this browser's `oauthState` cookie. */
+const OAUTH_STATE = 'state-issued-by-get-google';
+
+/** Google's redirect back to the callback, from the browser that started the login. */
+function googleCallback(code: string) {
+  return api()
+    .get(`/api/auth/google/callback?code=${code}&state=${OAUTH_STATE}`)
+    .set('Cookie', `oauthState=${OAUTH_STATE}`);
+}
+
+function oauthStateCookie(res: WithHeaders): string | undefined {
+  return setCookies(res).find((c) => c.startsWith('oauthState='));
+}
+
 let consoleError: { mockRestore: () => void };
 
 beforeEach(() => {
@@ -675,7 +689,23 @@ describe('GET /api/auth/google', () => {
       response_type: 'code',
       scope: 'openid email profile',
       access_type: 'offline',
+      state: expect.any(String),
     });
+  });
+
+  it('stores a fresh random state in a short-lived httpOnly SameSite=Lax cookie and sends the same value to Google', async () => {
+    const first = await api().get('/api/auth/google');
+    const second = await api().get('/api/auth/google');
+
+    const state = new URL(first.headers.location as string).searchParams.get('state') as string;
+    expect(state.length).toBeGreaterThanOrEqual(32);
+    const cookie = oauthStateCookie(first) as string;
+    expect(cookie.split(';')[0]).toBe(`oauthState=${state}`);
+    expect(cookie).toMatch(/HttpOnly/i);
+    expect(cookie).toMatch(/SameSite=Lax/i);
+    expect(cookie).toMatch(/Path=\/api\/auth\/google/);
+    expect(cookie).toMatch(/Max-Age=600/);
+    expect(new URL(second.headers.location as string).searchParams.get('state')).not.toBe(state);
   });
 
   it('returns a 500 error response — not a crash — when Google env vars are missing', async () => {
@@ -712,10 +742,60 @@ describe('GET /api/auth/google/callback', () => {
     expect(await prisma.user.count()).toBe(0);
   });
 
+  // Login CSRF: a callback URL carrying the attacker's own `code` must not sign the victim's
+  // browser in to the attacker's account. Only the browser that started the login holds the state.
+  it('redirects with error=oauth_failed when state does not match the cookie, without calling Google', async () => {
+    stubGoogle();
+
+    const res = await api()
+      .get(`/api/auth/google/callback?code=attacker-code&state=attacker-state`)
+      .set('Cookie', `oauthState=${OAUTH_STATE}`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(oauthFailed);
+    expect(axiosPost).not.toHaveBeenCalled();
+    expect(refreshCookie(res)).toBeUndefined();
+    expect(await prisma.user.count()).toBe(0);
+  });
+
+  it('redirects with error=oauth_failed when the browser has no state cookie', async () => {
+    stubGoogle();
+
+    const res = await api().get(`/api/auth/google/callback?code=attacker-code&state=${OAUTH_STATE}`);
+
+    expect(res.headers.location).toBe(oauthFailed);
+    expect(axiosPost).not.toHaveBeenCalled();
+    expect(await prisma.user.count()).toBe(0);
+  });
+
+  it('redirects with error=oauth_failed when the callback carries no state', async () => {
+    stubGoogle();
+
+    const res = await api().get('/api/auth/google/callback?code=attacker-code').set('Cookie', `oauthState=${OAUTH_STATE}`);
+
+    expect(res.headers.location).toBe(oauthFailed);
+    expect(axiosPost).not.toHaveBeenCalled();
+  });
+
+  it('clears the state cookie on every outcome, so one state serves one attempt', async () => {
+    stubGoogle();
+    const success = await googleCallback('auth-code-123');
+    const mismatch = await api()
+      .get('/api/auth/google/callback?code=c&state=other')
+      .set('Cookie', `oauthState=${OAUTH_STATE}`);
+
+    for (const res of [success, mismatch]) {
+      const cookie = oauthStateCookie(res) as string;
+      expect(cookie).toMatch(/^oauthState=;/);
+      expect(cookie).toMatch(/Path=\/api\/auth\/google/);
+      expect(cookie).toMatch(/Expires=Thu, 01 Jan 1970/);
+    }
+  });
+
   it('creates a brand-new Google user as FREELANCER with roleSelected false', async () => {
     stubGoogle();
 
-    const res = await api().get('/api/auth/google/callback?code=auth-code-123');
+    const res = await googleCallback('auth-code-123');
 
     expect(res.status).toBe(302);
     const location = new URL(res.headers.location as string);
@@ -744,7 +824,7 @@ describe('GET /api/auth/google/callback', () => {
   it('exchanges the code and fetches the profile with the returned access token', async () => {
     stubGoogle();
 
-    await api().get('/api/auth/google/callback?code=auth-code-123');
+    await googleCallback('auth-code-123');
 
     expect(axiosPost).toHaveBeenCalledWith(
       'https://oauth2.googleapis.com/token',
@@ -764,7 +844,7 @@ describe('GET /api/auth/google/callback', () => {
     });
     stubGoogle(googleProfile({ email: 'someone.else@test.local' }));
 
-    const res = await api().get('/api/auth/google/callback?code=code');
+    const res = await googleCallback('code');
 
     const location = new URL(res.headers.location as string);
     expect(location.searchParams.get('needsRoleSelection')).toBe('false');
@@ -778,7 +858,7 @@ describe('GET /api/auth/google/callback', () => {
     await makeUser({ googleId: 'google-uid-1', roleSelected: false, password: null });
     stubGoogle(googleProfile({ email: 'unrelated@test.local' }));
 
-    const res = await api().get('/api/auth/google/callback?code=code');
+    const res = await googleCallback('code');
 
     const location = new URL(res.headers.location as string);
     expect(location.searchParams.get('needsRoleSelection')).toBe('true');
@@ -792,7 +872,7 @@ describe('GET /api/auth/google/callback', () => {
     });
     stubGoogle(googleProfile({ email: 'no-picture-yet@test.local' }));
 
-    await api().get('/api/auth/google/callback?code=code');
+    await googleCallback('code');
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: existing.id } });
     expect(stored.profileImage).toBe('https://lh3.googleusercontent.com/pic.jpg');
@@ -806,7 +886,7 @@ describe('GET /api/auth/google/callback', () => {
     });
     stubGoogle(googleProfile({ email: 'has-picture@test.local' }));
 
-    await api().get('/api/auth/google/callback?code=code');
+    await googleCallback('code');
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: existing.id } });
     expect(stored.profileImage).toBe('https://cdn.test.local/mine.png');
@@ -815,7 +895,7 @@ describe('GET /api/auth/google/callback', () => {
   it('degrades to oauth_failed when the token exchange fails', async () => {
     axiosPost.mockRejectedValue(new Error('502 from Google'));
 
-    const res = await api().get('/api/auth/google/callback?code=code');
+    const res = await googleCallback('code');
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe(oauthFailed);
@@ -827,7 +907,7 @@ describe('GET /api/auth/google/callback', () => {
     axiosPost.mockResolvedValue({ data: { access_token: 'ya29.stub' } });
     axiosGet.mockRejectedValue(new Error('401 invalid_token'));
 
-    const res = await api().get('/api/auth/google/callback?code=code');
+    const res = await googleCallback('code');
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe(oauthFailed);
@@ -837,7 +917,7 @@ describe('GET /api/auth/google/callback', () => {
   it('degrades to oauth_failed when the profile has no email to persist', async () => {
     stubGoogle({ id: 'google-uid-1', name: 'No Email' });
 
-    const res = await api().get('/api/auth/google/callback?code=code');
+    const res = await googleCallback('code');
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe(oauthFailed);
@@ -853,7 +933,7 @@ describe('GET /api/auth/google/callback', () => {
     });
     stubGoogle();
 
-    const res = await api().get('/api/auth/google/callback?code=code');
+    const res = await googleCallback('code');
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe(oauthFailed);
@@ -871,7 +951,7 @@ describe('GET /api/auth/google/callback', () => {
     const victim = await makeClient({ email: 'victim@test.local' });
     stubGoogle(googleProfile({ id: 'attacker-google-uid', email: victim.email, verified_email: false }));
 
-    const res = await api().get('/api/auth/google/callback?code=code');
+    const res = await googleCallback('code');
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: victim.id } });
     expect(stored.googleId).toBeNull();
@@ -886,7 +966,7 @@ describe('GET /api/auth/google/callback', () => {
     const victim = await makeClient({ email: 'victim2@test.local' });
     stubGoogle(googleProfile({ id: 'attacker-google-uid-2', email: victim.email }));
 
-    const res = await api().get('/api/auth/google/callback?code=code');
+    const res = await googleCallback('code');
 
     const location = new URL(res.headers.location as string);
     const token = location.searchParams.get('token');
