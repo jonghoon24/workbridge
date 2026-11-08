@@ -1,0 +1,42 @@
+name: 기능 제안
+description: 새 기능이나 기존 화면·API의 개선
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 영역
+      multiple: true
+      options:
+        - 서버 (workbridge-server)
+        - 클라이언트 (workbridge-client)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 지금의 불편
+      description: 누가(의뢰인/프리랜서) 어떤 상황에서 무엇을 못 하거나 번거로운지.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 제안
+      description: 화면이나 API가 어떻게 바뀌면 되는지.
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: 현재 구현
+      description: 관련 화면·컴포넌트·엔드포인트. 이미 있는 API로 되는지, 서버 변경이 필요한지.
+    validations:
+      required: false
+  - type: textarea
+    id: scope
+    attributes:
+      label: 범위 밖
+      description: 이번에 하지 않을 것.
+    validations:
+      required: false
