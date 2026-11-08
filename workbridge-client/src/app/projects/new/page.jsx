@@ -8,6 +8,7 @@ import ProjectForm from '@/components/projects/ProjectForm';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import { getProfileCompletionMessage, isProfileComplete } from '@/lib/profileCompletion';
+import { toUserMessage } from '@/lib/errorMessages';
 
 export default function NewProjectPage() {
   const [profile, setProfile] = useState(null);
@@ -19,7 +20,7 @@ export default function NewProjectPage() {
     api.get('/api/users/me')
       .then(({ data }) => setProfile(data))
       .catch((err) => {
-        setError(err.response?.data?.error?.message || '프로필을 불러오지 못했습니다');
+        setError(toUserMessage(err, '프로필을 불러오지 못했습니다'));
       })
       .finally(() => setLoading(false));
   }, []);

@@ -63,7 +63,7 @@ export default function PortfolioManagePage() {
   }
 
   async function handleDelete(item) {
-    if (!confirm(`'${item.title}' 포트폴리오를 삭제할까요? 삭제하면 되돌릴 수 없습니다.`)) return;
+    if (!confirm(`'${item.title}' 포트폴리오를 삭제하시겠습니까? 삭제하면 되돌릴 수 없습니다.`)) return;
     setBusy(true);
     setError('');
     try {
@@ -122,7 +122,7 @@ export default function PortfolioManagePage() {
 
       {full && (
         <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm mb-4">
-          포트폴리오는 최대 {MAX_ITEMS}개까지 등록할 수 있습니다. 새로 추가하려면 하나를 삭제해주세요.
+          포트폴리오는 최대 {MAX_ITEMS}개까지 등록할 수 있습니다. 새로 추가하려면 하나를 삭제해 주세요.
         </div>
       )}
       {error && (

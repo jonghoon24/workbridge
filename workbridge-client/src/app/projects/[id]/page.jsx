@@ -14,6 +14,9 @@ import Input from '@/components/ui/Input';
 import ProjectCard from '@/components/projects/ProjectCard';
 import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
 import { getProfileCompletionMessage, isProfileComplete } from '@/lib/profileCompletion';
+import { toUserMessage } from '@/lib/errorMessages';
+import { formatDate } from '@/lib/format';
+import { BookmarkIcon } from '@/components/ui/Icons';
 
 const RECOMMENDATION_LIMIT = 3;
 
@@ -32,6 +35,8 @@ export default function ProjectDetailPage() {
   const [applyError, setApplyError] = useState('');
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  // 프리랜서가 이 프로젝트에 이미 지원했는지. 지원했으면 '지원하기' 대신 '지원 완료'를 보여 준다.
+  const [myApplication, setMyApplication] = useState(null);
 
   useEffect(() => {
     const store = useAuthStore.getState();
@@ -46,10 +51,26 @@ export default function ProjectDetailPage() {
       .then(({ data }) => setProject(data))
       .catch((err) => {
         setProject(null);
-        setError(err.response?.data?.error?.message || '프로젝트를 불러오지 못했습니다');
+        setError(toUserMessage(err, '프로젝트를 불러오지 못했습니다'));
       })
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (user?.role !== 'FREELANCER') {
+      setMyApplication(null);
+      return undefined;
+    }
+    let ignore = false;
+    api.get('/api/users/me/applications')
+      .then(({ data }) => {
+        if (!ignore) setMyApplication(data.find((application) => application.project?.id === id) || null);
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, [id, user?.role]);
 
   useEffect(() => {
     if (!project?.id) {
@@ -77,7 +98,7 @@ export default function ProjectDetailPage() {
         if (project.category) {
           const categoryParams = new URLSearchParams({
             category: project.category,
-            status: 'ALL',
+            status: 'OPEN',
             limit: String(RECOMMENDATION_LIMIT + 1),
             sort: 'latest',
           });
@@ -87,7 +108,7 @@ export default function ProjectDetailPage() {
 
         if (nextRecommendations.length < RECOMMENDATION_LIMIT) {
           const fallbackParams = new URLSearchParams({
-            status: 'ALL',
+            status: 'OPEN',
             limit: String(RECOMMENDATION_LIMIT + 4),
             sort: 'latest',
           });
@@ -98,8 +119,7 @@ export default function ProjectDetailPage() {
         if (!cancelled) {
           setRecommendations(nextRecommendations);
         }
-      } catch (err) {
-        console.error(err);
+      } catch {
         if (!cancelled) {
           setRecommendations([]);
         }
@@ -126,7 +146,7 @@ export default function ProjectDetailPage() {
       setApplyModal(false);
       router.push('/my/applications');
     } catch (err) {
-      const message = err.response?.data?.error?.message || '지원에 실패했습니다';
+      const message = toUserMessage(err, '지원에 실패했습니다');
       if (err.response?.status === 403 && message.includes('프로필')) {
         alert(getProfileCompletionMessage('FREELANCER'));
         setApplyModal(false);
@@ -151,19 +171,19 @@ export default function ProjectDetailPage() {
 
       setApplyModal(true);
     } catch (err) {
-      alert(err.response?.data?.error?.message || '프로필을 확인하지 못했습니다');
+      alert(toUserMessage(err, '프로필을 확인하지 못했습니다'));
     } finally {
       setProfileChecking(false);
     }
   }
 
   async function handleDelete() {
-    if (!confirm('프로젝트를 삭제하시겠습니까?')) return;
+    if (!confirm('프로젝트를 삭제하시겠습니까? 삭제하면 되돌릴 수 없습니다.')) return;
     try {
       await api.delete(`/api/projects/${id}`);
       router.push('/projects');
     } catch (err) {
-      alert(err.response?.data?.error?.message || '삭제에 실패했습니다');
+      alert(toUserMessage(err, '프로젝트를 삭제하지 못했습니다'));
     }
   }
 
@@ -173,7 +193,7 @@ export default function ProjectDetailPage() {
       const { data } = await api.patch(`/api/projects/${id}/status`, { status: 'CLOSED' });
       setProject((prev) => ({ ...prev, status: data.status }));
     } catch (err) {
-      alert(err.response?.data?.error?.message || '모집 마감에 실패했습니다');
+      alert(toUserMessage(err, '모집을 마감하지 못했습니다'));
     }
   }
 
@@ -210,7 +230,9 @@ export default function ProjectDetailPage() {
 
   const isOwner = user?.id === project.clientId;
   const isFreelancer = user?.role === 'FREELANCER';
-  const canApply = isFreelancer && project.status === 'OPEN';
+  const isGuest = !user;
+  const canApply = isFreelancer && project.status === 'OPEN' && !myApplication;
+  const loginHref = `/login?redirect=${encodeURIComponent(`/projects/${id}`)}`;
   const canClose = isOwner && project.status === 'OPEN';
 
   return (
@@ -230,6 +252,25 @@ export default function ProjectDetailPage() {
           {isFreelancer && (
             <ProjectBookmarkButton projectId={id} />
           )}
+          {isGuest && project.status === 'OPEN' && (
+            <>
+              <Link
+                href={loginHref}
+                className="inline-flex shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-500 transition-colors hover:border-primary-200 hover:text-primary-700"
+              >
+                <BookmarkIcon className="h-3.5 w-3.5" />
+                북마크
+              </Link>
+              <Link href={loginHref}>
+                <Button>로그인하고 지원하기</Button>
+              </Link>
+            </>
+          )}
+          {isFreelancer && myApplication && (
+            <Link href="/my/applications">
+              <Button variant="secondary">지원 완료 · 내 지원 현황</Button>
+            </Link>
+          )}
           {isOwner && (
             <>
               <Link href={`/projects/${id}/edit`}>
@@ -244,7 +285,7 @@ export default function ProjectDetailPage() {
               {canClose && (
                 <Button variant="secondary" size="sm" onClick={handleCloseProject}>모집 마감</Button>
               )}
-              <Button variant="danger" size="sm" onClick={handleDelete}>삭제</Button>
+              <Button variant="dangerText" size="sm" onClick={handleDelete}>삭제</Button>
             </>
           )}
           {canApply && (
@@ -257,7 +298,7 @@ export default function ProjectDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card className="p-6">
             <h2 className="font-semibold text-gray-900 mb-3">프로젝트 설명</h2>
-            <p className="text-[15px] leading-7 text-gray-700 whitespace-pre-wrap">{project.description}</p>
+            <p className="text-[15px] leading-7 text-gray-700 whitespace-pre-wrap break-words">{project.description}</p>
           </Card>
 
           {project.requiredSkills?.length > 0 && (
@@ -282,21 +323,19 @@ export default function ProjectDetailPage() {
                 <dt className="text-gray-500">예산</dt>
                 <dd className="font-bold text-gray-900">{project.budget?.toLocaleString()}원</dd>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">모집 시작일</dt>
-                <dd className="font-medium">
-                  {project.recruitmentStartDate
-                    ? new Date(project.recruitmentStartDate).toLocaleDateString('ko-KR')
-                    : '-'}
-                </dd>
-              </div>
+              {project.recruitmentStartDate && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">모집 시작일</dt>
+                  <dd className="font-medium">{formatDate(project.recruitmentStartDate)}</dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-gray-500">마감일</dt>
-                <dd className="font-medium">{new Date(project.deadline).toLocaleDateString('ko-KR')}</dd>
+                <dd className="font-medium">{formatDate(project.deadline)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-gray-500">등록일</dt>
-                <dd className="font-medium">{new Date(project.createdAt).toLocaleDateString('ko-KR')}</dd>
+                <dd className="font-medium">{formatDate(project.createdAt)}</dd>
               </div>
             </dl>
           </Card>
@@ -323,11 +362,11 @@ export default function ProjectDetailPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
             <div>
               <h2 className="text-xl font-bold text-gray-900">추천 프로젝트</h2>
-              <p className="text-sm text-gray-500 mt-1">비슷한 분야의 다른 프로젝트를 확인해보세요</p>
+              <p className="text-sm text-gray-500 mt-1">같은 분야에서 지금 모집 중인 프로젝트입니다</p>
             </div>
             {project.category && (
               <Link
-                href={`/projects?category=${encodeURIComponent(project.category)}&status=ALL`}
+                href={`/projects?category=${encodeURIComponent(project.category)}`}
                 className="text-sm font-medium text-primary-700 hover:text-primary-800"
               >
                 같은 분야 더 보기
@@ -367,7 +406,7 @@ export default function ProjectDetailPage() {
               rows={4}
               required
               className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-              placeholder="지원 동기와 경험을 자세히 작성해주세요"
+              placeholder="지원 동기와 경험을 자세히 작성해 주세요"
             />
           </div>
           <Input

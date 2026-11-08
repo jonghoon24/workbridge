@@ -14,6 +14,7 @@ import UnreadBadge from '@/components/messages/UnreadBadge';
 import EmptyState from '@/components/ui/EmptyState';
 import { FileTextIcon } from '@/components/ui/Icons';
 import PageLoader from '@/components/ui/PageLoader';
+import { toUserMessage } from '@/lib/errorMessages';
 
 const TABS = [
   { value: '', label: '전체' },
@@ -53,7 +54,7 @@ export default function MyContractsPage() {
         setMeta(data.meta || { total: 0, page, limit: PAGE_SIZE, totalPages: 0 });
       })
       .catch((err) => {
-        if (!ignored) setError(err.response?.data?.error?.message || '계약 목록을 불러오지 못했습니다');
+        if (!ignored) setError(toUserMessage(err, '계약 목록을 불러오지 못했습니다'));
       })
       .finally(() => {
         if (!ignored) setLoading(false);

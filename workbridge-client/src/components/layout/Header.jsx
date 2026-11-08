@@ -305,7 +305,7 @@ export default function Header() {
                       )}
                       {user.role === 'CLIENT' && (
                         <>
-                          <MenuLink href="/my/projects" icon={BriefcaseIcon} onClick={close}>내 프로젝트 보기</MenuLink>
+                          <MenuLink href="/my/projects" icon={BriefcaseIcon} onClick={close}>내 프로젝트</MenuLink>
                           <MenuLink href="/my/payments" icon={CreditCardIcon} onClick={close}>결제 내역</MenuLink>
                         </>
                       )}

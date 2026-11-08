@@ -8,6 +8,7 @@ import ProjectCard from '@/components/projects/ProjectCard';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { BookmarkIcon } from '@/components/ui/Icons';
+import { toUserMessage } from '@/lib/errorMessages';
 
 export default function MyBookmarksPage() {
   const [projects, setProjects] = useState([]);
@@ -19,7 +20,7 @@ export default function MyBookmarksPage() {
     api.get('/api/users/me/bookmarks')
       .then(({ data }) => setProjects(data))
       .catch((err) => {
-        setError(err.response?.data?.error?.message || '북마크를 불러오지 못했습니다');
+        setError(toUserMessage(err, '북마크를 불러오지 못했습니다'));
       })
       .finally(() => setLoading(false));
   }, []);

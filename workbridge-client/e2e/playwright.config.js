@@ -1,5 +1,6 @@
 // @ts-check
 const { defineConfig, devices } = require('@playwright/test');
+const { BASE_URL } = require('./helpers/accounts'); // refuses non-local addresses
 
 // Specs share one seeded database, so they run one at a time. Each spec builds the state it
 // needs (fresh projects, applications, contracts) instead of mutating seed rows, which is what
@@ -16,7 +17,7 @@ module.exports = defineConfig({
   outputDir: '../test-results/playwright',
   reporter: [['list'], ['html', { outputFolder: '../playwright-report', open: 'never' }]],
   use: {
-    baseURL: process.env.E2E_BASE_URL || 'http://localhost:3002',
+    baseURL: BASE_URL,
     locale: 'ko-KR',
     timezoneId: 'Asia/Seoul',
     trace: 'retain-on-failure',

@@ -10,6 +10,8 @@ import Card from '@/components/ui/Card';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { BriefcaseIcon } from '@/components/ui/Icons';
+import { toUserMessage } from '@/lib/errorMessages';
+import { formatDate } from '@/lib/format';
 
 export default function MyProjectsPage() {
   const [projects, setProjects] = useState([]);
@@ -21,7 +23,7 @@ export default function MyProjectsPage() {
     api.get('/api/users/me/projects')
       .then(({ data }) => setProjects(data))
       .catch((err) => {
-        setError(err.response?.data?.error?.message || '내 프로젝트를 불러오지 못했습니다');
+        setError(toUserMessage(err, '내 프로젝트를 불러오지 못했습니다'));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -78,12 +80,10 @@ export default function MyProjectsPage() {
                     <span>{project.category}</span>
                     <span>지원자 {project._count?.applications || 0}명</span>
                     <span>{project.budget?.toLocaleString()}원</span>
-                    <span>
-                      모집 시작 {project.recruitmentStartDate
-                        ? new Date(project.recruitmentStartDate).toLocaleDateString('ko-KR')
-                        : '-'}
-                    </span>
-                    <span>마감 {new Date(project.deadline).toLocaleDateString('ko-KR')}</span>
+                    {project.recruitmentStartDate && (
+                      <span>모집 시작 {formatDate(project.recruitmentStartDate)}</span>
+                    )}
+                    <span>마감 {formatDate(project.deadline)}</span>
                   </div>
                 </div>
 

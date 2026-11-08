@@ -1,14 +1,23 @@
+'use client';
+
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import BrandMark from '@/components/ui/BrandMark';
 import { ShieldCheckIcon, SparklesIcon, StarIcon } from '@/components/ui/Icons';
 
 const PROMISES = [
-  { icon: ShieldCheckIcon, text: '마일스톤 안전결제' },
+  { icon: ShieldCheckIcon, text: '단계별 안전결제' },
   { icon: SparklesIcon, text: 'AI 단가 분석' },
   { icon: StarIcon, text: '상호 리뷰' },
 ];
 
+// 메시지 화면은 대화창이 화면 높이를 꽉 채우므로 푸터를 숨긴다.
+const HIDDEN_PREFIXES = ['/messages'];
+
 export default function Footer() {
+  const pathname = usePathname() || '';
+  if (HIDDEN_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return null;
+
   return (
     <footer className="mt-auto border-t border-gray-200 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">

@@ -7,6 +7,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import useAuthStore from '@/store/authStore';
 import authApi from '@/lib/authApi';
+import { toUserMessage } from '@/lib/errorMessages';
 
 /**
  * Where to go after logging in. Only a path on this site: it must start with `/`, and not with
@@ -40,7 +41,7 @@ export default function LoginForm() {
       setAuth(data.user, data.accessToken);
       router.push(redirect);
     } catch (err) {
-      setError(err.response?.data?.error?.message || '로그인에 실패했습니다');
+      setError(toUserMessage(err, '로그인에 실패했습니다'));
     } finally {
       setLoading(false);
     }
@@ -73,7 +74,7 @@ export default function LoginForm() {
         required
         value={form.password}
         onChange={(e) => setForm({ ...form, password: e.target.value })}
-        placeholder="비밀번호를 입력하세요"
+        placeholder="비밀번호를 입력해 주세요"
       />
 
       <Button type="submit" loading={loading} className="w-full" size="lg">

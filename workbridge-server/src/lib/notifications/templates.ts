@@ -42,26 +42,26 @@ const ms = (v: TemplateVars) => `'${v.milestoneTitle}'`;
 const TEMPLATES: Record<TemplateType, (v: TemplateVars) => RenderedNotification> = {
   CONTRACT_ACTIVATED: (v) => ({
     title: '계약이 체결되었습니다',
-    message: `'${v.projectTitle}' 계약에 양측이 서명했습니다. 첫 마일스톤 결제부터 진행해주세요.`,
+    message: `'${v.projectTitle}' 계약에 양측이 서명했습니다. 첫 마일스톤 결제부터 진행해 주세요.`,
     href: contractHref(v),
   }),
   MILESTONE_PLAN_UPDATED: (v) => ({
     title: '마일스톤 계획이 변경되었습니다',
-    message: `'${v.projectTitle}' 계약의 마일스톤 계획이 바뀌어 서명이 초기화되었습니다. 다시 확인하고 서명해주세요.`,
+    message: `'${v.projectTitle}' 계약의 마일스톤 계획이 바뀌어 서명이 초기화되었습니다. 다시 확인하고 서명해 주세요.`,
     href: contractHref(v),
   }),
   MILESTONE_FUNDED: (v) => ({
     title: '마일스톤 결제가 완료되었습니다',
-    message: `마일스톤 ${ms(v)}에 ${won(v.amount)}이 예치되었습니다. 작업을 시작해주세요.`,
+    message: `마일스톤 ${ms(v)}의 ${won(v.amount)}이 안전결제로 결제되었습니다. 작업을 시작해 주세요.`,
     href: milestoneHref(v),
   }),
   MILESTONE_SUBMITTED: (v) => ({
-    title: '산출물이 제출되었습니다',
-    message: `마일스톤 ${ms(v)}의 산출물이 제출되었습니다. 검수 후 승인하거나 수정을 요청해주세요.`,
+    title: '결과물이 제출되었습니다',
+    message: `마일스톤 ${ms(v)}의 결과물이 제출되었습니다. 검수 후 승인하거나 수정을 요청해 주세요.`,
     href: milestoneHref(v),
   }),
   MILESTONE_REVISION_REQUESTED: (v) => ({
-    title: '수정 요청이 도착했습니다',
+    title: '수정 요청이 있습니다',
     message: `마일스톤 ${ms(v)}에 수정 요청이 있습니다: ${v.reason ?? ''}`.trim(),
     href: milestoneHref(v),
   }),
@@ -77,7 +77,7 @@ const TEMPLATES: Record<TemplateType, (v: TemplateVars) => RenderedNotification>
   }),
   MILESTONE_AUTO_APPROVE_REMINDER: (v) => ({
     title: '곧 자동 승인됩니다',
-    message: `${ms(v)} 마일스톤이 48시간 뒤 자동 승인됩니다. 그 전에 검수해주세요.`,
+    message: `${ms(v)} 마일스톤이 48시간 뒤 자동 승인됩니다. 그 전에 검수해 주세요.`,
     href: milestoneHref(v),
   }),
   MILESTONE_DUE_SOON: (v) => ({
@@ -87,12 +87,12 @@ const TEMPLATES: Record<TemplateType, (v: TemplateVars) => RenderedNotification>
   }),
   MILESTONE_OVERDUE: (v) => ({
     title: '마일스톤 기한이 지났습니다',
-    message: `마일스톤 ${ms(v)}의 기한이 지났습니다. 일정을 다시 협의해주세요.`,
+    message: `마일스톤 ${ms(v)}의 기한이 지났습니다. 일정을 다시 협의해 주세요.`,
     href: milestoneHref(v),
   }),
   CONTRACT_COMPLETED: (v) => ({
     title: '계약이 완료되었습니다',
-    message: `'${v.projectTitle}' 계약의 모든 마일스톤이 승인되었습니다. 리뷰를 남겨주세요.`,
+    message: `'${v.projectTitle}' 계약의 모든 마일스톤이 승인되었습니다. 리뷰를 남겨 주세요.`,
     href: `${contractHref(v)}#review`,
   }),
   SETTLEMENT_SCHEDULED: (v) => ({
@@ -107,12 +107,12 @@ const TEMPLATES: Record<TemplateType, (v: TemplateVars) => RenderedNotification>
   }),
   SETTLEMENT_ON_HOLD: (v) => ({
     title: '정산이 보류되었습니다',
-    message: `지급 계좌가 없어 ${won(v.amount)} 정산이 보류되었습니다. 지급 계좌를 등록해주세요.`,
+    message: `지급 계좌가 없어 ${won(v.amount)} 정산이 보류되었습니다. 지급 계좌를 등록해 주세요.`,
     href: '/settlements/account',
   }),
   SETTLEMENT_FAILED: (v) => ({
     title: '정산 지급에 실패했습니다',
-    message: `${won(v.amount)} 지급이 반복해서 실패했습니다. 고객센터로 문의해주세요.`,
+    message: `${won(v.amount)} 지급이 반복해서 실패했습니다. 지급 계좌 정보(은행, 계좌번호, 예금주)를 확인해 주세요.`,
     href: settlementHref(v),
   }),
   MESSAGE_UNREAD_DIGEST: (v) => ({

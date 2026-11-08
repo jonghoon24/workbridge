@@ -16,6 +16,7 @@ import { formatDate, formatDateTime, formatKRW, formatRemaining } from '@/lib/fo
 import { PAYMENT_STATUS_LABELS } from '@/constants/milestones';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
+import { toUserMessage } from '@/lib/errorMessages';
 
 export default function MilestoneDetailPage() {
   const { id: contractId, milestoneId } = useParams();
@@ -37,7 +38,7 @@ export default function MilestoneDetailPage() {
     useAuthStore.getState().initAuth();
     loadMilestone()
       .catch((err) => {
-        setLoadError(err.response?.data?.error?.message || '마일스톤을 불러오지 못했습니다');
+        setLoadError(toUserMessage(err, '마일스톤을 불러오지 못했습니다'));
       })
       .finally(() => setLoading(false));
   }, [loadMilestone]);
@@ -49,7 +50,7 @@ export default function MilestoneDetailPage() {
   }, [milestone]);
 
   async function handleApprove() {
-    if (!confirm('이 마일스톤을 승인할까요?\n승인하면 대금이 프리랜서 정산 대상으로 확정되며 되돌릴 수 없습니다.')) {
+    if (!confirm('이 마일스톤을 승인하시겠습니까?\n승인하면 대금이 프리랜서 정산 대상으로 확정되며 되돌릴 수 없습니다.')) {
       return;
     }
     setApproving(true);
@@ -61,7 +62,7 @@ export default function MilestoneDetailPage() {
         : '마일스톤을 승인했습니다.');
       await loadMilestone();
     } catch (err) {
-      setActionError(err.response?.data?.error?.message || '승인에 실패했습니다');
+      setActionError(toUserMessage(err, '승인에 실패했습니다'));
     } finally {
       setApproving(false);
     }
@@ -75,7 +76,7 @@ export default function MilestoneDetailPage() {
   }
 
   async function handleSubmitted() {
-    setNotice('산출물을 제출했습니다. 의뢰인이 검수하지 않으면 기한 뒤 자동 승인됩니다.');
+    setNotice('결과물을 제출했습니다. 의뢰인이 검수 기한까지 검수하지 않으면 자동으로 승인됩니다.');
     await loadMilestone().catch(() => {});
   }
 
@@ -150,14 +151,16 @@ export default function MilestoneDetailPage() {
                   {remaining ? `자동 승인까지 ${remaining} 남음` : '자동 승인 처리 대기 중'}
                 </p>
                 <p className="text-sm text-gray-600 mt-1">
-                  {formatDateTime(milestone.autoApproveAt)}까지 승인하거나 반려하지 않으면 자동으로 승인됩니다.
+                  {canReview
+                    ? `${formatDateTime(milestone.autoApproveAt)}까지 승인하거나 수정을 요청하지 않으면 자동으로 승인됩니다.`
+                    : `의뢰인이 ${formatDateTime(milestone.autoApproveAt)}까지 검수하지 않으면 자동으로 승인됩니다.`}
                 </p>
               </div>
               {canReview && (
                 <div className="flex gap-2">
                   <Button onClick={handleApprove} loading={approving}>승인</Button>
                   <Button variant="secondary" onClick={() => setRejectOpen(true)} disabled={approving}>
-                    반려
+                    수정 요청
                   </Button>
                 </div>
               )}
@@ -236,7 +239,7 @@ export default function MilestoneDetailPage() {
         {canSubmit && (
           <Card className="p-6">
             <h2 className="font-semibold text-gray-900 mb-4">
-              {milestone.status === 'REVISION_REQUESTED' ? '산출물 재제출' : '산출물 제출'}
+              {milestone.status === 'REVISION_REQUESTED' ? '결과물 다시 제출' : '결과물 제출'}
             </h2>
             {lastRejection?.decisionReason && (
               <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-3">

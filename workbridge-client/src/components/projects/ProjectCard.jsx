@@ -17,9 +17,13 @@ export default function ProjectCard({ project, onBookmarkChange }) {
   const daysLeft = Math.ceil(
     (new Date(project.deadline) - now) / (1000 * 60 * 60 * 24)
   );
-  const timelineLabel = project.status === 'UPCOMING' && recruitmentStartDate
-    ? daysUntilStart > 0 ? `${daysUntilStart}일 후 시작` : '오늘 시작'
-    : daysLeft > 0 ? `${daysLeft}일 남음` : '마감됨';
+  // 모집 마감·완료된 프로젝트는 배지가 이미 상태를 말하므로 남은 기간을 따로 쓰지 않는다.
+  let timelineLabel = null;
+  if (project.status === 'UPCOMING' && recruitmentStartDate) {
+    timelineLabel = daysUntilStart > 0 ? `${daysUntilStart}일 후 시작` : '오늘 시작';
+  } else if (project.status === 'OPEN') {
+    timelineLabel = daysLeft > 0 ? `${daysLeft}일 남음` : '오늘 마감';
+  }
 
   const urgent = project.status === 'OPEN' && daysLeft > 0 && daysLeft <= 7;
 
@@ -28,9 +32,11 @@ export default function ProjectCard({ project, onBookmarkChange }) {
       <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <Badge variant={project.status}>{project.status}</Badge>
-          <span className={`truncate text-xs font-medium ${urgent ? 'text-red-600' : 'text-gray-500'}`}>
-            {timelineLabel}
-          </span>
+          {timelineLabel && (
+            <span className={`truncate text-xs font-medium ${urgent ? 'text-red-600' : 'text-gray-500'}`}>
+              {timelineLabel}
+            </span>
+          )}
         </div>
         <ProjectBookmarkButton
           projectId={project.id}

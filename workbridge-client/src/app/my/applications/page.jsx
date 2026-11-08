@@ -9,16 +9,19 @@ import Badge from '@/components/ui/Badge';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { BriefcaseIcon } from '@/components/ui/Icons';
+import { formatDate } from '@/lib/format';
+import { toUserMessage } from '@/lib/errorMessages';
 
 export default function MyApplicationsPage() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
     api.get('/api/users/me/applications')
       .then(({ data }) => setApplications(data))
-      .catch(console.error)
+      .catch((err) => setError(toUserMessage(err, '지원 현황을 불러오지 못했습니다')))
       .finally(() => setLoading(false));
   }, []);
 
@@ -28,7 +31,9 @@ export default function MyApplicationsPage() {
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">내 지원 현황</h1>
 
-      {applications.length === 0 ? (
+      {error ? (
+        <EmptyState tone="error" title={error} />
+      ) : applications.length === 0 ? (
         <EmptyState
           icon={BriefcaseIcon}
           title="아직 지원한 프로젝트가 없습니다"
@@ -66,7 +71,7 @@ export default function MyApplicationsPage() {
                   </p>
                   <p className="text-xs text-gray-500">{app.expectedDuration}</p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {new Date(app.createdAt).toLocaleDateString('ko-KR')}
+                    {formatDate(app.createdAt)}
                   </p>
                 </div>
               </div>

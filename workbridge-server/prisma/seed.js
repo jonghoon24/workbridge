@@ -5,7 +5,7 @@
 // It also does not load dotenv: run it through `npm run db:seed` / `npx prisma db seed` (Prisma
 // loads `.env`), or export DATABASE_URL and DIRECT_URL yourself before `node prisma/seed.js`.
 //
-// Demo dataset for recording (docs/SEED_DATA.md describes it). Every date is computed from the
+// Sample dataset for local development and the shared environments (docs/SEED_DATA.md describes it). Every date is computed from the
 // moment the seed runs, so OPEN projects always have a future deadline and settlement weeks line
 // up with the real calendar. The rows follow the same invariants the services keep (BEHAVIOR.md):
 // milestone sums, sequential funding, one payment per funded milestone, fee math, settlement
@@ -101,37 +101,37 @@ function check(condition, message) {
 const milestoneHref = (contractId, milestoneId) => `/contracts/${contractId}/milestones/${milestoneId}`;
 const TEMPLATES = {
   APPLICATION_CREATED: (v) => ({
-    title: '새 지원자가 도착했습니다',
+    title: '새 지원자가 있습니다',
     message: `${v.applicantName}님이 '${v.projectTitle}' 프로젝트에 지원했습니다.`,
     href: `/projects/${v.projectId}/applications`,
   }),
   APPLICATION_ACCEPTED: (v) => ({
     title: '지원이 수락되었습니다',
-    message: `'${v.projectTitle}' 프로젝트 지원이 수락되었습니다. 계약서를 확인해주세요.`,
+    message: `'${v.projectTitle}' 프로젝트 지원이 수락되었습니다. 계약서를 확인해 주세요.`,
     href: `/contracts/${v.contractId}`,
   }),
   APPLICATION_REJECTED: (v) => ({
-    title: '지원 결과가 업데이트되었습니다',
+    title: '지원 결과를 알려 드립니다',
     message: `'${v.projectTitle}' 프로젝트 지원이 거절되었습니다.`,
     href: '/my/applications',
   }),
   CONTRACT_ACTIVATED: (v) => ({
     title: '계약이 체결되었습니다',
-    message: `'${v.projectTitle}' 계약에 양측이 서명했습니다. 첫 마일스톤 결제부터 진행해주세요.`,
+    message: `'${v.projectTitle}' 계약에 양측이 서명했습니다. 첫 마일스톤 결제부터 진행해 주세요.`,
     href: `/contracts/${v.contractId}`,
   }),
   MILESTONE_FUNDED: (v) => ({
     title: '마일스톤 결제가 완료되었습니다',
-    message: `마일스톤 '${v.milestoneTitle}'에 ${won(v.amount)}이 예치되었습니다. 작업을 시작해주세요.`,
+    message: `마일스톤 '${v.milestoneTitle}'의 ${won(v.amount)}이 안전결제로 결제되었습니다. 작업을 시작해 주세요.`,
     href: milestoneHref(v.contractId, v.milestoneId),
   }),
   MILESTONE_SUBMITTED: (v) => ({
-    title: '산출물이 제출되었습니다',
-    message: `마일스톤 '${v.milestoneTitle}'의 산출물이 제출되었습니다. 검수 후 승인하거나 수정을 요청해주세요.`,
+    title: '결과물이 제출되었습니다',
+    message: `마일스톤 '${v.milestoneTitle}'의 결과물이 제출되었습니다. 검수 후 승인하거나 수정을 요청해 주세요.`,
     href: milestoneHref(v.contractId, v.milestoneId),
   }),
   MILESTONE_REVISION_REQUESTED: (v) => ({
-    title: '수정 요청이 도착했습니다',
+    title: '수정 요청이 있습니다',
     message: `마일스톤 '${v.milestoneTitle}'에 수정 요청이 있습니다: ${v.reason}`,
     href: milestoneHref(v.contractId, v.milestoneId),
   }),
@@ -147,12 +147,12 @@ const TEMPLATES = {
   }),
   MILESTONE_AUTO_APPROVE_REMINDER: (v) => ({
     title: '곧 자동 승인됩니다',
-    message: `'${v.milestoneTitle}' 마일스톤이 48시간 뒤 자동 승인됩니다. 그 전에 검수해주세요.`,
+    message: `'${v.milestoneTitle}' 마일스톤이 48시간 뒤 자동 승인됩니다. 그 전에 검수해 주세요.`,
     href: milestoneHref(v.contractId, v.milestoneId),
   }),
   CONTRACT_COMPLETED: (v) => ({
     title: '계약이 완료되었습니다',
-    message: `'${v.projectTitle}' 계약의 모든 마일스톤이 승인되었습니다. 리뷰를 남겨주세요.`,
+    message: `'${v.projectTitle}' 계약의 모든 마일스톤이 승인되었습니다. 리뷰를 남겨 주세요.`,
     href: `/contracts/${v.contractId}#review`,
   }),
   SETTLEMENT_SCHEDULED: (v) => ({
@@ -167,12 +167,12 @@ const TEMPLATES = {
   }),
   SETTLEMENT_ON_HOLD: (v) => ({
     title: '정산이 보류되었습니다',
-    message: `지급 계좌가 없어 ${won(v.amount)} 정산이 보류되었습니다. 지급 계좌를 등록해주세요.`,
+    message: `지급 계좌가 없어 ${won(v.amount)} 정산이 보류되었습니다. 지급 계좌를 등록해 주세요.`,
     href: '/settlements/account',
   }),
   SETTLEMENT_FAILED: (v) => ({
     title: '정산 지급에 실패했습니다',
-    message: `${won(v.amount)} 지급이 반복해서 실패했습니다. 고객센터로 문의해주세요.`,
+    message: `${won(v.amount)} 지급이 반복해서 실패했습니다. 지급 계좌 정보(은행, 계좌번호, 예금주)를 확인해 주세요.`,
     href: `/settlements/${v.settlementId}`,
   }),
   MESSAGE_UNREAD_DIGEST: (v) => ({
@@ -185,15 +185,17 @@ const TEMPLATES = {
 // System message bodies: a copy of SYSTEM_BODIES in src/services/messaging.service.ts.
 const msTitle = (v) => `마일스톤 '${v.milestoneTitle}'`;
 const SYSTEM_BODIES = {
-  CONTRACT_CREATED: () => '계약이 생성되었습니다. 마일스톤 계획을 확인해주세요.',
-  MILESTONE_PLAN_UPDATED: () => '마일스톤 계획이 변경되었습니다. 서명이 초기화되었으니 다시 확인하고 서명해주세요.',
-  CONTRACT_ACTIVATED: () => '양측이 서명해 계약이 시작되었습니다. 첫 마일스톤 결제부터 진행해주세요.',
-  MILESTONE_FUNDED: (v) => `${msTitle(v)} 결제가 완료되었습니다. 작업을 시작해주세요.`,
-  MILESTONE_SUBMITTED: (v) => `${msTitle(v)} 산출물이 제출되었습니다 (${v.round}차). 검수 후 승인하거나 수정을 요청해주세요.`,
-  MILESTONE_REVISION_REQUESTED: (v) => `${msTitle(v)} 수정이 요청되었습니다.\n사유: ${v.reason}`,
-  MILESTONE_APPROVED: (v) => `${msTitle(v)} 산출물이 승인되었습니다.`,
-  MILESTONE_AUTO_APPROVED: (v) => `${msTitle(v)} 산출물이 검수 기한이 지나 자동 승인되었습니다.`,
-  CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨주세요.',
+  CONTRACT_CREATED: () => '계약이 생성되었습니다. 마일스톤 계획을 확인해 주세요.',
+  MILESTONE_PLAN_UPDATED: (v) => (v.signaturesReset
+    ? '마일스톤 계획이 변경되어 서명이 초기화되었습니다. 다시 확인하고 서명해 주세요.'
+    : '마일스톤 계획이 변경되었습니다. 확인한 뒤 서명해 주세요.'),
+  CONTRACT_ACTIVATED: () => '양측이 서명해 계약이 시작되었습니다. 첫 마일스톤 결제부터 진행해 주세요.',
+  MILESTONE_FUNDED: (v) => `${msTitle(v)} 결제가 완료되었습니다. 작업을 시작해 주세요.`,
+  MILESTONE_SUBMITTED: (v) => `${msTitle(v)} 결과물이 제출되었습니다 (${v.round}차). 검수 후 승인하거나 수정을 요청해 주세요.`,
+  MILESTONE_REVISION_REQUESTED: (v) => `${msTitle(v)} 수정이 요청되었습니다.\n요청 사항: ${v.reason}`,
+  MILESTONE_APPROVED: (v) => `${msTitle(v)} 결과물이 승인되었습니다.`,
+  MILESTONE_AUTO_APPROVED: (v) => `${msTitle(v)} 결과물이 검수 기한이 지나 자동 승인되었습니다.`,
+  CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨 주세요.',
 };
 
 // NC13 rendering (src/lib/notifications/templates.ts `renderEmail`).
@@ -472,12 +474,12 @@ async function main() {
   // (Recurring jobs are not seeded — the worker recreates them via `ensureRecurringJobs`.)
   await prisma.job.deleteMany();
   await prisma.rateLimitCounter.deleteMany();
-  // Phase 3: an email delivery may reference a notification, so it goes first.
+  // An email delivery may reference a notification, so it goes first.
   await prisma.emailDelivery.deleteMany();
   await prisma.notificationPreference.deleteMany();
   await prisma.notification.deleteMany();
   await prisma.review.deleteMany();
-  // Phase 2 models, children first. The migration backfills a conversation for every contract,
+  // Messaging and profile models, children first. The migration backfills a conversation for every contract,
   // so these must go before `contract` or the next seed fails with P2003.
   await prisma.messageAttachment.deleteMany();
   await prisma.message.deleteMany();
@@ -485,7 +487,7 @@ async function main() {
   await prisma.conversation.deleteMany();
   await prisma.portfolioItem.deleteMany();
   await prisma.career.deleteMany();
-  // Phase 1 models, children first (every FK is ON DELETE RESTRICT).
+  // Milestone and settlement models, children first (every FK is ON DELETE RESTRICT).
   await prisma.settlementItem.deleteMany();
   await prisma.settlement.deleteMany();
   await prisma.payoutAccount.deleteMany();
@@ -751,7 +753,7 @@ async function main() {
     },
   });
 
-  // 서명 전 계약 (마일스톤 계획 편집 시연용)
+  // 서명 전 계약 (마일스톤 계획 편집을 확인할 수 있다)
   const project9 = await prisma.project.create({
     data: {
       title: '사내 행사 체크인 모바일 앱',
@@ -799,7 +801,7 @@ async function main() {
     },
   });
 
-  // 오래전에 완료된 프로젝트 (대화방 마감 시연용)
+  // 오래전에 완료된 프로젝트 (종료된 대화방을 확인할 수 있다)
   const project12 = await prisma.project.create({
     data: {
       title: '사내 위키 검색 기능 개선',
@@ -815,7 +817,7 @@ async function main() {
     },
   });
 
-  // 추천 시연용 모집 중 프로젝트 (지원자 없음)
+  // 추천을 확인할 수 있는 모집 중 프로젝트 (지원자 없음)
   const project13 = await prisma.project.create({
     data: {
       title: '학습 데이터 분석 대시보드 구축',
@@ -1140,7 +1142,7 @@ async function main() {
     paidAt: plus(plus(weekStart(2), PAYOUT_DELAY), 2 * MINUTE),
   });
   // Week 1's payout is this Wednesday 10:00. Seeded after it, the settlement would already be
-  // paid, so it is shown as if rescheduled to the next Wednesday — the demo keeps one SCHEDULED.
+  // paid, so it is shown as if rescheduled to the next Wednesday — the sample data keeps one SCHEDULED.
   const naturalPayout7 = plus(settledUntil, PAYOUT_DELAY);
   const payout7 = naturalPayout7 > now ? naturalPayout7 : nextWednesday10(now);
   const settlementHan1 = await createSettlement(freelancer3, 1, [a7b.item], { status: 'SCHEDULED', scheduledPayoutAt: payout7 });
@@ -1196,7 +1198,7 @@ async function main() {
   console.log('Completed contracts created');
 
   // ─── project8: 진행 중 (최민호 ↔ 박지윤) ──────────────
-  // #1 승인(지급 완료) / #2 2차 제출 검수 대기(1차 반려) / #3 결제 대기.
+  // #1 승인(지급 완료) / #2 2차 제출 검수 대기(1차 수정 요청) / #3 결제 대기.
   const app8 = await prisma.application.create({
     data: {
       projectId: project8.id,
@@ -1286,7 +1288,7 @@ async function main() {
       key: 'park2',
       from: freelancer1,
       at: inWeek(2, 0, 10, 5),
-      body: '화면 설계서 올렸습니다. 피그마 링크는 산출물에 같이 넣어두었어요.',
+      body: '화면 설계서 올렸습니다. 피그마 링크는 결과물에 같이 넣어두었어요.',
       attachments: [{ url: placeholder('Admin Wireframe v1', '7c3aed'), fileName: '관리자_화면설계서_v1.png', mimeType: 'image/png', size: 412907 }],
     },
     { system: 'MILESTONE_APPROVED', vars: { milestoneTitle: m8a.title }, at: inWeek(2, 1, 14) },

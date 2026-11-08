@@ -7,6 +7,7 @@ import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import PageLoader from '@/components/ui/PageLoader';
+import { toUserMessage } from '@/lib/errorMessages';
 
 export default function AnalysisPage() {
   const { id } = useParams();
@@ -28,7 +29,7 @@ export default function AnalysisPage() {
           setAnalysis(data.pricingAnalysis);
         }
       })
-      .catch(console.error)
+      .catch((err) => setError(toUserMessage(err, '프로젝트를 불러오지 못했습니다')))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -41,7 +42,7 @@ export default function AnalysisPage() {
       setAnalysis(data);
       setProject((prev) => (prev ? { ...prev, pricingAnalysis: data } : prev));
     } catch (err) {
-      setError(err.response?.data?.error?.message || 'AI 분석에 실패했습니다');
+      setError(toUserMessage(err, 'AI 분석에 실패했습니다'));
     } finally {
       setAnalyzing(false);
     }
@@ -61,7 +62,7 @@ export default function AnalysisPage() {
       setProject((prev) => (prev ? { ...prev, ...data } : data));
       setSuccess('제안된 예산이 프로젝트 예산에 반영되었습니다');
     } catch (err) {
-      setError(err.response?.data?.error?.message || '제안된 예산 반영에 실패했습니다');
+      setError(toUserMessage(err, '제안된 예산 반영에 실패했습니다'));
     } finally {
       setApplyingBudget(false);
     }
@@ -187,7 +188,7 @@ export default function AnalysisPage() {
       {!analysis && !analyzing && (
         <Card className="p-12 text-center">
           <p className="text-gray-500 mb-4">아직 분석이 진행되지 않았습니다</p>
-          <p className="text-sm text-gray-400">AI 분석 시작 버튼을 클릭하면 단가 분석이 시작됩니다</p>
+          <p className="text-sm text-gray-400">AI 분석 시작 버튼을 누르면 단가 분석이 시작됩니다</p>
         </Card>
       )}
     </div>

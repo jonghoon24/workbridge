@@ -293,7 +293,9 @@ export async function replacePlan(contractId: string, actorId: string, items: re
       }, now);
     }
     // MG6: every replacement leaves a system message, signature or not — the last write (MG7).
-    await postSystemMessage(tx, contractId, 'MILESTONE_PLAN_UPDATED');
+    await postSystemMessage(tx, contractId, 'MILESTONE_PLAN_UPDATED', {
+      signaturesReset: locked.clientSigned || locked.freelancerSigned,
+    });
 
     const milestones = await tx.milestone.findMany({
       where: { contractId },

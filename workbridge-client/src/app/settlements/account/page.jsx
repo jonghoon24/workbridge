@@ -9,18 +9,12 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { BANKS } from '@/constants/banks';
 import { formatDateTime } from '@/lib/format';
-import { describeServerError } from '@/lib/serverErrors';
+import { toUserMessage } from '@/lib/errorMessages';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { LockIcon } from '@/components/ui/Icons';
 
 const EMPTY_FORM = { bankCode: '', accountNumber: '', holderName: '' };
-
-// 예측 가능한 서버 오류(BEHAVIOR.md PA3, PA5)는 한국어로 바꿔 보여준다. 나머지는 서버 문구 그대로다.
-const SERVER_ERROR_MESSAGES = {
-  'Account holder must match your name': '예금주가 회원 이름과 같아야 합니다. 본인 명의 계좌만 등록할 수 있습니다.',
-  'Payout account cannot be changed while a payout is processing': '지급이 처리되는 중에는 계좌를 바꾸거나 삭제할 수 없습니다. 잠시 후 다시 시도해주세요.',
-};
 
 // 지급 계좌(BEHAVIOR.md PA1–PA7). 응답에는 마스킹된 번호만 오므로 변경할 때는 번호를 새로 입력한다.
 export default function PayoutAccountPage() {
@@ -51,7 +45,7 @@ export default function PayoutAccountPage() {
       })
       .catch((err) => {
         if (err.response?.status === 403) setForbidden(true);
-        else setError(err.response?.data?.error?.message || '지급 계좌를 불러오지 못했습니다');
+        else setError(toUserMessage(err, '지급 계좌를 불러오지 못했습니다'));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -68,10 +62,10 @@ export default function PayoutAccountPage() {
   }
 
   function validate() {
-    if (!BANKS.some((bank) => bank.code === form.bankCode)) return '은행을 선택해주세요.';
+    if (!BANKS.some((bank) => bank.code === form.bankCode)) return '은행을 선택해 주세요.';
     const digits = form.accountNumber.replace(/[-\s]/g, '');
     if (!/^\d{10,14}$/.test(digits)) return '계좌번호는 하이픈을 빼고 10~14자리 숫자여야 합니다.';
-    if (!form.holderName.trim()) return '예금주를 입력해주세요.';
+    if (!form.holderName.trim()) return '예금주를 입력해 주세요.';
     return '';
   }
 
@@ -98,14 +92,14 @@ export default function PayoutAccountPage() {
         ? `지급 계좌를 저장했습니다. 보류된 정산 ${data.rescheduledCount}건이 다음 지급일에 다시 지급됩니다.`
         : '지급 계좌를 저장했습니다.');
     } catch (err) {
-      setError(describeServerError(err, '지급 계좌 저장에 실패했습니다', { messages: SERVER_ERROR_MESSAGES }));
+      setError(toUserMessage(err, '지급 계좌를 저장하지 못했습니다'));
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete() {
-    if (!confirm('지급 계좌를 삭제할까요? 계좌가 없으면 지급일에 정산이 보류됩니다.')) return;
+    if (!confirm('지급 계좌를 삭제하시겠습니까? 계좌가 없으면 지급일에 정산이 보류됩니다.')) return;
 
     setDeleting(true);
     setError('');
@@ -117,7 +111,7 @@ export default function PayoutAccountPage() {
       setEditing(true);
       setSuccess('지급 계좌를 삭제했습니다.');
     } catch (err) {
-      setError(describeServerError(err, '지급 계좌 삭제에 실패했습니다', { messages: SERVER_ERROR_MESSAGES }));
+      setError(toUserMessage(err, '지급 계좌를 삭제하지 못했습니다'));
     } finally {
       setDeleting(false);
     }

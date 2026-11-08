@@ -15,6 +15,7 @@ import UnreadBadge from '@/components/messages/UnreadBadge';
 import { formatDate, formatKRW } from '@/lib/format';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
 import PageLoader from '@/components/ui/PageLoader';
+import { toUserMessage } from '@/lib/errorMessages';
 
 export default function ContractPage() {
   const { id } = useParams();
@@ -75,10 +76,10 @@ export default function ContractPage() {
       const { data } = await api.post(`/api/contracts/${id}/sign`);
       setContract(data);
       if (data.status === 'ACTIVE') {
-        alert('계약이 체결되었습니다! 첫 마일스톤을 결제하면 작업이 시작됩니다.');
+        alert('계약이 체결되었습니다. 첫 마일스톤을 결제하면 작업이 시작됩니다.');
       }
     } catch (err) {
-      setActionError(err.response?.data?.error?.message || '서명에 실패했습니다');
+      setActionError(toUserMessage(err, '서명하지 못했습니다'));
     } finally {
       setSigning(false);
     }
@@ -87,13 +88,13 @@ export default function ContractPage() {
   async function handlePlanSaved(_data, { signaturesReset }) {
     setEditingPlan(false);
     setPlanNotice(signaturesReset
-      ? '마일스톤 계획이 저장되었습니다. 양측 서명이 초기화되었으니 다시 서명해주세요.'
+      ? '마일스톤 계획이 저장되었습니다. 양측 서명이 초기화되었으니 다시 서명해 주세요.'
       : '마일스톤 계획이 저장되었습니다.');
     await loadContract().catch(() => {});
   }
 
   async function handleApprove(milestone) {
-    if (!confirm(`"${milestone.title}" 마일스톤을 승인할까요?\n승인하면 대금이 프리랜서 정산 대상으로 확정되며 되돌릴 수 없습니다.`)) {
+    if (!confirm(`"${milestone.title}" 마일스톤을 승인하시겠습니까?\n승인하면 대금이 프리랜서 정산 대상으로 확정되며 되돌릴 수 없습니다.`)) {
       return;
     }
     setBusyMilestoneId(milestone.id);
@@ -101,11 +102,11 @@ export default function ContractPage() {
     try {
       const { data } = await api.post(`/api/milestones/${milestone.id}/approve`);
       if (data.contract?.status === 'COMPLETED') {
-        alert('모든 마일스톤이 승인되어 계약이 완료되었습니다. 리뷰를 남겨주세요!');
+        alert('모든 마일스톤이 승인되어 계약이 완료되었습니다. 리뷰를 남겨 주세요.');
       }
       await loadContract();
     } catch (err) {
-      setActionError(err.response?.data?.error?.message || '승인에 실패했습니다');
+      setActionError(toUserMessage(err, '승인하지 못했습니다'));
     } finally {
       setBusyMilestoneId('');
     }
@@ -137,7 +138,7 @@ export default function ContractPage() {
     const revieweeId = isClient ? contract.freelancerId : contract.clientId;
 
     if (!reviewForm.content.trim()) {
-      setReviewError('리뷰 내용을 입력해주세요.');
+      setReviewError('리뷰 내용을 입력해 주세요.');
       return;
     }
 
@@ -154,7 +155,7 @@ export default function ContractPage() {
       setReviewForm({ rating: 5, content: '', tags: [] });
       setReviewSuccess('리뷰가 등록되었습니다.');
     } catch (err) {
-      setReviewError(err.response?.data?.error?.message || '리뷰 등록에 실패했습니다');
+      setReviewError(toUserMessage(err, '리뷰를 등록하지 못했습니다'));
     } finally {
       setReviewLoading(false);
     }
@@ -380,7 +381,7 @@ export default function ContractPage() {
                         </div>
                       </div>
                       <span className="text-xs text-gray-400">
-                        {new Date(review.createdAt).toLocaleDateString('ko-KR')}
+                        {formatDate(review.createdAt)}
                       </span>
                     </div>
                     <p className="text-sm text-gray-700 mt-2">{review.content}</p>
@@ -454,7 +455,7 @@ export default function ContractPage() {
                     onChange={(e) => setReviewForm({ ...reviewForm, content: e.target.value })}
                     rows={4}
                     className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
-                    placeholder="프로젝트 경험을 구체적으로 작성해주세요"
+                    placeholder="프로젝트 경험을 구체적으로 작성해 주세요"
                   />
                 </div>
 

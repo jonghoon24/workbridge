@@ -43,7 +43,7 @@ export default function CareersManagePage() {
   }, []);
 
   async function handleDelete(career) {
-    if (!confirm(`'${career.company}' 경력을 삭제할까요?`)) return;
+    if (!confirm(`'${career.company}' 경력을 삭제하시겠습니까?`)) return;
     setBusy(true);
     setError('');
     try {

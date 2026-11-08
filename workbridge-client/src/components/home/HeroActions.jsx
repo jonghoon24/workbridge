@@ -10,7 +10,7 @@ function getSecondaryAction(user) {
   }
 
   if (user.role === 'CLIENT') {
-    return { href: '/my/projects', label: '내 프로젝트 보기' };
+    return { href: '/my/projects', label: '내 프로젝트' };
   }
 
   if (user.role === 'FREELANCER') {

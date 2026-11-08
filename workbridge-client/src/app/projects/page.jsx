@@ -9,6 +9,7 @@ import api from '@/lib/api';
 import EmptyState from '@/components/ui/EmptyState';
 import { FilterIcon, SearchIcon } from '@/components/ui/Icons';
 import PageLoader from '@/components/ui/PageLoader';
+import { toUserMessage } from '@/lib/errorMessages';
 
 function useDebounce(value, delay) {
   const [debounced, setDebounced] = useState(value);
@@ -28,6 +29,7 @@ function ProjectsContent() {
   const [projects, setProjects] = useState([]);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [initialized, setInitialized] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -87,8 +89,10 @@ function ProjectsContent() {
       const { data } = await api.get(`/api/projects?${params}`);
       setProjects(data.projects);
       setMeta(data.meta);
+      setLoadError('');
     } catch (err) {
-      console.error(err);
+      setProjects([]);
+      setLoadError(toUserMessage(err, '프로젝트 목록을 불러오지 못했습니다'));
     } finally {
       setLoading(false);
     }
@@ -102,7 +106,7 @@ function ProjectsContent() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
         <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">프로젝트 찾기</h1>
-        <p className="text-gray-500 mt-1.5">원하는 프로젝트를 찾아 지원해보세요</p>
+        <p className="text-gray-500 mt-1.5">원하는 프로젝트를 찾아 지원해 보세요</p>
       </div>
 
       {/* Search Bar */}
@@ -151,11 +155,13 @@ function ProjectsContent() {
                 </div>
               ))}
             </div>
+          ) : loadError ? (
+            <EmptyState tone="error" title={loadError} />
           ) : projects.length === 0 ? (
             <EmptyState
               icon={SearchIcon}
               title="프로젝트가 없습니다"
-              description="다른 검색어나 필터를 사용해보세요"
+              description="다른 검색어나 필터를 사용해 보세요"
             />
           ) : (
             <>

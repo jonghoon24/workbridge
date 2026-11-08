@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Input from '@/components/ui/Input';
+import Input, { fieldBorder } from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import CheckboxChips from '@/components/ui/CheckboxChips';
 import api from '@/lib/api';
 import { normalizeSkillList, PROJECT_CATEGORIES, SKILL_OPTIONS } from '@/constants/taxonomy';
+import { toUserMessage } from '@/lib/errorMessages';
+import { formatDate, kstToday, toKstDateInput } from '@/lib/format';
 
 const STEPS = [
   { title: '기본 정보', fields: ['title', 'category', 'description'] },
@@ -16,20 +18,12 @@ const STEPS = [
 
 const REVIEW_SUBMIT_DELAY_MS = 500;
 
-function formatDateInput(value = new Date()) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localDate.toISOString().split('T')[0];
-}
-
 export default function ProjectForm({ initialData = null }) {
   const router = useRouter();
   const isEditing = !!initialData;
   const hasApplications = isEditing && (initialData?._count?.applications || 0) > 0;
   const lastStep = STEPS.length - 1;
-  const today = formatDateInput();
+  const today = kstToday();
 
   const [form, setForm] = useState({
     title: initialData?.title || '',
@@ -37,9 +31,9 @@ export default function ProjectForm({ initialData = null }) {
     category: initialData?.category || '',
     budget: initialData?.budget || '',
     recruitmentStartDate: initialData?.recruitmentStartDate
-      ? formatDateInput(initialData.recruitmentStartDate)
+      ? toKstDateInput(initialData.recruitmentStartDate)
       : today,
-    deadline: initialData?.deadline ? formatDateInput(initialData.deadline) : '',
+    deadline: initialData?.deadline ? toKstDateInput(initialData.deadline) : '',
     requiredSkills: normalizeSkillList(initialData?.requiredSkills || []),
   });
   const [currentStep, setCurrentStep] = useState(0);
@@ -61,25 +55,25 @@ export default function ProjectForm({ initialData = null }) {
   function validate() {
     const errs = {};
     const budget = Number.parseFloat(form.budget);
-    if (!form.title.trim()) errs.title = '프로젝트명을 입력하세요';
-    if (!form.description.trim()) errs.description = '프로젝트 설명을 입력하세요';
-    if (!form.category) errs.category = '카테고리를 선택하세요';
+    if (!form.title.trim()) errs.title = '프로젝트명을 입력해 주세요';
+    if (!form.description.trim()) errs.description = '프로젝트 설명을 입력해 주세요';
+    if (!form.category) errs.category = '카테고리를 선택해 주세요';
     if (!hasApplications && (!form.budget || !Number.isFinite(budget) || budget <= 0)) {
-      errs.budget = '올바른 예산을 입력하세요';
+      errs.budget = '예산을 1원 이상의 금액으로 입력해 주세요';
     }
     if (!hasApplications && !form.recruitmentStartDate) {
-      errs.recruitmentStartDate = '모집 시작일을 선택하세요';
+      errs.recruitmentStartDate = '모집 시작일을 선택해 주세요';
     }
-    if (!hasApplications && !form.deadline) errs.deadline = '마감일을 선택하세요';
+    if (!hasApplications && !form.deadline) errs.deadline = '마감일을 선택해 주세요';
     if (
       !hasApplications
       && form.recruitmentStartDate
       && form.deadline
       && form.recruitmentStartDate > form.deadline
     ) {
-      errs.deadline = '마감일은 모집 시작일 이후로 선택하세요';
+      errs.deadline = '마감일은 모집 시작일 이후로 선택해 주세요';
     }
-    if (form.requiredSkills.length === 0) errs.requiredSkills = '필요 기술을 하나 이상 선택하세요';
+    if (form.requiredSkills.length === 0) errs.requiredSkills = '필요 기술을 하나 이상 선택해 주세요';
     return errs;
   }
 
@@ -147,7 +141,7 @@ export default function ProjectForm({ initialData = null }) {
         router.push(`/projects/${data.id}`);
       }
     } catch (err) {
-      setErrors({ submit: err.response?.data?.error?.message || '오류가 발생했습니다' });
+      setErrors({ submit: toUserMessage(err, isEditing ? '프로젝트를 수정하지 못했습니다' : '프로젝트를 등록하지 못했습니다') });
     } finally {
       setLoading(false);
     }
@@ -164,10 +158,8 @@ export default function ProjectForm({ initialData = null }) {
   }
 
   const formattedBudget = form.budget ? `${Number(form.budget).toLocaleString()}원` : '-';
-  const formattedRecruitmentStartDate = form.recruitmentStartDate
-    ? new Date(form.recruitmentStartDate).toLocaleDateString('ko-KR')
-    : '-';
-  const formattedDeadline = form.deadline ? new Date(form.deadline).toLocaleDateString('ko-KR') : '-';
+  const formattedRecruitmentStartDate = formatDate(form.recruitmentStartDate);
+  const formattedDeadline = formatDate(form.deadline);
 
   return (
     <form onSubmit={handleFormSubmit} className="space-y-6">
@@ -217,7 +209,7 @@ export default function ProjectForm({ initialData = null }) {
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
             error={errors.title}
-            placeholder="프로젝트 제목을 입력하세요"
+            placeholder="프로젝트 제목을 입력해 주세요"
           />
 
           <div>
@@ -227,9 +219,8 @@ export default function ProjectForm({ initialData = null }) {
             <select
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className={`block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
-                errors.category ? 'border-red-300' : ''
-              }`}
+              aria-invalid={errors.category ? true : undefined}
+              className={`block w-full rounded-lg shadow-sm sm:text-sm ${fieldBorder(errors.category)}`}
             >
               <option value="">카테고리 선택</option>
               {PROJECT_CATEGORIES.map((cat) => (
@@ -247,10 +238,9 @@ export default function ProjectForm({ initialData = null }) {
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               rows={6}
-              className={`block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
-                errors.description ? 'border-red-300' : ''
-              }`}
-              placeholder="프로젝트에 대해 자세히 설명해주세요"
+              aria-invalid={errors.description ? true : undefined}
+              className={`block w-full rounded-lg shadow-sm sm:text-sm ${fieldBorder(errors.description)}`}
+              placeholder="프로젝트에 대해 자세히 설명해 주세요"
             />
             {errors.description && <p className="mt-1 text-sm text-red-600">{errors.description}</p>}
           </div>

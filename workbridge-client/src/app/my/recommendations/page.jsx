@@ -33,7 +33,7 @@ export default function MyRecommendationsPage() {
         <div>
           <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">추천 프로젝트</h1>
           <p className="text-gray-600 mt-1">
-            요구 기술이 겹치거나 활동 카테고리가 같은 모집 중 프로젝트를 점수 순으로 보여드려요.
+            요구 기술이 겹치거나 활동 카테고리가 같은 모집 중 프로젝트를 적합한 순서로 보여 드립니다.
             지원한 프로젝트는 빠집니다.
           </p>
         </div>

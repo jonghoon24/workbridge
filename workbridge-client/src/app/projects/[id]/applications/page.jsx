@@ -12,6 +12,7 @@ import RecommendedFreelancers from '@/components/profile/RecommendedFreelancers'
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { UserIcon } from '@/components/ui/Icons';
+import { toUserMessage } from '@/lib/errorMessages';
 
 function formatWon(value) {
   return `${Number(value || 0).toLocaleString()}원`;
@@ -23,12 +24,13 @@ export default function ApplicationsPage() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
     api.get(`/api/projects/${id}/applications`)
       .then(({ data }) => setApplications(data))
-      .catch(console.error)
+      .catch((err) => setError(toUserMessage(err, '지원자 목록을 불러오지 못했습니다')))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -59,7 +61,7 @@ export default function ApplicationsPage() {
         router.push(`/contracts/${result.contract.id}`);
       }
     } catch (err) {
-      alert(err.response?.data?.error?.message || '처리에 실패했습니다');
+      alert(toUserMessage(err, '지원을 처리하지 못했습니다'));
     } finally {
       setUpdating(null);
     }
@@ -72,7 +74,9 @@ export default function ApplicationsPage() {
       <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">지원자 관리</h1>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2">
-          {applications.length === 0 ? (
+          {error ? (
+            <EmptyState tone="error" title={error} />
+          ) : applications.length === 0 ? (
             <EmptyState icon={UserIcon} title="아직 지원자가 없습니다" />
           ) : (
             <div className="space-y-4">
