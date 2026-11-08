@@ -35,7 +35,7 @@ export default function MyApplicationsPage() {
       ) : (
         <div className="space-y-4">
           {applications.map((app) => (
-            <Card key={app.id} className="p-5">
+            <Card key={app.id} data-testid="application-card" className="p-5">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
