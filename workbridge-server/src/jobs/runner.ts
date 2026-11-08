@@ -10,6 +10,7 @@ import { captureError, flushSentry } from '../lib/sentry';
 import { HOUR_MS, MINUTE_MS } from '../lib/time';
 import { sqlTimestamp } from '../lib/sql';
 import { PermanentJobError } from './errors';
+import { heldJobTypes } from './gates';
 import { enqueueNextOccurrence, findRecurringJob } from './recurring';
 import { handlerFor } from './registry';
 import type { JobType } from './types';
@@ -46,12 +47,18 @@ export function backoffMs(attempts: number): number {
 }
 
 /**
- * Atomically moves up to `limit` due `PENDING` jobs to `RUNNING`. `FOR UPDATE SKIP LOCKED`
+ * Atomically moves up to `limit` due `PENDING` jobs to `RUNNING`, except the held types of
+ * `gates.ts`. `FOR UPDATE SKIP LOCKED`
  * makes concurrent runners skip each other's rows instead of blocking or double-claiming.
  */
 async function claimDueJobs(now: Date, limit: number, workerId: string, types?: readonly JobType[]): Promise<Job[]> {
   const typeFilter = types && types.length > 0
     ? Prisma.sql`AND "type" IN (${Prisma.join([...types])})`
+    : Prisma.empty;
+  // Gated types stay PENDING until their flag is turned on (`gates.ts`).
+  const held = heldJobTypes();
+  const heldFilter = held.length > 0
+    ? Prisma.sql`AND "type" NOT IN (${Prisma.join(held)})`
     : Prisma.empty;
 
   const claimed = await prisma.$queryRaw<Job[]>`
@@ -60,7 +67,7 @@ async function claimDueJobs(now: Date, limit: number, workerId: string, types?: 
            "attempts" = "attempts" + 1, "updatedAt" = ${sqlTimestamp(now)}
      WHERE "id" IN (
        SELECT "id" FROM "Job"
-        WHERE "status" = 'PENDING' AND "runAt" <= ${sqlTimestamp(now)} ${typeFilter}
+        WHERE "status" = 'PENDING' AND "runAt" <= ${sqlTimestamp(now)} ${typeFilter} ${heldFilter}
         ORDER BY "runAt", "createdAt"
         LIMIT ${limit}
           FOR UPDATE SKIP LOCKED

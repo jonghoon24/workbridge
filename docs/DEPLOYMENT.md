@@ -66,36 +66,30 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 
 로컬 개발에서는 다 동작하지만 운영(Vercel)에서는 아직 막혀 있거나 손이 필요한 것들이다. 각각 의도된 현재 상태이고, 해결은 배포 결정과 함께 한다.
 
-### 1. 작업 큐를 실행하는 주체가 없다
+### 1. 작업 큐는 15분마다 돈다
 
-Vercel에는 상주 프로세스가 없어서 개발 서버가 띄우는 워커(`JOB_WORKER_ENABLED`)가 운영에서는 돌지 않는다. 작업 큐를 돌리는 방법은 셋뿐이다.
+Vercel에는 상주 프로세스가 없어서 개발 서버가 띄우는 워커(`JOB_WORKER_ENABLED`)가 운영에서는 돌지 않는다. 대신 **GitHub Actions(`.github/workflows/jobs.yml`)가 15분마다 운영 서버의 `POST /api/internal/jobs/run`을 부른다**(Actions 화면에서 수동 실행도 된다). Vercel Cron은 Hobby 플랜에서 하루 한 번만 돌아 15분 주기를 맞출 수 없어서 GitHub Actions를 쓴다. 프리뷰와 로컬 DB는 대상이 아니다.
 
 | 방법 | 설명 |
 | --- | --- |
-| `POST /api/internal/jobs/run` | 외부 스케줄러가 주기적으로 부를 엔드포인트. `INTERNAL_JOB_TOKEN`을 설정하고 `X-Internal-Token` 헤더로 호출한다. 본문 `{ "limit": 1~500 }`(기본 50)으로 한 번에 실행할 작업 수를 제한한다. 토큰이 비어 있으면 엔드포인트가 404로 숨는다 |
+| `POST /api/internal/jobs/run` | 크론이 부르는 엔드포인트. 운영 서버의 `INTERNAL_JOB_TOKEN`을 `X-Internal-Token` 헤더로 보낸다(워크플로는 같은 값을 리포지토리 시크릿 `PROD_INTERNAL_JOB_TOKEN`으로 가진다). 본문 `{ "limit": 1~500 }`(기본 50)으로 한 번에 실행할 작업 수를 제한하고, 워크플로는 서버리스 실행 시간 안에 끝나도록 `25`를 보낸다. 토큰이 비어 있으면 엔드포인트가 404로 숨는다. 응답이 2xx가 아니면 워크플로가 실패한다 |
 | `npm run jobs:run` | 한 번 실행하는 CLI. 운영 DB 연결 정보를 가진 곳에서 수동으로 |
 | `npm run jobs:worker` | 상주 워커 CLI. 상주 서버가 있을 때 |
 
-**어떤 외부 스케줄러가 엔드포인트를 부를지는 아직 정하지 않았다**([#23 작업 큐를 실행할 외부 스케줄러가 없다](https://github.com/jonghoon24/workbridge/issues/23)). 연결하기 전까지 운영에서는 다음이 **일어나지 않는다**.
+크론이 도는 운영에서는 자동 승인과 그 리마인더, 마일스톤 기한 알림, 주간 정산 배치(월요일 03:00 KST), 프로젝트 상태 스윕, `maintenance.cleanup`이 돈다. 시각이 정해진 작업은 호출 간격(최대 15분, GitHub의 스케줄 지연이 더해질 수 있다)만큼 늦게 돈다. 시간 초과로 끊긴 작업은 10분 뒤 stale lock 회수로 다시 시도된다. 리포지토리에 60일 동안 활동이 없으면 GitHub가 스케줄을 끈다.
 
-- 마일스톤 자동 승인(제출 7일 뒤)과 자동 승인 48시간 전 리마인더 — 의뢰인이 검수하지 않으면 마일스톤이 `SUBMITTED`에 머문다
-- 마일스톤 기한 임박·기한 경과 알림
-- 주간 정산 배치(월요일 03:00 KST)와 지급(수요일 10:00 KST) — 승인된 금액이 미정산 항목으로 쌓인다
-- 이메일 발송(`notification.email`)과 미확인 메시지 요약 메일 — `EmailDelivery`가 `PENDING`으로 쌓인다
-- 10분마다 도는 프로젝트 상태 스윕 — 단, `GET /api/projects`와 `GET /api/projects/:id`가 읽을 때마다 같은 스윕을 하므로 상태는 계속 맞는다
-- `maintenance.cleanup` — 아래 2번
+**두 작업은 환경변수로 꺼 두었다**(기본값 꺼짐, BEHAVIOR.md J10). 운영 서버에서 정확히 `true`로 켜기 전까지는 다음이 **일어나지 않는다**.
 
-이 작업들은 `Job` 테이블에 `PENDING`으로 남아 있다가 러너가 처음 돌 때 한꺼번에 처리된다. 반복 작업(스윕, 정리, 주간 배치)은 러너가 시작할 때 만들어지므로 그 전에는 행 자체가 없다. 밀린 반복 슬롯은 하나씩 따라잡지 않고 한 번만 실행한다.
+| 작업 | 플래그 | 꺼져 있을 때 | 켜는 조건 |
+| --- | --- | --- | --- |
+| `settlement.payout`(수요일 10:00 KST 지급) | `JOB_PAYOUT_ENABLED` | 러너가 가져가지 않아 `PENDING`으로 남는다. 정산은 `SCHEDULED`에 머문다 | 실제 은행 이체 provider 연동. 지금 `LogPayoutProvider`는 돈을 보내지 않고 성공을 보고해 정산을 `PAID`로 만든다 |
+| `notification.email`(알림 메일과 미확인 메시지 요약 메일) | `JOB_EMAIL_ENABLED` | 작업은 돌고 delivery가 `SKIPPED`(`Email sending is disabled …`)로 끝난다 | 실제 메일 provider 연결과 로그 개인정보 문제(Q24) 해결 — 아래 4번 |
 
-스케줄러를 붙일 때 확인할 것:
+둘을 다르게 다루는 이유: 지급은 줘야 할 돈이라 버리면 안 되고, 켜는 날 밀린 지급이 실행되는 것이 맞다(핸들러가 정산을 다시 읽으므로 재일정된 것은 건너뛴다). 메일은 제때 가야 쓸모가 있어서, 쌓아 두면 켜는 날 몇 주 묵은 알림과 요약 메일이 한꺼번에 나간다. 그래서 메일은 건너뛰고 끝낸다. 로컬은 `.env.example`대로 둘 다 켜 둔다(지급은 로그 provider, 메일은 로그에만 쓴다).
 
-- **지급 provider가 로그 전용이다.** `LogPayoutProvider`는 실제 이체 없이 로그만 남기고 성공한다. 러너가 돌면 정산이 실제 송금 없이 `PAID`가 된다. 실제 은행 이체 연동 전에는 운영에서 지급 작업이 돌지 않게 해야 한다.
-- 서버리스 함수의 실행 시간 제한 안에 끝나도록 `limit`을 작게 잡는다. 시간 초과로 끊긴 작업은 10분 뒤 stale lock 회수로 다시 시도된다.
-- 주간 배치·지급처럼 시각이 정해진 작업은 호출 간격만큼 늦게 돈다.
+### 2. 요청 제한 카운터와 완료 작업 정리
 
-### 2. 요청 제한 카운터가 정리되지 않는다
-
-로그인과 AI 단가 분석의 요청 제한 카운터(`RateLimitCounter`)는 Postgres에 있고, 만료된 행은 `maintenance.cleanup` 작업(매일 04:00 KST)만 지운다. 러너가 없는 운영에서는 **만료된 카운터 행이 계속 쌓인다**. 행 수는 윈도마다 (IP 수 + 이메일·IP 조합 수 + 분석 사용자 수)에 비례해 유한하지만 줄지 않는다. 같은 이유로 14일 지난 완료 작업도 지워지지 않는다. 스케줄러가 붙기 전까지는 가끔 직접 지운다.
+로그인과 AI 단가 분석의 요청 제한 카운터(`RateLimitCounter`) 중 만료된 행과 14일 지난 완료 작업은 `maintenance.cleanup` 작업(매일 04:00 KST)이 지운다. 운영에서는 위 크론이 이 작업을 돌린다. 크론이 멈췄을 때는 직접 지운다.
 
 ```sql
 DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
@@ -107,14 +101,23 @@ DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
 
 ### 4. 이메일은 로그로만 나간다
 
-실제 메일 서비스는 연결돼 있지 않다. `MAIL_PROVIDER`는 비우거나 `log`만 지원하고, 이 provider는 메일을 보내지 않고 받는 주소와 본문 전체를 `info` 로그 `mail.sent` 한 줄로 남긴다. 운영 로그에 개인정보(이메일 주소와 알림 내용)가 남는다는 뜻이므로 러너를 붙이기 전에 검토가 필요하다(Q24). 다른 값을 넣으면 시작 때 경고 한 줄을 남기고 모든 발송이 `FAILED`가 된다. 지금은 러너도 없어서 운영에서는 메일이 아예 나가지 않는다. 구독 해지 링크도 없다(Q25).
+실제 메일 서비스는 연결돼 있지 않다. `MAIL_PROVIDER`는 비우거나 `log`만 지원하고, 이 provider는 메일을 보내지 않고 받는 주소와 본문 전체를 `info` 로그 `mail.sent` 한 줄로 남긴다. 운영 로그에 개인정보(이메일 주소와 알림 내용)가 남는다는 뜻이다(Q24). 그래서 운영에서는 `JOB_EMAIL_ENABLED`를 켜지 않아 메일 작업이 delivery를 `SKIPPED`로 끝내고, 메일은 로그에도 나가지 않는다(1번). 실제 메일 provider를 연결하고 Q24를 정한 뒤에 켠다. 다른 `MAIL_PROVIDER` 값을 넣으면 시작 때 경고 한 줄을 남기고 모든 발송이 `FAILED`가 된다. 구독 해지 링크도 없다(Q25).
 
-### 5. `TRUST_PROXY`와 클라이언트 IP
+### 5. 클라이언트 IP
 
-로그인 요청 제한은 클라이언트 IP를 키로 쓴다. `TRUST_PROXY`가 설정되면 `X-Forwarded-For`에서 신뢰하는 프록시를 뺀 주소, 비어 있으면 소켓 주소다. Next 프록시는 받은 `X-Forwarded-For`를 그대로 전달한다.
+로그인 요청 제한과 접근 로그의 `ip`는 클라이언트 IP를 쓴다(`src/lib/clientIp.ts`, BEHAVIOR.md 규칙 10). 프리뷰에서 확인한 Vercel의 동작(2026-11-08):
 
-- **자체 호스팅**: `TRUST_PROXY=loopback`은 Next 포트에 신뢰하는 클라이언트만 닿을 때만 안전하다. 아니면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다(Q23). 헤더를 다시 쓰는 프록시를 Next 앞에 두거나 `TRUST_PROXY`를 비운다.
-- **Vercel**: 브라우저 → Next 함수 구간은 Vercel 엣지가 `X-Forwarded-For`를 실제 주소로 덮어쓴다. 하지만 Next 함수 → 백엔드 함수 구간에서 백엔드가 어떤 주소를 보게 되는지는 **아직 검증하지 않았다**. 배포 후 백엔드 접근 로그의 `ip`를 확인해, 모든 요청이 한 주소(Next 함수의 주소)로 보이면 전체 사용자가 15분 20회 로그인 한도를 함께 쓰게 되므로 `TRUST_PROXY` 값을 다시 정해야 한다.
+- 서버 함수의 소켓 주소와 `req.ip`는 **언제나 `127.0.0.1`**이다(`@vercel/node`가 Express를 로컬 소켓 뒤에서 돌린다).
+- 서버를 직접 부르면 Vercel 엣지가 `X-Forwarded-For`·`X-Real-IP`·`X-Vercel-Forwarded-For`를 실제 클라이언트 IP로 **덮어쓴다**. 클라이언트가 보낸 같은 헤더는 버려진다.
+- Next 프록시를 거치면 같은 헤더가 **Next 함수의 송신 IP**(AWS 주소)가 된다. Next 함수 자신은 엣지가 덮어쓴 실제 브라우저 IP를 받는다.
+
+그래서 클라이언트 IP는 이 순서로 정한다.
+
+1. Next 프록시가 Vercel에서 브라우저 IP를 `X-Client-IP`에, 공유 비밀 `PROXY_SHARED_SECRET`을 `X-Proxy-Secret`에 담아 보낸다. 서버는 비밀이 같을 때만(상수 시간 비교) 이 IP를 쓴다. 두 프로젝트의 Production·Preview에 **같은 값**이 들어 있어야 한다. 비밀을 바꿀 때는 두 프로젝트를 함께 바꾸고 다시 배포한다(어긋난 동안에는 프록시 경유 요청이 Next 함수 주소로 세어진다).
+2. Vercel(`VERCEL=1`)에서는 `X-Vercel-Forwarded-For` — 직접 호출의 실제 IP.
+3. 그 밖에는 `req.ip`. `TRUST_PROXY`가 설정되면 `X-Forwarded-For`에서 신뢰하는 프록시를 뺀 주소, 비어 있으면 소켓 주소다. 로컬은 `TRUST_PROXY=loopback`이고 `PROXY_SHARED_SECRET`은 비워 둔다.
+
+**자체 호스팅**: `TRUST_PROXY=loopback`은 Next 포트에 신뢰하는 클라이언트만 닿을 때만 안전하다. 아니면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다(Q23). 헤더를 다시 쓰는 프록시를 Next 앞에 두거나 `TRUST_PROXY`를 비운다. Next 프록시는 Vercel에서만 `X-Client-IP`를 보낸다.
 
 ### 6. 그 밖에
 

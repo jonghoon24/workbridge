@@ -1929,8 +1929,9 @@ It does **not** call `ensureRecurringJobs`; every production-style entry point d
 | `npm run jobs:worker` | standalone worker CLI | same loop as the development worker |
 | `POST /api/internal/jobs/run` | see [Internal endpoints](#internal-endpoints--apiinternal) | `ensureRecurringJobs` → `recoverStaleJobs` → `runDueJobs` |
 
-Production (Vercel) has no resident worker, and which external scheduler calls the internal
-endpoint is not decided yet. Until one does, recurring jobs only run where a runner is started.
+Production (Vercel) has no resident worker. A scheduled GitHub Actions workflow
+(`.github/workflows/jobs.yml`) calls production's internal endpoint every 15 minutes; previews
+and local databases have no scheduler, so there recurring jobs only run where a runner is started.
 
 ### Job types
 
@@ -2014,6 +2015,8 @@ it replaces.
   provider call cannot be rolled back, so the handler does **not** run in one transaction; each
   write is one statement conditional on `status = 'PENDING'` (NC12):
   1. read the delivery; none → `PermanentJobError`. Not `PENDING` → no-op, `SUCCEEDED`;
+     email switched off (J10) → `SKIPPED` with `error` =
+     `Email sending is disabled (JOB_EMAIL_ENABLED)`, `SUCCEEDED`, no provider call;
   2. the recipient is soft-deleted → `SKIPPED`, `SUCCEEDED`;
   3. `MAIL_PROVIDER` unsupported (NC14) → `FAILED` with its `error`, then `PermanentJobError`;
   4. `attempts` + 1 — when this write matches nothing (the delivery left `PENDING` meanwhile) the
@@ -2025,6 +2028,20 @@ it replaces.
 
   The project's soft deletion plays no part: a delivery created by an event that rule 5 allowed
   is still sent.
+
+### Gated job types
+- **J10** — Two types are switched off by environment flag until production can run them for
+  real; each runs only when its flag is exactly `true`, read at every runner pass. Off by default.
+  - `settlement.payout` (`JOB_PAYOUT_ENABLED`) is **held**: no runner claims it while the flag is
+    off, so it stays `PENDING` with its `runAt`, and `runDueJobs` does not count it. Turning the
+    flag on runs every held payout; J1 still makes a rescheduled one a no-op. A payout is money
+    owed, so it is kept, not dropped. (Today's only payout provider, `LogPayoutProvider`, reports
+    every transfer as successful without moving money.)
+  - `notification.email` (`JOB_EMAIL_ENABLED`) is **skipped**: the job runs and J9 step 1 marks
+    its delivery `SKIPPED`. Email is only useful when timely, so holding it would send a backlog
+    of stale notifications and digests in one burst once the flag is turned on. This covers the
+    unread-message digest (J8), whose email is a `notification.email` job; the digest job itself
+    still runs and keeps its throttle.
 
 ---
 

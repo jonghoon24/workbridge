@@ -1,0 +1,47 @@
+# 운영 서버의 작업 큐를 15분마다 한 번 돌린다(docs/DEPLOYMENT.md "운영 환경의 한계" 1).
+# Vercel에는 상주 워커가 없고 Hobby 플랜의 Vercel Cron은 하루 한 번뿐이라 GitHub Actions 스케줄을 쓴다.
+# 운영 서버만 대상이다. 프리뷰와 로컬 DB에는 스케줄러가 없다.
+# 시크릿 PROD_INTERNAL_JOB_TOKEN은 운영 서버의 INTERNAL_JOB_TOKEN과 같은 값이다.
+# 정산 지급과 메일 발송은 서버의 JOB_PAYOUT_ENABLED / JOB_EMAIL_ENABLED가 true일 때만 실제로 돈다.
+name: jobs
+
+on:
+  schedule:
+    # UTC 기준. GitHub의 스케줄은 부하에 따라 몇 분씩 늦게 시작할 수 있다.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+# 이전 실행이 끝나기 전에 다음 실행이 시작되지 않게 한다(서버도 SKIP LOCKED로 겹침을 막는다).
+concurrency:
+  group: jobs
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  JOBS_URL: https://workbridge-server-tau.vercel.app/api/internal/jobs/run
+  # 한 번에 실행할 작업 수. 서버리스 함수의 실행 시간 안에 끝나도록 작게 잡는다.
+  JOBS_LIMIT: 25
+
+jobs:
+  run:
+    name: POST /api/internal/jobs/run (production)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 작업 큐 한 번 실행
+        env:
+          INTERNAL_JOB_TOKEN: ${{ secrets.PROD_INTERNAL_JOB_TOKEN }}
+        run: |
+          if [ -z "$INTERNAL_JOB_TOKEN" ]; then
+            echo "::error::시크릿 PROD_INTERNAL_JOB_TOKEN이 없다"
+            exit 1
+          fi
+          # --fail-with-body: 2xx가 아니면 응답 본문을 보여 주고 실패한다(403 토큰 불일치, 404 토큰 미설정, 500).
+          curl --silent --show-error --fail-with-body \
+            --max-time 120 --retry 2 --retry-delay 10 \
+            -X POST "$JOBS_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-Internal-Token: $INTERNAL_JOB_TOKEN" \
+            -d "{\"limit\": $JOBS_LIMIT}"
+          echo
