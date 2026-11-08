@@ -2,9 +2,10 @@ import { env } from '../../env';
 import type { NotificationType } from './types';
 
 /**
- * Wording and links of the Phase 1 notification types (BEHAVIOR.md "Notifications" table) and of
- * the Phase 3 email-only digest (NC16), plus the email rendering every type shares (NC13).
- * The four pre-existing types keep their strings inline in the old controllers — intended debt.
+ * Wording and links of the contract, milestone and settlement notification types (BEHAVIOR.md
+ * "Notifications" table) and of the email-only unread-message digest (NC16), plus the email
+ * rendering every type shares (NC13). The four pre-existing types still keep their strings
+ * inline in their controllers.
  */
 
 export type TemplateType = Exclude<

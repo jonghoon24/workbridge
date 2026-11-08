@@ -4,12 +4,12 @@
  * the 19 in-app types with recipients and links, NC2 all 20 with their channel policy.
  */
 export type NotificationType =
-  // Pre-existing; their wording stays inline in the old controllers.
+  // Pre-existing; their wording is inline in their controllers.
   | 'APPLICATION_CREATED'
   | 'APPLICATION_ACCEPTED'
   | 'APPLICATION_REJECTED'
   | 'PROJECT_STATUS_CHANGED'
-  // Phase 1; rendered by `templates.ts`.
+  // Contracts, milestones and settlements; rendered by `templates.ts`.
   | 'CONTRACT_ACTIVATED'
   | 'MILESTONE_PLAN_UPDATED'
   | 'MILESTONE_FUNDED'
@@ -25,5 +25,5 @@ export type NotificationType =
   | 'SETTLEMENT_PAID'
   | 'SETTLEMENT_ON_HOLD'
   | 'SETTLEMENT_FAILED'
-  // Phase 3; email only — never an in-app row (NC2, NC16).
+  // Notification channels; email only — never an in-app row (NC2, NC16).
   | 'MESSAGE_UNREAD_DIGEST';

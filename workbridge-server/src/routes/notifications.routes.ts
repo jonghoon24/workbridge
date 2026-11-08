@@ -21,7 +21,7 @@ router.get('/unread-count', authenticate, getUnreadNotificationCount);
 router.patch('/read-all', authenticate, markAllNotificationsRead);
 router.patch('/:id/read', authenticate, markNotificationRead);
 
-// Phase 3 (NC5–NC8): expansion routes (rule 12), open to either role. Guards per route rather
+// Notification preferences (NC5–NC8): expansion routes (rule 12), open to either role. Guards per route rather
 // than `router.use`, so unmatched paths stay unmatched (Q10).
 const guard = [authenticate, requireActiveUser];
 router.get('/preferences', ...guard, getMyNotificationPreferences);

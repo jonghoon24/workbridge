@@ -12,7 +12,7 @@ import type { AuthedRequest } from '../types/index';
 
 export async function getContract(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // D21: no soft-delete filter on this pre-existing route (BEHAVIOR.md).
+    // 알려진 불일치 D21 (#16): no soft-delete filter on this pre-existing route.
     const contract = await prisma.contract.findUnique({
       where: { id: req.params.id },
       include: contractInclude,

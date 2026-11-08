@@ -9,7 +9,8 @@ import type { AuthedRequest } from '../types/index';
 
 /**
  * Payments are per milestone (BEHAVIOR.md "Payments", PY1–PY12, [C1]). This is a pre-existing
- * controller: hand-written validation, no zod, no `requireActiveUser` (D12) — intended.
+ * controller: hand-written validation, no zod, no `requireActiveUser` — 알려진 불일치 D12 (#7).
+ * Moving it to services + zod is #40.
  */
 
 const isPaymentBypassEnabled = () =>
@@ -17,8 +18,8 @@ const isPaymentBypassEnabled = () =>
 
 /**
  * The milestone a payment request names, with what the checks need. Missing, or its contract's
- * project soft-deleted → 404 (rule 5). A non-string id reaches Prisma and is a 500 — the D14 and
- * [C7] logging vector, deliberately left unvalidated.
+ * project soft-deleted → 404 (rule 5). The id is not validated yet: a non-string id reaches Prisma
+ * and is a 500 — 알려진 불일치 D14 (#9), and the [C7] logging vector.
  */
 async function findMilestoneForPayment(milestoneId: unknown) {
   const milestone = await prisma.milestone.findFirst({
@@ -102,7 +103,7 @@ export async function createPayment(req: AuthedRequest, res: Response, next: Nex
 
     const orderId = uuidv4();
 
-    // D13: `Payment.milestoneId` is unique and a concurrent duplicate's P2002 is not caught.
+    // 알려진 불일치 D13 (#8): `Payment.milestoneId` is unique and a concurrent duplicate's P2002 is not caught.
     const created = await prisma.payment.create({
       data: {
         contractId: contract.id,
@@ -146,7 +147,7 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
       throw new AppError('Not authorized', 403);
     }
 
-    // D18: a read followed by an unlocked write; two concurrent confirms can both pass this.
+    // 알려진 불일치 D18 (#13): a read followed by an unlocked write; two concurrent confirms can both pass this.
     if (payment.status !== 'PENDING') {
       throw new AppError('Payment has already been processed', 409);
     }
@@ -188,7 +189,7 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
 
       res.json(updated);
     } catch (tossError) {
-      // D8: the cause is discarded. Any failure after capture — including a database write —
+      // 알려진 불일치 D8 (#3): the cause is discarded. Any failure after capture — including a database write —
       // lands here too (PY8). The FAILED write is conditional on PENDING so a confirm that
       // lost a race never turns the winner's COMPLETED payment back into FAILED.
       await prisma.payment.updateMany({

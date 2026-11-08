@@ -116,8 +116,8 @@ const requiredMonth = z
 
 /**
  * PF9 `skills`: repeated multipart fields (an array), one comma-separated value, or a JSON array of
- * strings. A non-string entry is a 400 — `normalizeSkillList` would throw on it (D16), and this
- * route has no D16. Normalized and de-duplicated before the limits apply.
+ * strings. A non-string entry is a 400 — `normalizeSkillList` would throw on it, which is
+ * 알려진 불일치 D16 (#11) on the pre-existing routes; this route does not have it. Normalized and de-duplicated before the limits apply.
  */
 const skillList = z
   .union([z.string(), z.array(z.string({ invalid_type_error: 'Skills must be strings' })), z.null()])

@@ -8,10 +8,10 @@ import { buildStorageKey, decodeOriginalName } from '../lib/storageKey';
 import { uploadToSupabase } from './upload';
 
 /**
- * Upload middlewares for the **expansion domains** (BEHAVIOR.md rule 12). Unlike the legacy
- * `upload` in `./upload.ts` — whose filter throws a plain `Error` and so surfaces as a 500
- * (D6) — every rejection here is an `AppError`: oversized → 413, anything else → 400. The
- * legacy middleware is deliberately left as it is.
+ * Upload middlewares for the **expansion domains** (BEHAVIOR.md rule 12). Unlike the
+ * profile-image `upload` in `./upload.ts` — whose filter throws a plain `Error` and so surfaces
+ * as a 500 (알려진 불일치 D6) — every rejection here is an `AppError`: oversized → 413, anything
+ * else → 400. The profile-image middleware has not been moved to this pattern yet.
  */
 
 export interface UploadPolicy {

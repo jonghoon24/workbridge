@@ -440,7 +440,7 @@ export async function getSettlement(settlementId: string, freelancerId: string) 
 /**
  * PA4: every ON_HOLD settlement → SCHEDULED for the next Wednesday 10:00 KST strictly after both
  * `now` and its current `scheduledPayoutAt`. The second bound keeps the new payout key distinct
- * from the job that put it ON_HOLD — with a skewed clock (or a demo run at a future `now`) the
+ * from the job that put it ON_HOLD — with a skewed clock (or a manual run with a future `now`) the
  * same Wednesday would collide with that job's `dedupeKey` and silently enqueue nothing.
  */
 export async function rescheduleHeldSettlements(tx: PrismaTransactionClient, freelancerId: string, now: Date): Promise<number> {
