@@ -93,7 +93,7 @@ function makeNotification(userId: string) {
     data: {
       userId,
       type: 'APPLICATION_CREATED',
-      title: '새 지원자가 도착했습니다',
+      title: '새 지원자가 있습니다',
       message: '알림 본문',
       href: '/my/applications',
     },

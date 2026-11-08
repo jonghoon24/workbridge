@@ -58,6 +58,8 @@ export type MessageSystemEvent =
   | 'CONTRACT_COMPLETED';
 
 export interface SystemMessageVars {
+  /** MILESTONE_PLAN_UPDATED: whether a signature was cleared by this replacement. */
+  signaturesReset?: boolean;
   milestoneTitle?: string;
   round?: number;
   reason?: string;
@@ -69,15 +71,17 @@ export interface SystemMessageVars {
  */
 const ms = (v: SystemMessageVars) => `마일스톤 '${v.milestoneTitle ?? ''}'`;
 const SYSTEM_BODIES: Record<MessageSystemEvent, (v: SystemMessageVars) => string> = {
-  CONTRACT_CREATED: () => '계약이 생성되었습니다. 마일스톤 계획을 확인해주세요.',
-  MILESTONE_PLAN_UPDATED: () => '마일스톤 계획이 변경되었습니다. 서명이 초기화되었으니 다시 확인하고 서명해주세요.',
-  CONTRACT_ACTIVATED: () => '양측이 서명해 계약이 시작되었습니다. 첫 마일스톤 결제부터 진행해주세요.',
-  MILESTONE_FUNDED: (v) => `${ms(v)} 결제가 완료되었습니다. 작업을 시작해주세요.`,
-  MILESTONE_SUBMITTED: (v) => `${ms(v)} 산출물이 제출되었습니다${v.round ? ` (${v.round}차)` : ''}. 검수 후 승인하거나 수정을 요청해주세요.`,
-  MILESTONE_REVISION_REQUESTED: (v) => `${ms(v)} 수정이 요청되었습니다.${v.reason ? `\n사유: ${v.reason}` : ''}`,
-  MILESTONE_APPROVED: (v) => `${ms(v)} 산출물이 승인되었습니다.`,
-  MILESTONE_AUTO_APPROVED: (v) => `${ms(v)} 산출물이 검수 기한이 지나 자동 승인되었습니다.`,
-  CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨주세요.',
+  CONTRACT_CREATED: () => '계약이 생성되었습니다. 마일스톤 계획을 확인해 주세요.',
+  MILESTONE_PLAN_UPDATED: (v) => (v.signaturesReset
+    ? '마일스톤 계획이 변경되어 서명이 초기화되었습니다. 다시 확인하고 서명해 주세요.'
+    : '마일스톤 계획이 변경되었습니다. 확인한 뒤 서명해 주세요.'),
+  CONTRACT_ACTIVATED: () => '양측이 서명해 계약이 시작되었습니다. 첫 마일스톤 결제부터 진행해 주세요.',
+  MILESTONE_FUNDED: (v) => `${ms(v)} 결제가 완료되었습니다. 작업을 시작해 주세요.`,
+  MILESTONE_SUBMITTED: (v) => `${ms(v)} 결과물이 제출되었습니다${v.round ? ` (${v.round}차)` : ''}. 검수 후 승인하거나 수정을 요청해 주세요.`,
+  MILESTONE_REVISION_REQUESTED: (v) => `${ms(v)} 수정이 요청되었습니다.${v.reason ? `\n요청 사항: ${v.reason}` : ''}`,
+  MILESTONE_APPROVED: (v) => `${ms(v)} 결과물이 승인되었습니다.`,
+  MILESTONE_AUTO_APPROVED: (v) => `${ms(v)} 결과물이 검수 기한이 지나 자동 승인되었습니다.`,
+  CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨 주세요.',
 };
 
 // ---------------------------------------------------------------------------

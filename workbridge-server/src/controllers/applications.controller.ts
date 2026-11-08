@@ -82,7 +82,7 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
         await notify(tx, {
           userId: project.clientId,
           type: 'APPLICATION_CREATED',
-          title: '새 지원자가 도착했습니다',
+          title: '새 지원자가 있습니다',
           message: `${applicantName}님이 '${project.title}' 프로젝트에 지원했습니다.`,
           href: `/projects/${projectId}/applications`,
         });
@@ -233,14 +233,14 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
             userId: application.freelancerId,
             type: 'APPLICATION_ACCEPTED',
             title: '지원이 수락되었습니다',
-            message: `'${project.title}' 프로젝트 지원이 수락되었습니다. 계약서를 확인해주세요.`,
+            message: `'${project.title}' 프로젝트 지원이 수락되었습니다. 계약서를 확인해 주세요.`,
             href: `/contracts/${contract.id}`,
           }, now);
 
           await notifyMany(tx, rejectedApplications.map((rejected) => ({
             userId: rejected.freelancerId,
             type: 'APPLICATION_REJECTED' as const,
-            title: '지원 결과가 업데이트되었습니다',
+            title: '지원 결과를 알려 드립니다',
             message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
             href: '/my/applications',
           })), now);
@@ -273,7 +273,7 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
         await notify(tx, {
           userId: application.freelancerId,
           type: 'APPLICATION_REJECTED',
-          title: '지원 결과가 업데이트되었습니다',
+          title: '지원 결과를 알려 드립니다',
           message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
           href: '/my/applications',
         });
