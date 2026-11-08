@@ -1,0 +1,39 @@
+# Claude Code가 이슈와 PR의 @claude 멘션에 응답한다. 이슈 본문에 @claude가 있으면 작업을 맡아
+# 브랜치를 만들고 PR을 연다. 트리거한 사람에게 쓰기 권한이 있어야 돈다(액션이 검사한다).
+name: claude
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issues:
+    types: [opened, assigned]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # 저장소의 CLAUDE.md, .claude/rules, 스킬을 그대로 읽는다. 테스트는 CI가 돌린다.
+          claude_args: |
+            --max-turns 60
+            --allowedTools "Bash(npm run typecheck:*),Bash(npm run lint:*),Bash(npx vitest run:*),Bash(git:*),Bash(gh pr:*),Bash(gh issue view:*)"
