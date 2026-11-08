@@ -16,6 +16,8 @@ paths:
 
 - `workbridge-server/vercel.json`은 진입점을 **두 번** 하드코딩한다(`builds[].src`와 `routes[].dest`
   = `src/index.ts`). 진입점 이름을 바꾸면 둘 다 고친다.
+- `vercel.json`의 `regions: ["icn1"]`은 DB가 있는 서울 리전에 함수를 둔다. 지우거나 바꾸면 쿼리가 많은
+  트랜잭션이 인터랙티브 트랜잭션 한도(5초)를 넘겨 운영에서만 500이 난다(`docs/DEPLOYMENT.md` "백엔드").
 - `@vercel/node`가 TypeScript를 바로 트랜스파일한다: **빌드 단계도 `dist/`도 없다.** Prisma 클라이언트는
   `package.json`의 `postinstall: prisma generate`가 만든다. 대시보드의 Build Command(`npx prisma generate`)는
   `vercel.json`에 `builds`가 있어서 **무시된다** — `postinstall`을 지우지 않는다.

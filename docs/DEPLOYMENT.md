@@ -31,6 +31,7 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 ## 백엔드
 
 - `vercel.json`이 이미 설정되어 있음(`src/index.ts`를 `@vercel/node`가 서버리스 함수로 직접 트랜스파일한다. 빌드 단계와 `dist/`는 없다)
+- 함수 리전은 `vercel.json`의 `regions: ["icn1"]`(서울)이다. DB(Supabase)가 ap-northeast-2에 있어서 함수가 다른 리전(기본값 iad1)에서 돌면 쿼리마다 왕복 지연이 붙고, 지원 수락처럼 쿼리가 많은 트랜잭션이 Prisma의 인터랙티브 트랜잭션 기본 한도(5초)를 넘겨 500(`Transaction not found`)이 난다. DB 리전을 옮기면 이 값도 같이 옮긴다
 - Vercel 대시보드에서 환경변수 설정([ENV.md](ENV.md))
 - Prisma 클라이언트는 `package.json`의 `postinstall: prisma generate`가 설치 단계에서 만든다. 대시보드의 Build Command에도 `npx prisma generate`가 있지만 `vercel.json`에 `builds`가 있으면 대시보드 빌드 설정은 무시되므로 실제로 동작하는 것은 `postinstall`이다
 - 마이그레이션은 손으로 적용하지 않는다. 위 `migrate.yml`이 `prisma migrate deploy`를 돌리며, 이때 `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 5432)이어야 한다
