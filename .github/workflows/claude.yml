@@ -1,5 +1,10 @@
-# Claude Code가 이슈와 PR의 @claude 멘션에 응답한다. 이슈 본문에 @claude가 있으면 작업을 맡아
-# 브랜치를 만들고 PR을 연다. 트리거한 사람에게 쓰기 권한이 있어야 돈다(액션이 검사한다).
+# Claude Code가 이슈와 PR의 @claude 멘션에 응답한다. 트리거한 사람에게 쓰기 권한이 있어야 돈다(액션이 검사한다).
+# 이슈에서 작업을 맡으면 새 브랜치에 커밋·푸시하고, PR 템플릿을 채운 **드래프트** PR을 직접 연다.
+#   - 액션의 기본 동작은 PR을 열지 않고 "Create PR" 링크만 남기는 것이다. 아래 --append-system-prompt가
+#     그 지시를 이 리포지토리의 규칙으로 덮는다.
+#   - 드래프트라서 claude-code-review.yml이 건너뛴다(`if: draft == false`). 사람이 diff를 보고
+#     "Ready for review"를 누르면 그 사람의 이벤트로 AI 리뷰가 돈다. 머지 판단은 사람이 한다.
+#   - 이미 열린 PR에서 불리면 새 PR을 열지 않고 그 PR 브랜치에 푸시한다.
 name: claude
 on:
   issue_comment:
@@ -25,15 +30,53 @@ jobs:
       issues: write
       id-token: write
       actions: read
+    env:
+      # `prisma generate`(서버 postinstall)가 schema.prisma의 env()를 풀 때만 쓰는 자리표시자다.
+      # 이 잡에는 DB가 없다 — 실제 DB가 필요한 테스트는 PR의 ci.yml이 돌린다.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_test
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/workbridge_test
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
+      # Claude가 고친 코드를 스스로 typecheck·lint할 수 있게 의존성을 미리 설치한다(실행당 약 1분).
+      # 기본 브랜치의 lockfile로 설치한다. PR이 의존성을 바꿨다면 그 차이는 ci.yml이 잡는다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            workbridge-server/package-lock.json
+            workbridge-client/package-lock.json
+
+      - name: 서버 의존성 설치 (postinstall이 Prisma 클라이언트를 생성한다)
+        working-directory: workbridge-server
+        run: npm ci
+
+      - name: Prisma 클라이언트 생성 확인
+        working-directory: workbridge-server
+        run: npx prisma generate
+
+      - name: 클라이언트 의존성 설치
+        working-directory: workbridge-client
+        run: npm ci
+
       - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          # 저장소의 CLAUDE.md, .claude/rules, 스킬을 그대로 읽는다. 테스트는 CI가 돌린다.
+          # 저장소의 CLAUDE.md, .claude/rules, 스킬을 그대로 읽는다.
+          # 허용 커맨드: 정적 검사(typecheck, lint), 읽기 전용 git, PR 보기·드래프트 PR 열기, 이슈 보기.
+          # 커밋·푸시(git add/commit/push)는 액션이 따로 허용한다. vitest는 DB가 없어 넣지 않는다.
           claude_args: |
             --max-turns 60
-            --allowedTools "Bash(npm run typecheck:*),Bash(npm run lint:*),Bash(npx vitest run:*),Bash(git:*),Bash(gh pr:*),Bash(gh issue view:*)"
+            --allowedTools "Bash(npm --prefix workbridge-server run typecheck),Bash(npm --prefix workbridge-client run lint:*),Bash(npm run typecheck),Bash(npm run lint:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr create:*),Bash(gh issue view:*)"
+            --append-system-prompt "이 리포지토리의 규칙이다. 위의 기본 지시와 충돌하면 이 규칙을 따른다.
+            - 정적 검사: 서버를 고쳤으면 npm --prefix workbridge-server run typecheck, 클라이언트를 고쳤으면 npm --prefix workbridge-client run lint -- --max-warnings=0 을 돌리고 통과시킨 뒤 커밋한다. 서버 테스트(vitest)는 DB가 없어 여기서 돌리지 않는다 — PR의 CI가 돌린다.
+            - 이슈에서 작업을 맡아 새 브랜치에 커밋·푸시했다면 'Create a PR' 링크를 만들지 않는다. 대신 직접 드래프트 PR을 연다:
+              1) .github/PULL_REQUEST_TEMPLATE.md 를 읽고, 모든 절과 체크박스를 그대로 둔 채 채워서 작업 트리 루트의 .pr-body.md 에 쓴다(.gitignore에 있다. 커밋하지 않는다). 관련 이슈는 'Closes #<이슈 번호>', 체크박스는 실제로 돌린 검사만 체크한다. 사람이 판단해야 할 것은 '리뷰어가 볼 곳'에 적는다.
+              2) gh pr create --draft --base main --head <지금 브랜치> --title '<type(scope): 한국어 제목>' --body-file .pr-body.md
+              3) 진행 코멘트의 마지막에는 링크 대신 만든 PR의 URL을 적고, '드래프트 PR입니다. diff를 확인한 뒤 Ready for review를 누르면 AI 리뷰가 시작됩니다.'라고 한 줄 적는다.
+            - 이미 열린 PR에서 불렸으면 새 PR을 열지 않고 그 PR 브랜치에 푸시만 한다.
+            - PR을 Ready로 바꾸거나 머지·닫기·승인하지 않는다.
+            - 코멘트와 PR 본문은 한국어 합니다체로 쓴다."
