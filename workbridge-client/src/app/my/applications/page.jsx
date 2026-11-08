@@ -6,6 +6,9 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { BriefcaseIcon } from '@/components/ui/Icons';
 
 export default function MyApplicationsPage() {
   const [applications, setApplications] = useState([]);
@@ -19,19 +22,22 @@ export default function MyApplicationsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">내 지원 현황</h1>
 
       {applications.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p className="mb-4">아직 지원한 프로젝트가 없습니다</p>
-          <Link href="/projects" className="text-primary-600 hover:text-primary-700 font-medium">
-            프로젝트 찾기 →
-          </Link>
-        </div>
+        <EmptyState
+          icon={BriefcaseIcon}
+          title="아직 지원한 프로젝트가 없습니다"
+          action={(
+            <Link href="/projects" className="text-primary-600 hover:text-primary-700 font-semibold">
+              프로젝트 찾기 →
+            </Link>
+          )}
+        />
       ) : (
         <div className="space-y-4">
           {applications.map((app) => (

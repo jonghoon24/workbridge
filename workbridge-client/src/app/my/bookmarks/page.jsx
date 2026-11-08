@@ -5,6 +5,9 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import ProjectCard from '@/components/projects/ProjectCard';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { BookmarkIcon } from '@/components/ui/Icons';
 
 export default function MyBookmarksPage() {
   const [projects, setProjects] = useState([]);
@@ -27,7 +30,7 @@ export default function MyBookmarksPage() {
   }
 
   if (loading) {
-    return <div className="max-w-5xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+    return <PageLoader />;
   }
 
   return (
@@ -44,12 +47,15 @@ export default function MyBookmarksPage() {
       )}
 
       {!error && projects.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p className="mb-4">아직 북마크한 프로젝트가 없습니다</p>
-          <Link href="/projects" className="text-primary-600 hover:text-primary-700 font-medium">
-            프로젝트 찾기 →
-          </Link>
-        </div>
+        <EmptyState
+          icon={BookmarkIcon}
+          title="아직 북마크한 프로젝트가 없습니다"
+          action={(
+            <Link href="/projects" className="text-primary-600 hover:text-primary-700 font-semibold">
+              프로젝트 찾기 →
+            </Link>
+          )}
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {projects.map((project) => (

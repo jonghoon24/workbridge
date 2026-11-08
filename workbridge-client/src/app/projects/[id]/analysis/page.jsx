@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import PageLoader from '@/components/ui/PageLoader';
 
 export default function AnalysisPage() {
   const { id } = useParams();
@@ -66,7 +67,7 @@ export default function AnalysisPage() {
     }
   }
 
-  if (loading) return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   const applicationCount = project?._count?.applications || 0;
   const hasApplications = applicationCount > 0;

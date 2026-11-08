@@ -9,6 +9,9 @@ import Card from '@/components/ui/Card';
 import PortfolioGrid from '@/components/profile/PortfolioGrid';
 import PortfolioItemModal from '@/components/profile/PortfolioItemModal';
 import { describeProfileError } from '@/components/profile/profileFormat';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { LockIcon } from '@/components/ui/Icons';
 
 const MAX_ITEMS = 20;
 
@@ -79,12 +82,12 @@ export default function PortfolioManagePage() {
     await reload().catch(() => setError('목록을 새로 불러오지 못했습니다'));
   }
 
-  if (loading) return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   if (me && me.role !== 'FREELANCER') {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center text-gray-600">
-        포트폴리오는 프리랜서 회원만 등록할 수 있습니다.
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
+        <EmptyState icon={LockIcon} title="포트폴리오는 프리랜서 회원만 등록할 수 있습니다." />
       </div>
     );
   }
@@ -127,10 +130,10 @@ export default function PortfolioManagePage() {
       )}
 
       {items.length === 0 ? (
-        <Card className="p-10 text-center text-gray-500">
-          <p>아직 등록한 포트폴리오가 없습니다.</p>
-          <p className="text-sm mt-1">대표 작업을 3개 이상 올리면 프로필 완성도가 올라가고 추천에도 반영됩니다.</p>
-        </Card>
+        <EmptyState
+          title="아직 등록한 포트폴리오가 없습니다."
+          description="대표 작업을 3개 이상 올리면 프로필 완성도가 올라가고 추천에도 반영됩니다."
+        />
       ) : (
         <PortfolioGrid
           items={items}

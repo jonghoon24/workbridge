@@ -14,6 +14,8 @@ import SubmissionForm from '@/components/milestones/SubmissionForm';
 import SubmissionHistory from '@/components/milestones/SubmissionHistory';
 import { formatDate, formatDateTime, formatKRW, formatRemaining } from '@/lib/format';
 import { PAYMENT_STATUS_LABELS } from '@/constants/milestones';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
 
 export default function MilestoneDetailPage() {
   const { id: contractId, milestoneId } = useParams();
@@ -77,15 +79,20 @@ export default function MilestoneDetailPage() {
     await loadMilestone().catch(() => {});
   }
 
-  if (loading) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   if (loadError || !milestone) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-        <p className="text-gray-600 mb-4">{loadError || '마일스톤을 찾을 수 없습니다'}</p>
-        <Link href={`/contracts/${contractId}`} className="text-primary-600 hover:text-primary-700 font-medium">
-          계약서로 돌아가기 →
-        </Link>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+        <EmptyState
+          tone="error"
+          title={loadError || '마일스톤을 찾을 수 없습니다'}
+          action={(
+            <Link href={`/contracts/${contractId}`} className="text-primary-600 hover:text-primary-700 font-semibold">
+              계약서로 돌아가기 →
+            </Link>
+          )}
+        />
       </div>
     );
   }

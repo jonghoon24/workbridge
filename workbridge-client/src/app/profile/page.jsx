@@ -10,6 +10,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import CheckboxChips from '@/components/ui/CheckboxChips';
 import ProfileCompletionCard from '@/components/profile/ProfileCompletionCard';
+import PageLoader from '@/components/ui/PageLoader';
 import {
   BUSINESS_FIELD_OPTIONS,
   FREELANCER_ACTIVITY_CATEGORIES,
@@ -135,7 +136,7 @@ export default function ProfilePage() {
     }
   }
 
-  if (loading) return <div className="max-w-2xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">

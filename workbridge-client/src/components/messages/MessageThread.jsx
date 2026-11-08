@@ -10,6 +10,7 @@ import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
 import usePolling from './usePolling';
 import MessageBubble from './MessageBubble';
 import MessageComposer from './MessageComposer';
+import { ChevronLeftIcon } from '@/components/ui/Icons';
 import {
   MESSAGE_LIMITS,
   THREAD_POLL_MS,
@@ -238,8 +239,8 @@ export default function MessageThread({ conversationId }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
-        <Link href="/messages" className="text-gray-500 hover:text-gray-700 md:hidden" aria-label="대화 목록으로">
-          ←
+        <Link href="/messages" className="-ml-2 inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 md:hidden" aria-label="대화 목록으로">
+          <ChevronLeftIcon className="h-5 w-5" />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

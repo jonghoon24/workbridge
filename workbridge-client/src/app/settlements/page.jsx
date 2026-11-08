@@ -9,6 +9,9 @@ import Button from '@/components/ui/Button';
 import SettlementSummaryCard from '@/components/settlements/SettlementSummaryCard';
 import SettlementTable from '@/components/settlements/SettlementTable';
 import { SETTLEMENT_STATUS_LABELS } from '@/constants/milestones';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { LockIcon } from '@/components/ui/Icons';
 
 const PAGE_SIZE = 20;
 
@@ -71,8 +74,8 @@ export default function SettlementsPage() {
 
   if (forbidden) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center text-gray-600">
-        정산은 프리랜서 회원만 이용할 수 있습니다.
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
+        <EmptyState icon={LockIcon} title="정산은 프리랜서 회원만 이용할 수 있습니다." />
       </div>
     );
   }
@@ -126,7 +129,7 @@ export default function SettlementsPage() {
         </div>
 
         {loading ? (
-          <p className="py-12 text-center text-sm text-gray-500">로딩 중...</p>
+          <PageLoader className="min-h-0" />
         ) : (
           <SettlementTable settlements={settlements} />
         )}

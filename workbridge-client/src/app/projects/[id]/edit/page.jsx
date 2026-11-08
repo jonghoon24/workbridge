@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card';
 import ProjectForm from '@/components/projects/ProjectForm';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
+import PageLoader from '@/components/ui/PageLoader';
 
 export default function EditProjectPage() {
   const { id } = useParams();
@@ -28,7 +29,7 @@ export default function EditProjectPage() {
       .finally(() => setLoading(false));
   }, [id, router]);
 
-  if (loading) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
   if (!project) return null;
 
   return (

@@ -10,6 +10,9 @@ import Input from '@/components/ui/Input';
 import { BANKS } from '@/constants/banks';
 import { formatDateTime } from '@/lib/format';
 import { describeServerError } from '@/lib/serverErrors';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { LockIcon } from '@/components/ui/Icons';
 
 const EMPTY_FORM = { bankCode: '', accountNumber: '', holderName: '' };
 
@@ -120,12 +123,12 @@ export default function PayoutAccountPage() {
     }
   }
 
-  if (loading) return <div className="max-w-xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   if (forbidden) {
     return (
-      <div className="max-w-xl mx-auto px-4 py-16 text-center text-gray-600">
-        지급 계좌는 프리랜서 회원만 등록할 수 있습니다.
+      <div className="max-w-xl mx-auto px-4 sm:px-6 py-12">
+        <EmptyState icon={LockIcon} title="지급 계좌는 프리랜서 회원만 등록할 수 있습니다." />
       </div>
     );
   }

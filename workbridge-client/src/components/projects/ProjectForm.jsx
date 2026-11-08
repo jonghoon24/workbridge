@@ -353,7 +353,7 @@ export default function ProjectForm({ initialData = null }) {
         <Button type="button" variant="secondary" onClick={() => router.back()}>
           취소
         </Button>
-        <div className="flex gap-3 justify-end">
+        <div className="flex gap-3 justify-end [&>*]:flex-1 sm:[&>*]:flex-none">
           {currentStep > 0 && (
             <Button type="button" variant="secondary" onClick={handleBack}>
               이전

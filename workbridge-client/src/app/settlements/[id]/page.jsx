@@ -10,6 +10,8 @@ import SettlementStatusBadge from '@/components/settlements/SettlementStatusBadg
 import { formatPeriod } from '@/components/settlements/SettlementTable';
 import { formatDate, formatDateTime, formatKRW } from '@/lib/format';
 import { MAX_PAYOUT_ATTEMPTS } from '@/constants/milestones';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
 
 
 export default function SettlementDetailPage() {
@@ -34,15 +36,20 @@ export default function SettlementDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   if (error || !settlement) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-        <p className="text-gray-600 mb-4">{error || '정산을 찾을 수 없습니다'}</p>
-        <Link href="/settlements" className="text-primary-600 hover:text-primary-700 font-medium">
-          정산 목록으로 →
-        </Link>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
+        <EmptyState
+          tone="error"
+          title={error || '정산을 찾을 수 없습니다'}
+          action={(
+            <Link href="/settlements" className="text-primary-600 hover:text-primary-700 font-semibold">
+              정산 목록으로 →
+            </Link>
+          )}
+        />
       </div>
     );
   }

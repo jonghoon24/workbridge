@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import PageLoader from '@/components/ui/PageLoader';
 import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -105,7 +106,7 @@ export default function NotificationSettingsPage() {
   }
 
   if (loading) {
-    return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+    return <PageLoader />;
   }
 
   return (

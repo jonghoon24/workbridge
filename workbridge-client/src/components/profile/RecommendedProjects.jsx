@@ -6,6 +6,8 @@ import api from '@/lib/api';
 import Card from '@/components/ui/Card';
 import { formatDate, formatKRW } from '@/lib/format';
 import Tag from '@/components/ui/Tag';
+import EmptyState from '@/components/ui/EmptyState';
+import { SparklesIcon } from '@/components/ui/Icons';
 
 const INCOMPLETE_PROFILE = '프로필을 먼저 완성해주세요';
 
@@ -40,9 +42,10 @@ export default function RecommendedProjects({ limit = 10, compact = false }) {
   if (error) return <p className="text-sm text-red-600">{error}</p>;
   if (projects.length === 0) {
     return (
-      <Card className="p-6 text-center text-gray-500">
-        지금은 추천할 모집 중인 프로젝트가 없습니다. 기술 스택을 넓혀 보거나 프로젝트 목록을 둘러보세요.
-      </Card>
+      <EmptyState
+        icon={SparklesIcon}
+        description="지금은 추천할 모집 중인 프로젝트가 없습니다. 기술 스택을 넓혀 보거나 프로젝트 목록을 둘러보세요."
+      />
     );
   }
 

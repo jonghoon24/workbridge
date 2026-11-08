@@ -14,6 +14,7 @@ import RejectModal from '@/components/milestones/RejectModal';
 import UnreadBadge from '@/components/messages/UnreadBadge';
 import { formatDate, formatKRW } from '@/lib/format';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
+import PageLoader from '@/components/ui/PageLoader';
 
 export default function ContractPage() {
   const { id } = useParams();
@@ -159,7 +160,7 @@ export default function ContractPage() {
     }
   }
 
-  if (loading) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
   if (!contract) return null;
 
   const currentUser = user || useAuthStore.getState().user;

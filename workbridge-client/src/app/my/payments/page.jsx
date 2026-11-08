@@ -8,6 +8,9 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import { formatDate, formatKRW } from '@/lib/format';
 import { PAYMENT_STATUS_LABELS } from '@/constants/milestones';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { CreditCardIcon } from '@/components/ui/Icons';
 
 export default function MyPaymentsPage() {
   const [payments, setPayments] = useState([]);
@@ -21,16 +24,14 @@ export default function MyPaymentsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <h1 className="text-2xl font-bold text-gray-900 mb-6">결제 내역</h1>
 
       {payments.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p>아직 결제 내역이 없습니다</p>
-        </div>
+        <EmptyState icon={CreditCardIcon} title="아직 결제 내역이 없습니다" />
       ) : (
         <div className="space-y-4">
           {payments.map((payment) => (

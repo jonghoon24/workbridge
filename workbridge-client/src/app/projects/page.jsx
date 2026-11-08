@@ -8,6 +8,7 @@ import ProjectFilters from '@/components/projects/ProjectFilters';
 import api from '@/lib/api';
 import EmptyState from '@/components/ui/EmptyState';
 import { FilterIcon, SearchIcon } from '@/components/ui/Icons';
+import PageLoader from '@/components/ui/PageLoader';
 
 function useDebounce(value, delay) {
   const [debounced, setDebounced] = useState(value);
@@ -207,7 +208,7 @@ function ProjectsContent() {
 
 export default function ProjectsPage() {
   return (
-    <Suspense fallback={<div className="max-w-7xl mx-auto px-4 py-8 text-center">로딩 중...</div>}>
+    <Suspense fallback={<PageLoader />}>
       <ProjectsContent />
     </Suspense>
   );

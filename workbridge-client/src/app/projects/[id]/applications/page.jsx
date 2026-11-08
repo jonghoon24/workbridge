@@ -9,6 +9,9 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import RecommendedFreelancers from '@/components/profile/RecommendedFreelancers';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { UserIcon } from '@/components/ui/Icons';
 
 function formatWon(value) {
   return `${Number(value || 0).toLocaleString()}원`;
@@ -62,7 +65,7 @@ export default function ApplicationsPage() {
     }
   }
 
-  if (loading) return <div className="max-w-6xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -70,9 +73,7 @@ export default function ApplicationsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2">
           {applications.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
-              <p>아직 지원자가 없습니다</p>
-            </div>
+            <EmptyState icon={UserIcon} title="아직 지원자가 없습니다" />
           ) : (
             <div className="space-y-4">
               {applications.map((app) => (

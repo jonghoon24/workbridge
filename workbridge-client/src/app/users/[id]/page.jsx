@@ -8,6 +8,9 @@ import PortfolioGrid from '@/components/profile/PortfolioGrid';
 import CareerTimeline from '@/components/profile/CareerTimeline';
 import { formatCareerSummary } from '@/components/profile/profileFormat';
 import Tag from '@/components/ui/Tag';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { UserIcon } from '@/components/ui/Icons';
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -21,8 +24,8 @@ export default function UserProfilePage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  if (loading) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
-  if (!user) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">사용자를 찾을 수 없습니다</div>;
+  if (loading) return <PageLoader />;
+  if (!user) return <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12"><EmptyState icon={UserIcon} title="사용자를 찾을 수 없습니다" /></div>;
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
