@@ -24,7 +24,7 @@ paths:
   **가짜 타이머는 절대 쓰지 않는다**(Prisma와 섞이지 않는다). 서비스에는 `now`를 넘긴다.
 - **여러 엔드포인트에 걸친 관심사는 한 곳에서 한 번만 테스트한다 — 엔드포인트마다 다시 단언하지 않는다:**
   - 401/403/소유권: `test/authorization.test.ts`의 `PROTECTED_ROUTES` / `PUBLIC_ROUTES`.
-  - 소프트 삭제: `test/soft-delete.test.ts` — `mutations`(옛 라우트, `it.fails` D12)와
+  - 소프트 삭제: `test/soft-delete.test.ts` — `mutations`(기존 라우트, `it.fails` D12)와
     `guardedMutations`(확장 라우트, 그냥 `it`). **확장 라우트를 `mutations`에 넣지 않는다.**
 - 업로드: 업로드하는 테스트 파일마다 **맨 위에** `vi.mock('@supabase/supabase-js', …)`를 둔다
   (`uploads.test.ts` 참고). `test/setup.ts`는 앱(`helpers/api`)을 import하지 않는다. import하면

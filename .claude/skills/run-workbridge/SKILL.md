@@ -14,6 +14,8 @@ description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 
 2. `node workbridge-client/scripts/screenshots.mjs` — 주요 페이지의 Playwright 스크린샷.
 3. `bash scripts/e2e.sh`(리포지토리 루트) — `workbridge-client/e2e/`의 Playwright E2E 스펙.
 
+화면 하나를 직접 조작해 볼 때는 `npx playwright cli`를 쓴다("조작" 절 끝).
+
 경로는 모두 리포지토리 루트 기준이다.
 
 ## 준비물
@@ -87,7 +89,7 @@ tail -n2 /tmp/wb-server.log /tmp/wb-client.log
 
 ## 조작
 
-1. **API 스모크** — `bash .claude/skills/run-workbridge/drive.sh` → `== 4 passed, 0 failed ==`가 나와야 한다.
+1. **API 스모크** — `bash .claude/skills/run-workbridge/drive.sh` → `== 통과 4, 실패 0 ==`이 나와야 한다.
    다른 포트: `API_PORT=4001 CLIENT_PORT=3001 bash .claude/skills/run-workbridge/drive.sh`.
 2. **스크린샷** — `node workbridge-client/scripts/screenshots.mjs`(페이지 목록, 출력 폴더, 옵션은 파일
    머리 주석에 있다). 경로마다 먼저 한 번 불러 두고(새로 띄운 `next dev`는 처음 요청 때 컴파일한다)
@@ -97,7 +99,20 @@ tail -n2 /tmp/wb-server.log /tmp/wb-client.log
    돌린다. 스펙은 화면의 한국어 텍스트로 요소를 찾으므로, 클라이언트 문구를 바꾸면 같은 변경에서
    스펙도 고친다.
 
-화면 하나를 그때그때 볼 때는 Playwright MCP 서버(`.mcp.json`)로 실제 브라우저를 조작한다.
+화면 하나를 그때그때 볼 때는 리포지토리의 Playwright(1.65)에 들어 있는 CLI로 실제 브라우저를 조작한다.
+루트에는 `package.json`이 없으므로 `workbridge-client/` 안에서 돌린다:
+
+```bash
+cd workbridge-client
+npx playwright cli -s=wb open http://localhost:3000/login   # -s=<세션>: 작업마다 다른 이름
+npx playwright cli -s=wb snapshot                           # 요소마다 ref(e1, e2 …)가 붙은 접근성 트리
+npx playwright cli -s=wb fill <ref> "kim@example.com"       # ref는 방금 찍은 snapshot에서
+npx playwright cli -s=wb click <ref>
+npx playwright cli -s=wb screenshot                         # 산출물은 .playwright-cli/ (git 무시)
+npx playwright cli -s=wb close
+```
+
+명령 목록은 `npx playwright cli --help`, 에이전트용 사용법은 그 첫 줄이 가리키는 SKILL.md에 있다.
 
 간단한 수동 확인: `curl -s http://localhost:4000/health` → `{"status":"ok"}`,
 `curl -s http://localhost:3000/api/projects | head -c 200` → 프록시를 거친 JSON.

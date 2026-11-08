@@ -69,7 +69,7 @@ npm test
 
 ## 6. 시드
 
-모델이나 컬럼이 데모 데이터에 나오면 `prisma/seed.js`를 고친다 — 트랜스파일 없이 `node`로 도는
+모델이나 컬럼이 시드 데이터에 나오면 `prisma/seed.js`를 고친다 — 트랜스파일 없이 `node`로 도는
 **순수 CommonJS**다(`lib/time.ts`/`lib/money.ts`를 손으로 따라 해 두었으니 함께 맞춘다).
 `docs/SEED_DATA.md`도 고친다. 확인: `npm run db:seed`.
 

@@ -27,4 +27,6 @@ paths:
 - **검사**(단위 테스트 없음): `npm run lint`, `npm run build`. 그다음 리포지토리 루트에서
   E2E `bash scripts/e2e.sh`(Playwright 스펙은 `workbridge-client/e2e/`)와
   `node workbridge-client/scripts/screenshots.mjs` 스크린샷 — PNG를 열어서 직접 본다.
-  그때그때 화면을 확인할 때는 Playwright MCP 서버(`.mcp.json`)로 실제 브라우저를 조작할 수 있다.
+  그때그때 화면을 확인할 때는 `workbridge-client/`에서 `npx playwright cli`로 실제 브라우저를 조작한다:
+  `npx playwright cli -s=<세션> open http://localhost:3000` → `snapshot`(요소 ref) → `click <ref>` →
+  `screenshot` → `close`. 명령 목록은 `--help`, 에이전트용 사용법은 `--help` 첫 줄이 가리키는 SKILL.md.

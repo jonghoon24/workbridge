@@ -29,7 +29,8 @@ paths:
   `lib/time.ts`를 쓴다: `startOfKstDay`, `kstDateString`, `kstDateToEndOfDay`, `nextKstTimeOfDay`,
   `nextKstWeekday`, `kstMonth*`.
 - 시간대 라이브러리는 쓰지 않는다. 달력 로직에 호스트 시간대 getter/setter
-  (`getDate()`, `getHours()`, `getDay()`, `setHours()`, `toLocaleDateString()` …)를 쓰지 않는다 — CI와
+  (`getDate()`, `getDay()`, `getHours()`, `getMonth()`, `getFullYear()`, 같은 이름의 `set*()`,
+  `toLocaleDateString()`)를 쓰지 않는다 — CI와
   Vercel은 UTC, 개발 PC는 KST라서 기기마다 답이 달라진다. PostToolUse 훅이 이것을 잡는다.
 - 함수는 `now: Date`를 인자로 받는다. 서비스와 작업 핸들러는 `new Date()`를 직접 부르지 않는다:
   HTTP 경계의 컨트롤러가 `new Date()`를 넘기고, 작업 핸들러는 `ctx.now`를 쓴다.
