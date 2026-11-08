@@ -43,7 +43,6 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 
 **`docs/BEHAVIOR.md`가 명세이자 테스트 오라클이다.** 코드가 명세와 다른 곳은 "Known divergences"에
 불일치 번호(D3, D5, …)로 올라 있고 `it.fails`로 고정돼 있다. 지금 동작이 곧 명세는 아니다.
-`docs/`의 나머지 문서는 한국어다.
 
 경로별 상세 지침은 `.claude/rules/`에 있고, 해당 경로의 파일을 다룰 때 자동으로 컨텍스트에 들어온다.
 
@@ -55,6 +54,11 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 - 데이터: `User → Project → Application → Contract → Milestone/Payment → Review`.
   `User`와 `Project`는 소프트 삭제(`deletedAt`) — 어디서나 `deletedAt: null`로 거른다.
 - 클라이언트: 백엔드 호출은 모두 `src/lib/api.js`(Axios + 조용한 토큰 갱신)를 거친다.
+
+## 컨벤션
+
+- 언어: 문서·커밋·PR·이슈·리뷰 코멘트와 작업 보고는 한국어(PR·코멘트·보고는 합니다체), 코드·식별자·테스트 이름은 영어.
+- 커밋: `type(scope): 한국어 서술` — type은 `feat|fix|docs|test|refactor|style|chore|ci`, scope는 `server|client|harness|deploy`(생략 가능).
 
 ## 함정 (바로 사고가 나는 것)
 

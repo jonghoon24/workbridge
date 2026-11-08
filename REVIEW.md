@@ -1,6 +1,6 @@
 # 리뷰 기준
 
-로컬 `pre-pr-review` 스킬과 CI 리뷰어가 함께 읽는 기준이다. 리뷰 코멘트는 한국어로 쓰고, 지적할 때는
+로컬 `pre-pr-review` 스킬과 CI 리뷰어가 함께 읽는 기준이다. 리뷰 코멘트는 한국어 합니다체로 쓰고, 지적할 때는
 항목 번호를 붙인다(예: `REVIEW #4`). 기준의 근거는 `docs/BEHAVIOR.md`(명세)와 `.claude/rules/`다.
 일반적인 버그·가독성 지적은 이 목록 밖에서도 하되, 아래 항목 위반은 반드시 짚는다.
 
@@ -17,8 +17,8 @@
    - 확인: 추가된 줄에서 `0.1`, `* 0.`, `toFixed`, `Math.round(`/`Math.floor(`가 금액에 쓰였는지, 새 금액 필드의 zod가 정수(`int()`)인지 본다.
 
 4. **달력 규칙은 `lib/time.ts`(고정 UTC+9)로 계산하고 `now`를 인자로 받는다.**
-   - 왜: CI와 Vercel은 UTC, 개발 PC는 KST라 `getDate()`·`setHours()` 같은 호스트 시간대 함수는 기기마다 다른 "오늘"을 만든다. 서비스와 잡 핸들러가 `new Date()`를 직접 읽으면 테스트가 `runJobs(now)`로 시간을 제어할 수 없다.
-   - 확인: 추가된 줄에서 `getDate(`, `getHours(`, `getDay(`, `setHours(`, `toLocaleDateString(`, 그리고 `src/services/`·`src/jobs/handlers/`의 `new Date()`를 grep한다. 핸들러는 `ctx.now`를 써야 한다.
+   - 왜: CI와 Vercel은 UTC, 개발 PC는 KST라 `getDate()`·`setHours()` 같은 호스트 시간대 함수는 기기마다 다른 "오늘"을 만든다. 서비스와 작업 핸들러가 `new Date()`를 직접 읽으면 테스트가 `runJobs(now)`로 시간을 제어할 수 없다.
+   - 확인: 추가된 줄에서 `getDate(`·`getDay(`·`getHours(`·`getMonth(`·`getFullYear(`와 같은 이름의 `set*(`, `toLocaleDateString(`, 그리고 `src/services/`·`src/jobs/handlers/`의 `new Date()`를 grep한다. 핸들러는 `ctx.now`를 써야 한다.
 
 5. **여러 행을 바꾸는 변경은 하나의 `prisma.$transaction`이고, 그 안에서 P2002를 catch하지 않는다.**
    - 왜: 인터랙티브 트랜잭션에서 실패한 문장은 Postgres가 트랜잭션 전체를 중단시켜서 catch해도 이미 망가져 있다. 중복은 `createMany({ skipDuplicates: true })`(`enqueueJob`의 방식)로 피하거나 트랜잭션 밖에서 catch해 409로 바꾼다(D4 수정 방식). D13·D22는 유니크 충돌을 409로 바꾸지 못해 500이 나는 남은 사례다(D22는 트랜잭션 안에서 터진다).
@@ -28,8 +28,8 @@
    - 왜: 사용자 행 잠금 하나로 이 쓰기들과 지급 결정을 직렬화한다(PA7, S17, PF8, NC7). 앞에 다른 쿼리가 오면 경합 테스트가 잡는 창(예: 19개에서 동시 생성 → 21개)이 다시 열린다.
    - 확인: 해당 서비스의 `$transaction` 콜백에서 첫 `await`가 `lockUserRow`인지 본다.
 
-7. **알림은 `notify()`/`notifyMany()`로, 잡은 `enqueueJob()`으로, 원인이 된 상태 변경의 트랜잭션 안에서 만든다.**
-   - 왜: `notify()`가 채널 정책과 수신자 설정을 적용하고 인앱 행·`EmailDelivery`·`notification.email` 잡을 한 번에 쓴다(NC9). 롤백된 변경이 알림이나 잡을 남기면 안 된다(규칙 11). 기존 4종 알림의 한국어 문구는 옛 컨트롤러에 그대로 둔다.
+7. **알림은 `notify()`/`notifyMany()`로, 작업은 `enqueueJob()`으로, 원인이 된 상태 변경의 트랜잭션 안에서 만든다.**
+   - 왜: `notify()`가 채널 정책과 수신자 설정을 적용하고 인앱 행·`EmailDelivery`·`notification.email` 작업을 한 번에 쓴다(NC9). 롤백된 변경이 알림이나 작업을 남기면 안 된다(규칙 11). 기존 4종 알림의 한국어 문구는 기존 컨트롤러에 그대로 둔다.
    - 확인: 새 코드의 `notification.create(`, `job.create(`, 그리고 `tx` 대신 `prisma`를 넘긴 `notify(`/`enqueueJob(`을 grep한다.
 
 8. **`User`·`Project`를 읽거나 쓰는 모든 쿼리는 `deletedAt: null`로 거른다.**
@@ -40,9 +40,9 @@
    - 왜: `Express.Request.user`는 non-optional로 선언돼 컴파일러가 경고하지 않지만, `src/types/index.ts`에 적힌 12개 공개 핸들러(`runJobs` 포함)에서는 런타임에 `undefined`다. `test/authorization.test.ts`가 유일한 안전장치다.
    - 확인: `authenticate`가 없는 라우트에 연결된 핸들러의 diff에서 `req.user`를 grep한다. 새 공개 라우트는 `src/types/index.ts`의 목록과 `PUBLIC_ROUTES`에 추가됐는지 본다.
 
-10. **로그는 `lib/logger.ts`로 남기고 `console.*`를 쓰지 않는다. `error` 레벨은 `errorHandler`의 500과 잡 실패 전용이다.**
-    - 왜: 스위트가 `console.error` 스파이로 "500은 정확히 한 번 로그된다"를 단언한다(규칙 1, 9). 4xx나 예상된 실패를 `error`로 남기면 그 테스트가 깨지고 운영 경보가 오염된다.
-    - 확인: 추가된 줄의 `console.`과 `logger.error(`를 grep한다. 예외는 `googleCallback`과 `jobs/cli.ts`뿐이다.
+10. **로그는 `lib/logger.ts`로 남기고 `console.*`를 쓰지 않는다. `error` 레벨은 `errorHandler`의 500과 작업 실패 전용이다. 요청 body·query·헤더를 통째로 로그에 남기지 않는다.**
+    - 왜: 스위트가 `console.error` 스파이로 "500은 정확히 한 번 로그된다"를 단언한다(규칙 1, 9). 4xx나 예상된 실패를 `error`로 남기면 그 테스트가 깨지고 운영 경보가 오염된다. 요청 전체를 로그에 넣으면 계좌번호 같은 개인정보와 토큰이 운영 로그에 남는다(로그에는 필요한 필드만).
+    - 확인: 추가된 줄의 `console.`과 `logger.error(`를 grep한다. 예외는 `googleCallback`과 `jobs/cli.ts`뿐이다. 로그 필드에 `req.body`·`req.query`·`req.headers`가 통째로 들어갔는지 본다.
 
 11. **이미 커밋된 마이그레이션은 수정하지 않는다. 스키마 변경은 새 마이그레이션으로 한다.**
     - 왜: main에 합쳐지면 CI가 preview와 production DB에 `prisma migrate deploy`를 돌리고, Prisma는 적용된 마이그레이션의 체크섬을 검사한다. 수정하면 두 DB에서 배포가 멈춘다.
