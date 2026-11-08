@@ -110,6 +110,18 @@ export const env = {
   get TRUST_PROXY(): string | undefined {
     return process.env.TRUST_PROXY;
   },
+  /**
+   * Shared with the Next.js proxy (`workbridge-client`'s `PROXY_SHARED_SECRET`). A request whose
+   * `X-Proxy-Secret` matches it may name the browser's address in `X-Client-IP`
+   * (`lib/clientIp.ts`). Unset → that header is never trusted. Read per request.
+   */
+  get PROXY_SHARED_SECRET(): string | undefined {
+    return process.env.PROXY_SHARED_SECRET;
+  },
+  /** Set to `1` by Vercel at build and run time. Its edge rewrites `X-Vercel-Forwarded-For`. */
+  get VERCEL(): string | undefined {
+    return process.env.VERCEL;
+  },
   /** Rate limits are on unless this is exactly `'false'`. Read per request. */
   get RATE_LIMIT_ENABLED(): string | undefined {
     return process.env.RATE_LIMIT_ENABLED;

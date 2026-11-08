@@ -9,14 +9,28 @@ const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60;
 const PASSTHROUGH_RESPONSE_HEADERS = ['x-request-id', 'retry-after'];
 
 /**
+ * The browser's address as Vercel's edge recorded it, or null off Vercel. The edge overwrites
+ * `X-Vercel-Forwarded-For` (and `X-Forwarded-For`) with the address that connected to it, so a
+ * browser cannot choose this value there. Self-hosted Next has no such guarantee — there the
+ * header is whatever the client sent — so the value is only read on Vercel (`VERCEL=1`).
+ */
+function vercelClientIp(request) {
+  if (process.env.VERCEL !== '1') return null;
+  return request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() || null;
+}
+
+/**
  * Headers every proxied request carries: content-type, authorization, X-Forwarded-For,
- * X-Request-Id.
+ * X-Request-Id, and on Vercel the browser's address.
  *
- * `X-Forwarded-For` is passed on **exactly as Next received it**. Self-hosted Next cannot see
- * the browser's socket address in a route handler (`request.ip` is always undefined); its server
- * only fills the header with the socket address when the client sent none, and on Vercel the
- * edge overwrites it. So a client talking to a self-hosted Next directly can choose this value
- * — the backend trusts it only under `TRUST_PROXY` (BEHAVIOR.md rule 10, Q23).
+ * The backend sees this function, not the browser: Vercel's edge in front of the backend rewrites
+ * `X-Forwarded-For` to this function's own address. So when `PROXY_SHARED_SECRET` is set (the same
+ * value as the backend's), the browser's address goes in `X-Client-IP` with the secret in
+ * `X-Proxy-Secret`, and the backend trusts `X-Client-IP` only when the secret matches
+ * (BEHAVIOR.md rule 10, `workbridge-server/src/lib/clientIp.ts`).
+ *
+ * `X-Forwarded-For` is still passed on exactly as Next received it, for self-hosted setups where
+ * the backend runs with `TRUST_PROXY` (Q23).
  */
 export function buildForwardHeaders(request) {
   const headers = new Headers();
@@ -24,11 +38,17 @@ export function buildForwardHeaders(request) {
   const authorization = request.headers.get('authorization');
   const requestId = request.headers.get('x-request-id');
   const chain = request.headers.get('x-forwarded-for');
+  const proxySecret = process.env.PROXY_SHARED_SECRET;
+  const clientIp = proxySecret ? vercelClientIp(request) : null;
 
   if (contentType) headers.set('content-type', contentType);
   if (authorization) headers.set('authorization', authorization);
   if (requestId) headers.set('x-request-id', requestId);
   if (chain) headers.set('x-forwarded-for', chain);
+  if (clientIp) {
+    headers.set('x-client-ip', clientIp);
+    headers.set('x-proxy-secret', proxySecret);
+  }
 
   return headers;
 }

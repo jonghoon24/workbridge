@@ -104,6 +104,18 @@ describe('access log', () => {
     expect(lines[0]).not.toHaveProperty('userId');
   });
 
+  it('logs the client IP of rule 10 — the proxied browser address when the proxy secret matches', async () => {
+    process.env.PROXY_SHARED_SECRET = 'proxy-secret-for-tests';
+    try {
+      const { out } = await captureLogs('info', () => api().get('/health')
+        .set('X-Client-IP', '203.0.113.60').set('X-Proxy-Secret', 'proxy-secret-for-tests'));
+
+      expect(out.find((line) => line.msg === 'request')).toMatchObject({ ip: '203.0.113.60' });
+    } finally {
+      process.env.PROXY_SHARED_SECRET = '';
+    }
+  });
+
   it('includes the user id on authenticated requests', async () => {
     const client = await makeClient();
 

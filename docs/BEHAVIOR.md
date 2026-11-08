@@ -181,15 +181,24 @@ worker, so the lazy sweep on read paths remains the guarantee. **[C6]**
 - Each counted request increments its counter, and is refused when the incremented count exceeds
   the limit; a refused request still counts. Where several rules apply they are evaluated in
   the order listed, and a request refused by one rule is not counted by the rules after it.
-- **Client IP** is Express's `req.ip`. With `TRUST_PROXY` set it is the client address taken from
-  `X-Forwarded-For` after discarding the trusted proxies; unset, it is the socket address and
-  `X-Forwarded-For` is ignored.
+- **Client IP** (`lib/clientIp.ts`), the first that applies:
+  1. `X-Client-IP`, when `PROXY_SHARED_SECRET` is set and the request's `X-Proxy-Secret` equals it
+     (constant-time) and the value is an IP address. This is how the Next.js proxy names the
+     browser. Without the secret — unset, missing or wrong — `X-Client-IP` is ignored, so a caller
+     cannot choose its own key.
+  2. On Vercel (`VERCEL=1`), the first address of `X-Vercel-Forwarded-For`. Vercel's edge replaces
+     whatever the caller sent with the address that connected to it: the browser for a direct
+     call, the Next.js function for a proxied one.
+  3. Express's `req.ip`. With `TRUST_PROXY` set it is the client address taken from
+     `X-Forwarded-For` after discarding the trusted proxies; unset, it is the socket address and
+     `X-Forwarded-For` is ignored. On Vercel the socket address is always `127.0.0.1`.
 - Both Next.js proxies (the `/api/*` catch-all and the auth routes) forward `X-Forwarded-For`
   **exactly as Next received it**, forward `X-Request-Id`, and copy `X-Request-Id` and
-  `Retry-After` back to the browser. They cannot append the browser's address: self-hosted Next
-  does not expose it to route handlers. Next's server fills `X-Forwarded-For` with the socket
-  address only when the client sent none, and on Vercel the edge overwrites it with the real
-  client address. Consequences:
+  `Retry-After` back to the browser. On Vercel with `PROXY_SHARED_SECRET` set they also send the
+  browser's address (the edge-rewritten `X-Vercel-Forwarded-For` Next received) as `X-Client-IP`,
+  with the secret as `X-Proxy-Secret`. Off Vercel they cannot name the browser: self-hosted Next
+  does not expose its address to route handlers, and fills `X-Forwarded-For` with the socket
+  address only when the client sent none. Consequences:
   - With `TRUST_PROXY=loopback`, a client that can reach a self-hosted Next directly chooses its
     own rate-limit IP by sending `X-Forwarded-For`. That setting is safe only while the Next
     port is reachable solely by trusted clients. **[Q23]**

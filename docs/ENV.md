@@ -26,8 +26,11 @@
 | `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음) |
 | `LOG_LEVEL` | 로그 레벨 `debug`/`info`/`warn`/`error`/`silent` (기본 `info`). JSON 한 줄씩 출력하며 `error`만 stderr로 간다. 테스트는 `error` |
 | `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(레이트 리밋 키)로 쓴다. 비우면 소켓 주소를 쓰고 `X-Forwarded-For`는 무시. Next.js 프록시는 받은 `X-Forwarded-For`를 그대로 넘기므로 `loopback`은 **Next 포트(:3000)에 신뢰하는 클라이언트만 닿을 때만 안전하다**. 그렇지 않으면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다(BEHAVIOR.md Q23). 로컬 로그인은 어차피 전부 루프백 한 주소로 세어진다 |
+| `PROXY_SHARED_SECRET` | Next.js 프록시와 함께 쓰는 비밀값. 클라이언트의 같은 이름 변수와 **같은 값**이어야 한다. 요청의 `X-Proxy-Secret`이 이 값과 같을 때만(상수 시간 비교) `X-Client-IP`를 클라이언트 IP로 믿는다(`src/lib/clientIp.ts`, BEHAVIOR.md 규칙 10). 비우면 `X-Client-IP`를 언제나 무시하고, Vercel에서는 `X-Vercel-Forwarded-For`, 그 밖에는 `req.ip`(`TRUST_PROXY`)를 쓴다. 로컬은 비워 둔다. 값은 `python3 -c "import secrets;print(secrets.token_urlsafe(48))"`로 만든다 |
 | `RATE_LIMIT_ENABLED` | `false`면 레이트 리밋(로그인, AI 단가 분석)을 끈다. 기본 켜짐. 요청마다 읽는다. 로컬에서 로그인을 여러 번 하는 수동 확인·스크립트는 `false`로 둔다(머신 전체가 15분에 20회를 나눠 쓴다) |
 | `INTERNAL_JOB_TOKEN` | `POST /api/internal/jobs/run`의 `X-Internal-Token` 값. 비우면 엔드포인트가 404(존재를 숨김) |
+| `JOB_PAYOUT_ENABLED` | 정확히 `true`일 때만 `settlement.payout`(정산 지급) 작업을 실행한다. 그 밖에는 러너가 이 작업을 가져가지 않아 `PENDING`으로 남는다(나중에 켜면 그때 지급된다). **기본 꺼짐.** 지금 있는 지급 provider(`LogPayoutProvider`)는 돈을 보내지 않고 정산을 `PAID`로 만들기 때문에, 실제 이체 provider를 연결하기 전에는 운영에서 켜지 않는다. 로컬은 `true`(`.env.example`). 러너가 돌 때마다 읽는다(BEHAVIOR.md J10) |
+| `JOB_EMAIL_ENABLED` | 정확히 `true`일 때만 `notification.email`(알림 메일과 미확인 메시지 요약 메일) 작업이 메일을 보낸다. 그 밖에는 작업이 delivery를 `SKIPPED`로 끝낸다(나중에 켜도 밀린 메일은 나가지 않는다). **기본 꺼짐.** 지금 메일 provider는 로그 전용이라 받는 주소와 본문 전체가 운영 로그에 남으므로(Q24), 실제 메일 provider를 연결하기 전에는 운영에서 켜지 않는다. 로컬은 `true`(`.env.example`, 로그에만 쓴다). 발송마다 읽는다(J10) |
 | `JOB_WORKER_ENABLED` | `false`면 개발 서버(`npm run dev`)가 작업 큐 워커를 띄우지 않는다. 기본 켜짐. 운영과 테스트에서는 어차피 뜨지 않는다 |
 | `JOB_POLL_INTERVAL_MS` | 개발 워커의 폴링 간격(ms, 기본 5000) |
 | `MILESTONE_AUTO_APPROVE_DAYS` | 산출물 제출 후 자동 승인까지의 일수(양의 정수, 기본 7). 24시간 단위로 센다. 양의 정수가 아니면 7(BEHAVIOR.md M14) |
@@ -44,6 +47,7 @@
 | --- | --- |
 | `NEXT_PUBLIC_API_URL` | 백엔드 API URL (기본 http://localhost:4000) |
 | `API_URL` | 서버 쪽(Next 프록시 라우트와 SSR)에서만 쓰는 백엔드 URL. 있으면 `NEXT_PUBLIC_API_URL`보다 먼저 쓴다(선택) |
+| `PROXY_SHARED_SECRET` | 서버 쪽 전용(`NEXT_PUBLIC_` 아님). 서버의 같은 이름 변수와 같은 값. Vercel(`VERCEL=1`)에서 이 값이 있으면 Next 프록시가 브라우저 IP(Vercel 엣지가 덮어쓴 `X-Vercel-Forwarded-For`)를 `X-Client-IP`로, 이 값을 `X-Proxy-Secret`으로 백엔드에 보낸다. 로컬은 비워 둔다 |
 | (프리뷰 백엔드 주소) | 프리뷰에서는 Vercel Related Projects(`workbridge-client/vercel.json`)가 넣어 주는 `VERCEL_RELATED_PROJECTS`로 같은 브랜치의 서버 프리뷰를 찾는다. 환경변수로 넣을 것은 없다. 우선순위는 `API_URL` 다음, `NEXT_PUBLIC_API_URL` 앞이다([DEPLOYMENT.md](DEPLOYMENT.md#프론트엔드)) |
 | `NEXT_PUBLIC_TOSS_CLIENT_KEY` | 토스페이먼츠 클라이언트 키 (test_ck_...) |
 | `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` | 로컬·E2E에서 `true`로 설정하면 결제 페이지에 개발용 결제 완료 버튼 표시. 실제 운영 서비스에서는 `false` 유지 |

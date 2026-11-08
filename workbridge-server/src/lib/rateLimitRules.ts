@@ -1,12 +1,13 @@
 import type { Request } from 'express';
 
+import { clientIp } from './clientIp';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from './time';
 import { hit, isRateLimitEnabled, reset } from './rateLimit';
 import type { JwtUserPayload, RateLimitRule } from '../types/index';
 
 /**
- * The rate-limit rules of BEHAVIOR.md rule 10. The client IP is Express's `req.ip`, which
- * honours `X-Forwarded-For` only when `TRUST_PROXY` is set.
+ * The rate-limit rules of BEHAVIOR.md rule 10. The client IP comes from `clientIp()`
+ * (`lib/clientIp.ts`).
  */
 
 function normalizedEmail(req: Request): string | null {
@@ -19,7 +20,7 @@ export const LOGIN_IP_RULE: RateLimitRule = {
   name: 'login.ip',
   windowMs: 15 * MINUTE_MS,
   limit: 20,
-  key: (req) => req.ip ?? 'unknown',
+  key: (req) => clientIp(req),
 };
 
 /**
@@ -33,7 +34,7 @@ export const LOGIN_FAILURE_RULE: RateLimitRule = {
   limit: 5,
   key: (req) => {
     const email = normalizedEmail(req);
-    return email ? `${email}:${req.ip ?? 'unknown'}` : null;
+    return email ? `${email}:${clientIp(req)}` : null;
   },
 };
 
