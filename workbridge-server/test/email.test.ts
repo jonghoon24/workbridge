@@ -47,6 +47,7 @@ const savedEnv = {
   MAIL_FROM: process.env.MAIL_FROM,
   LOG_LEVEL: process.env.LOG_LEVEL,
   CLIENT_URL: process.env.CLIENT_URL,
+  JOB_EMAIL_ENABLED: process.env.JOB_EMAIL_ENABLED,
 };
 
 beforeEach(() => {
@@ -78,6 +79,50 @@ async function oneDelivery() {
 }
 
 const deliveryOf = (id: string) => prisma.emailDelivery.findUniqueOrThrow({ where: { id } });
+
+describe('notification.email behind JOB_EMAIL_ENABLED (J10, J9 step 1)', () => {
+  it.each([['unset', undefined], ['false', 'false']])(
+    'with the flag %s, the delivery is SKIPPED without a provider call and the job SUCCEEDS [J10]',
+    async (_label, value) => {
+      if (value === undefined) delete process.env.JOB_EMAIL_ENABLED;
+      else process.env.JOB_EMAIL_ENABLED = value;
+      const { delivery } = await oneDelivery();
+
+      const result = await runJobs(T0);
+
+      expect(result).toMatchObject({ claimed: 1, succeeded: 1 });
+      expect(provider.calls).toBe(0);
+      expect(await deliveryOf(delivery.id)).toMatchObject({
+        status: 'SKIPPED',
+        error: 'Email sending is disabled (JOB_EMAIL_ENABLED)',
+        attempts: 0,
+        sentAt: null,
+      });
+      expect((await jobsOf('notification.email'))[0].status).toBe('SUCCEEDED');
+    },
+  );
+
+  it('turning the flag on later sends only new emails, never the skipped backlog [J10]', async () => {
+    process.env.JOB_EMAIL_ENABLED = 'false';
+    const { user, delivery: old } = await oneDelivery();
+    await runJobs(T0);
+
+    process.env.JOB_EMAIL_ENABLED = 'true';
+    await notify(prisma, {
+      userId: user.id,
+      type: 'MILESTONE_DUE_SOON',
+      title: '새 알림',
+      message: '본문',
+      href: '/contracts/c/milestones/m2',
+    }, new Date(T0.getTime() + HOUR));
+    await runJobs(new Date(T0.getTime() + HOUR));
+
+    expect(provider.sent).toHaveLength(1);
+    expect(provider.sent[0].deliveryId).not.toBe(old.id);
+    expect((await deliveryOf(old.id)).status).toBe('SKIPPED');
+    expect(await prisma.emailDelivery.count({ where: { status: 'SENT' } })).toBe(1);
+  });
+});
 const quietErrors = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
 describe('notify() creates the delivery and its job [NC9] [NC11]', () => {

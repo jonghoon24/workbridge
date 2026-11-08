@@ -3,20 +3,39 @@ import { getApiUrl } from '@/lib/apiUrl';
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60;
+// Google OAuth `state` (login CSRF defence): the backend issues it on `GET /api/auth/google` and
+// checks it on the callback. Same name, path and lifetime as the backend's cookie.
+const OAUTH_STATE_COOKIE_NAME = 'oauthState';
+const OAUTH_STATE_COOKIE_PATH = '/api/auth/google';
+const OAUTH_STATE_COOKIE_MAX_AGE = 10 * 60;
 
 // Response headers the browser needs from the backend besides content-type: the request id
 // for support/debugging, and Retry-After on a 429.
 const PASSTHROUGH_RESPONSE_HEADERS = ['x-request-id', 'retry-after'];
 
 /**
+ * The browser's address as Vercel's edge recorded it, or null off Vercel. The edge overwrites
+ * `X-Vercel-Forwarded-For` (and `X-Forwarded-For`) with the address that connected to it, so a
+ * browser cannot choose this value there. Self-hosted Next has no such guarantee — there the
+ * header is whatever the client sent — so the value is only read on Vercel (`VERCEL=1`).
+ */
+function vercelClientIp(request) {
+  if (process.env.VERCEL !== '1') return null;
+  return request.headers.get('x-vercel-forwarded-for')?.split(',')[0]?.trim() || null;
+}
+
+/**
  * Headers every proxied request carries: content-type, authorization, X-Forwarded-For,
- * X-Request-Id.
+ * X-Request-Id, and on Vercel the browser's address.
  *
- * `X-Forwarded-For` is passed on **exactly as Next received it**. Self-hosted Next cannot see
- * the browser's socket address in a route handler (`request.ip` is always undefined); its server
- * only fills the header with the socket address when the client sent none, and on Vercel the
- * edge overwrites it. So a client talking to a self-hosted Next directly can choose this value
- * — the backend trusts it only under `TRUST_PROXY` (BEHAVIOR.md rule 10, Q23).
+ * The backend sees this function, not the browser: Vercel's edge in front of the backend rewrites
+ * `X-Forwarded-For` to this function's own address. So when `PROXY_SHARED_SECRET` is set (the same
+ * value as the backend's), the browser's address goes in `X-Client-IP` with the secret in
+ * `X-Proxy-Secret`, and the backend trusts `X-Client-IP` only when the secret matches
+ * (BEHAVIOR.md rule 10, `workbridge-server/src/lib/clientIp.ts`).
+ *
+ * `X-Forwarded-For` is still passed on exactly as Next received it, for self-hosted setups where
+ * the backend runs with `TRUST_PROXY` (Q23).
  */
 export function buildForwardHeaders(request) {
   const headers = new Headers();
@@ -24,11 +43,17 @@ export function buildForwardHeaders(request) {
   const authorization = request.headers.get('authorization');
   const requestId = request.headers.get('x-request-id');
   const chain = request.headers.get('x-forwarded-for');
+  const proxySecret = process.env.PROXY_SHARED_SECRET;
+  const clientIp = proxySecret ? vercelClientIp(request) : null;
 
   if (contentType) headers.set('content-type', contentType);
   if (authorization) headers.set('authorization', authorization);
   if (requestId) headers.set('x-request-id', requestId);
   if (chain) headers.set('x-forwarded-for', chain);
+  if (clientIp) {
+    headers.set('x-client-ip', clientIp);
+    headers.set('x-proxy-secret', proxySecret);
+  }
 
   return headers;
 }
@@ -47,11 +72,20 @@ export function buildResponseHeaders(backendResponse) {
   return headers;
 }
 
-function getRefreshTokenFromSetCookie(setCookie) {
-  if (!setCookie) return null;
+/** The value of cookie `name` among the backend's `Set-Cookie` headers, or null. */
+function getCookieFromSetCookie(backendResponse, name) {
+  const cookies = typeof backendResponse.headers.getSetCookie === 'function'
+    ? backendResponse.headers.getSetCookie()
+    : [backendResponse.headers.get('set-cookie') || ''];
+  const prefix = `${name}=`;
 
-  const match = setCookie.match(/(?:^|,\s*)refreshToken=([^;]*)/);
-  return match?.[1] || null;
+  for (const cookie of cookies) {
+    // A joined header (older runtimes) separates cookies with ", ".
+    for (const part of cookie.split(/,\s*(?=[^;=\s]+=)/)) {
+      if (part.startsWith(prefix)) return part.slice(prefix.length).split(';')[0] || null;
+    }
+  }
+  return null;
 }
 
 function cookieOptions() {
@@ -64,7 +98,7 @@ function cookieOptions() {
 }
 
 export function setRefreshTokenCookie(response, backendResponse) {
-  const refreshToken = getRefreshTokenFromSetCookie(backendResponse.headers.get('set-cookie'));
+  const refreshToken = getCookieFromSetCookie(backendResponse, REFRESH_COOKIE_NAME);
 
   if (!refreshToken) return;
 
@@ -114,9 +148,33 @@ export async function proxyAuthRequest(request, path, options = {}) {
   return response;
 }
 
+function setOAuthStateCookie(response, value, maxAge) {
+  response.cookies.set({
+    name: OAUTH_STATE_COOKIE_NAME,
+    value,
+    maxAge,
+    ...cookieOptions(),
+    path: OAUTH_STATE_COOKIE_PATH,
+  });
+}
+
+/**
+ * `GET /api/auth/google` and its callback. The backend's redirect is replayed to the browser, and
+ * the cookies the backend set on this server-to-server hop are moved onto the browser's origin:
+ * the OAuth `state` cookie on the way out, the refresh cookie on the way back. The callback
+ * forwards the browser's `state` cookie to the backend, which compares it with the `state`
+ * Google echoed, and then the browser's copy is cleared — one state per attempt.
+ */
 export async function proxyGoogleRedirect(request, path) {
+  const isCallback = path === 'google/callback';
+  // The usual forward headers too, so the backend's access log has the browser's address.
+  const headers = buildForwardHeaders(request);
+  const state = request.cookies.get(OAUTH_STATE_COOKIE_NAME)?.value;
+  if (isCallback && state) headers.set('cookie', `${OAUTH_STATE_COOKIE_NAME}=${state}`);
+
   const backendResponse = await fetch(`${getApiUrl()}/api/auth/${path}${request.nextUrl.search}`, {
     method: 'GET',
+    headers,
     redirect: 'manual',
   });
 
@@ -125,7 +183,14 @@ export async function proxyGoogleRedirect(request, path) {
     ? backendResponse.status
     : 302;
   const response = NextResponse.redirect(new URL(location, request.nextUrl.origin), redirectStatus);
-  setRefreshTokenCookie(response, backendResponse);
+
+  if (isCallback) {
+    setOAuthStateCookie(response, '', 0);
+    setRefreshTokenCookie(response, backendResponse);
+  } else {
+    const issuedState = getCookieFromSetCookie(backendResponse, OAUTH_STATE_COOKIE_NAME);
+    if (issuedState) setOAuthStateCookie(response, issuedState, OAUTH_STATE_COOKIE_MAX_AGE);
+  }
 
   return response;
 }

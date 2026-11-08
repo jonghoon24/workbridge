@@ -58,7 +58,7 @@ npm run lint && npm run build
 
 ## 배포
 
-백엔드와 프론트엔드를 각각 Vercel에 배포합니다. 환경(로컬, CI, 프리뷰, 운영), 마이그레이션, Sentry, 운영 환경의 한계(작업 큐 스케줄러 미연결 등)와 프리뷰·운영 주소는 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)에 있습니다.
+백엔드와 프론트엔드를 각각 Vercel에 배포합니다. 환경(로컬, CI, 프리뷰, 운영), 마이그레이션, Sentry, 운영 환경의 한계(15분마다 도는 작업 큐 크론과 플래그로 꺼 둔 지급·메일 작업 등)와 프리뷰·운영 주소는 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)에 있습니다.
 
 ## 문서
 

@@ -40,6 +40,11 @@ exactly once per request, by `errorHandler` — and a 4xx never produces an erro
 Every request additionally produces one info-level access-log line whatever its status
 (rule 9). **[C7]**
 
+A request whose `Origin` is not allowed (`CLIENT_URL`, `CORS_ORIGINS`, plus
+`http://localhost:3000` outside production) is **not an error**: it is answered normally but
+without CORS headers, so the browser keeps the response from the page. It is never a 500 and
+never logged at error level.
+
 ### 2. Authentication
 - A Bearer access token in `Authorization` is required for every protected route.
 - Missing header, malformed header (not `Bearer <token>`), expired token, or a token signed with
@@ -181,15 +186,24 @@ worker, so the lazy sweep on read paths remains the guarantee. **[C6]**
 - Each counted request increments its counter, and is refused when the incremented count exceeds
   the limit; a refused request still counts. Where several rules apply they are evaluated in
   the order listed, and a request refused by one rule is not counted by the rules after it.
-- **Client IP** is Express's `req.ip`. With `TRUST_PROXY` set it is the client address taken from
-  `X-Forwarded-For` after discarding the trusted proxies; unset, it is the socket address and
-  `X-Forwarded-For` is ignored.
+- **Client IP** (`lib/clientIp.ts`), the first that applies:
+  1. `X-Client-IP`, when `PROXY_SHARED_SECRET` is set and the request's `X-Proxy-Secret` equals it
+     (constant-time) and the value is an IP address. This is how the Next.js proxy names the
+     browser. Without the secret — unset, missing or wrong — `X-Client-IP` is ignored, so a caller
+     cannot choose its own key.
+  2. On Vercel (`VERCEL=1`), the first address of `X-Vercel-Forwarded-For`. Vercel's edge replaces
+     whatever the caller sent with the address that connected to it: the browser for a direct
+     call, the Next.js function for a proxied one.
+  3. Express's `req.ip`. With `TRUST_PROXY` set it is the client address taken from
+     `X-Forwarded-For` after discarding the trusted proxies; unset, it is the socket address and
+     `X-Forwarded-For` is ignored. On Vercel the socket address is always `127.0.0.1`.
 - Both Next.js proxies (the `/api/*` catch-all and the auth routes) forward `X-Forwarded-For`
   **exactly as Next received it**, forward `X-Request-Id`, and copy `X-Request-Id` and
-  `Retry-After` back to the browser. They cannot append the browser's address: self-hosted Next
-  does not expose it to route handlers. Next's server fills `X-Forwarded-For` with the socket
-  address only when the client sent none, and on Vercel the edge overwrites it with the real
-  client address. Consequences:
+  `Retry-After` back to the browser. On Vercel with `PROXY_SHARED_SECRET` set they also send the
+  browser's address (the edge-rewritten `X-Vercel-Forwarded-For` Next received) as `X-Client-IP`,
+  with the secret as `X-Proxy-Secret`. Off Vercel they cannot name the browser: self-hosted Next
+  does not expose its address to route handlers, and fills `X-Forwarded-For` with the socket
+  address only when the client sent none. Consequences:
   - With `TRUST_PROXY=loopback`, a client that can reach a self-hosted Next directly chooses its
     own rate-limit IP by sending `X-Forwarded-For`. That setting is safe only while the Next
     port is reachable solely by trusted clients. **[Q23]**
@@ -289,12 +303,20 @@ Q12/Q13; the mix is intended.
 
 ### `GET /google` — public
 - Redirects (**302**) to Google's consent screen with `client_id`, `redirect_uri`,
-  `response_type=code`, `scope=openid email profile`, `access_type=offline`.
+  `response_type=code`, `scope=openid email profile`, `access_type=offline` and `state`.
+- `state` is fresh and random on every call (at least 32 characters) and is also set as the
+  `oauthState` cookie: `httpOnly`, `SameSite=Lax`, `Secure` in production, path
+  `/api/auth/google`, 10 minutes. The Next.js proxy moves it onto the browser's origin, and on the
+  callback sends it back (login CSRF defence).
 - If Google environment variables are missing, this must return a **500** error response and
   leave the process running — it must never crash the server.
 
 ### `GET /google/callback` — public
 - Missing `code` → redirect to `${CLIENT_URL}/login?error=oauth_failed`.
+- `state` missing, no `oauthState` cookie, or the two not equal (constant-time) → redirect to
+  `${CLIENT_URL}/login?error=oauth_failed` **without exchanging the code**, so a callback URL
+  carrying someone else's `code` cannot sign this browser in to their account.
+- Every callback clears the `oauthState` cookie, whatever the outcome.
 - Exchanges the code, fetches the profile, then links or creates:
   - existing account matched by `googleId` **or** `email` → attaches `googleId`, fills
     `profileImage` if empty, and flags `needsRoleSelection` from `roleSelected`
@@ -380,6 +402,11 @@ Returns the caller's own profile including private fields (`email`). 404 if the 
 - Requires `title`, `description`, `category`, `budget`, `deadline` → else 400.
 - `deadline` must parse as a date; `budget` must be a non-negative number → else 400.
 - `recruitmentStartDate` defaults to now, and must not be after `deadline` → else 400.
+- A date-only value (`YYYY-MM-DD`, what the project form sends) is a **KST calendar day**: a
+  `deadline` lasts until 23:59:59.999 KST of that day, a `recruitmentStartDate` begins at
+  00:00 KST. So a project due today stays `OPEN` until the day ends, and one starting today is
+  `OPEN` at once. A date-only value that is not a calendar date → 400. Any other value is read as
+  an instant.
 - Initial status is derived: `UPCOMING` if recruitment starts in the future, otherwise `OPEN`.
 - `requiredSkills` is normalized and de-duplicated; omitting it yields `[]`.
 - **201** with the created project. `clientId` is taken from the token, never from the body.
@@ -396,6 +423,7 @@ Runs the lifecycle sweep, then returns the project with its client, application 
   changing underneath them.
 - With no applications, date changes are re-validated (`recruitmentStartDate <= deadline`) and,
   if the project is still `UPCOMING`/`OPEN`, its status is recomputed from the new schedule.
+  Date-only values are KST days, as in `POST /`.
 - Editing is permitted in any status, including `COMPLETED` and `CANCELLED` — intentional.
 
 ### `DELETE /:id` — authenticated, CLIENT
@@ -429,6 +457,9 @@ Runs the lifecycle sweep, then returns the project with its client, application 
   `{ name, description, estimatedCost, rationale, duration }`, features with
   `estimatedCost <= 0` dropped, and `totalAmount` **recomputed as the sum of the surviving
   features** rather than taken from the model.
+- `summary` is model prose and its arithmetic is not trusted either: its sentences that state a
+  won amount (`11,000,000원`, `1100만 원`, …) are dropped, so it cannot contradict the
+  recomputed `totalAmount`; nothing left → `null`. `marketReference` is stored as written.
 - Empty response → **502** `AI analysis did not return a response`. No usable features → **502**
   `AI analysis did not return valid feature pricing`. Neither may be a 500.
 - Result is **upserted**, so re-analyzing replaces the previous analysis rather than duplicating it.
@@ -1898,8 +1929,9 @@ It does **not** call `ensureRecurringJobs`; every production-style entry point d
 | `npm run jobs:worker` | standalone worker CLI | same loop as the development worker |
 | `POST /api/internal/jobs/run` | see [Internal endpoints](#internal-endpoints--apiinternal) | `ensureRecurringJobs` → `recoverStaleJobs` → `runDueJobs` |
 
-Production (Vercel) has no resident worker, and which external scheduler calls the internal
-endpoint is not decided yet. Until one does, recurring jobs only run where a runner is started.
+Production (Vercel) has no resident worker. A scheduled GitHub Actions workflow
+(`.github/workflows/jobs.yml`) calls production's internal endpoint every 15 minutes; previews
+and local databases have no scheduler, so there recurring jobs only run where a runner is started.
 
 ### Job types
 
@@ -1983,6 +2015,8 @@ it replaces.
   provider call cannot be rolled back, so the handler does **not** run in one transaction; each
   write is one statement conditional on `status = 'PENDING'` (NC12):
   1. read the delivery; none → `PermanentJobError`. Not `PENDING` → no-op, `SUCCEEDED`;
+     email switched off (J10) → `SKIPPED` with `error` =
+     `Email sending is disabled (JOB_EMAIL_ENABLED)`, `SUCCEEDED`, no provider call;
   2. the recipient is soft-deleted → `SKIPPED`, `SUCCEEDED`;
   3. `MAIL_PROVIDER` unsupported (NC14) → `FAILED` with its `error`, then `PermanentJobError`;
   4. `attempts` + 1 — when this write matches nothing (the delivery left `PENDING` meanwhile) the
@@ -1994,6 +2028,20 @@ it replaces.
 
   The project's soft deletion plays no part: a delivery created by an event that rule 5 allowed
   is still sent.
+
+### Gated job types
+- **J10** — Two types are switched off by environment flag until production can run them for
+  real; each runs only when its flag is exactly `true`, read at every runner pass. Off by default.
+  - `settlement.payout` (`JOB_PAYOUT_ENABLED`) is **held**: no runner claims it while the flag is
+    off, so it stays `PENDING` with its `runAt`, and `runDueJobs` does not count it. Turning the
+    flag on runs every held payout; J1 still makes a rescheduled one a no-op. A payout is money
+    owed, so it is kept, not dropped. (Today's only payout provider, `LogPayoutProvider`, reports
+    every transfer as successful without moving money.)
+  - `notification.email` (`JOB_EMAIL_ENABLED`) is **skipped**: the job runs and J9 step 1 marks
+    its delivery `SKIPPED`. Email is only useful when timely, so holding it would send a backlog
+    of stale notifications and digests in one burst once the flag is turned on. This covers the
+    unread-message digest (J8), whose email is a `notification.email` job; the digest job itself
+    still runs and keeps its throttle.
 
 ---
 

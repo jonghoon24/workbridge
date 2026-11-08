@@ -14,6 +14,7 @@ import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeProject, makeUser, TEST_PASSWORD } from './helpers/factories';
 import { hit, peek, reset } from '../src/lib/rateLimit';
 import { LOGIN_IP_RULE } from '../src/lib/rateLimitRules';
+import { clientIp } from '../src/lib/clientIp';
 import { startOfKstDay } from '../src/lib/time';
 import { errorHandler } from '../src/middlewares/errorHandler';
 import { rateLimit } from '../src/middlewares/rateLimit';
@@ -39,6 +40,8 @@ beforeEach(() => {
 
 afterEach(() => {
   process.env.RATE_LIMIT_ENABLED = 'true';
+  process.env.PROXY_SHARED_SECRET = '';
+  process.env.VERCEL = '';
 });
 
 /**
@@ -264,6 +267,84 @@ describe('client IP behind a trusted proxy', () => {
     const other = await send('203.0.113.11');
     expect(other.status).toBe(200);
     expect(other.body).toEqual({ ip: '203.0.113.11' });
+  });
+});
+
+describe('client IP from the Next.js proxy and the Vercel edge', () => {
+  beforeEach(() => awayFromWindowEdge());
+
+  const SECRET = 'proxy-secret-for-tests';
+  const probe = express();
+  probe.get('/ip', (req, res) => res.json({ ip: clientIp(req) }));
+  const ipOf = async (headers: Record<string, string>) => {
+    let req = request(probe).get('/ip');
+    for (const [name, value] of Object.entries(headers)) req = req.set(name, value);
+    return (await req).body.ip as string;
+  };
+  const socketIp = async () => ipOf({});
+
+  it('uses X-Client-IP when X-Proxy-Secret matches PROXY_SHARED_SECRET', async () => {
+    process.env.PROXY_SHARED_SECRET = SECRET;
+
+    expect(await ipOf({ 'X-Client-IP': '203.0.113.20', 'X-Proxy-Secret': SECRET })).toBe('203.0.113.20');
+  });
+
+  it('ignores X-Client-IP when the secret does not match, or is missing', async () => {
+    process.env.PROXY_SHARED_SECRET = SECRET;
+    const fallback = await socketIp();
+
+    expect(await ipOf({ 'X-Client-IP': '203.0.113.21', 'X-Proxy-Secret': 'wrong' })).toBe(fallback);
+    expect(await ipOf({ 'X-Client-IP': '203.0.113.21', 'X-Proxy-Secret': `${SECRET}x` })).toBe(fallback);
+    expect(await ipOf({ 'X-Client-IP': '203.0.113.21' })).toBe(fallback);
+  });
+
+  it('ignores X-Client-IP when PROXY_SHARED_SECRET is unset, whatever the request claims', async () => {
+    const fallback = await socketIp();
+
+    expect(await ipOf({ 'X-Client-IP': '203.0.113.22', 'X-Proxy-Secret': '' })).toBe(fallback);
+    expect(await ipOf({ 'X-Client-IP': '203.0.113.22', 'X-Proxy-Secret': 'anything' })).toBe(fallback);
+  });
+
+  it('ignores an X-Client-IP that is not an IP address, even with the secret', async () => {
+    process.env.PROXY_SHARED_SECRET = SECRET;
+
+    expect(await ipOf({ 'X-Client-IP': 'not-an-ip', 'X-Proxy-Secret': SECRET })).toBe(await socketIp());
+  });
+
+  it('on Vercel, falls back to X-Vercel-Forwarded-For, which the edge rewrites', async () => {
+    process.env.VERCEL = '1';
+
+    expect(await ipOf({ 'X-Vercel-Forwarded-For': '198.51.100.30' })).toBe('198.51.100.30');
+    // A proxied request without the secret is keyed on what the edge saw, not on X-Client-IP.
+    expect(await ipOf({ 'X-Vercel-Forwarded-For': '198.51.100.31', 'X-Client-IP': '203.0.113.23' }))
+      .toBe('198.51.100.31');
+  });
+
+  it('off Vercel, X-Vercel-Forwarded-For is just another client header and is ignored', async () => {
+    expect(await ipOf({ 'X-Vercel-Forwarded-For': '198.51.100.32' })).toBe(await socketIp());
+  });
+
+  it('keys the login limit on the proxied client IP: one browser at the limit does not block another [C8]', async () => {
+    process.env.PROXY_SHARED_SECRET = SECRET;
+    const loginFrom = (ip: string, secret = SECRET) => api().post('/api/auth/login')
+      .set('X-Client-IP', ip).set('X-Proxy-Secret', secret).send({});
+    for (let i = 0; i < 20; i += 1) {
+      expect((await loginFrom('203.0.113.40')).status).toBe(400);
+    }
+
+    expectTooMany(await loginFrom('203.0.113.40'), 15 * 60);
+    expect((await loginFrom('203.0.113.41')).status).toBe(400);
+  });
+
+  it('a forged X-Client-IP without the secret cannot dodge the login limit [C8]', async () => {
+    process.env.PROXY_SHARED_SECRET = SECRET;
+    for (let i = 0; i < 20; i += 1) {
+      await api().post('/api/auth/login').set('X-Client-IP', `203.0.113.${50 + i}`).set('X-Proxy-Secret', 'guess').send({});
+    }
+
+    const res = await api().post('/api/auth/login').set('X-Client-IP', '203.0.113.99').send({});
+
+    expectTooMany(res, 15 * 60);
   });
 });
 

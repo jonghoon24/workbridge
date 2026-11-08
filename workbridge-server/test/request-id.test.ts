@@ -104,6 +104,18 @@ describe('access log', () => {
     expect(lines[0]).not.toHaveProperty('userId');
   });
 
+  it('logs the client IP of rule 10 — the proxied browser address when the proxy secret matches', async () => {
+    process.env.PROXY_SHARED_SECRET = 'proxy-secret-for-tests';
+    try {
+      const { out } = await captureLogs('info', () => api().get('/health')
+        .set('X-Client-IP', '203.0.113.60').set('X-Proxy-Secret', 'proxy-secret-for-tests'));
+
+      expect(out.find((line) => line.msg === 'request')).toMatchObject({ ip: '203.0.113.60' });
+    } finally {
+      process.env.PROXY_SHARED_SECRET = '';
+    }
+  });
+
   it('includes the user id on authenticated requests', async () => {
     const client = await makeClient();
 
@@ -145,5 +157,34 @@ describe('access log', () => {
 
     expect(out).toEqual([]);
     expect(err).toEqual([]);
+  });
+});
+
+describe('CORS', () => {
+  it('answers a disallowed Origin without CORS headers — not a 500, no error log [C7]', async () => {
+    const { result: res, err } = await captureLogs('info', () =>
+      api().get('/health').set('Origin', 'https://evil.example'));
+
+    expect(res.status).toBe(200);
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+    expect(res.headers['access-control-allow-credentials']).toBeUndefined();
+    expect(err).toEqual([]);
+  });
+
+  it('answers a disallowed preflight without CORS headers, so the browser blocks the request', async () => {
+    const res = await api()
+      .options('/api/auth/login')
+      .set('Origin', 'https://evil.example')
+      .set('Access-Control-Request-Method', 'POST');
+
+    expect(res.status).toBeLessThan(500);
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('echoes an allowed Origin with credentials', async () => {
+    const res = await api().get('/health').set('Origin', 'http://localhost:3000');
+
+    expect(res.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
   });
 });

@@ -52,7 +52,12 @@ export default defineConfig({
       RATE_LIMIT_ENABLED: 'true',
       JOB_WORKER_ENABLED: 'false',
       TRUST_PROXY: '',
+      PROXY_SHARED_SECRET: '',
+      VERCEL: '',
       INTERNAL_JOB_TOKEN: '',
+      // Both gated job types run here, as in local development; the gate tests turn them off.
+      JOB_PAYOUT_ENABLED: 'true',
+      JOB_EMAIL_ENABLED: 'true',
     },
   },
 });

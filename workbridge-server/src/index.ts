@@ -87,7 +87,9 @@ app.use(cors({
       return callback(null, true);
     }
 
-    return callback(new Error(`Not allowed by CORS: ${origin}`));
+    // Not an error: answer without CORS headers and let the browser block the page from reading
+    // it. Throwing here made every stray `Origin` (bots, other sites) a 500 with an error log.
+    return callback(null, false);
   },
   credentials: true,
 }));

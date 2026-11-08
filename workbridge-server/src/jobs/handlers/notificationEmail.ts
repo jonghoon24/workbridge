@@ -2,6 +2,7 @@ import prisma from '../../lib/prisma';
 import { env } from '../../env';
 import { selectMailProvider, unsupportedMailProviderError } from '../../lib/mail/provider';
 import { PermanentJobError } from '../errors';
+import { EMAIL_DISABLED, isEmailEnabled } from '../gates';
 import type { JobHandler } from '../types';
 
 /** NC1: the stored `error` is at most 2,000 characters. */
@@ -30,6 +31,14 @@ export const notificationEmail: JobHandler<'notification.email'> = async ({ job,
 
   const pending = { id: delivery.id, status: 'PENDING' as const };
   const context = { deliveryId: delivery.id, type: delivery.type, contextKey: delivery.contextKey };
+
+  // J10: email is switched off (`JOB_EMAIL_ENABLED`). Skipped rather than held, so turning it on
+  // later does not send a backlog of stale emails (`jobs/gates.ts`).
+  if (!isEmailEnabled()) {
+    await prisma.emailDelivery.updateMany({ where: pending, data: { status: 'SKIPPED', error: EMAIL_DISABLED } });
+    logger.info('email skipped', { ...context, reason: 'disabled' });
+    return;
+  }
 
   // 2. Soft-deleted since notify() (NC10). The project's deletion plays no part.
   if (delivery.user.deletedAt) {

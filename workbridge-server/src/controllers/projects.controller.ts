@@ -14,6 +14,7 @@ import {
   expandSkillSearchTerms,
   normalizeSkillList,
 } from '../lib/skills';
+import { kstDateToEndOfDay, startOfKstDay } from '../lib/time';
 import type {
   AuthedRequest,
   PricingAnalysisData,
@@ -46,7 +47,26 @@ function parseBudget(value: string, field: string) {
   return parsed;
 }
 
-function parseProjectDate(value: string, field: string) {
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A project date from the request body. A bare `YYYY-MM-DD` (what the project form's date input
+ * sends) is a **KST calendar day**: as a `deadline` it lasts until that day ends (23:59:59.999
+ * KST), as a `recruitmentStartDate` it begins at 00:00 KST. `new Date('YYYY-MM-DD')` would read
+ * it as 00:00 UTC = 09:00 KST, closing a project due "today" the moment it is created after 9 am.
+ * Anything else must parse as an instant.
+ */
+function parseProjectDate(value: string, field: string, dateOnlyAs: 'startOfDay' | 'endOfDay') {
+  if (typeof value === 'string' && DATE_ONLY.test(value)) {
+    let endOfDay: Date;
+    try {
+      endOfDay = kstDateToEndOfDay(value);
+    } catch {
+      throw new AppError(`${field} must be a valid date`, 400);
+    }
+    return dateOnlyAs === 'endOfDay' ? endOfDay : startOfKstDay(endOfDay);
+  }
+
   const parsed = new Date(value);
   if (!value || Number.isNaN(parsed.getTime())) {
     throw new AppError(`${field} must be a valid date`, 400);
@@ -73,6 +93,26 @@ function parseAnalysisAmount(value: unknown) {
   return Math.round(parsed);
 }
 
+/** A won amount in model prose: `11,000,000원`, `1100만 원`, `1.2억원`, `3천만원`. */
+const WON_AMOUNT = /\d[\d,]*(?:\.\d+)?\s*(?:억|천만|백만|만|천)?\s*원/;
+
+/**
+ * The model's summary without the sentences that state an amount. The model's own arithmetic
+ * is not trusted (`totalAmount` is recomputed from the features), and a summary saying
+ * "총 11,000,000원" under a recomputed total of 10,000,000원 contradicts the screen. Nothing
+ * left → `null`.
+ */
+function summaryWithoutAmounts(value: unknown): string | null {
+  if (!value) return null;
+  const kept = String(value)
+    .trim()
+    .split(/(?<=[.!?。])\s+/)
+    .filter((sentence) => !WON_AMOUNT.test(sentence))
+    .join(' ')
+    .trim();
+  return kept || null;
+}
+
 function normalizePricingAnalysisData(data: RawPricingAnalysis): PricingAnalysisData {
   const features = (Array.isArray(data?.features) ? data.features : [])
     .map((feature, index) => ({
@@ -91,7 +131,7 @@ function normalizePricingAnalysisData(data: RawPricingAnalysis): PricingAnalysis
   return {
     features,
     totalAmount: features.reduce((sum, feature) => sum + feature.estimatedCost, 0),
-    summary: data?.summary ? String(data.summary).trim() : null,
+    summary: summaryWithoutAmounts(data?.summary),
     marketReference: data?.marketReference ? String(data.marketReference).trim() : null,
   };
 }
@@ -203,9 +243,9 @@ export async function createProject(req: AuthedRequest, res: Response, next: Nex
       throw new AppError('All fields are required', 400);
     }
 
-    const parsedDeadline = parseProjectDate(deadline, 'deadline');
+    const parsedDeadline = parseProjectDate(deadline, 'deadline', 'endOfDay');
     const parsedRecruitmentStartDate = recruitmentStartDate
-      ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate')
+      ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate', 'startOfDay')
       : new Date();
     const parsedBudget = parseBudget(budget, 'budget');
     validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
@@ -351,10 +391,10 @@ export async function updateProject(req: AuthedRequest, res: Response, next: Nex
       if (budget !== undefined) updateData.budget = parseBudget(budget, 'budget');
 
       const parsedDeadline = deadline !== undefined
-        ? parseProjectDate(deadline, 'deadline')
+        ? parseProjectDate(deadline, 'deadline', 'endOfDay')
         : project.deadline;
       const parsedRecruitmentStartDate = recruitmentStartDate !== undefined
-        ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate')
+        ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate', 'startOfDay')
         : project.recruitmentStartDate || new Date();
 
       validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
@@ -497,6 +537,9 @@ export async function analyzeProject(req: AuthedRequest, res: Response, next: Ne
 클라이언트가 입력한 희망 예산은 제공하지 않습니다.
 기존 예산이나 임의의 목표 금액에 맞추지 말고, 프로젝트 범위, 기능, 기술 난이도, 예상 작업량을 기준으로 독립적인 시장 적정가를 산정하세요.
 각 기능별 estimatedCost의 합계가 totalAmount와 반드시 일치해야 합니다.
+summary에는 금액을 쓰지 마세요. 총액은 기능별 금액의 합계로 화면에 따로 표시됩니다.
+marketReference에는 유사 프로젝트의 시장 가격대만 쓰고, 이 프로젝트의 총액은 쓰지 마세요.
+summary, marketReference, rationale은 '~합니다' 체의 완결된 문장으로 쓰세요.
 
 다음 JSON 형식으로만 응답해주세요:
 {

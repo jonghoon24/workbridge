@@ -26,6 +26,7 @@ const TUESDAY = new Date('2026-10-20T05:00:00.000Z'); // Tue 2026-10-20 14:00 KS
 
 afterEach(() => {
   setPayoutProvider(new LogPayoutProvider());
+  process.env.JOB_PAYOUT_ENABLED = 'true';
 });
 
 /** An approved milestone of `freelancer` and its settlement item, as an approval would leave it (S3). */
@@ -242,6 +243,62 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
 // ---------------------------------------------------------------------------------------------
 // Payout
 // ---------------------------------------------------------------------------------------------
+
+describe('settlement.payout behind JOB_PAYOUT_ENABLED (J10)', () => {
+  it.each([['unset', undefined], ['false', 'false'], ['anything but true', '1']])(
+    'with the flag %s, a due payout is held PENDING: not claimed, not counted, no transfer [J10]',
+    async (_label, value) => {
+      if (value === undefined) delete process.env.JOB_PAYOUT_ENABLED;
+      else process.env.JOB_PAYOUT_ENABLED = value;
+      const freelancer = await makeFreelancer();
+      await makePayoutAccount(freelancer);
+      const settlement = await scheduled(freelancer);
+
+      const result = await runJobs(PAYOUT_AT);
+
+      expect(result.claimed).toBe(0);
+      const [job] = await jobsOf('settlement.payout');
+      expect(job).toMatchObject({ status: 'PENDING', attempts: 0, lockedBy: null });
+      expect(job.runAt.toISOString()).toBe(PAYOUT_AT.toISOString());
+      expect(await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).toMatchObject({
+        status: 'SCHEDULED',
+        payoutAttempts: 0,
+      });
+    },
+  );
+
+  it('other due jobs still run while payouts are held [J10]', async () => {
+    process.env.JOB_PAYOUT_ENABLED = 'false';
+    const freelancer = await makeFreelancer();
+    await makePayoutAccount(freelancer);
+    await scheduled(freelancer);
+    await enqueueBatch(new Date(BATCH_AT.getTime() + 7 * DAY_MS));
+
+    const result = await runJobs(new Date(BATCH_AT.getTime() + 7 * DAY_MS));
+
+    expect(result.claimed).toBe(1);
+    expect((await jobsOf('settlement.weeklyBatch')).map((job) => job.status)).toContain('SUCCEEDED');
+    expect((await jobsOf('settlement.payout'))[0].status).toBe('PENDING');
+  });
+
+  it('turning the flag on pays the held payout on the next pass [J10]', async () => {
+    process.env.JOB_PAYOUT_ENABLED = 'false';
+    const freelancer = await makeFreelancer();
+    await makePayoutAccount(freelancer);
+    const settlement = await scheduled(freelancer);
+    await runJobs(PAYOUT_AT);
+
+    process.env.JOB_PAYOUT_ENABLED = 'true';
+    const later = new Date(PAYOUT_AT.getTime() + 3 * DAY_MS);
+    await runJobs(later);
+
+    expect(await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).toMatchObject({
+      status: 'PAID',
+      payoutAttempts: 1,
+    });
+    expect((await jobsOf('settlement.payout'))[0].status).toBe('SUCCEEDED');
+  });
+});
 
 describe('settlement.payout (S7–S12, J7)', () => {
   it('pays to the account on file: PROCESSING snapshot, then PAID with a reference [S9] [S10]', async () => {

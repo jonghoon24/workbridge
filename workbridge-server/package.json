@@ -1,6 +1,9 @@
 {
   "name": "workbridge-server",
   "version": "1.0.0",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "postinstall": "prisma generate",

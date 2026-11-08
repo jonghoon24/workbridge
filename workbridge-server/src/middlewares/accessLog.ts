@@ -1,5 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 
+import { clientIp } from '../lib/clientIp';
 import { logger } from '../lib/logger';
 import type { JwtUserPayload } from '../types/index';
 
@@ -22,7 +23,7 @@ export function accessLog(req: Request, res: Response, next: NextFunction) {
       path: req.originalUrl.split('?')[0],
       status: res.statusCode,
       durationMs: Math.round(durationMs * 10) / 10,
-      ip: req.ip,
+      ip: clientIp(req),
       userId: user?.id,
     });
   });

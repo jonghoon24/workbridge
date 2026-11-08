@@ -8,14 +8,26 @@ import Button from '@/components/ui/Button';
 import useAuthStore from '@/store/authStore';
 import authApi from '@/lib/authApi';
 
+/**
+ * Where to go after logging in. Only a path on this site: it must start with `/`, and not with
+ * `//` or `/\`, which browsers read as another host. Anything else (an absolute URL, a missing
+ * value) goes home, so `/login?redirect=https://…` cannot send a user off-site.
+ */
+function safeRedirect(value) {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.startsWith('/\\')) return '/';
+  return value;
+}
+
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/';
+  const redirect = safeRedirect(searchParams.get('redirect'));
   const { setAuth } = useAuthStore();
 
   const [form, setForm] = useState({ email: '', password: '' });
-  const [error, setError] = useState('');
+  const [error, setError] = useState(
+    searchParams.get('error') === 'oauth_failed' ? 'Google 로그인에 실패했습니다. 다시 시도해 주세요.' : '',
+  );
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e) {
