@@ -21,6 +21,16 @@
 - 프론트엔드 `NEXT_PUBLIC_API_URL` → 백엔드 Vercel URL
 - 서버 `ALLOW_PAYMENT_BYPASS`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`는 반드시 `false`
 
+## Sentry
+
+`SENTRY_DSN`을 설정하면 서버 오류를 Sentry로 보낸다. **비어 있으면 꺼져 있고** `@sentry/node`도 불러오지 않는다(모든 호출이 바로 돌아온다).
+
+- **보내는 것은 두 가지뿐이다.** 응답이 500으로 끝난 요청(`errorHandler`, 요청 ID·메서드·경로와 로그인한 경우 사용자 ID를 태그로)과 최종 실패한 작업(`jobs/runner.ts`, 영구 실패나 재시도 소진 — 작업 ID·종류·시도 횟수). 4xx와 재시도될 작업 실패는 보내지 않는다.
+- 오류만 보낸다(`tracesSampleRate: 0`). `sendDefaultPii: false`라 IP·쿠키·요청 본문은 붙지 않는다.
+- `environment`는 `SENTRY_ENVIRONMENT` → `VERCEL_ENV` → `NODE_ENV` 순, `release`는 `VERCEL_GIT_COMMIT_SHA`다.
+- **서버리스에서는 응답 직후 함수가 멈출 수 있어서** 500 응답을 보내기 전에 최대 2초 `flush`한다. 작업 큐도 `runDueJobs` 한 번이 끝날 때 `flush`하므로 `POST /api/internal/jobs/run`과 `npm run jobs:run`에서 이벤트가 사라지지 않는다. 2초 안에 못 보내면 `warn` 한 줄을 남기고 응답은 그대로 나간다(그 이벤트는 잃을 수 있다).
+- 기존 `error` 로그 한 줄은 그대로 남는다. Sentry 자체의 실패는 `warn`이다.
+
 ## 운영 환경의 한계 (확장 이후)
 
 로컬 개발에서는 다 동작하지만 운영(Vercel)에서는 아직 막혀 있거나 손이 필요한 것들이다. 각각 의도된 현재 상태이고, 해결은 배포 결정과 함께 한다.

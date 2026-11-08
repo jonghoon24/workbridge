@@ -6,6 +6,7 @@ import type { Job } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { logger } from '../lib/logger';
 import { runWithContext } from '../lib/requestContext';
+import { captureError, flushSentry } from '../lib/sentry';
 import { HOUR_MS, MINUTE_MS } from '../lib/time';
 import { sqlTimestamp } from '../lib/sql';
 import { PermanentJobError } from './errors';
@@ -132,6 +133,11 @@ async function runOne(job: Job, now: Date, workerId: string): Promise<Outcome> {
         reason: permanent ? 'permanent' : 'attempts exhausted',
         err,
       });
+      // No-op without `SENTRY_DSN`; never throws. Sent by the flush at the end of `runDueJobs`.
+      await captureError(err, {
+        tags: { jobId: job.id, jobType: job.type, attempt: job.attempts, requestId: job.traceId ?? undefined },
+        extra: { maxAttempts: job.maxAttempts, reason: permanent ? 'permanent' : 'attempts exhausted' },
+      });
       return 'failed';
     }
 
@@ -172,6 +178,10 @@ export async function runDueJobs(options: RunDueJobsOptions = {}): Promise<RunDu
       runWithContext(context, () => logger.error('job bookkeeping failed', { type: job.type, err }));
     }
   }
+
+  // Serverless callers (`POST /api/internal/jobs/run`, `npm run jobs:run`) may be frozen or exit
+  // right after this returns, so send captured job failures now. No-op without `SENTRY_DSN`.
+  await flushSentry(2000);
 
   return result;
 }
