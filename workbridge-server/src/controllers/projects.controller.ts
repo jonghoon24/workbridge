@@ -100,6 +100,9 @@ export async function getProjects(req: Request, res: Response, next: NextFunctio
   try {
     await closeExpiredOpenProjects();
 
+    const today = new Date().toLocaleDateString('ko-KR');
+    console.log('[debug] getProjects', today, req.query);
+
     const search = queryString(req.query.search);
     const category = queryString(req.query.category);
     const minBudget = queryString(req.query.minBudget);
