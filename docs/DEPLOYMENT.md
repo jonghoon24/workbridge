@@ -18,7 +18,7 @@
 | 서버 | https://workbridge-server-tau.vercel.app |
 | 클라이언트 | https://workbridge-client-alpha.vercel.app |
 
-둘 다 Vercel 팀 `jonghoon24s-projects`에 있고 Preview·Production 환경변수는 넣어 두었다. Git 연결은 Vercel GitHub 앱을 설치한 뒤에 된다(아직 연결 전). 연결하면 PR마다 두 프로젝트가 프리뷰 배포되고 `main` 머지는 운영 배포가 된다.
+둘 다 Vercel 팀 `jonghoon24s-projects`에 있고 Preview·Production 환경변수는 넣어 두었다. 리포지토리와 Vercel GitHub 앱으로 연결돼 있어서, 푸시된 브랜치와 PR마다 두 프로젝트가 프리뷰 배포되고 `main` 머지는 운영 배포가 된다.
 
 ### 시드 리셋 — `seed.yml`
 
@@ -27,6 +27,8 @@
 ```bash
 gh workflow run seed.yml -f environment=preview -f confirm=seed
 ```
+
+Claude Code 세션에서는 이 커맨드가 권한 규칙(deny)으로 막혀 있으므로 사람이 실행한다.
 
 ## 백엔드
 

@@ -7,7 +7,7 @@
 | 변수 | 설명 |
 | --- | --- |
 | `PORT` | 서버 포트 (기본 4000) |
-| `DATABASE_URL` | PostgreSQL 연결 문자열 (Supabase Transaction mode 포트 6543 권장) |
+| `DATABASE_URL` | PostgreSQL 연결 문자열 (Supabase Transaction mode 포트 6543 권장). Vercel(프리뷰·운영)에서는 끝에 `&connection_limit=3`을 붙인다(필요하면 `&pool_timeout=10`도). 없으면 Prisma가 함수 인스턴스마다 `CPU 수 × 2 + 1`개 연결을 열어, 인스턴스가 늘 때 Supavisor 연결 한도에 먼저 닿는다. `1`은 권하지 않는다: `Promise.all([findMany, count])`가 직렬화되고, 트랜잭션 안에서 루트 `prisma`를 쓰는 헬퍼가 있으면 풀을 기다리다 멈춘다. 로컬은 붙이지 않아도 된다 |
 | `DIRECT_URL` | pgbouncer를 거치지 않는 직접 연결 문자열. `prisma migrate`가 쓴다(`schema.prisma`의 `directUrl`). 로컬에서는 `DATABASE_URL`과 같게 둔다 |
 | `NODE_ENV` | `production`이면 `app.listen()`과 개발 작업 워커를 시작하지 않고(Vercel), CORS 기본 허용 목록에서 `http://localhost:3000`을 뺀다. 테스트는 `test` |
 | `JWT_ACCESS_SECRET` | Access Token 서명 시크릿 |
