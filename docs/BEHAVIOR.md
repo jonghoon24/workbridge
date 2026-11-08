@@ -402,6 +402,11 @@ Returns the caller's own profile including private fields (`email`). 404 if the 
 - Requires `title`, `description`, `category`, `budget`, `deadline` → else 400.
 - `deadline` must parse as a date; `budget` must be a non-negative number → else 400.
 - `recruitmentStartDate` defaults to now, and must not be after `deadline` → else 400.
+- A date-only value (`YYYY-MM-DD`, what the project form sends) is a **KST calendar day**: a
+  `deadline` lasts until 23:59:59.999 KST of that day, a `recruitmentStartDate` begins at
+  00:00 KST. So a project due today stays `OPEN` until the day ends, and one starting today is
+  `OPEN` at once. A date-only value that is not a calendar date → 400. Any other value is read as
+  an instant.
 - Initial status is derived: `UPCOMING` if recruitment starts in the future, otherwise `OPEN`.
 - `requiredSkills` is normalized and de-duplicated; omitting it yields `[]`.
 - **201** with the created project. `clientId` is taken from the token, never from the body.
@@ -418,6 +423,7 @@ Runs the lifecycle sweep, then returns the project with its client, application 
   changing underneath them.
 - With no applications, date changes are re-validated (`recruitmentStartDate <= deadline`) and,
   if the project is still `UPCOMING`/`OPEN`, its status is recomputed from the new schedule.
+  Date-only values are KST days, as in `POST /`.
 - Editing is permitted in any status, including `COMPLETED` and `CANCELLED` — intentional.
 
 ### `DELETE /:id` — authenticated, CLIENT

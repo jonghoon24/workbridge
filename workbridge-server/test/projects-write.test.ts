@@ -11,6 +11,7 @@ import {
   makeFreelancer,
   makeProject,
 } from './helpers/factories';
+import { DAY_MS, kstDateString, kstDateToEndOfDay, startOfKstDay } from '../src/lib/time';
 
 /**
  * The project mutation endpoints, asserted against `docs/BEHAVIOR.md` (§ Projects).
@@ -297,6 +298,59 @@ describe('POST /api/projects', () => {
     // that matters (epoch, null, the deadline 30 days out).
     expect(stored.recruitmentStartDate!.getTime()).toBeGreaterThanOrEqual(before - 30_000);
     expect(stored.recruitmentStartDate!.getTime()).toBeLessThanOrEqual(after + 30_000);
+  });
+
+  describe('date-only values are KST calendar days', () => {
+    it('a deadline of today lasts until 23:59:59.999 KST, so the project stays OPEN', async () => {
+      const client = await makeClient();
+      const today = kstDateString(new Date());
+
+      const res = await authed(client).post('/api/projects').send({ ...validBody(), deadline: today });
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('OPEN');
+      expect(res.body.deadline).toBe(kstDateToEndOfDay(today).toISOString());
+      // The next read runs the lifecycle sweep; the project must survive it.
+      const read = await api().get(`/api/projects/${res.body.id}`);
+      expect(read.body.status).toBe('OPEN');
+    });
+
+    it('a recruitmentStartDate of today begins at 00:00 KST, so the project is OPEN at once', async () => {
+      const client = await makeClient();
+      const now = new Date();
+      const today = kstDateString(now);
+
+      const res = await authed(client)
+        .post('/api/projects')
+        .send({ ...validBody(), recruitmentStartDate: today, deadline: today });
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('OPEN');
+      expect(res.body.recruitmentStartDate).toBe(startOfKstDay(now).toISOString());
+    });
+
+    it('a recruitmentStartDate of a later day begins at that day\'s 00:00 KST, so the project is UPCOMING', async () => {
+      const client = await makeClient();
+      const startDay = kstDateString(new Date(Date.now() + 3 * DAY_MS));
+
+      const res = await authed(client)
+        .post('/api/projects')
+        .send({ ...validBody(), recruitmentStartDate: startDay });
+
+      expect(res.status).toBe(201);
+      expect(res.body.status).toBe('UPCOMING');
+      expect(res.body.recruitmentStartDate).toBe(startOfKstDay(kstDateToEndOfDay(startDay)).toISOString());
+    });
+
+    it('rejects a date-only value that is not a calendar date with 400', async () => {
+      const client = await makeClient();
+
+      const res = await authed(client).post('/api/projects').send({ ...validBody(), deadline: '2030-02-30' });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'deadline must be a valid date' } });
+      expect(await prisma.project.count()).toBe(0);
+    });
   });
 
   it('normalizes and de-duplicates requiredSkills', async () => {
@@ -792,6 +846,21 @@ describe('PATCH /api/projects/:id', () => {
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.budget).toBe(1_234_000);
+    });
+
+    it('reads a date-only deadline as the end of that KST day, so moving it to today keeps the project OPEN', async () => {
+      const { client, project } = await ownedProject({
+        status: 'OPEN',
+        recruitmentStartDate: daysFromNow(-1),
+        deadline: daysFromNow(30),
+      });
+      const today = kstDateString(new Date());
+
+      const res = await authed(client).patch(`/api/projects/${project.id}`).send({ deadline: today });
+
+      expect(res.status).toBe(200);
+      expect(res.body.deadline).toBe(kstDateToEndOfDay(today).toISOString());
+      expect((await api().get(`/api/projects/${project.id}`)).body.status).toBe('OPEN');
     });
 
     it('recomputes OPEN -> UPCOMING when recruitment is pushed into the future', async () => {

@@ -14,6 +14,7 @@ import {
   expandSkillSearchTerms,
   normalizeSkillList,
 } from '../lib/skills';
+import { kstDateToEndOfDay, startOfKstDay } from '../lib/time';
 import type {
   AuthedRequest,
   PricingAnalysisData,
@@ -46,7 +47,26 @@ function parseBudget(value: string, field: string) {
   return parsed;
 }
 
-function parseProjectDate(value: string, field: string) {
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A project date from the request body. A bare `YYYY-MM-DD` (what the project form's date input
+ * sends) is a **KST calendar day**: as a `deadline` it lasts until that day ends (23:59:59.999
+ * KST), as a `recruitmentStartDate` it begins at 00:00 KST. `new Date('YYYY-MM-DD')` would read
+ * it as 00:00 UTC = 09:00 KST, closing a project due "today" the moment it is created after 9 am.
+ * Anything else must parse as an instant.
+ */
+function parseProjectDate(value: string, field: string, dateOnlyAs: 'startOfDay' | 'endOfDay') {
+  if (typeof value === 'string' && DATE_ONLY.test(value)) {
+    let endOfDay: Date;
+    try {
+      endOfDay = kstDateToEndOfDay(value);
+    } catch {
+      throw new AppError(`${field} must be a valid date`, 400);
+    }
+    return dateOnlyAs === 'endOfDay' ? endOfDay : startOfKstDay(endOfDay);
+  }
+
   const parsed = new Date(value);
   if (!value || Number.isNaN(parsed.getTime())) {
     throw new AppError(`${field} must be a valid date`, 400);
@@ -203,9 +223,9 @@ export async function createProject(req: AuthedRequest, res: Response, next: Nex
       throw new AppError('All fields are required', 400);
     }
 
-    const parsedDeadline = parseProjectDate(deadline, 'deadline');
+    const parsedDeadline = parseProjectDate(deadline, 'deadline', 'endOfDay');
     const parsedRecruitmentStartDate = recruitmentStartDate
-      ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate')
+      ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate', 'startOfDay')
       : new Date();
     const parsedBudget = parseBudget(budget, 'budget');
     validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
@@ -351,10 +371,10 @@ export async function updateProject(req: AuthedRequest, res: Response, next: Nex
       if (budget !== undefined) updateData.budget = parseBudget(budget, 'budget');
 
       const parsedDeadline = deadline !== undefined
-        ? parseProjectDate(deadline, 'deadline')
+        ? parseProjectDate(deadline, 'deadline', 'endOfDay')
         : project.deadline;
       const parsedRecruitmentStartDate = recruitmentStartDate !== undefined
-        ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate')
+        ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate', 'startOfDay')
         : project.recruitmentStartDate || new Date();
 
       validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
