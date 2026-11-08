@@ -139,6 +139,13 @@ model Project {
   contract        Contract?
   pricingAnalysis PricingAnalysis?
   bookmarks       ProjectBookmark[]
+
+  // GET /api/projects: status filter + one index per sort (latest, deadline, budget).
+  // [status, deadline] also serves the lifecycle sweep (status IN (UPCOMING, OPEN), deadline < now).
+  @@index([status, createdAt])
+  @@index([status, deadline])
+  @@index([status, budget])
+  @@index([clientId]) // GET /api/users/me/projects
 }
 
 model ProjectBookmark {
@@ -168,6 +175,7 @@ model Application {
   contract Contract?
 
   @@unique([projectId, freelancerId])
+  @@index([freelancerId]) // GET /api/users/me/applications
 }
 
 model Contract {
@@ -194,6 +202,10 @@ model Contract {
   settlementItems SettlementItem[]
   reviews         Review[]
   conversation    Conversation?
+
+  // GET /api/contracts: OR [{ clientId }, { freelancerId }] — one index per arm (bitmap OR).
+  @@index([clientId])
+  @@index([freelancerId])
 }
 
 model Milestone {
@@ -270,6 +282,7 @@ model Payment {
   createdAt   DateTime      @default(now())
 
   @@index([contractId])
+  @@index([clientId]) // GET /api/payments
 }
 
 model SettlementItem {
@@ -458,6 +471,7 @@ model Review {
   createdAt  DateTime @default(now())
 
   @@unique([contractId, reviewerId])
+  @@index([revieweeId]) // GET /api/reviews/users/:id and the profile rating average
 }
 
 model Notification {

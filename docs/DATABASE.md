@@ -24,22 +24,22 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
 | **User** | 의뢰인(`CLIENT`) 또는 프리랜서(`FREELANCER`) | `email` unique, `password`(OAuth 전용 계정은 null), `googleId` unique, `roleSelected`(OAuth 첫 로그인 역할 선택 여부), 의뢰인 필드 `companyName`/`businessField`/`website`, 프리랜서 필드 `skills String[]`/`activityCategory`/`experienceYears`/`hourlyRate Float`/`portfolioUrl`, `deletedAt`(소프트 삭제) |
-| **Project** | 의뢰인이 올린 외주 프로젝트 | `budget Float`, `recruitmentStartDate`, `deadline`, `requiredSkills String[]`, `status`, `deletedAt` |
+| **Project** | 의뢰인이 올린 외주 프로젝트 | `budget Float`, `recruitmentStartDate`, `deadline`, `requiredSkills String[]`, `status`, `deletedAt`. 인덱스 `[status, createdAt]`, `[status, deadline]`, `[status, budget]`, `[clientId]`(아래 "인덱스") |
 | **ProjectBookmark** | 프리랜서의 북마크 | `(projectId, userId)` unique |
-| **Application** | 프리랜서의 지원 | `expectedRate Float`(계약 금액이 된다), `expectedDuration`, `status`, `(projectId, freelancerId)` unique |
+| **Application** | 프리랜서의 지원 | `expectedRate Float`(계약 금액이 된다), `expectedDuration`, `status`, `(projectId, freelancerId)` unique, 인덱스 `[freelancerId]` |
 | **PricingAnalysis** | AI 단가 분석 결과 | `projectId` unique(다시 분석하면 덮어씀), `features Json`, `totalAmount Float` |
-| **Review** | 계약 완료 후 상호 리뷰 | `rating` 1~5, `tags String[]`, `(contractId, reviewerId)` unique — 당사자마다 1개 |
+| **Review** | 계약 완료 후 상호 리뷰 | `rating` 1~5, `tags String[]`, `(contractId, reviewerId)` unique — 당사자마다 1개, 인덱스 `[revieweeId]` |
 | **Notification** | 인앱 알림 | `type String`(TS 유니온, 19종), `title`, `message`, `href`, `readAt`. 인덱스 `[userId, readAt, createdAt]` |
 
 ### 계약, 마일스톤, 결제
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
-| **Contract** | 지원 수락으로 생기는 계약 | `projectId` unique, `applicationId` unique, `amount Float`(= `expectedRate`, 소수일 수 있음), `startDate`, `endDate`(마지막 마일스톤 기한), `clientSigned`/`freelancerSigned`, `status`, `completedAt` |
+| **Contract** | 지원 수락으로 생기는 계약 | `projectId` unique, `applicationId` unique, `amount Float`(= `expectedRate`, 소수일 수 있음), `startDate`, `endDate`(마지막 마일스톤 기한), `clientSigned`/`freelancerSigned`, `status`, `completedAt`. 인덱스 `[clientId]`, `[freelancerId]` |
 | **Milestone** | 계약을 나눈 작업 단위 | `sequence`(1부터), `amount`(원 단위 정수), `dueDate`(그 KST 날짜의 23:59:59.999), `status`, `fundedAt`, `submittedAt`(최근 제출), `autoApproveAt`(`SUBMITTED`일 때만), `approvedAt`, `approvalType`, `revisionCount`. `(contractId, sequence)` unique, 인덱스 `[status, autoApproveAt]` |
 | **MilestoneSubmission** | 산출물 제출 회차 | `round`(1부터), `message`, `links String[]`, `decision`(null = 검수 대기), `decisionReason`, `decidedAt`, `decidedById`(FK 아님, 자동 승인이면 null), `autoDecided`. `(milestoneId, round)` unique |
 | **MilestoneAttachment** | 제출 첨부 파일 | `url`(공개 URL), `fileName`(원래 이름, UTF-8), `mimeType`, `size` |
-| **Payment** | 마일스톤 결제 | `contractId`, `milestoneId` unique, `clientId`, `amount Float`(= 마일스톤 금액), `status`, `paymentKey`, `orderId` unique |
+| **Payment** | 마일스톤 결제 | `contractId`, `milestoneId` unique, `clientId`, `amount Float`(= 마일스톤 금액), `status`, `paymentKey`, `orderId` unique, 인덱스 `[contractId]`, `[clientId]` |
 
 ### 정산
 
@@ -140,6 +140,25 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 
 모든 필수 관계는 `ON DELETE RESTRICT`다. 예외는 선택 관계 두 개뿐이다: `SettlementItem.settlementId`와 `EmailDelivery.notificationId`(`SET NULL`). 그래서 시드처럼 데이터를 지울 때는 자식부터 지워야 한다(`prisma/seed.js`의 `deleteMany` 순서).
 
+## 인덱스
+
+인덱스는 실제로 도는 쿼리에 맞춰 단다. 유니크 제약(`@unique`, `@@unique`)은 자체 인덱스가 있으므로 따로 달지 않는다. 확장 도메인 모델의 인덱스는 위 모델 표에 적었고, 기존 도메인의 목록 쿼리와 외래 키 쪽 인덱스는 다음과 같다(`20261108143952_add_list_and_foreign_key_indexes`).
+
+| 인덱스 | 쓰는 쿼리 |
+| --- | --- |
+| `Project[status, createdAt]` | `GET /api/projects` 기본 목록: `status`(기본 `OPEN`) 필터 + `createdAt desc` 정렬(`sort=latest`) |
+| `Project[status, deadline]` | `GET /api/projects?sort=deadline`(`deadline asc`). 지연 스윕 `closeExpiredOpenProjects`의 `status IN (UPCOMING, OPEN) AND deadline < now`와 `status = UPCOMING AND deadline >= now`도 이것을 쓴다 |
+| `Project[status, budget]` | `GET /api/projects?sort=budget`(`budget desc`)와 `minBudget`/`maxBudget` 범위 필터 |
+| `Project[clientId]` | `GET /api/users/me/projects`(의뢰인의 프로젝트) |
+| `Application[freelancerId]` | `GET /api/users/me/applications`와 그 앞의 마감 지원 일괄 거절(`freelancerId` 조건) |
+| `Contract[clientId]`, `Contract[freelancerId]` | `GET /api/contracts`의 `OR [{ clientId }, { freelancerId }]` — 두 인덱스를 bitmap OR로 합친다 |
+| `Payment[clientId]` | `GET /api/payments`(의뢰인의 결제 내역) |
+| `Review[revieweeId]` | `GET /api/reviews/users/:id`, 공개 프로필과 추천의 평균 평점(`receivedReviews`) |
+
+- `deletedAt`은 인덱스에 넣지 않았다. 거의 모든 행이 `null`이라 거르는 힘이 없다.
+- 일부러 달지 않은 것: `Project.category`(값이 몇 개뿐이라 선택도가 낮다. `status` 인덱스로 읽은 뒤 거른다), `requiredSkills`의 GIN(`hasSome` 기술 검색. 프로젝트 수가 늘어 기술 필터가 느려지면 단다), 제목·설명 검색 `ILIKE '%…%'`(일반 B-tree로는 안 된다. 커지면 `pg_trgm` GIN).
+- 인덱스는 일반 `CREATE INDEX`로 만든다. 만드는 동안 그 테이블의 쓰기가 잠깐 막히지만 지금 행 수에서는 순간이다. 테이블이 커진 뒤 새 인덱스를 달 때는 `--create-only`로 만든 SQL을 `CREATE INDEX CONCURRENTLY`로 바꾸는 것을 검토한다.
+
 ## 소프트 삭제
 
 - `User`와 `Project`만 `deletedAt`으로 소프트 삭제한다. **모든 조회와 쓰기에 `deletedAt: null`을 건다.**
@@ -184,6 +203,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `20261021060000_expansion_milestones_settlement` | 마일스톤·제출·첨부·정산·지급 계좌, `Payment` 1:N 전환 |
 | `20261021062933_expansion_messaging_profile` | 대화방·참여자·메시지·첨부, 포트폴리오, 경력 |
 | `20261021071341_expansion_notification_channels` | 알림 설정, 이메일 발송 기록 |
+| `20261108143952_add_list_and_foreign_key_indexes` | 인덱스만 추가: `Project` 4개, `Application[freelancerId]`, `Contract[clientId]`·`[freelancerId]`, `Payment[clientId]`, `Review[revieweeId]`("인덱스" 참고). 데이터 변경 없음 |
 
 - **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. Postgres의 float `round()`는 .5를 짝수로 보내 `Math.round`와 1원 어긋나므로 numeric으로 바꿔 반올림한다. 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
 - **정산 원장은 확장 이후 승인분부터다.** 확장 전에 완료된 계약의 마일스톤에는 `SettlementItem`이 없다(화면의 예상 정산액은 현재 요율로 계산해 보여준다).
