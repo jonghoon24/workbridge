@@ -8,7 +8,7 @@ import { formatDate, formatDateTime, formatKRW, formatRemaining } from '@/lib/fo
 import { PAYMENT_STATUS_LABELS } from '@/constants/milestones';
 
 // 계약 페이지의 마일스톤 한 줄. 행동 버튼은 상태와 역할로 정한다.
-// - 의뢰인: 결제(순서상 다음 PENDING만, M13), 검수 대기면 승인/반려
+// - 의뢰인: 결제(순서상 다음 PENDING만, M13), 검수 대기면 승인/수정 요청
 // - 프리랜서: FUNDED/REVISION_REQUESTED면 제출(상세 페이지의 제출 폼으로 이동)
 export default function MilestoneCard({
   milestone,
@@ -62,7 +62,7 @@ export default function MilestoneCard({
           )}
           {milestone.status === 'REVISION_REQUESTED' && milestone.latestSubmission?.decisionReason && (
             <p className="mt-2 text-xs text-orange-700 line-clamp-2">
-              반려 사유: {milestone.latestSubmission.decisionReason}
+              수정 요청 사항: {milestone.latestSubmission.decisionReason}
             </p>
           )}
           {isFreelancer && milestone.payoutPreview && (
@@ -89,7 +89,7 @@ export default function MilestoneCard({
             <>
               <Button size="sm" onClick={() => onApprove?.(milestone)} loading={busy}>승인</Button>
               <Button size="sm" variant="secondary" onClick={() => onReject?.(milestone)} disabled={busy}>
-                반려
+                수정 요청
               </Button>
             </>
           )}

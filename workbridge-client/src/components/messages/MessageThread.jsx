@@ -207,7 +207,7 @@ export default function MessageThread({ conversationId }) {
   }
 
   async function handleDelete(message) {
-    if (!confirm('이 메시지를 삭제할까요? 상대방 화면에서도 "삭제된 메시지입니다"로 바뀝니다.')) return;
+    if (!confirm('이 메시지를 삭제하시겠습니까? 상대방 화면에서도 "삭제된 메시지입니다"로 바뀝니다.')) return;
     setDeletingId(message.id);
     setActionError('');
     try {
@@ -278,7 +278,7 @@ export default function MessageThread({ conversationId }) {
         )}
         {messages.length === 0 && (
           <p className="py-10 text-center text-sm text-gray-400">
-            {conversation.canSend ? '아직 메시지가 없습니다. 첫 메시지를 보내보세요.' : '주고받은 메시지가 없습니다.'}
+            {conversation.canSend ? '아직 메시지가 없습니다. 첫 메시지를 보내 보세요.' : '주고받은 메시지가 없습니다.'}
           </p>
         )}
         {messages.map((message, index) => {

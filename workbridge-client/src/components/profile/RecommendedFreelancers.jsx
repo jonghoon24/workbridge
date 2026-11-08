@@ -54,7 +54,7 @@ export default function RecommendedFreelancers({ projectId, limit = 10 }) {
                     {freelancer.name}
                   </Link>
                   <span className="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
-                    {freelancer.score.toFixed(2)}점
+                    {Math.round(freelancer.score)}점
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">

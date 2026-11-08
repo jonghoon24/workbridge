@@ -24,7 +24,7 @@ test.describe('로그인과 로그아웃', () => {
     await expect(header(page).getByRole('link', { name: '로그인' })).toHaveCount(0);
 
     await userMenu.click();
-    await expect(header(page).getByRole('link', { name: '내 프로젝트 보기' })).toBeVisible();
+    await expect(header(page).getByRole('link', { name: '내 프로젝트' })).toBeVisible();
     await expect(header(page).getByRole('link', { name: '결제 내역' })).toBeVisible();
     await expect(header(page).getByRole('link', { name: '내 지원 현황' })).toHaveCount(0);
 
@@ -51,7 +51,7 @@ test.describe('로그인과 로그아웃', () => {
     await userMenu.click();
     await expect(header(page).getByRole('link', { name: '내 지원 현황' })).toBeVisible();
     await expect(header(page).getByRole('link', { name: '정산' })).toBeVisible();
-    await expect(header(page).getByRole('link', { name: '내 프로젝트 보기' })).toHaveCount(0);
+    await expect(header(page).getByRole('link', { name: '내 프로젝트' })).toHaveCount(0);
 
     await header(page).getByRole('button', { name: '로그아웃' }).click();
     await expect(header(page).getByRole('link', { name: '로그인' })).toBeVisible();

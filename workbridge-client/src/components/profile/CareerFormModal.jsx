@@ -30,10 +30,10 @@ export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
   const [error, setError] = useState('');
 
   function validate() {
-    if (!form.company.trim()) return '회사명을 입력해주세요.';
-    if (!form.position.trim()) return '직책을 입력해주세요.';
-    if (!form.startDate) return '시작 월을 선택해주세요.';
-    if (!form.current && !form.endDate) return '종료 월을 선택하거나 재직 중을 체크해주세요.';
+    if (!form.company.trim()) return '회사명을 입력해 주세요.';
+    if (!form.position.trim()) return '직책을 입력해 주세요.';
+    if (!form.startDate) return '시작 월을 선택해 주세요.';
+    if (!form.current && !form.endDate) return '종료 월을 선택하거나 재직 중을 체크해 주세요.';
     if (!form.current && form.endDate < form.startDate) return '종료 월은 시작 월보다 빠를 수 없습니다.';
     return '';
   }

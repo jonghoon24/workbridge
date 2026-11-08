@@ -30,7 +30,7 @@ export default function ProjectDiscovery() {
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="mb-5">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900">프로젝트 빠른 탐색</h2>
-          <p className="text-gray-600 mt-1">키워드나 카테고리로 바로 프로젝트를 찾아보세요</p>
+          <p className="text-gray-600 mt-1">키워드나 카테고리로 바로 프로젝트를 찾아 보세요</p>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">

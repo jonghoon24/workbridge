@@ -39,18 +39,18 @@ test('결제 → 제출 → 승인으로 마지막 마일스톤이 승인되면 
   await expect(milestoneCard(clientPage).getByText('작업 중')).toBeVisible();
   await expect(clientPage.getByRole('button', { name: '결제하기' })).toHaveCount(0);
 
-  // 2. 프리랜서: 산출물 제출
+  // 2. 프리랜서: 결과물 제출
   await freelancerPage.goto(contractPath);
   await expect(milestoneCard(freelancerPage).getByText('작업 중')).toBeVisible();
   await freelancerPage.getByRole('button', { name: '제출하기', exact: true }).click();
   await expect(freelancerPage).toHaveURL(new RegExp(`/milestones/${milestone.id}#submission-form$`));
-  await freelancerPage.getByLabel('작업 내용').fill('전체 작업을 마쳤습니다. 저장소 링크에서 확인해주세요.');
+  await freelancerPage.getByLabel('작업 내용').fill('전체 작업을 마쳤습니다. 저장소 링크에서 확인해 주세요.');
   await freelancerPage.getByPlaceholder('https://github.com/...').fill('https://github.com/example/e2e-deliverable');
-  await freelancerPage.getByRole('button', { name: '산출물 제출하기' }).click();
+  await freelancerPage.getByRole('button', { name: '결과물 제출하기' }).click();
   // 상세 페이지 상단 배지와 제출 이력 모두 검수 대기, 자동 승인 안내가 뜬다
   await expect(freelancerPage.getByText('검수 대기', { exact: true }).first()).toBeVisible();
   await expect(freelancerPage.getByText(/자동 승인까지 .+ 남음/)).toBeVisible();
-  await expect(freelancerPage.getByRole('button', { name: '산출물 제출하기' })).toHaveCount(0);
+  await expect(freelancerPage.getByRole('button', { name: '결과물 제출하기' })).toHaveCount(0);
 
   // 3. 의뢰인: 계약서에서 검수 대기 마일스톤을 승인 → 계약 완료
   await clientPage.reload();
@@ -60,7 +60,7 @@ test('결제 → 제출 → 승인으로 마지막 마일스톤이 승인되면 
   await expect(milestoneCard(clientPage).getByText('승인 완료')).toBeVisible();
   await expect(clientPage.getByText('완료', { exact: true })).toBeVisible();
   await expect(clientPage.getByRole('heading', { name: '리뷰' })).toBeVisible();
-  expect(clientPage.dialogs.some((message) => message.includes('마일스톤을 승인할까요'))).toBe(true);
+  expect(clientPage.dialogs.some((message) => message.includes('마일스톤을 승인하시겠습니까'))).toBe(true);
   expect(clientPage.dialogs.some((message) => message.includes('계약이 완료되었습니다'))).toBe(true);
 
   // 프리랜서 화면에서도 계약이 완료되어 있다

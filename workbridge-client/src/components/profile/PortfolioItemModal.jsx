@@ -67,11 +67,11 @@ export default function PortfolioItemModal({ isOpen, item, onClose, onSaved }) {
   }
 
   function validate() {
-    if (!form.title.trim()) return '제목을 입력해주세요.';
-    if (form.title.trim().length > 100) return '제목은 100자 이하로 입력해주세요.';
+    if (!form.title.trim()) return '제목을 입력해 주세요.';
+    if (form.title.trim().length > 100) return '제목은 100자 이하로 입력해 주세요.';
     if (form.url.trim() && !/^https?:\/\//i.test(form.url.trim())) return '링크는 http:// 또는 https://로 시작하는 주소여야 합니다.';
     if (form.skills.length > MAX_SKILLS) return '기술은 최대 10개까지 선택할 수 있습니다.';
-    if (form.endedAt && !form.startedAt) return '종료 월을 입력하려면 시작 월도 입력해주세요.';
+    if (form.endedAt && !form.startedAt) return '종료 월을 입력하려면 시작 월도 입력해 주세요.';
     if (form.startedAt && form.endedAt && form.endedAt < form.startedAt) return '종료 월은 시작 월보다 빠를 수 없습니다.';
     return '';
   }
@@ -176,7 +176,7 @@ export default function PortfolioItemModal({ isOpen, item, onClose, onSaved }) {
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
-            placeholder="무엇을 만들었고 어떤 성과가 있었는지 적어주세요"
+            placeholder="무엇을 만들었고 어떤 성과가 있었는지 적어 주세요"
           />
         </div>
         <Input

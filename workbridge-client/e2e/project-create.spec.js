@@ -11,7 +11,7 @@ test('의뢰인이 화면에서 프로젝트를 등록하면 상세와 목록에
   // 1단계: 기본 정보
   await page.getByLabel('프로젝트명').fill(title);
   await page.getByRole('combobox').selectOption('웹 개발');
-  await page.getByPlaceholder('프로젝트에 대해 자세히 설명해주세요').fill(description);
+  await page.getByPlaceholder('프로젝트에 대해 자세히 설명해 주세요').fill(description);
   await page.getByRole('button', { name: '다음' }).click();
 
   // 2단계: 모집 조건 (모집 시작일은 오늘이 기본값)
@@ -30,7 +30,7 @@ test('의뢰인이 화면에서 프로젝트를 등록하면 상세와 목록에
   await expect(page).toHaveURL(/\/projects\/[^/]+$/);
   const heading = page.getByRole('heading', { level: 1, name: title });
   await expect(heading).toBeVisible();
-  await expect(heading.locator('..').getByText('모집중')).toBeVisible();
+  await expect(heading.locator('..').getByText('모집 중')).toBeVisible();
   await expect(page.getByText('2,500,000원')).toBeVisible();
   await expect(page.getByRole('button', { name: '지원자 관리' })).toBeVisible();
   const detailUrl = page.url();

@@ -13,13 +13,13 @@ function DecisionLabel({ submission }) {
       </span>
     );
   }
-  return <span className="text-xs font-medium text-orange-700 bg-orange-50 rounded px-2 py-0.5">반려</span>;
+  return <span className="text-xs font-medium text-orange-700 bg-orange-50 rounded px-2 py-0.5">수정 요청</span>;
 }
 
 // 제출 이력(round 내림차순, BEHAVIOR.md MS11). 첨부 url은 공개 버킷 주소다(DECISIONS: 첨부 파일).
 export default function SubmissionHistory({ submissions = [] }) {
   if (submissions.length === 0) {
-    return <p className="text-sm text-gray-500">아직 제출된 산출물이 없습니다.</p>;
+    return <p className="text-sm text-gray-500">아직 제출한 결과물이 없습니다.</p>;
   }
 
   return (
@@ -68,14 +68,14 @@ export default function SubmissionHistory({ submissions = [] }) {
           {submission.decision === 'REJECTED' && submission.decisionReason && (
             <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
               <p className="text-xs font-medium text-orange-800">
-                반려 사유 · {formatDateTime(submission.decidedAt)}
+                수정 요청 사항 · {formatDateTime(submission.decidedAt)}
               </p>
               <p className="mt-1 text-sm text-orange-900 whitespace-pre-wrap break-words">{submission.decisionReason}</p>
             </div>
           )}
           {submission.decision === 'APPROVED' && submission.decidedAt && (
             <p className="mt-2 text-xs text-gray-500">
-              {submission.autoDecided ? '검수 기한이 지나 자동 승인됨' : '의뢰인이 승인함'} · {formatDateTime(submission.decidedAt)}
+              {submission.autoDecided ? '검수 기한이 지나 자동 승인' : '의뢰인 승인'} · {formatDateTime(submission.decidedAt)}
             </p>
           )}
         </li>

@@ -31,7 +31,7 @@ export default function RecommendedProjects({ limit = 10, compact = false }) {
   if (incomplete) {
     return (
       <Card className="p-6 text-center">
-        <p className="text-gray-700">프로필을 완성하면 기술과 카테고리에 맞는 프로젝트를 추천해드려요.</p>
+        <p className="text-gray-700">프로필을 완성하면 기술과 카테고리에 맞는 프로젝트를 추천해 드립니다.</p>
         <Link href="/profile" className="inline-block mt-3 text-sm font-medium text-primary-600 hover:text-primary-700">
           프로필 완성하러 가기 →
         </Link>
@@ -58,7 +58,7 @@ export default function RecommendedProjects({ limit = 10, compact = false }) {
               <h3 className="font-semibold text-gray-900 hover:text-primary-600 line-clamp-1">{project.title}</h3>
             </Link>
             <span className="shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-semibold text-primary-700">
-              {project.score.toFixed(2)}점
+              {Math.round(project.score)}점
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
