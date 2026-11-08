@@ -14,6 +14,7 @@ import RejectModal from '@/components/milestones/RejectModal';
 import UnreadBadge from '@/components/messages/UnreadBadge';
 import { formatDate, formatKRW } from '@/lib/format';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
+import PageLoader from '@/components/ui/PageLoader';
 
 export default function ContractPage() {
   const { id } = useParams();
@@ -159,7 +160,7 @@ export default function ContractPage() {
     }
   }
 
-  if (loading) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
   if (!contract) return null;
 
   const currentUser = user || useAuthStore.getState().user;
@@ -190,7 +191,7 @@ export default function ContractPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">계약서</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">계약서</h1>
         <div className="flex items-center gap-3">
           {conversation && (isClient || isFreelancer) && (
             <Link
@@ -418,7 +419,7 @@ export default function ContractPage() {
                   <select
                     value={reviewForm.rating}
                     onChange={(e) => setReviewForm({ ...reviewForm, rating: parseInt(e.target.value) })}
-                    className="block w-32 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+                    className="block w-32 rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
                   >
                     {[5, 4, 3, 2, 1].map((rating) => (
                       <option key={rating} value={rating}>{rating}점</option>
@@ -452,7 +453,7 @@ export default function ContractPage() {
                     value={reviewForm.content}
                     onChange={(e) => setReviewForm({ ...reviewForm, content: e.target.value })}
                     rows={4}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
                     placeholder="프로젝트 경험을 구체적으로 작성해주세요"
                   />
                 </div>

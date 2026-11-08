@@ -2,6 +2,7 @@
 
 import ProfileImage from './ProfileImage';
 import { formatPeriod } from './profileFormat';
+import Tag from '@/components/ui/Tag';
 
 // 포트폴리오 카드 그리드(BEHAVIOR.md PF3, PF5 순서). editable이면 위/아래 이동, 수정, 삭제 버튼을 붙인다.
 export default function PortfolioGrid({ items, editable = false, busy = false, onMove, onEdit, onDelete }) {
@@ -37,7 +38,7 @@ export default function PortfolioGrid({ items, editable = false, busy = false, o
             {item.skills?.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-3">
                 {item.skills.map((skill) => (
-                  <span key={skill} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs">{skill}</span>
+                  <Tag key={skill}>{skill}</Tag>
                 ))}
               </div>
             )}

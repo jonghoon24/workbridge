@@ -6,6 +6,9 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { BellIcon } from '@/components/ui/Icons';
 
 function formatDate(value) {
   return new Date(value).toLocaleString('ko-KR', {
@@ -103,14 +106,14 @@ export default function NotificationsPage() {
   }
 
   if (loading) {
-    return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+    return <PageLoader />;
   }
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">알림</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">알림</h1>
           <p className="text-gray-600 mt-1">지원, 계약, 마일스톤, 정산 소식을 확인하세요</p>
         </div>
         <div className="flex gap-2">
@@ -138,9 +141,7 @@ export default function NotificationsPage() {
       )}
 
       {notifications.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p>아직 알림이 없습니다</p>
-        </div>
+        <EmptyState icon={BellIcon} title="아직 알림이 없습니다" />
       ) : (
         <div className="space-y-3">
           {notifications.map((notification) => {
@@ -149,17 +150,17 @@ export default function NotificationsPage() {
             return (
               <Card
                 key={notification.id}
-                className={`p-5 ${unread ? 'border-primary-200 bg-primary-50/40' : ''}`}
+                className={`p-5 ${unread ? 'border-primary-200 bg-primary-50/50 shadow-[inset_3px_0_0_0_theme(colors.primary.500)]' : ''}`}
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      {unread && <span className="h-2 w-2 rounded-full bg-primary-600" />}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
+                      {unread && <span className="h-2 w-2 shrink-0 rounded-full bg-primary-600" />}
                       {TYPE_CATEGORIES[notification.type] && (
                         <span
-                          className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          className={`shrink-0 px-2 py-0.5 rounded-md text-xs font-medium ${
                             URGENT_TYPES.has(notification.type)
-                              ? 'bg-orange-100 text-orange-800'
+                              ? 'bg-orange-50 text-orange-700 ring-1 ring-inset ring-orange-600/20'
                               : 'bg-gray-100 text-gray-600'
                           }`}
                         >
@@ -168,7 +169,7 @@ export default function NotificationsPage() {
                       )}
                       <h2 className="font-semibold text-gray-900">{notification.title}</h2>
                     </div>
-                    <p className="text-sm text-gray-700">{notification.message}</p>
+                    <p className="text-sm leading-relaxed text-gray-700">{notification.message}</p>
                     <p className="text-xs text-gray-500 mt-2">{formatDate(notification.createdAt)}</p>
                   </div>
 

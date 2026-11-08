@@ -65,7 +65,7 @@ function PaymentResultContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">결제 완료</h1>
+            <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-2">결제 완료</h1>
             <p className="text-gray-600 mb-6">
               결제가 완료되었습니다. 프리랜서가 이 마일스톤 작업을 시작할 수 있습니다.
             </p>
@@ -77,7 +77,7 @@ function PaymentResultContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">결제 실패</h1>
+            <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-2">결제 실패</h1>
             <p className={`text-gray-600 ${errorMessage ? 'mb-2' : 'mb-6'}`}>결제 처리 중 오류가 발생했습니다.</p>
             {errorMessage && <p className="text-sm text-gray-500 mb-6">{errorMessage}</p>}
           </>

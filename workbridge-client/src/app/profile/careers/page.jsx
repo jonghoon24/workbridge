@@ -9,6 +9,9 @@ import Card from '@/components/ui/Card';
 import CareerTimeline from '@/components/profile/CareerTimeline';
 import CareerFormModal from '@/components/profile/CareerFormModal';
 import { describeProfileError, formatCareerSummary } from '@/components/profile/profileFormat';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { LockIcon } from '@/components/ui/Icons';
 
 const MAX_CAREERS = 30;
 
@@ -59,12 +62,12 @@ export default function CareersManagePage() {
     await load(me.id).catch(() => setError('목록을 새로 불러오지 못했습니다'));
   }
 
-  if (loading) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   if (me && me.role !== 'FREELANCER') {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-600">
-        경력은 프리랜서 회원만 등록할 수 있습니다.
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+        <EmptyState icon={LockIcon} title="경력은 프리랜서 회원만 등록할 수 있습니다." />
       </div>
     );
   }
@@ -80,7 +83,7 @@ export default function CareersManagePage() {
       </nav>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">경력 관리</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">경력 관리</h1>
           <p className="text-gray-600 mt-1 text-sm">
             {formatCareerSummary(summary)} · 겹치는 기간은 한 번만 셉니다
           </p>
@@ -101,7 +104,7 @@ export default function CareersManagePage() {
 
       <Card className="p-6">
         {careers.length === 0 ? (
-          <p className="text-center text-gray-500">아직 등록한 경력이 없습니다.</p>
+          <p className="py-8 text-center text-sm text-gray-500">아직 등록한 경력이 없습니다.</p>
         ) : (
           <CareerTimeline
             careers={careers}

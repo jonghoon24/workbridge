@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import PageLoader from '@/components/ui/PageLoader';
 import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
@@ -105,7 +106,7 @@ export default function NotificationSettingsPage() {
   }
 
   if (loading) {
-    return <div className="max-w-4xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+    return <PageLoader />;
   }
 
   return (
@@ -118,7 +119,7 @@ export default function NotificationSettingsPage() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">알림 설정</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">알림 설정</h1>
           <p className="text-gray-600 mt-1">알림 종류마다 앱 알림과 이메일 수신 여부를 정하세요</p>
         </div>
         <Button variant="secondary" size="sm" onClick={turnOffAllEmail} disabled={!anyEmailOn}>

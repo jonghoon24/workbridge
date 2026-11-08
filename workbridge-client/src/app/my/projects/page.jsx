@@ -7,6 +7,9 @@ import useAuthStore from '@/store/authStore';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { BriefcaseIcon } from '@/components/ui/Icons';
 
 export default function MyProjectsPage() {
   const [projects, setProjects] = useState([]);
@@ -24,14 +27,14 @@ export default function MyProjectsPage() {
   }, []);
 
   if (loading) {
-    return <div className="max-w-5xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+    return <PageLoader />;
   }
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">내 프로젝트</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">내 프로젝트</h1>
           <p className="text-gray-600 mt-1">등록한 프로젝트와 지원 현황을 확인하세요</p>
         </div>
         <Link href="/projects/new">
@@ -46,12 +49,15 @@ export default function MyProjectsPage() {
       )}
 
       {!error && projects.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p className="mb-4">아직 등록한 프로젝트가 없습니다</p>
-          <Link href="/projects/new" className="text-primary-600 hover:text-primary-700 font-medium">
-            프로젝트 등록하기 →
-          </Link>
-        </div>
+        <EmptyState
+          icon={BriefcaseIcon}
+          title="아직 등록한 프로젝트가 없습니다"
+          action={(
+            <Link href="/projects/new" className="text-primary-600 hover:text-primary-700 font-semibold">
+              프로젝트 등록하기 →
+            </Link>
+          )}
+        />
       ) : (
         <div className="space-y-4">
           {projects.map((project) => (

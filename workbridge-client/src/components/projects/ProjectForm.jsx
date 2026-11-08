@@ -227,7 +227,7 @@ export default function ProjectForm({ initialData = null }) {
             <select
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
+              className={`block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
                 errors.category ? 'border-red-300' : ''
               }`}
             >
@@ -247,7 +247,7 @@ export default function ProjectForm({ initialData = null }) {
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               rows={6}
-              className={`block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
+              className={`block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm ${
                 errors.description ? 'border-red-300' : ''
               }`}
               placeholder="프로젝트에 대해 자세히 설명해주세요"
@@ -353,7 +353,7 @@ export default function ProjectForm({ initialData = null }) {
         <Button type="button" variant="secondary" onClick={() => router.back()}>
           취소
         </Button>
-        <div className="flex gap-3 justify-end">
+        <div className="flex gap-3 justify-end [&>*]:flex-1 sm:[&>*]:flex-none">
           {currentStep > 0 && (
             <Button type="button" variant="secondary" onClick={handleBack}>
               이전

@@ -14,6 +14,8 @@ import SubmissionForm from '@/components/milestones/SubmissionForm';
 import SubmissionHistory from '@/components/milestones/SubmissionHistory';
 import { formatDate, formatDateTime, formatKRW, formatRemaining } from '@/lib/format';
 import { PAYMENT_STATUS_LABELS } from '@/constants/milestones';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
 
 export default function MilestoneDetailPage() {
   const { id: contractId, milestoneId } = useParams();
@@ -77,15 +79,20 @@ export default function MilestoneDetailPage() {
     await loadMilestone().catch(() => {});
   }
 
-  if (loading) return <div className="max-w-3xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   if (loadError || !milestone) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-        <p className="text-gray-600 mb-4">{loadError || '마일스톤을 찾을 수 없습니다'}</p>
-        <Link href={`/contracts/${contractId}`} className="text-primary-600 hover:text-primary-700 font-medium">
-          계약서로 돌아가기 →
-        </Link>
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+        <EmptyState
+          tone="error"
+          title={loadError || '마일스톤을 찾을 수 없습니다'}
+          action={(
+            <Link href={`/contracts/${contractId}`} className="text-primary-600 hover:text-primary-700 font-semibold">
+              계약서로 돌아가기 →
+            </Link>
+          )}
+        />
       </div>
     );
   }
@@ -116,7 +123,7 @@ export default function MilestoneDetailPage() {
       </nav>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">
           <span className="text-gray-400 mr-2">#{milestone.sequence}</span>
           {milestone.title}
         </h1>
@@ -232,7 +239,7 @@ export default function MilestoneDetailPage() {
               {milestone.status === 'REVISION_REQUESTED' ? '산출물 재제출' : '산출물 제출'}
             </h2>
             {lastRejection?.decisionReason && (
-              <div className="mb-4 rounded-md border border-orange-200 bg-orange-50 p-3">
+              <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-3">
                 <p className="text-xs font-medium text-orange-800">의뢰인의 수정 요청</p>
                 <p className="mt-1 text-sm text-orange-900 whitespace-pre-wrap break-words">
                   {lastRejection.decisionReason}

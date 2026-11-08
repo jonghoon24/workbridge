@@ -102,7 +102,7 @@ export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
               id="career-employmentType"
               value={form.employmentType}
               onChange={(e) => setForm({ ...form, employmentType: e.target.value })}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
             >
               {EMPLOYMENT_TYPES.map((type) => (
                 <option key={type.value} value={type.value}>{type.label}</option>
@@ -148,7 +148,7 @@ export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
             maxLength={2000}
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
           />
         </div>
 

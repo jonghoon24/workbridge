@@ -14,7 +14,7 @@ function AttachmentList({ attachments, mine }) {
             target="_blank"
             rel="noopener noreferrer"
             download={attachment.fileName}
-            className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs ${
+            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
               mine
                 ? 'border-primary-400 bg-primary-500 text-white hover:bg-primary-400'
                 : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'

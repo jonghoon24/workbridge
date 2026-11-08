@@ -95,7 +95,7 @@ export default function SignupForm() {
               key={option.value}
               type="button"
               onClick={() => setForm({ ...form, role: option.value })}
-              className={`p-4 rounded-lg border-2 text-left transition-colors ${
+              className={`p-4 rounded-xl border-2 text-left transition-colors ${
                 form.role === option.value
                   ? 'border-primary-500 bg-primary-50'
                   : 'border-gray-200 hover:border-gray-300'

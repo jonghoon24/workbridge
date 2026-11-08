@@ -99,7 +99,7 @@ export default function MessageComposer({ canSend, closedReason, onSend }) {
           {files.map((file, index) => (
             <li
               key={`${file.name}-${index}`}
-              className="flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700"
             >
               <span className="max-w-[12rem] truncate">{file.name}</span>
               <span className="text-gray-400">{formatFileSize(file.size)}</span>

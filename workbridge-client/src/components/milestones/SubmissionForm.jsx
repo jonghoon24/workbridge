@@ -119,7 +119,7 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           rows={6}
-          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+          className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
           placeholder={isResubmission
             ? '반려 사유를 어떻게 반영했는지 적어주세요'
             : '이번 마일스톤에서 완료한 작업과 확인 방법을 적어주세요'}
@@ -141,7 +141,7 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
                 value={link}
                 onChange={(e) => updateLink(index, e.target.value)}
                 placeholder="https://github.com/..."
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               />
               <Button variant="ghost" size="sm" className="shrink-0 whitespace-nowrap" onClick={() => removeLink(index)}>삭제</Button>
             </div>
@@ -166,12 +166,12 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
             multiple
             accept={ATTACHMENT_ACCEPT}
             onChange={handleFileChange}
-            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-md file:border-0 file:bg-primary-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100"
+            className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-primary-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100"
           />
         )}
         <p className="mt-1 text-xs text-gray-400">이미지, PDF, ZIP, 텍스트, 오피스 문서, HWP</p>
         {files.length > 0 && (
-          <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
+          <ul className="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200">
             {files.map((file, index) => (
               <li key={`${file.name}-${index}`} className="flex items-center justify-between px-3 py-2 text-sm">
                 <span className="truncate text-gray-700">

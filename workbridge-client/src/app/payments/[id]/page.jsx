@@ -10,6 +10,8 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import MilestoneStatusBadge from '@/components/milestones/MilestoneStatusBadge';
 import { formatDate, formatKRW } from '@/lib/format';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
 
 const paymentBypassEnabled =
   process.env.NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS === 'true';
@@ -87,15 +89,20 @@ export default function PaymentPage() {
     }
   }
 
-  if (loading) return <div className="max-w-lg mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   if (loadError || !milestone) {
     return (
-      <div className="max-w-lg mx-auto px-4 py-16 text-center">
-        <p className="text-gray-600 mb-4">{loadError || '마일스톤을 찾을 수 없습니다'}</p>
-        <Link href="/my/contracts" className="text-primary-600 hover:text-primary-700 font-medium">
-          내 계약으로 →
-        </Link>
+      <div className="max-w-lg mx-auto px-4 sm:px-6 py-12">
+        <EmptyState
+          tone="error"
+          title={loadError || '마일스톤을 찾을 수 없습니다'}
+          action={(
+            <Link href="/my/contracts" className="text-primary-600 hover:text-primary-700 font-semibold">
+              내 계약으로 →
+            </Link>
+          )}
+        />
       </div>
     );
   }
@@ -117,7 +124,7 @@ export default function PaymentPage() {
         onLoad={() => setSdkReady(true)}
       />
       <div className="max-w-lg mx-auto px-4 sm:px-6 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">마일스톤 결제</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">마일스톤 결제</h1>
 
         <Card className="p-6 mb-6">
           <h2 className="font-semibold text-gray-900 mb-4">결제 정보</h2>

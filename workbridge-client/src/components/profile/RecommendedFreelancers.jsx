@@ -5,6 +5,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import Card from '@/components/ui/Card';
 import ProfileImage from './ProfileImage';
+import Tag from '@/components/ui/Tag';
 
 // 프로젝트에 맞는 프리랜서 추천(BEHAVIOR.md RC3–RC5). 이 프로젝트에 이미 지원한 사람은 서버가 뺀다.
 export default function RecommendedFreelancers({ projectId, limit = 10 }) {
@@ -68,7 +69,7 @@ export default function RecommendedFreelancers({ projectId, limit = 10 }) {
                 {freelancer.matchedSkills.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {freelancer.matchedSkills.map((skill) => (
-                      <span key={skill} className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-xs">{skill}</span>
+                      <Tag key={skill} tone="match">{skill}</Tag>
                     ))}
                   </div>
                 )}

@@ -9,6 +9,9 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import RecommendedFreelancers from '@/components/profile/RecommendedFreelancers';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { UserIcon } from '@/components/ui/Icons';
 
 function formatWon(value) {
   return `${Number(value || 0).toLocaleString()}원`;
@@ -62,23 +65,21 @@ export default function ApplicationsPage() {
     }
   }
 
-  if (loading) return <div className="max-w-6xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">지원자 관리</h1>
+      <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">지원자 관리</h1>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2">
           {applications.length === 0 ? (
-            <div className="text-center py-16 text-gray-500">
-              <p>아직 지원자가 없습니다</p>
-            </div>
+            <EmptyState icon={UserIcon} title="아직 지원자가 없습니다" />
           ) : (
             <div className="space-y-4">
               {applications.map((app) => (
                 <Card key={app.id} className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4 flex-1">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
                       <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <span className="text-primary-700 font-semibold text-sm">
                           {app.freelancer?.name?.[0]?.toUpperCase()}
@@ -102,7 +103,7 @@ export default function ApplicationsPage() {
                     </div>
 
                     {app.status === 'PENDING' && (
-                      <div className="flex gap-2 ml-4">
+                      <div className="flex gap-2 pl-14 sm:pl-0 sm:ml-4 sm:shrink-0">
                         <Button
                           size="sm"
                           onClick={() => handleUpdate(app, 'ACCEPTED')}
@@ -112,7 +113,8 @@ export default function ApplicationsPage() {
                         </Button>
                         <Button
                           size="sm"
-                          variant="danger"
+                          variant="secondary"
+                          className="!text-red-600 hover:!bg-red-50 hover:!border-red-200"
                           onClick={() => handleUpdate(app, 'REJECTED')}
                           loading={updating === app.id}
                         >
@@ -121,7 +123,7 @@ export default function ApplicationsPage() {
                       </div>
                     )}
                     {app.contract?.id && (
-                      <Link href={`/contracts/${app.contract.id}`} className="ml-4">
+                      <Link href={`/contracts/${app.contract.id}`} className="pl-14 sm:pl-0 sm:ml-4 sm:shrink-0">
                         <Button size="sm" variant="secondary">계약서 보기</Button>
                       </Link>
                     )}
@@ -132,7 +134,7 @@ export default function ApplicationsPage() {
           )}
         </div>
 
-        <aside className="lg:sticky lg:top-6">
+        <aside className="lg:sticky lg:top-24">
           <RecommendedFreelancers projectId={id} />
         </aside>
       </div>

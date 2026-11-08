@@ -55,7 +55,7 @@ export default function SubmissionHistory({ submissions = [] }) {
                     href={attachment.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100"
                   >
                     <span className="max-w-[16rem] truncate">{attachment.fileName}</span>
                     <span className="text-gray-400">{formatFileSize(attachment.size)}</span>
@@ -66,7 +66,7 @@ export default function SubmissionHistory({ submissions = [] }) {
           )}
 
           {submission.decision === 'REJECTED' && submission.decisionReason && (
-            <div className="mt-3 rounded-md border border-orange-200 bg-orange-50 p-3">
+            <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
               <p className="text-xs font-medium text-orange-800">
                 반려 사유 · {formatDateTime(submission.decidedAt)}
               </p>

@@ -10,6 +10,9 @@ import Input from '@/components/ui/Input';
 import { BANKS } from '@/constants/banks';
 import { formatDateTime } from '@/lib/format';
 import { describeServerError } from '@/lib/serverErrors';
+import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { LockIcon } from '@/components/ui/Icons';
 
 const EMPTY_FORM = { bankCode: '', accountNumber: '', holderName: '' };
 
@@ -120,12 +123,12 @@ export default function PayoutAccountPage() {
     }
   }
 
-  if (loading) return <div className="max-w-xl mx-auto px-4 py-8 text-center">로딩 중...</div>;
+  if (loading) return <PageLoader />;
 
   if (forbidden) {
     return (
-      <div className="max-w-xl mx-auto px-4 py-16 text-center text-gray-600">
-        지급 계좌는 프리랜서 회원만 등록할 수 있습니다.
+      <div className="max-w-xl mx-auto px-4 sm:px-6 py-12">
+        <EmptyState icon={LockIcon} title="지급 계좌는 프리랜서 회원만 등록할 수 있습니다." />
       </div>
     );
   }
@@ -139,7 +142,7 @@ export default function PayoutAccountPage() {
         <span className="mx-2">/</span>
         <span>지급 계좌</span>
       </nav>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">지급 계좌</h1>
+      <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">지급 계좌</h1>
 
       {success && (
         <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm mb-4">
@@ -192,7 +195,7 @@ export default function PayoutAccountPage() {
                 id="bankCode"
                 value={form.bankCode}
                 onChange={(e) => setForm({ ...form, bankCode: e.target.value })}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               >
                 <option value="">은행 선택</option>
                 {BANKS.map((bank) => (

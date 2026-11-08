@@ -5,6 +5,7 @@ import Badge from '@/components/ui/Badge';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
 import UnreadBadge from './UnreadBadge';
 import { formatListTime, previewText } from './messageUtils';
+import { MessageIcon } from '@/components/ui/Icons';
 
 // 대화방 목록(BEHAVIOR.md MG11). 정렬은 서버 순서(마지막 메시지 최신순) 그대로다.
 export default function ConversationList({ conversations, activeId, loading, error }) {
@@ -16,9 +17,12 @@ export default function ConversationList({ conversations, activeId, loading, err
   }
   if (conversations.length === 0) {
     return (
-      <div className="p-6 text-center text-sm text-gray-500">
-        <p>아직 대화방이 없습니다.</p>
-        <p className="mt-1 text-xs">지원이 수락되어 계약이 만들어지면 상대방과의 대화방이 열립니다.</p>
+      <div className="flex flex-col items-center px-6 py-12 text-center">
+        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-400">
+          <MessageIcon className="h-5 w-5" />
+        </div>
+        <p className="text-sm font-semibold text-gray-900">아직 대화방이 없습니다.</p>
+        <p className="mt-1 text-xs leading-5 text-gray-500">지원이 수락되어 계약이 만들어지면 상대방과의 대화방이 열립니다.</p>
       </div>
     );
   }

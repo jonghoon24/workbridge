@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import SettlementStatusBadge from '@/components/settlements/SettlementStatusBadge';
 import { formatDate, formatKRW } from '@/lib/format';
+import EmptyState from '@/components/ui/EmptyState';
+import { WalletIcon } from '@/components/ui/Icons';
 
 // 정산 기간은 월 00:00 ~ 다음 월 00:00(미포함, M19)이라 끝 날짜는 하루 전(일요일)으로 보여준다.
 export function formatPeriod(settlement) {
@@ -12,7 +14,7 @@ export function formatPeriod(settlement) {
 
 export default function SettlementTable({ settlements = [] }) {
   if (settlements.length === 0) {
-    return <p className="py-12 text-center text-sm text-gray-500">아직 정산 내역이 없습니다</p>;
+    return <EmptyState icon={WalletIcon} title="아직 정산 내역이 없습니다" className="border-0" />;
   }
 
   return (

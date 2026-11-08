@@ -63,7 +63,7 @@ export default function MessagesLayout({ children }) {
 
   return (
     <div className="mx-auto max-w-6xl sm:px-6 sm:py-6 lg:px-8">
-      <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-white sm:h-[calc(100vh-7rem)] sm:rounded-lg sm:border sm:border-gray-200 sm:shadow-sm">
+      <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-white sm:h-[calc(100vh-7rem)] sm:rounded-xl sm:border sm:border-gray-200/80 sm:shadow-card">
         <aside
           className={`${activeId ? 'hidden md:flex' : 'flex'} w-full shrink-0 flex-col border-r border-gray-200 md:w-80`}
           aria-label="대화방 목록"

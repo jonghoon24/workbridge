@@ -11,6 +11,9 @@ import Button from '@/components/ui/Button';
 import { formatDate, formatKRW } from '@/lib/format';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
 import UnreadBadge from '@/components/messages/UnreadBadge';
+import EmptyState from '@/components/ui/EmptyState';
+import { FileTextIcon } from '@/components/ui/Icons';
+import PageLoader from '@/components/ui/PageLoader';
 
 const TABS = [
   { value: '', label: '전체' },
@@ -83,7 +86,7 @@ export default function MyContractsPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">내 계약</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">내 계약</h1>
         <p className="text-gray-600 mt-1">계약별 마일스톤 진행 상황을 확인하세요</p>
       </div>
 
@@ -111,11 +114,9 @@ export default function MyContractsPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-16 text-gray-500">로딩 중...</div>
+        <PageLoader className="min-h-[30vh]" />
       ) : !error && contracts.length === 0 ? (
-        <div className="text-center py-16 text-gray-500">
-          <p>{status ? '해당 상태의 계약이 없습니다' : '아직 계약이 없습니다'}</p>
-        </div>
+        <EmptyState icon={FileTextIcon} title={status ? '해당 상태의 계약이 없습니다' : '아직 계약이 없습니다'} />
       ) : (
         <div className="space-y-4">
           {contracts.map((contract) => {

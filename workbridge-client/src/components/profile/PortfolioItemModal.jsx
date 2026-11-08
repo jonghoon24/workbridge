@@ -175,7 +175,7 @@ export default function PortfolioItemModal({ isOpen, item, onClose, onSaved }) {
             maxLength={2000}
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
             placeholder="무엇을 만들었고 어떤 성과가 있었는지 적어주세요"
           />
         </div>
