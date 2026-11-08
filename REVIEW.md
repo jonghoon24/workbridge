@@ -54,7 +54,7 @@
 
 13. **새 쓰기 라우트는 권한·소프트 삭제 매트릭스에 등록한다.**
     - 왜: 401/403/소유권은 `test/authorization.test.ts`의 `PROTECTED_ROUTES`, 소프트 삭제는 `test/soft-delete.test.ts`의 `guardedMutations`에서 중앙으로 검사한다. 빠지면 그 라우트는 이 검사를 전혀 받지 않는다. 확장 라우트를 `mutations`(D12 `it.fails` 표)에 넣으면 스위트가 깨진다.
-    - 확인: 새 라우트 수만큼 `PROTECTED_ROUTES`/`guardedMutations` 행이 추가됐는지 센다. 엔드포인트별 파일에서 401/403을 다시 단언하는 것은 중복이다.
+    - 확인: 새 라우트마다 `PROTECTED_ROUTES`(표에 없으면 실제 라우터와 대조하는 테스트가 실패한다)와, 쓰기 라우트면 `guardedMutations` 행이 추가됐는지 본다. 엔드포인트별 파일에서 401/403을 다시 단언하는 것은 중복이다.
 
 14. **클라이언트는 `src/lib/api.js`로만 백엔드를 부르고, 사용자에게 보이는 문구를 바꾸면 E2E도 함께 고친다.**
     - 왜: `api.js`가 토큰 첨부, 401 시 한 번 갱신, 동시 요청 대기열, 실패 시 `/login` 이동을 맡는다(인증 폼만 `authApi.js`). E2E(`workbridge-client/e2e/`)는 화면의 한국어 텍스트로 요소를 고른다. 클라이언트에는 단위 테스트가 없다.

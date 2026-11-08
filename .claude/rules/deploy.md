@@ -33,8 +33,10 @@ paths:
 - 클라이언트 프리뷰는 Vercel Related Projects로 같은 브랜치의 서버 프리뷰를 부른다: `workbridge-client/vercel.json`의
   `relatedProjects`(서버 프로젝트 ID)가 `VERCEL_RELATED_PROJECTS`를 채우고 `src/lib/apiUrl.js`가 읽는다. 브랜치 URL
   해시가 프로젝트마다 달라 주소를 직접 조립하지 않는다. 이 `vercel.json`에 다른 키를 넣지 않는다(Next.js 자동 감지 유지).
-- **운영에는 작업 워커가 없다**(상주 프로세스 없음): `POST /api/internal/jobs/run`
-  (`INTERNAL_JOB_TOKEN`)이나 `npm run jobs:run`뿐이다. `docs/DEPLOYMENT.md` "운영 환경의 한계" 참고.
+- **운영에는 상주 작업 워커가 없다**: `.github/workflows/jobs.yml`이 15분마다 운영 서버의
+  `POST /api/internal/jobs/run`을 `INTERNAL_JOB_TOKEN`(GitHub 시크릿 `PROD_INTERNAL_JOB_TOKEN`)으로 부른다.
+  지급·메일 작업 플래그(`JOB_PAYOUT_ENABLED`, `JOB_EMAIL_ENABLED`)는 운영에 넣지 않는다(기본 꺼짐).
+  `docs/DEPLOYMENT.md` "운영 환경의 한계" 참고.
 - `ALLOW_PAYMENT_BYPASS`(서버)와 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`(클라이언트)는 운영에서 반드시
   `false`. `MAIL_PROVIDER=log`는 주소와 본문 전체를 로그에 쓴다 — 개발 전용.
 - 새 환경변수: `src/env.ts`(지연 getter), `.env.example`, `docs/ENV.md`에 함께 추가한다.

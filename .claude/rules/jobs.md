@@ -20,7 +20,9 @@ paths:
 - `errorHandler` 밖에서 `logger.error`를 쓰는 곳은 작업 실패뿐이다(규칙 9).
 - 실행 주체: `index.ts`가 띄우는 개발 워커(`JOB_WORKER_ENABLED`), `npm run jobs:run`,
   `POST /api/internal/jobs/run`(`X-Internal-Token`, JWT 없음 — `runJobs`에서 `req.user`를 읽지 않는다).
-  **운영에는 상주 워커가 없다**: 외부 스케줄러가 내부 엔드포인트를 부르기 전까지 자동 승인, 정산,
-  이메일, 다이제스트가 돌지 않는다.
+  **운영에는 상주 워커가 없다**: GitHub Actions `jobs.yml`이 15분마다 내부 엔드포인트를 부른다(작업은
+  최대 15분 늦게 돈다). `settlement.payout`은 `JOB_PAYOUT_ENABLED`, `notification.email`(다이제스트 포함)은
+  `JOB_EMAIL_ENABLED`가 정확히 `true`일 때만 돈다(기본 꺼짐, 규칙 J10). 새 작업 타입이 외부로 무언가를
+  보내면 같은 방식의 플래그를 둔다.
 - 테스트: `test/helpers/jobs.ts`의 `runJobs(now)` / `jobsOf(type)`. 미래의 `now`로 돌릴 때는 `types`를
   제한한다. 그러지 않으면 `project.lifecycleSweep`이 마감이 그 전인 프로젝트를 모두 닫는다.

@@ -18,7 +18,7 @@
 |---|---|---|
 | `server-layers.md` | `workbridge-server/src/**/*.ts` | 기존/확장 레이어 혼재는 의도된 것(규칙 12). 기존 컨트롤러에 zod·서비스·`requireActiveUser`를 붙이면 D12 핀(`soft-delete.test.ts` `mutations`)이 예기치 않게 통과해 스위트가 깨진다. 트랜잭션 안 P2002 금지(D4 수정 방식), `lockUserRow` 첫 문장 |
 | `money-time.md` | 서비스, 작업, 스키마, `lib/money.ts`·`time.ts`, 결제·마일스톤·정산 컨트롤러 | M3/M5/M7 금액 규칙은 `lib/money.ts`에만. CI·Vercel은 UTC라 호스트 시간대 함수는 기기마다 답이 다르다 |
-| `jobs.md` | `src/jobs/**`, 서비스, `internal.controller.ts` | 트랜잭션 아웃박스, `create`+P2002 catch가 트랜잭션 전체를 중단시키는 문제, 운영에 워커가 없음 |
+| `jobs.md` | `src/jobs/**`, 서비스, `internal.controller.ts` | 트랜잭션 아웃박스, `create`+P2002 catch가 트랜잭션 전체를 중단시키는 문제, 운영은 15분 크론, 지급·메일 플래그 |
 | `notifications-logging.md` | `workbridge-server/src/**/*.ts` | 알림은 `notify()`만(NC9). 스위트가 "500은 한 번만 error 로그"를 단언한다(규칙 1, 9). 요청 body·query·헤더를 통째로 로그에 넣지 않는다(계좌번호·토큰이 운영 로그에 남는다) |
 | `tests.md` | `workbridge-server/test/**`, `vitest.config.ts`, `docs/BEHAVIOR.md` | 실제 Postgres, 팩토리, 가짜 타이머 금지, `it.fails` 핀은 수정과 함께만 뒤집기, 공통 관심사는 중앙 매트릭스에서 한 번 |
 | `prisma.md` | `workbridge-server/prisma/**`, `docs/DATABASE.md` | 적용된 마이그레이션 불변, `seed.js`는 CommonJS, `deletedAt: null`(D1, D19, D21) |

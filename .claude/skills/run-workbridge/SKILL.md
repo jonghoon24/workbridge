@@ -56,6 +56,8 @@ SUPABASE_SECRET_KEY=sb_secret_dummy
 TRUST_PROXY=loopback
 RATE_LIMIT_ENABLED=false
 MAIL_PROVIDER=log
+JOB_PAYOUT_ENABLED=true
+JOB_EMAIL_ENABLED=true
 EOF
 
 cat > workbridge-client/.env.local <<'EOF'
