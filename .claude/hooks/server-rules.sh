@@ -26,7 +26,7 @@ written=$(jq -r '[.tool_input.content, .tool_input.new_string, (.tool_input.edit
 problems=()
 
 if grep -qE '\bconsole\.' <<<"$written"; then
-  problems+=("console.* → use \`logger\` from src/lib/logger.ts (warn/info; error level is reserved for errorHandler's 500s and job failures — the suite counts console.error calls). Rule: .claude/rules/notifications-logging.md")
+  problems+=("console.* is not used in server code, temporary debug lines included → replace it with \`logger.debug|info|warn(msg, fields)\` from src/lib/logger.ts. logger.error is reserved for errorHandler's 500s and job failures. Rule: .claude/rules/notifications-logging.md")
 fi
 
 case "$file" in
@@ -45,7 +45,7 @@ if [ ${#problems[@]} -gt 0 ]; then
   {
     echo "WorkBridge rule check on ${file#"${CLAUDE_PROJECT_DIR:-}/"}:"
     for p in "${problems[@]}"; do echo "- $p"; done
-    echo "Fix it unless this is a deliberate, documented exception."
+    echo "Rewrite the lines above now; the only accepted exceptions are the ones listed in the rule file."
   } >&2
   exit 2
 fi
