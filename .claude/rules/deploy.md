@@ -28,6 +28,8 @@ paths:
   `workbridge-server/prisma/migrations/**`를 바꿀 때(또는 수동 `workflow_dispatch`) preview → production 순서로
   `prisma migrate deploy`를 돌린다. 손으로 돌리지 않는다.
 - `seed.yml`은 원격 DB를 시드로 되돌린다. **모든 테이블을 비우므로** 수동 실행 전용이고 `confirm=seed`가 있어야 돈다.
+- 클라이언트 프리뷰는 Preview 환경변수 `API_URL_TEMPLATE`의 `{branch}`에 브랜치 슬러그를 넣어 같은 브랜치의
+  서버 프리뷰를 부른다(`workbridge-client/src/lib/apiUrl.js`). 브랜치 이름은 20자 안팎으로 짧게 둔다.
 - **운영에는 작업 워커가 없다**(상주 프로세스 없음): `POST /api/internal/jobs/run`
   (`INTERNAL_JOB_TOKEN`)이나 `npm run jobs:run`뿐이다. `docs/DEPLOYMENT.md` "운영 환경의 한계" 참고.
 - `ALLOW_PAYMENT_BYPASS`(서버)와 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`(클라이언트)는 운영에서 반드시

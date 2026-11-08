@@ -41,6 +41,8 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 - GitHub 연동 시 Next.js 자동 감지
 - `NEXT_PUBLIC_API_URL`을 백엔드 배포 URL로 설정
 - 브라우저는 같은 출처의 `/api/*`를 부르고, Next 라우트 핸들러(`app/api/[...path]`, `app/api/auth/*`)가 백엔드로 전달한다
+- 백엔드 주소는 서버 쪽(라우트 핸들러와 SSR)에서만 `src/lib/apiUrl.js`의 `getApiUrl()`이 정한다. 우선순위는 `API_URL` → `API_URL_TEMPLATE`과 `VERCEL_GIT_COMMIT_REF`가 둘 다 있으면 템플릿의 `{branch}`를 브랜치 슬러그로 바꾼 값 → `NEXT_PUBLIC_API_URL` → `http://localhost:4000`이고, 끝의 `/`는 뗀다
+- 그래서 PR 프리뷰에서는 클라이언트 프리뷰가 같은 브랜치의 서버 프리뷰를 부른다. Vercel Preview 환경에는 `API_URL_TEMPLATE=https://workbridge-server-git-{branch}-jonghoon24s-projects.vercel.app`이 들어 있다(Preview에는 `API_URL`을 넣지 않는다 — 넣으면 템플릿보다 먼저 쓰인다). 브랜치 슬러그는 Vercel 브랜치 URL 규칙대로 소문자로 바꾸고 `[a-z0-9]` 밖의 글자를 `-`로, 연속 `-`는 하나로, 앞뒤 `-`는 뗀다. Vercel은 호스트명이 길면 슬러그를 잘라 해시를 붙이는데 이건 재현하지 않으므로 **브랜치 이름은 20자 안팎으로 짧게** 둔다
 
 ## 배포 후 업데이트
 

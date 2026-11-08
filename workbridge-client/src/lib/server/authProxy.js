@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
+import { getApiUrl } from '@/lib/apiUrl';
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const REFRESH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60;
-
-export function getApiUrl() {
-  return (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000').replace(/\/$/, '');
-}
 
 // Response headers the browser needs from the backend besides content-type: the request id
 // for support/debugging, and Retry-After on a 429.
