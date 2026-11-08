@@ -192,7 +192,7 @@ export default function PayoutAccountPage() {
                 id="bankCode"
                 value={form.bankCode}
                 onChange={(e) => setForm({ ...form, bankCode: e.target.value })}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               >
                 <option value="">은행 선택</option>
                 {BANKS.map((bank) => (

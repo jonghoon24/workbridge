@@ -418,7 +418,7 @@ export default function ContractPage() {
                   <select
                     value={reviewForm.rating}
                     onChange={(e) => setReviewForm({ ...reviewForm, rating: parseInt(e.target.value) })}
-                    className="block w-32 rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+                    className="block w-32 rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
                   >
                     {[5, 4, 3, 2, 1].map((rating) => (
                       <option key={rating} value={rating}>{rating}점</option>
@@ -452,7 +452,7 @@ export default function ContractPage() {
                     value={reviewForm.content}
                     onChange={(e) => setReviewForm({ ...reviewForm, content: e.target.value })}
                     rows={4}
-                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
                     placeholder="프로젝트 경험을 구체적으로 작성해주세요"
                   />
                 </div>

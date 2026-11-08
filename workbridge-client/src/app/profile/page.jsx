@@ -175,6 +175,7 @@ export default function ProfilePage() {
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center overflow-hidden">
                 {profile?.profileImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- 저장소 URL은 remotePatterns 밖일 수 있다(ProfileImage 참고)
                   <img src={profile.profileImage} alt="profile" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-primary-700 font-bold text-xl">{profile?.name?.[0]?.toUpperCase()}</span>
@@ -202,7 +203,7 @@ export default function ProfilePage() {
               value={form.bio}
               onChange={(e) => setForm({ ...form, bio: e.target.value })}
               rows={3}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
               placeholder="자신을 소개해주세요"
             />
           </div>
@@ -219,7 +220,7 @@ export default function ProfilePage() {
                   required
                   value={form.businessFieldPreset || ''}
                   onChange={(e) => setForm({ ...form, businessFieldPreset: e.target.value })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 >
                   <option value="">사업 분야 선택</option>
                   {BUSINESS_FIELD_OPTIONS.map((field) => (
@@ -259,7 +260,7 @@ export default function ProfilePage() {
                   required
                   value={form.activityCategoryPreset || ''}
                   onChange={(e) => setForm({ ...form, activityCategoryPreset: e.target.value })}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 >
                   <option value="">활동 카테고리 선택</option>
                   {FREELANCER_ACTIVITY_CATEGORIES.map((category) => (

@@ -232,7 +232,7 @@ export default function MilestoneDetailPage() {
               {milestone.status === 'REVISION_REQUESTED' ? '산출물 재제출' : '산출물 제출'}
             </h2>
             {lastRejection?.decisionReason && (
-              <div className="mb-4 rounded-md border border-orange-200 bg-orange-50 p-3">
+              <div className="mb-4 rounded-lg border border-orange-200 bg-orange-50 p-3">
                 <p className="text-xs font-medium text-orange-800">의뢰인의 수정 요청</p>
                 <p className="mt-1 text-sm text-orange-900 whitespace-pre-wrap break-words">
                   {lastRejection.decisionReason}

@@ -65,7 +65,7 @@ export default function RejectModal({ isOpen, milestone, onClose, onSubmit }) {
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={5}
-            className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
             placeholder="수정이 필요한 부분을 구체적으로 적어주세요 (10자 이상)"
           />
           <p className={`mt-1 text-xs ${length < MILESTONE_LIMITS.reasonMin ? 'text-gray-400' : 'text-gray-500'}`}>

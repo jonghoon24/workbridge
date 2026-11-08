@@ -5,6 +5,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import Card from '@/components/ui/Card';
 import { formatDate, formatKRW } from '@/lib/format';
+import Tag from '@/components/ui/Tag';
 
 const INCOMPLETE_PROFILE = '프로필을 먼저 완성해주세요';
 
@@ -62,14 +63,9 @@ export default function RecommendedProjects({ limit = 10, compact = false }) {
           </p>
           <div className="flex flex-wrap gap-1 mt-3">
             {project.requiredSkills.map((skill) => (
-              <span
-                key={skill}
-                className={`px-2 py-0.5 rounded text-xs ${
-                  project.matchedSkills.includes(skill) ? 'bg-green-50 text-green-700' : 'bg-gray-50 text-gray-500'
-                }`}
-              >
+              <Tag key={skill} tone={project.matchedSkills.includes(skill) ? 'match' : 'default'}>
                 {skill}
-              </span>
+              </Tag>
             ))}
           </div>
           <div className="flex items-center justify-between mt-3 text-sm">

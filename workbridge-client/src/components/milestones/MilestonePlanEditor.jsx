@@ -202,7 +202,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
                   maxLength={MILESTONE_LIMITS.titleMax}
                   onChange={(e) => updateRow(row.key, 'title', e.target.value)}
                   placeholder="예: 기획 및 디자인 시안"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 />
               </div>
               <div className="sm:col-span-6">
@@ -213,7 +213,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
                   rows={2}
                   onChange={(e) => updateRow(row.key, 'description', e.target.value)}
                   placeholder="이 단계에서 전달할 산출물"
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 />
               </div>
               <div className="sm:col-span-3">
@@ -226,7 +226,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
                   step={1}
                   value={row.amount}
                   onChange={(e) => updateRow(row.key, 'amount', e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 />
               </div>
               <div className="sm:col-span-3">
@@ -237,7 +237,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
                   min={today}
                   value={row.dueDate}
                   onChange={(e) => updateRow(row.key, 'dueDate', e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
                 />
               </div>
             </div>

@@ -8,6 +8,7 @@ import useAuthStore from '@/store/authStore';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
+import Tag from '@/components/ui/Tag';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import ProjectCard from '@/components/projects/ProjectCard';
@@ -178,11 +179,12 @@ export default function ProjectDetailPage() {
 
   if (loading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 rounded w-3/4" />
+          <div className="h-5 bg-gray-200 rounded-full w-16" />
+          <div className="h-8 bg-gray-200 rounded-lg w-3/4" />
           <div className="h-4 bg-gray-200 rounded w-1/4" />
-          <div className="h-48 bg-gray-200 rounded" />
+          <div className="h-48 bg-gray-200/70 rounded-xl" />
         </div>
       </div>
     );
@@ -190,7 +192,7 @@ export default function ProjectDetailPage() {
 
   if (!project) {
     return (
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Card className="p-6">
           <h1 className="text-xl font-bold text-gray-900">프로젝트를 찾을 수 없습니다</h1>
           <p className="text-sm text-gray-600 mt-2">
@@ -212,19 +214,19 @@ export default function ProjectDetailPage() {
   const canClose = isOwner && project.status === 'OPEN';
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-2xl font-bold text-gray-900">{project.title}</h1>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
+        <div className="min-w-0">
+          <div className="mb-2">
             <Badge variant={project.status}>{project.status}</Badge>
           </div>
-          <p className="text-gray-500 text-sm">
+          <h1 className="text-2xl sm:text-[28px] font-bold leading-tight text-gray-900">{project.title}</h1>
+          <p className="text-gray-500 text-sm mt-2">
             {project.category} · 지원자 {project._count?.applications || 0}명
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">
           {isFreelancer && (
             <ProjectBookmarkButton projectId={id} />
           )}
@@ -255,7 +257,7 @@ export default function ProjectDetailPage() {
         <div className="lg:col-span-2 space-y-6">
           <Card className="p-6">
             <h2 className="font-semibold text-gray-900 mb-3">프로젝트 설명</h2>
-            <p className="text-gray-700 whitespace-pre-wrap">{project.description}</p>
+            <p className="text-[15px] leading-7 text-gray-700 whitespace-pre-wrap">{project.description}</p>
           </Card>
 
           {project.requiredSkills?.length > 0 && (
@@ -263,9 +265,9 @@ export default function ProjectDetailPage() {
               <h2 className="font-semibold text-gray-900 mb-3">필요 기술</h2>
               <div className="flex flex-wrap gap-2">
                 {project.requiredSkills.map((skill) => (
-                  <span key={skill} className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm">
+                  <Tag key={skill} size="md">
                     {skill}
-                  </span>
+                  </Tag>
                 ))}
               </div>
             </Card>
@@ -275,10 +277,10 @@ export default function ProjectDetailPage() {
         <div className="space-y-4">
           <Card className="p-5">
             <h2 className="font-semibold text-gray-900 mb-3">프로젝트 정보</h2>
-            <dl className="space-y-2 text-sm">
+            <dl className="space-y-2.5 text-sm">
               <div className="flex justify-between">
                 <dt className="text-gray-500">예산</dt>
-                <dd className="font-medium">{project.budget?.toLocaleString()}원</dd>
+                <dd className="font-bold text-gray-900">{project.budget?.toLocaleString()}원</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-gray-500">모집 시작일</dt>
@@ -302,7 +304,7 @@ export default function ProjectDetailPage() {
           <Card className="p-5">
             <h2 className="font-semibold text-gray-900 mb-3">의뢰인</h2>
             <Link href={`/users/${project.client?.id}`} className="flex items-center gap-3 hover:opacity-80">
-              <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+              <div className="w-10 h-10 shrink-0 bg-primary-100 rounded-full flex items-center justify-center">
                 <span className="text-primary-700 font-semibold">
                   {project.client?.name?.[0]?.toUpperCase()}
                 </span>
@@ -364,7 +366,7 @@ export default function ProjectDetailPage() {
               onChange={(e) => setApplyForm({ ...applyForm, coverLetter: e.target.value })}
               rows={4}
               required
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+              className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
               placeholder="지원 동기와 경험을 자세히 작성해주세요"
             />
           </div>

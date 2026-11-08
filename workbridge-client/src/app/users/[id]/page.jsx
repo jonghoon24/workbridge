@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card';
 import PortfolioGrid from '@/components/profile/PortfolioGrid';
 import CareerTimeline from '@/components/profile/CareerTimeline';
 import { formatCareerSummary } from '@/components/profile/profileFormat';
+import Tag from '@/components/ui/Tag';
 
 export default function UserProfilePage() {
   const { id } = useParams();
@@ -29,6 +30,7 @@ export default function UserProfilePage() {
         <div className="flex items-start gap-4">
           <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0">
             {user.profileImage ? (
+              // eslint-disable-next-line @next/next/no-img-element -- 저장소 URL은 remotePatterns 밖일 수 있다(ProfileImage 참고)
               <img src={user.profileImage} alt={user.name} className="w-full h-full object-cover" />
             ) : (
               <span className="text-primary-700 font-bold text-xl">{user.name?.[0]?.toUpperCase()}</span>
@@ -37,7 +39,7 @@ export default function UserProfilePage() {
           <div className="flex-1">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-bold text-gray-900">{user.name}</h1>
-              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-medium">
+              <span className="px-2 py-0.5 bg-primary-50 text-primary-700 rounded-md text-xs font-medium">
                 {user.role === 'CLIENT' ? '의뢰인' : '프리랜서'}
               </span>
             </div>
@@ -77,7 +79,7 @@ export default function UserProfilePage() {
             {user.skills?.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-3">
                 {user.skills.map((skill) => (
-                  <span key={skill} className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs">{skill}</span>
+                  <Tag key={skill}>{skill}</Tag>
                 ))}
               </div>
             )}

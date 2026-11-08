@@ -116,7 +116,7 @@ export default function SettlementsPage() {
           <select
             value={status}
             onChange={(e) => { setStatus(e.target.value); setPage(1); }}
-            className="rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
+            className="rounded-lg border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm"
           >
             <option value="">전체 상태</option>
             {Object.entries(SETTLEMENT_STATUS_LABELS).map(([value, label]) => (
