@@ -66,7 +66,7 @@ export default function SettlementDetailPage() {
       </nav>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">정산 상세</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">정산 상세</h1>
         <SettlementStatusBadge status={settlement.status} payoutAttempts={settlement.payoutAttempts} />
       </div>
 

@@ -36,7 +36,7 @@ export default function MyBookmarksPage() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">내 북마크</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">내 북마크</h1>
         <p className="text-gray-600 mt-1">관심 있는 프로젝트를 모아보고 바로 지원하세요</p>
       </div>
 

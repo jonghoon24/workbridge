@@ -28,7 +28,7 @@ export default function MyPaymentsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">결제 내역</h1>
+      <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">결제 내역</h1>
 
       {payments.length === 0 ? (
         <EmptyState icon={CreditCardIcon} title="아직 결제 내역이 없습니다" />

@@ -64,12 +64,14 @@ export default async function HomePage() {
                 desc: '실제 프로젝트 완료 후 상호 평가로 신뢰를 쌓습니다.',
               },
             ].map((feature) => (
-              <div key={feature.title} className="rounded-2xl border border-gray-200/80 bg-gray-50/60 p-6 sm:p-7">
-                <div className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary-600 text-white shadow-sm shadow-primary-600/30">
+              <div key={feature.title} className="flex gap-4 rounded-2xl border border-gray-200/80 bg-gray-50/60 p-5 sm:p-7 md:block">
+                <div className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white shadow-sm shadow-primary-600/30 md:mb-5">
                   <feature.icon className="h-5 w-5" />
                 </div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-1.5">{feature.title}</h3>
-                <p className="text-[15px] leading-relaxed text-gray-600">{feature.desc}</p>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">{feature.title}</h3>
+                  <p className="text-[15px] leading-relaxed text-gray-600">{feature.desc}</p>
+                </div>
               </div>
             ))}
           </div>

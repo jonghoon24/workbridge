@@ -34,7 +34,7 @@ export default function MyProjectsPage() {
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">내 프로젝트</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">내 프로젝트</h1>
           <p className="text-gray-600 mt-1">등록한 프로젝트와 지원 현황을 확인하세요</p>
         </div>
         <Link href="/projects/new">

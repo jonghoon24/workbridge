@@ -124,7 +124,7 @@ export default function PaymentPage() {
         onLoad={() => setSdkReady(true)}
       />
       <div className="max-w-lg mx-auto px-4 sm:px-6 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">마일스톤 결제</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">마일스톤 결제</h1>
 
         <Card className="p-6 mb-6">
           <h2 className="font-semibold text-gray-900 mb-4">결제 정보</h2>

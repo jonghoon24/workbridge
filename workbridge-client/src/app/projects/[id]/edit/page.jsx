@@ -35,7 +35,7 @@ export default function EditProjectPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">프로젝트 수정</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">프로젝트 수정</h1>
       </div>
       <Card className="p-6">
         <ProjectForm initialData={project} />

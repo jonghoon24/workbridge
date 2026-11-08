@@ -123,7 +123,7 @@ export default function MilestoneDetailPage() {
       </nav>
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">
           <span className="text-gray-400 mr-2">#{milestone.sequence}</span>
           {milestone.title}
         </h1>

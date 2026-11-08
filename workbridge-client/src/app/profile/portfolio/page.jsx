@@ -103,7 +103,7 @@ export default function PortfolioManagePage() {
       </nav>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">포트폴리오 관리</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">포트폴리오 관리</h1>
           <p className="text-gray-600 mt-1 text-sm">
             {items.length} / {MAX_ITEMS}개 · 순서는 공개 프로필과 추천 미리보기에 그대로 보입니다
           </p>

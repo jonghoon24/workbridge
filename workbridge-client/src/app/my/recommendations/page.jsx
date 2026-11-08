@@ -31,7 +31,7 @@ export default function MyRecommendationsPage() {
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">추천 프로젝트</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">추천 프로젝트</h1>
           <p className="text-gray-600 mt-1">
             요구 기술이 겹치거나 활동 카테고리가 같은 모집 중 프로젝트를 점수 순으로 보여드려요.
             지원한 프로젝트는 빠집니다.

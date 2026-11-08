@@ -119,7 +119,7 @@ export default function NotificationSettingsPage() {
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">알림 설정</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">알림 설정</h1>
           <p className="text-gray-600 mt-1">알림 종류마다 앱 알림과 이메일 수신 여부를 정하세요</p>
         </div>
         <Button variant="secondary" size="sm" onClick={turnOffAllEmail} disabled={!anyEmailOn}>

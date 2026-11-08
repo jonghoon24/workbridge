@@ -82,7 +82,7 @@ export default function ProjectFilters() {
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1.5">기술 스택</label>
-        <div className="max-h-64 overflow-y-auto pr-1">
+        <div className="max-h-60 overflow-y-auto pr-1 pb-3 [mask-image:linear-gradient(to_bottom,black_80%,transparent)]">
           <CheckboxChips
             options={SKILL_OPTIONS}
             value={selectedSkills}

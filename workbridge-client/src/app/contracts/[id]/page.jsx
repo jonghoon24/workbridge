@@ -191,7 +191,7 @@ export default function ContractPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex items-center justify-between gap-3 mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">계약서</h1>
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">계약서</h1>
         <div className="flex items-center gap-3">
           {conversation && (isClient || isFreelancer) && (
             <Link

@@ -84,7 +84,7 @@ export default function SettlementsPage() {
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">정산</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">정산</h1>
           <p className="text-gray-600 mt-1">승인된 마일스톤 대금은 수수료를 뺀 뒤 매주 지급됩니다</p>
         </div>
         <Link href="/settlements/account">

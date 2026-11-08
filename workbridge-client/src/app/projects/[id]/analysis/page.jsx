@@ -86,9 +86,9 @@ export default function AnalysisPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">AI 단가 분석</h1>
+          <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">AI 단가 분석</h1>
           <p className="text-gray-600 mt-1">{project?.title}</p>
         </div>
         <Button onClick={handleAnalyze} loading={analyzing}>
@@ -98,7 +98,7 @@ export default function AnalysisPage() {
 
       {analyzing && (
         <Card className="p-8 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4" />
+          <div className="animate-spin rounded-full h-12 w-12 border-[3px] border-gray-200 border-t-primary-600 mx-auto mb-4" />
           <p className="text-gray-600">AI가 분석 중입니다... (10-15초 소요)</p>
         </Card>
       )}
@@ -118,7 +118,7 @@ export default function AnalysisPage() {
       {analysis && !analyzing && (
         <div className="space-y-6">
           <Card className="p-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-xl font-semibold text-gray-900">예상 총 단가</h2>
               <span className="text-3xl font-bold text-primary-600">
                 {analysis.totalAmount?.toLocaleString()}원
@@ -153,8 +153,8 @@ export default function AnalysisPage() {
             <div className="space-y-3">
               {(Array.isArray(analysis.features) ? analysis.features : []).map((feature, i) => (
                 <Card key={i} className="p-5">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex-1 min-w-0">
                       <h3 className="font-medium text-gray-900">{feature.name}</h3>
                       <p className="text-sm text-gray-600 mt-1">{feature.description}</p>
                       <p className="text-sm text-gray-500 mt-2">
@@ -164,7 +164,7 @@ export default function AnalysisPage() {
                         <p className="text-sm text-gray-500">예상 기간: {feature.duration}</p>
                       )}
                     </div>
-                    <div className="ml-4 text-right">
+                    <div className="sm:ml-4 sm:text-right sm:shrink-0">
                       <p className="font-semibold text-gray-900">
                         {feature.estimatedCost?.toLocaleString()}원
                       </p>
