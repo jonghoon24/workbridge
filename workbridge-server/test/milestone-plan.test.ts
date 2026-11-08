@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { authed } from './helpers/api';
-import { prisma } from './helpers/db';
+import { prisma, sideClient } from './helpers/db';
 import { makeContractScenario, makeMilestone } from './helpers/factories';
 import { DAY_MS, kstDateString, kstDateToEndOfDay } from '../src/lib/time';
 
@@ -267,29 +267,39 @@ describe('plan replacement racing a signature (MS9)', () => {
   it('decides "a signature was present" from the locked row, not an earlier read [MS9] [MS8]', async () => {
     const { client, contract } = await makeContractScenario();
     await Promise.all([1, 2, 3].map(() => authed(client).get('/api/contracts')));
-    let release!: () => void;
+    // The signer and the poll run on their own pool, so they never take the app's connections
+    // — see `sideClient`.
+    const side = sideClient();
+    let release = () => {};
     let signed!: () => void;
     const signatureWritten = new Promise<void>((resolve) => { signed = resolve; });
-    const signer = prisma.$transaction(async (tx) => {
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const signer = side.$transaction(async (tx) => {
       await tx.contract.update({ where: { id: contract.id }, data: { freelancerSigned: true } });
       signed();
-      await new Promise<void>((resolve) => { release = resolve; });
+      await released;
     }, { timeout: 10_000 });
-    await signatureWritten;
+    try {
+      await signatureWritten;
 
-    const replace = put(client, contract.id, twoStep()).then((res) => res);
-    for (const deadline = Date.now() + 3_000; Date.now() < deadline;) {
-      const [{ n }] = await prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`;
-      if (n >= 1) break; // the replacement is queued on the contract row
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      const replace = put(client, contract.id, twoStep()).then((res) => res);
+      for (const deadline = Date.now() + 3_000; Date.now() < deadline;) {
+        const [{ n }] = await side.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`;
+        if (n >= 1) break; // the replacement is queued on the contract row
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      release();
+      await signer;
+      const res = await replace;
+
+      expect(res.status).toBe(200);
+      expect(res.body.contract).toMatchObject({ clientSigned: false, freelancerSigned: false });
+      expect(await prisma.notification.count({ where: { type: 'MILESTONE_PLAN_UPDATED' } })).toBe(1);
+    } finally {
+      release();
+      await signer.catch(() => {});
+      await side.$disconnect();
     }
-    release();
-    await signer;
-    const res = await replace;
-
-    expect(res.status).toBe(200);
-    expect(res.body.contract).toMatchObject({ clientSigned: false, freelancerSigned: false });
-    expect(await prisma.notification.count({ where: { type: 'MILESTONE_PLAN_UPDATED' } })).toBe(1);
   });
 
   /**

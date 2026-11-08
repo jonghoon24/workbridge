@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma, User } from '@prisma/client';
 
 import { authed } from './helpers/api';
-import { prisma } from './helpers/db';
+import { prisma, sideClient } from './helpers/db';
 import {
   makeApplication,
   makeClient,
@@ -130,12 +130,15 @@ async function collideOnPaymentInsert<T>(
   send: () => Promise<T>,
   maxWaitMs = 3_000,
 ): Promise<T> {
-  let release!: () => void;
+  // The holder and the poll run on their own pool, so they never take the app's connections
+  // — see `sideClient`.
+  const side = sideClient();
+  let release = () => {};
   const released = new Promise<void>((resolve) => { release = resolve; });
   let signalLocked!: () => void;
   const locked = new Promise<void>((resolve) => { signalLocked = resolve; });
 
-  const holder = prisma.$transaction(async (tx) => {
+  const holder = side.$transaction(async (tx) => {
     await tx.$executeRaw`LOCK TABLE "Payment" IN SHARE MODE`;
     signalLocked();
     await released;
@@ -146,7 +149,7 @@ async function collideOnPaymentInsert<T>(
     const pending = send();
     const deadline = Date.now() + maxWaitMs;
     while (Date.now() < deadline) {
-      const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+      const [{ waiting }] = await side.$queryRaw<{ waiting: number }[]>`
         SELECT count(*)::int AS waiting FROM pg_locks
          WHERE locktype = 'relation' AND relation = '"Payment"'::regclass AND NOT granted`;
       if (waiting >= inserters) break;
@@ -157,6 +160,8 @@ async function collideOnPaymentInsert<T>(
     return await pending;
   } finally {
     release();
+    await holder.catch(() => {});
+    await side.$disconnect();
   }
 }
 
