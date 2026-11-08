@@ -1,15 +1,15 @@
 ---
 name: pre-pr-review
-description: Review the branch diff against main with /code-review and the numbered criteria in REVIEW.md, apply and commit fixes, flag findings needing human attention, then open a PR with the repository template
+description: PR을 열기 전에 main 대비 브랜치 diff를 /code-review와 REVIEW.md의 번호 항목으로 리뷰하고(pre-PR review), 수정을 적용해 커밋하고, 사람이 봐야 할 지적을 표시한 뒤 리포지토리 템플릿으로 PR을 연다(open a PR)
 model: sonnet
 allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(npm run typecheck:*), Bash(npm run lint:*), Bash(npm run build:*), Bash(npx vitest run:*), Read, Grep, Glob, Edit, Skill
 ---
 
-# Pre-PR review
+# PR 전 리뷰
 
-Run from the repo root on a feature branch (never on `main`).
+리포지토리 루트에서, 기능 브랜치에서 돌린다(`main`에서는 절대 돌리지 않는다).
 
-## 1. Scope
+## 1. 범위
 
 ```bash
 git fetch origin main
@@ -17,60 +17,60 @@ git diff --stat origin/main...HEAD
 git log --oneline origin/main..HEAD
 ```
 
-Uncommitted changes → stop and ask whether to commit them first.
+커밋하지 않은 변경 사항이 있으면 → 멈추고 먼저 커밋할지 묻는다.
 
-## 2. Generic review
+## 2. 일반 리뷰
 
-Run `/code-review medium --fix` on the branch diff against `main` (Skill tool, skill
-`code-review`, args `medium --fix` plus the current branch as target). Record each finding with its outcome:
-`fixed` or `skipped` (and why).
+브랜치 diff를 `main`과 비교해 `/code-review medium --fix`를 돌린다(Skill 툴, 스킬
+`code-review`, 인자는 `medium --fix`와 대상인 현재 브랜치). 지적마다 결과를 적는다:
+`fixed` 또는 `skipped`(와 그 이유).
 
-## 3. WorkBridge criteria — `REVIEW.md`
+## 3. WorkBridge 기준 — `REVIEW.md`
 
-Read `REVIEW.md` and check the diff against **every numbered item**, using each item's
-"확인 방법" line (mostly `git diff origin/main...HEAD -- <path>` plus a grep). For each item record
-`해당 없음`, `통과`, or `위반` with file:line.
+`REVIEW.md`를 읽고 diff를 **번호 항목 하나하나**와 대조한다. 항목마다 있는 "확인 방법" 줄을 쓴다
+(대부분 `git diff origin/main...HEAD -- <path>`와 grep). 항목마다 `해당 없음`, `통과`, `위반`(file:line과
+함께) 중 하나를 적는다.
 
-- Fix a violation only when the fix is local and unambiguous (e.g. `console.log` → `logger.info`,
-  a missing `deletedAt: null`, a route missing from `guardedMutations`).
-- Never "fix" by flipping an `it.fails` pin, adding zod/services/`requireActiveUser` to a
-  pre-existing controller, or editing an applied migration — those are findings for a human.
+- 위반은 고치는 방법이 국소적이고 분명할 때만 고친다(예: `console.log` → `logger.info`,
+  빠진 `deletedAt: null`, `guardedMutations`에 빠진 라우트).
+- `it.fails` 핀을 뒤집거나, 기존 컨트롤러에 zod/서비스/`requireActiveUser`를 추가하거나, 적용된
+  마이그레이션을 고치는 것으로 "수정"하지 않는다 — 그런 것은 사람에게 넘길 지적이다.
 
-## 4. Re-check
+## 4. 다시 검사
 
-Run the static checks for what the diff touched (the Stop hook does the same):
+diff가 건드린 곳의 정적 검사를 돌린다(Stop 훅도 같은 일을 한다):
 
 ```bash
-(cd workbridge-server && npm run typecheck)     # if workbridge-server/** changed
-(cd workbridge-client && npm run lint && npm run build)   # if workbridge-client/** changed
+(cd workbridge-server && npm run typecheck)     # workbridge-server/**가 바뀌었으면
+(cd workbridge-client && npm run lint && npm run build)   # workbridge-client/**가 바뀌었으면
 ```
 
-Run the vitest files that cover touched server code (`npx vitest run test/<file>.test.ts`) if a
-local test DB exists; otherwise say the suite was left to CI.
+로컬 테스트 DB가 있으면 건드린 서버 코드를 다루는 vitest 파일을 돌린다(`npx vitest run test/<file>.test.ts`).
+없으면 스위트는 CI에 맡겼다고 적는다.
 
-## 5. Commit the fixes
+## 5. 수정 커밋
 
-Skip if nothing was applied. Otherwise one commit, Korean message:
+적용한 것이 없으면 건너뛴다. 있으면 커밋 하나, 메시지는 한국어:
 
 ```bash
 git add -A && git commit -m "fix: 리뷰 지적 반영 — <요약>"
 ```
 
-## 6. Report and wait
+## 6. 보고하고 기다리기
 
-Print a table: source (`code-review` / `REVIEW.md #n`), file:line, finding, outcome
-(`fixed` / `skipped` / `위반 — 사람 확인 필요`). List every `skipped` finding and every unfixed
-REVIEW.md violation under **"사람이 확인해야 할 항목"**. Then **wait for the user's go-ahead**.
+표를 출력한다: 출처(`code-review` / `REVIEW.md #n`), file:line, 지적, 결과
+(`fixed` / `skipped` / `위반 — 사람 확인 필요`). `skipped`인 지적과 고치지 않은 REVIEW.md 위반은 모두
+**"사람이 확인해야 할 항목"** 아래에 적는다. 그다음 **사용자의 진행 승인을 기다린다**.
 
-## 7. Open the PR
+## 7. PR 열기
 
-Fill `.github/PULL_REQUEST_TEMPLATE.md` (read it; keep every heading and checkbox): what changed
-and why, the BEHAVIOR.md rule ids or D-numbers touched, how it was verified, and the
-"사람이 확인해야 할 항목" list. Write the body to a temp file and:
+`.github/PULL_REQUEST_TEMPLATE.md`를 채운다(읽고, 제목과 체크박스를 모두 유지한다): 무엇을 왜 바꿨는지,
+건드린 BEHAVIOR.md 규칙 번호나 D 번호, 어떻게 검증했는지, "사람이 확인해야 할 항목" 목록.
+본문을 임시 파일에 쓰고:
 
 ```bash
-git push -u origin HEAD        # only with the user's go-ahead; never --force
+git push -u origin HEAD        # 사용자의 승인이 있을 때만. --force는 절대 쓰지 않는다
 gh pr create --base main --title "<한국어 제목>" --body-file <tmpfile>
 ```
 
-Print the PR URL. The CI reviewer will read the same `REVIEW.md`.
+PR URL을 출력한다. CI 리뷰어도 같은 `REVIEW.md`를 읽는다.

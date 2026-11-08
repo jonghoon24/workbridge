@@ -26,26 +26,26 @@ written=$(jq -r '[.tool_input.content, .tool_input.new_string, (.tool_input.edit
 problems=()
 
 if grep -qE '\bconsole\.' <<<"$written"; then
-  problems+=("console.* is not used in server code, temporary debug lines included → replace it with \`logger.debug|info|warn(msg, fields)\` from src/lib/logger.ts. logger.error is reserved for errorHandler's 500s and job failures. Rule: .claude/rules/notifications-logging.md")
+  problems+=("서버 코드에서는 임시 디버그 줄을 포함해 console.*를 쓰지 않는다 → src/lib/logger.ts의 \`logger.debug|info|warn(msg, fields)\`로 바꾼다. logger.error는 errorHandler의 500과 작업 실패 전용이다. 지침: .claude/rules/notifications-logging.md")
 fi
 
 case "$file" in
   */src/services/*|*/src/jobs/handlers/*)
     if grep -qE 'new Date\(\)' <<<"$written"; then
-      problems+=("new Date() in a service/job handler → take \`now\` as an argument (handlers use ctx.now) so tests control time with runJobs(now). Rule: .claude/rules/money-time.md")
+      problems+=("서비스/작업 핸들러에서 new Date() 사용 → \`now\`를 인자로 받는다(핸들러는 ctx.now). 그래야 테스트가 runJobs(now)로 시간을 제어한다. 지침: .claude/rules/money-time.md")
     fi
     ;;
 esac
 
 if grep -qE '\.(getDate|getHours|getDay|setHours|setDate)\(|toLocaleDateString\(' <<<"$written"; then
-  problems+=("host-timezone date getter/setter → use the fixed UTC+9 helpers in src/lib/time.ts (startOfKstDay, kstDateString, nextKstWeekday…); CI and Vercel run in UTC. Rule: .claude/rules/money-time.md")
+  problems+=("호스트 시간대 날짜 getter/setter 사용 → src/lib/time.ts의 고정 UTC+9 헬퍼(startOfKstDay, kstDateString, nextKstWeekday…)를 쓴다. CI와 Vercel은 UTC로 돈다. 지침: .claude/rules/money-time.md")
 fi
 
 if [ ${#problems[@]} -gt 0 ]; then
   {
-    echo "WorkBridge rule check on ${file#"${CLAUDE_PROJECT_DIR:-}/"}:"
+    echo "WorkBridge 지침 검사 (${file#"${CLAUDE_PROJECT_DIR:-}/"}):"
     for p in "${problems[@]}"; do echo "- $p"; done
-    echo "Rewrite the lines above now; the only accepted exceptions are the ones listed in the rule file."
+    echo "위 줄을 지금 고쳐 쓴다. 허용되는 예외는 지침 파일에 적힌 것뿐이다."
   } >&2
   exit 2
 fi

@@ -10,28 +10,27 @@ paths:
   - "workbridge-server/test/{money,time,settlements,milestones,payments,auto-approval}.test.ts"
 ---
 
-# Money and time
+# 금액과 시간
 
-## Money — `src/lib/money.ts` only
+## 금액 — `src/lib/money.ts`에서만
 
-- Every amount is **integer won**. Fees, VAT and rounding go through `lib/money.ts`:
-  `payoutBreakdown(gross)` (M3: `fee = floor(gross × 10%)`, `vat = floor(fee × 10%)`,
-  `net = gross − fee − vat`), `sumBreakdowns(items)` (M5: totals are sums of items, never
-  recomputed from total gross), `wholeWon()` (M7), and the constants
+- 모든 금액은 **원 단위 정수**다. 수수료, 부가세, 반올림은 `lib/money.ts`를 거친다:
+  `payoutBreakdown(gross)`(M3: `fee = floor(gross × 10%)`, `vat = floor(fee × 10%)`,
+  `net = gross − fee − vat`), `sumBreakdowns(items)`(M5: 합계는 항목의 합이고, 총액에서 다시
+  계산하지 않는다), `wholeWon()`(M7), 그리고 상수
   `PLATFORM_FEE_RATE_BPS`, `MIN_MILESTONES`/`MAX_MILESTONES`, `MIN_MILESTONE_AMOUNT`.
-- No inline `* 0.1`, `Math.round(amount * …)` or `toFixed` for money anywhere else.
-- The `Float` money columns in `schema.prisma` are known debt. Don't migrate them.
-- Zod schemas for new routes reject non-integer amounts (rule 12) → 400.
+- 다른 곳에서 금액에 인라인 `* 0.1`, `Math.round(amount * …)`, `toFixed`를 쓰지 않는다.
+- `schema.prisma`의 `Float` 금액 컬럼은 알고 있는 부채다. 마이그레이션하지 않는다.
+- 새 라우트의 zod 스키마는 정수가 아닌 금액을 거부한다(규칙 12) → 400.
 
-## Time — `src/lib/time.ts`, fixed UTC+9
+## 시간 — `src/lib/time.ts`, 고정 UTC+9
 
-- Calendar rules ("today", due dates, day windows, the Monday 03:00 KST weekly settlement batch,
-  Wednesday 10:00 KST payouts) use `lib/time.ts`: `startOfKstDay`, `kstDateString`,
-  `kstDateToEndOfDay`, `nextKstTimeOfDay`, `nextKstWeekday`, `kstMonth*`.
-- No timezone library. No host-timezone getters/setters for calendar logic
-  (`getDate()`, `getHours()`, `getDay()`, `setHours()`, `toLocaleDateString()` …) — CI and Vercel
-  run in UTC, laptops in KST, so these give different answers per machine. A PostToolUse hook
-  flags them.
-- Functions take `now: Date` as an argument. Services and job handlers never call `new Date()`
-  themselves: controllers pass `new Date()` at the HTTP boundary, job handlers use `ctx.now`.
-  Tests control time by passing `now` / `runJobs(now)` — never fake timers.
+- 달력 규칙("오늘", 마감일, 일 단위 구간, 월요일 03:00 KST 주간 정산 배치, 수요일 10:00 KST 지급)은
+  `lib/time.ts`를 쓴다: `startOfKstDay`, `kstDateString`, `kstDateToEndOfDay`, `nextKstTimeOfDay`,
+  `nextKstWeekday`, `kstMonth*`.
+- 시간대 라이브러리는 쓰지 않는다. 달력 로직에 호스트 시간대 getter/setter
+  (`getDate()`, `getHours()`, `getDay()`, `setHours()`, `toLocaleDateString()` …)를 쓰지 않는다 — CI와
+  Vercel은 UTC, 개발 PC는 KST라서 기기마다 답이 달라진다. PostToolUse 훅이 이것을 잡는다.
+- 함수는 `now: Date`를 인자로 받는다. 서비스와 작업 핸들러는 `new Date()`를 직접 부르지 않는다:
+  HTTP 경계의 컨트롤러가 `new Date()`를 넘기고, 작업 핸들러는 `ctx.now`를 쓴다.
+  테스트는 `now` / `runJobs(now)`를 넘겨 시간을 제어한다 — 가짜 타이머는 쓰지 않는다.

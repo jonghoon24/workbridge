@@ -11,9 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
-    # Same Postgres-service convention as ci.yml. The database is seeded (= wiped) by
-    # scripts/e2e.sh; test/helpers/db.ts's "must contain test" guard does not apply here because
-    # the E2E suite never loads that helper.
+    # ci.yml과 같은 Postgres 서비스 방식. DB는 scripts/e2e.sh가 시드한다(= 비운다).
+    # E2E 스위트는 test/helpers/db.ts를 불러오지 않으므로 "이름에 test" 검사는 여기에 해당하지 않는다.
     services:
       postgres:
         image: postgres:16
@@ -30,12 +29,12 @@ jobs:
           --health-retries 5
 
     env:
-      # `prisma generate` resolves the env() references in schema.prisma.
+      # `prisma generate`가 schema.prisma의 env() 참조를 푼다.
       DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_e2e
       DIRECT_URL: postgresql://ci:ci@localhost:5432/workbridge_e2e
-      # scripts/e2e.sh builds every server/client variable from these (ports 4002/3002, dummy
-      # SUPABASE_URL/SUPABASE_SECRET_KEY/OPENAI_API_KEY, payment bypass on, job worker and rate
-      # limit off). CI=true makes it run `next build && next start` instead of `next dev`.
+      # scripts/e2e.sh가 이 값들로 서버·클라이언트 변수를 모두 만든다(포트 4002/3002, 더미
+      # SUPABASE_URL/SUPABASE_SECRET_KEY/OPENAI_API_KEY, 결제 우회 켬, 작업 워커와 요청 제한 끔).
+      # CI=true면 `next dev` 대신 `next build && next start`로 돈다.
       E2E_DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_e2e
       E2E_CLIENT_MODE: prod
 
@@ -50,29 +49,29 @@ jobs:
             workbridge-server/package-lock.json
             workbridge-client/package-lock.json
 
-      - name: Install server dependencies
+      - name: 서버 의존성 설치
         working-directory: workbridge-server
         run: npm ci
 
-      - name: Install client dependencies
+      - name: 클라이언트 의존성 설치
         working-directory: workbridge-client
         run: npm ci
 
-      - name: Generate Prisma client
+      - name: Prisma 클라이언트 생성
         working-directory: workbridge-server
         run: npx prisma generate
 
-      - name: Install Chromium for Playwright
+      - name: Playwright용 Chromium 설치
         working-directory: workbridge-client
         run: npx playwright install --with-deps chromium
 
-      # Creates the database if missing, `prisma migrate deploy`, `npm run db:seed`, starts the
-      # API with tsx on :4002 and the client with `next build && next start` on :3002, waits for
-      # both, runs `playwright test`, and always stops both servers.
-      - name: Run E2E suite
+      # DB가 없으면 만들고, `prisma migrate deploy`, `npm run db:seed`를 돌린 뒤, API를 tsx로 :4002에,
+      # 클라이언트를 `next build && next start`로 :3002에 띄우고, 둘 다 뜨기를 기다려 `playwright test`를
+      # 돌린다. 끝나면 결과와 상관없이 두 서버를 내린다.
+      - name: E2E 스위트 실행
         run: bash scripts/e2e.sh
 
-      - name: Upload Playwright report and traces
+      - name: Playwright 리포트와 트레이스 업로드
         if: failure()
         uses: actions/upload-artifact@v4
         with:

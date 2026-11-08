@@ -15,7 +15,7 @@
 
 - `vercel.json`이 이미 설정되어 있음(`src/index.ts`를 `@vercel/node`가 서버리스 함수로 직접 트랜스파일한다. 빌드 단계와 `dist/`는 없다)
 - Vercel 대시보드에서 환경변수 설정([ENV.md](ENV.md))
-- Build Command: `npx prisma generate` (대시보드에 있고 저장소에는 없다)
+- Build Command: `npx prisma generate` (대시보드에 있고 리포지토리에는 없다)
 - 마이그레이션 적용 명령은 `DATABASE_URL=… DIRECT_URL=… npx prisma migrate deploy`다. `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 또는 5432)이어야 한다. 위의 CI 작업이 생기기 전까지는 스키마가 바뀐 배포 전에 프리뷰·운영 DB에 직접 적용한다
 - 운영(`NODE_ENV=production`)에서는 `app.listen()`도 작업 큐 워커도 시작하지 않는다
 

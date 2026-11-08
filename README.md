@@ -43,7 +43,7 @@ bash scripts/test-db.sh       # workbridge_test 생성·마이그레이션
 npm run typecheck
 npm test
 
-# E2E (Playwright) — 저장소 루트에서. 시드한 workbridge_e2e DB, 서버 :4002, 클라이언트 :3002
+# E2E (Playwright) — 리포지토리 루트에서. 시드한 workbridge_e2e DB, 서버 :4002, 클라이언트 :3002
 cd ..
 bash scripts/e2e.sh
 

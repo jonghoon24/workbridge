@@ -1,101 +1,97 @@
 ---
 name: fix-divergence
-description: Fix one known divergence from docs/BEHAVIOR.md (D3, D5, D6, D8–D22) end to end — flip its it.fails pin, fix the code per the spec, move the row to Resolved, update docs/API.md. Use when asked to "fix D<n>", resolve a known divergence, or make an it.fails test pass.
-argument-hint: D<number>
+description: docs/BEHAVIOR.md의 알려진 불일치(known divergence) 하나(D3, D5, D6, D8–D22)를 끝까지 고친다 — it.fails 핀을 뒤집고, 명세대로 코드를 고치고, 행을 Resolved로 옮기고, docs/API.md를 고친다. "D<n> 고쳐줘"("fix D<n>"), 알려진 불일치 해결, it.fails 테스트를 통과시키라는 요청에 쓴다.
+argument-hint: D<번호>
 ---
 
-# Fix a BEHAVIOR.md divergence
+# BEHAVIOR.md 불일치 고치기
 
-Argument: a divergence id, e.g. `D3`. Work from the repo root; run server commands inside
-`workbridge-server/`. A local test DB must exist (`bash scripts/test-db.sh`, inside the server).
+인자: 불일치 번호, 예: `D3`. 리포지토리 루트에서 작업하고, 서버 커맨드는 `workbridge-server/` 안에서
+돌린다. 로컬 테스트 DB가 있어야 한다(서버 안에서 `bash scripts/test-db.sh`).
 
-## 1. Read the spec
+## 1. 명세 읽기
 
 ```bash
-ID=$ARGUMENTS                                 # e.g. D3
-grep -n "| \*\*$ID\*\* |" docs/BEHAVIOR.md     # the row in "Known divergences" → "Outstanding"
-grep -n "\[$ID\]\|$ID\b" docs/BEHAVIOR.md      # every place the spec cites it
+ID=$ARGUMENTS                                 # 예: D3
+grep -n "| \*\*$ID\*\* |" docs/BEHAVIOR.md     # "Known divergences" → "Outstanding"의 그 행
+grep -n "\[$ID\]\|$ID\b" docs/BEHAVIOR.md      # 명세에서 그 번호를 인용한 모든 곳
 ```
 
-- The row has `Issue | Intended | Current`. **Intended** is the target; the cited spec sections
-  (endpoint section, cross-cutting rule 1–12) give the exact status code and message.
-- If the row says "decided in Q<n>", read that answer under "Open questions → Decided".
-  If the intended behavior depends on a question still under "Still open", stop and ask.
+- 행은 `Issue | Intended | Current`로 되어 있다. **Intended**가 목표다. 인용된 명세 절(엔드포인트 절,
+  공통 규칙 1–12)이 정확한 상태 코드와 메시지를 준다.
+- 행에 "decided in Q<n>"이 있으면 "Open questions → Decided"의 답을 읽는다.
+  의도한 동작이 아직 "Still open"에 있는 질문에 달려 있으면 멈추고 묻는다.
 
-## 2. Find the pin
+## 2. 핀 찾기
 
 ```bash
 grep -rn "\[$ID\]" workbridge-server/test/
 ```
 
-- Every pin is an `it.fails(...)` (or `it.fails.each`) whose name ends in `[$ID]`.
-- Cross-cutting pins live in the central matrices, not per endpoint: D12 →
-  `test/soft-delete.test.ts` `mutations`; D21 → `soft-delete.test.ts`; role/401 issues →
+- 핀은 모두 이름이 `[$ID]`로 끝나는 `it.fails(...)`(또는 `it.fails.each`)다.
+- 여러 엔드포인트에 걸친 핀은 엔드포인트별 파일이 아니라 중앙 매트릭스에 있다: D12 →
+  `test/soft-delete.test.ts` `mutations`, D21 → `soft-delete.test.ts`, 역할/401 문제 →
   `test/authorization.test.ts`.
-- No pin found → write one first (an `it.fails` asserting the Intended behavior, built with
-  `test/helpers/factories.ts`), run it, confirm it fails for the right reason.
+- 핀이 없으면 먼저 쓴다(`test/helpers/factories.ts`로 Intended 동작을 단언하는 `it.fails`). 돌려서
+  맞는 이유로 실패하는지 확인한다.
 
-## 3. Flip the pin and watch it fail
+## 3. 핀을 뒤집고 실패하는지 보기
 
-Change `it.fails` → `it` for exactly the pins of this id. Then:
+이 번호의 핀만 정확히 `it.fails` → `it`으로 바꾼다. 그다음:
 
 ```bash
 cd workbridge-server && npx vitest run test/<file>.test.ts
 ```
 
-It must fail, and the failure must be the divergence described in the row (e.g. 200 instead of
-400). If it fails for another reason, fix the test setup first.
+실패해야 하고, 그 실패가 행에 적힌 불일치여야 한다(예: 400 대신 200). 다른 이유로 실패하면 테스트
+준비부터 고친다.
 
-## 4. Fix the code
+## 4. 코드 고치기
 
-- Fix in the layer the endpoint already uses. Pre-existing controllers (auth, users, projects,
-  applications, contracts, payments, reviews, notifications) keep inline checks — **don't add zod,
-  a service, or `requireActiveUser` there** (`.claude/rules/server-layers.md`). D12 is the
-  exception that needs a deliberate design decision; ask before changing it.
-- `throw new AppError(message, status)`; malformed input → 400, unique collision → 409 (catch
-  P2002 **outside** the transaction, like the D4 fix), provider failure → 502.
-- Keep multi-row changes in one `prisma.$transaction`; filter `deletedAt: null`.
-- Money via `lib/money.ts`, calendar via `lib/time.ts`, logging via `lib/logger.ts`.
+- 그 엔드포인트가 이미 쓰는 레이어에서 고친다. 기존 컨트롤러(auth, users, projects,
+  applications, contracts, payments, reviews, notifications)는 인라인 검사를 유지한다 — **거기에 zod,
+  서비스, `requireActiveUser`를 추가하지 않는다**(`.claude/rules/server-layers.md`). D12는 의도적인
+  설계 결정이 필요한 예외다. 고치기 전에 묻는다.
+- `throw new AppError(message, status)`. 잘못된 입력 → 400, 유니크 충돌 → 409(D4 수정처럼 P2002는
+  트랜잭션 **밖에서** catch), 외부 서비스 실패 → 502.
+- 여러 행 변경은 `prisma.$transaction` 하나로 유지하고, `deletedAt: null`로 거른다.
+- 금액은 `lib/money.ts`, 달력은 `lib/time.ts`, 로그는 `lib/logger.ts`.
 
-## 5. Verify
+## 5. 검증
 
 ```bash
-npx vitest run test/<file>.test.ts   # the flipped pins now pass
+npx vitest run test/<file>.test.ts   # 뒤집은 핀이 이제 통과한다
 npm run typecheck
-npm test                             # full suite, ~90 s
+npm test                             # 전체 스위트, ~90초
 ```
 
-A fix can make *another* `it.fails` pass unexpectedly (vitest reports it as a failure). That pin
-covered the same root cause: flip it too and record it in the same row. Never re-add `.fails`
-to silence it.
+수정 하나가 *다른* `it.fails`를 예기치 않게 통과시킬 수 있다(vitest는 이것을 실패로 보고한다). 그 핀은
+같은 원인을 다룬 것이다: 함께 뒤집고 같은 행에 적는다. 조용히 넘기려고 `.fails`를 다시 붙이지 않는다.
 
-## 6. Move the row in BEHAVIOR.md
+## 6. BEHAVIOR.md에서 행 옮기기
 
-Follow how D1, D2, D4 and D7 are recorded under "Known divergences → Resolved":
+"Known divergences → Resolved"에 D1, D2, D4, D7이 적힌 방식을 따른다:
 
 ```
 | **D<n>** | <Was: what the code did, past tense> | <Fix: what changed, and why that way> | <Verified by: the assertions that now pass> |
 ```
 
-- Delete the row from "Outstanding"; keep resolved rows in id order.
-- Update the citations found in step 1: an inline `**[D<n>]**` stays as a reference; prose that
-  says the endpoint "still" misbehaves (e.g. "(The pre-existing … still miss this: **D21**.)")
-  must be rewritten to the new behavior.
-- If the "Suggested test priority" or "Found by the suite, not yet numbered" sections mention it,
-  update them too.
+- "Outstanding"에서 행을 지운다. Resolved 행은 번호 순서를 유지한다.
+- 1단계에서 찾은 인용을 고친다: 인라인 `**[D<n>]**`은 참조로 남긴다. 엔드포인트가 "아직" 잘못
+  동작한다고 말하는 문장(예: "(The pre-existing … still miss this: **D21**.)")은 새 동작으로 다시 쓴다.
+- "Suggested test priority"나 "Found by the suite, not yet numbered" 절에서 언급하면 그것도 고친다.
 
-## 7. Update docs/API.md
+## 7. docs/API.md 고치기
 
 ```bash
 grep -n "$ID" docs/API.md
 ```
 
-Rewrite the sentence about current behavior (Korean, e.g. "숫자가 아닌 값은 400이어야 하지만 지금은
-null로 저장된다(D3)" → "숫자가 아닌 값은 400"). If a status code changed, update the endpoint's status
-list. If the client shows that error, check the wording the client expects (`workbridge-client/src`).
+지금 동작을 설명하는 문장을 다시 쓴다(한국어, 예: "숫자가 아닌 값은 400이어야 하지만 지금은
+null로 저장된다(D3)" → "숫자가 아닌 값은 400"). 상태 코드가 바뀌었으면 그 엔드포인트의 상태 목록을
+고친다. 클라이언트가 그 오류를 보여 주면 클라이언트가 기대하는 문구를 확인한다(`workbridge-client/src`).
 
-## 8. Summarize
+## 8. 요약
 
-Report: the id, the root cause in one line, files changed, the pins flipped (file + test name),
-any extra pins that flipped, the full-suite result, and the doc rows moved. Don't commit unless
-asked.
+보고: 번호, 근본 원인 한 줄, 바꾼 파일, 뒤집은 핀(파일 + 테스트 이름), 함께 뒤집은 다른 핀,
+전체 스위트 결과, 옮긴 문서 행. 요청이 없으면 커밋하지 않는다.

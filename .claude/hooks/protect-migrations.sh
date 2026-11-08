@@ -23,5 +23,5 @@ if [ -z "$(git -C "$root" ls-files -- "$dir")" ] && [ "$(basename "$(dirname "$d
   exit 0
 fi
 
-echo "Blocked: $rel is an applied (committed) migration and must not be edited — change prisma/schema.prisma and run \`npx prisma migrate dev --name <name>\` for a new migration instead (.claude/rules/prisma.md)." >&2
+echo "차단: $rel 은 적용된(커밋된) 마이그레이션이라 고칠 수 없다 — 대신 prisma/schema.prisma를 고치고 \`npx prisma migrate dev --name <name>\`로 새 마이그레이션을 만든다 (.claude/rules/prisma.md)." >&2
 exit 2
