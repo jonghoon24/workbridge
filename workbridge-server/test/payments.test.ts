@@ -888,11 +888,16 @@ describe('POST /api/payments/confirm', () => {
 
   // [D8] `catch (tossError)` discards its argument and nothing is logged, so a network fault
   // and a provider-reported amount mismatch produce byte-identical output: 400
-  // 'Payment verification failed' with the payment FAILED. Nothing reaches console.error
-  // because errorHandler only logs status 500.
-  it.fails('logs the underlying provider failure cause [D8]', async () => {
+  // 'Payment verification failed' with the payment FAILED. The fix must log the cause at `warn`
+  // — rule 1 forbids an error-level line for a 4xx, and rule 9 sends `warn` to `console.log` —
+  // so the assertion looks for a `warn` record on that stream. `LOG_LEVEL` is raised from the
+  // suite's `error` for this test only, otherwise the logger would drop the line before writing.
+  it.fails('logs the underlying provider failure cause at warn [D8]', async () => {
     const { client, payment } = await pendingPayment();
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const previousLevel = process.env.LOG_LEVEL;
+    process.env.LOG_LEVEL = 'warn';
+    const out = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
     tossPost.mockRejectedValue(new Error('TOSS_FAULT_MARKER: ECONNRESET'));
 
     try {
@@ -901,10 +906,23 @@ describe('POST /api/payments/confirm', () => {
         .send(body(payment.orderId, CONTRACT_AMOUNT));
       expect(res.status).toBe(400);
 
-      const logged = spy.mock.calls.flat().map((arg) => String(arg)).join(' | ');
-      expect(logged).toContain('TOSS_FAULT_MARKER');
+      // Rule 1: a 4xx never produces an error-level line, so the cause must not go there.
+      expect(err.mock.calls).toEqual([]);
+
+      const warnLines = out.mock.calls
+        .map(([line]) => {
+          try {
+            return JSON.parse(String(line)) as Record<string, unknown>;
+          } catch {
+            return null;
+          }
+        })
+        .filter((record): record is Record<string, unknown> => record?.level === 'warn');
+      expect(warnLines.map((record) => JSON.stringify(record)).join(' | ')).toContain('TOSS_FAULT_MARKER');
     } finally {
-      spy.mockRestore();
+      out.mockRestore();
+      err.mockRestore();
+      process.env.LOG_LEVEL = previousLevel;
     }
   });
 
@@ -1540,13 +1558,11 @@ describe('GET /api/payments', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * The D8 `it.fails` above proves the discarded provider fault by showing that **nothing**
- * mentioning it reaches `console.error`. That argument only holds while `errorHandler` logs
- * nothing below 500 — D8's 400 path is silent for two independent reasons (the cause is
- * dropped *and* 4xx is never logged), and if a stray `console.error` were ever added to a 4xx
- * path, D8 would start passing on the new log line instead and quietly stop testing anything.
+ * Rule 1 ties error-level logging to the status: nothing for a 4xx, exactly one line for a 500.
+ * The D8 `it.fails` above relies on the first half — it expects the provider cause at `warn`
+ * and asserts that its 400 leaves `console.error` untouched.
  *
- * These two tests pin the premise, using the payments endpoints to reach each status.
+ * These two tests pin rule 1 directly, using the payments endpoints to reach each status.
  */
 describe('errorHandler logging (cross-cutting rule 1)', () => {
   it('logs nothing for 400, 403, 404 and 409 responses [C7]', async () => {
