@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Stop: before Claude finishes, run the cheap static checks for whatever changed since HEAD.
-#   workbridge-server/**/*.ts changed → npm run typecheck (covers src/ and test/)
-#   workbridge-client/src/** changed   → npm run lint
-# Exit 2 sends the failing tail back to Claude so it keeps working. The server test suite is
-# deliberately NOT run here (real Postgres, ~90 s) — see docs/HARNESS.md.
+# Stop: Claude가 끝내기 전에 HEAD 이후 바뀐 곳의 가벼운 정적 검사를 돌린다.
+#   workbridge-server/**/*.ts 변경 → npm run typecheck (src/와 test/ 모두)
+#   workbridge-client/src/** 변경   → npm run lint -- --max-warnings=0 (CI와 같은 기준)
+# exit 2면 실패한 마지막 줄이 Claude에게 돌아가 작업을 이어 간다. 서버 테스트 스위트는 일부러
+# 돌리지 않는다(실제 Postgres, 약 90초) — docs/HARNESS.md 참고.
 set -uo pipefail
 
 input=$(cat)
-# Loop guard: if Claude is already continuing because of this hook, let it stop.
+# 무한 루프 방지: 이미 이 훅 때문에 이어서 작업하는 중이면 그대로 끝내게 둔다.
 if [ "$(jq -r '.stop_hook_active // false' <<<"$input")" = "true" ]; then
   exit 0
 fi
@@ -36,7 +36,7 @@ fi
 
 if grep -qE '^workbridge-client/src/' <<<"$changed"; then
   if [ -d workbridge-client/node_modules ]; then
-    out=$(cd workbridge-client && npm run --silent lint 2>&1) || fail "workbridge-client npm run lint" "$out"
+    out=$(cd workbridge-client && npm run --silent lint -- --max-warnings=0 2>&1) || fail "workbridge-client npm run lint -- --max-warnings=0" "$out"
   else
     echo "stop-check: workbridge-client/node_modules가 없어 lint를 건너뛰었다 (npm install 필요)" >&2
   fi

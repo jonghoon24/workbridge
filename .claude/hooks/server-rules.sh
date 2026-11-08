@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# PostToolUse (Edit|Write|MultiEdit) on workbridge-server/src/**/*.ts.
-# Advice, not a block: the edit has already happened. Exit 2 sends stderr back to Claude.
-# It inspects only the text that was just written (Write: content, Edit: new_string,
-# MultiEdit: every new_string), so pre-existing, documented exceptions in a file
-# (googleCallback's console.error, the AI prompt's toLocaleDateString) don't re-fire on
-# every unrelated edit. Comment lines are ignored.
+# PostToolUse (Edit|Write|MultiEdit): workbridge-server/src/**/*.ts 대상.
+# 막는 것이 아니라 알리는 것이다 — 편집은 이미 일어났다. exit 2면 stderr가 Claude에게 돌아간다.
+# 방금 쓴 텍스트만 본다(Write: content, Edit: new_string, MultiEdit: 모든 new_string). 그래서 파일에
+# 이미 있는 문서화된 예외(googleCallback의 console.error, AI 프롬프트의 toLocaleDateString)가
+# 상관없는 편집 때마다 다시 걸리지 않는다. 주석 줄은 무시한다.
 set -euo pipefail
 
 input=$(cat)
@@ -15,7 +14,7 @@ case "$file" in
   *) exit 0 ;;
 esac
 case "$file" in
-  # The two libs that implement the rules, and the jobs CLI whose job is printing to stdout.
+  # 규칙을 구현하는 lib 두 개, 그리고 stdout 출력이 본업인 작업 CLI.
   */src/lib/time.ts|*/src/lib/logger.ts|*/src/jobs/cli.ts) exit 0 ;;
 esac
 
@@ -26,7 +25,7 @@ written=$(jq -r '[.tool_input.content, .tool_input.new_string, (.tool_input.edit
 problems=()
 
 if grep -qE '\bconsole\.' <<<"$written"; then
-  problems+=("서버 코드에서는 임시 디버그 줄을 포함해 console.*를 쓰지 않는다 → src/lib/logger.ts의 \`logger.debug|info|warn(msg, fields)\`로 바꾼다. logger.error는 errorHandler의 500과 작업 실패 전용이다. 지침: .claude/rules/notifications-logging.md")
+  problems+=("서버 코드에서는 임시 디버그 줄을 포함해 console.*를 쓰지 않는다 → src/lib/logger.ts의 \`logger.debug|info|warn(msg, fields)\`로 바꾼다. 필드에는 필요한 값만 넣고 req.body·req.query·헤더를 통째로 넣지 않는다(개인정보·토큰). logger.error는 errorHandler의 500과 작업 실패 전용이다. 지침: .claude/rules/notifications-logging.md")
 fi
 
 case "$file" in
@@ -37,8 +36,9 @@ case "$file" in
     ;;
 esac
 
-if grep -qE '\.(getDate|getHours|getDay|setHours|setDate)\(|toLocaleDateString\(' <<<"$written"; then
-  problems+=("호스트 시간대 날짜 getter/setter 사용 → src/lib/time.ts의 고정 UTC+9 헬퍼(startOfKstDay, kstDateString, nextKstWeekday…)를 쓴다. CI와 Vercel은 UTC로 돈다. 지침: .claude/rules/money-time.md")
+# 호스트 시간대를 따르는 Date getter/setter. toLocaleString은 금액 포맷(templates.ts)과 겹쳐서 넣지 않는다.
+if grep -qE '\.(get|set)(Date|Day|Hours|Month|FullYear)\(|toLocaleDateString\(' <<<"$written"; then
+  problems+=("호스트 시간대 날짜 getter/setter 사용 → src/lib/time.ts의 고정 UTC+9 헬퍼(startOfKstDay, kstDateString, kstMonthString, nextKstWeekday…)를 쓴다. CI와 Vercel은 UTC로 돈다. 지침: .claude/rules/money-time.md")
 fi
 
 if [ ${#problems[@]} -gt 0 ]; then
