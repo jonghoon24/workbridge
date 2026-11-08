@@ -1,6 +1,6 @@
 ---
 name: fix-divergence
-description: docs/BEHAVIOR.md의 알려진 불일치(known divergence) 하나(D3, D5, D6, D8–D22)를 끝까지 고친다 — it.fails 핀을 뒤집고, 명세대로 코드를 고치고, 행을 Resolved로 옮기고, docs/API.md를 고친다. "D<n> 고쳐줘"("fix D<n>"), 알려진 불일치 해결, it.fails 테스트를 통과시키라는 요청에 쓴다.
+description: docs/BEHAVIOR.md의 알려진 불일치(known divergence, D번호) 하나를 끝까지 고친다 — it.fails 핀을 뒤집고, 명세대로 코드를 고치고, 행을 Resolved로 옮기고, docs/API.md를 고친다. "D17 고쳐줘"("fix D17") 같은 요청, 알려진 불일치 해결, it.fails 테스트를 통과시키라는 요청에 쓴다.
 argument-hint: D<번호>
 ---
 

@@ -8,7 +8,7 @@ argument-hint: <METHOD> <path> — <하는 일>
 
 새 라우트는 모두 BEHAVIOR.md 규칙 12를 따른다. 기존 라우트(auth, users, projects,
 applications, contracts, payments, reviews, notifications)는 이 방식으로 바꾸지 **않는다**.
-옛 컨트롤러가 아니라 최근에 만든 전체 스택 — 알림 설정이나 포트폴리오 라우트 — 을 보고 따라 만든다:
+기존 컨트롤러가 아니라 최근에 만든 전체 스택 — 알림 설정이나 포트폴리오 라우트 — 을 보고 따라 만든다:
 
 | 레이어 | 예 |
 |---|---|
@@ -84,7 +84,7 @@ router.post('/things', ...guard, validate({ body: thingBody }), postThing);
   `Ids`/`MISSING`에도 추가한다. 표 위 주석의 라우트 개수도 고친다.
 - `test/soft-delete.test.ts` → 쓰기 라우트면 **`guardedMutations`**에 `Mutation`을 추가한다
   (`setup()`이 `{ actor, send(token), assertUnchanged() }`를 돌려준다). **`mutations`에는 절대 넣지 않는다**
-  (그 표는 옛 라우트용 `it.fails` D12다).
+  (그 표는 기존 라우트용 `it.fails` D12다).
 - 401/403/소프트 삭제를 다른 곳에서 엔드포인트마다 다시 단언하지 않는다.
 
 ## 7. 엔드포인트 테스트 — `test/<domain>.test.ts`
