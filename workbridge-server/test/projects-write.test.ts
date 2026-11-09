@@ -170,7 +170,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: -1 });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('budget: Budget must be a non-negative whole number of won');
+    expect(res.body.error.message).toBe('budget: Budget must be a positive whole number of won');
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -180,22 +180,31 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 'abc' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('budget: Budget must be a non-negative whole number of won');
+    expect(res.body.error.message).toBe('budget: Budget must be a positive whole number of won');
     expect(await prisma.project.count()).toBe(0);
   });
 
-  // Boundary. `budget` is a **non-negative** number, so `0` is a valid budget and must be
-  // created. The old required-field guard was `!budget`, which refused `0`.
-  it('accepts a zero budget with 201 and persists budget 0', async () => {
+  // Boundary: a budget is at least 1 won. `0` is refused like any other invalid budget.
+  it('rejects a zero budget with 400', async () => {
     const client = await makeClient();
 
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 0 });
 
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
+    expect(await prisma.project.count()).toBe(0);
+  });
+
+  it('accepts a budget of 1 won with 201 and persists it', async () => {
+    const client = await makeClient();
+
+    const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 1 });
+
     expect(res.status).toBe(201);
-    expect(res.body.budget).toBe(0);
+    expect(res.body.budget).toBe(1);
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: res.body.id } });
-    expect(stored.budget).toBe(0);
+    expect(stored.budget).toBe(1);
   });
 
   it('accepts a numeric-string budget', async () => {
@@ -224,7 +233,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a non-negative whole number of won' } });
+    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -698,7 +707,7 @@ describe('PATCH /api/projects/:id', () => {
     const res = await authed(intruder).patch(`/api/projects/${project.id}`).send({ budget: -1 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a non-negative whole number of won' } });
+    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
   });
 
   it('leaves omitted fields untouched', async () => {
@@ -882,7 +891,7 @@ describe('PATCH /api/projects/:id', () => {
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: -5 });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('budget: Budget must be a non-negative whole number of won');
+      expect(res.body.error.message).toBe('budget: Budget must be a positive whole number of won');
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.budget).toBe(project.budget);
@@ -894,20 +903,32 @@ describe('PATCH /api/projects/:id', () => {
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 'abc' });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('budget: Budget must be a non-negative whole number of won');
+      expect(res.body.error.message).toBe('budget: Budget must be a positive whole number of won');
     });
 
-    // The `PATCH` counterpart of the zero-budget case on `POST`: `0` is a valid budget.
-    it('accepts a zero budget and persists it', async () => {
+    // The `PATCH` counterpart of the budget boundary on `POST`: at least 1 won.
+    it('rejects a zero budget with 400 and keeps the stored budget', async () => {
       const { client, project } = await ownedProject();
 
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 0 });
 
-      expect(res.status).toBe(200);
-      expect(res.body.budget).toBe(0);
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-      expect(stored.budget).toBe(0);
+      expect(stored.budget).toBe(project.budget);
+    });
+
+    it('accepts a budget of 1 won and persists it', async () => {
+      const { client, project } = await ownedProject();
+
+      const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 1 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.budget).toBe(1);
+
+      const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(stored.budget).toBe(1);
     });
 
     it('updates the budget when it is valid', async () => {

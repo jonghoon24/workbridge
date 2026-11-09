@@ -357,6 +357,27 @@ describe('POST /api/auth/login', () => {
     expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
   });
 
+  // Signup trims the email, so login must too: the address typed with the same stray spaces at
+  // both forms is the same account.
+  it('logs in with the email padded with spaces exactly as it was typed at signup', async () => {
+    const signup = await api()
+      .post('/api/auth/signup')
+      .send({ email: ' padded@test.local ', password: TEST_PASSWORD, name: 'Padded', role: 'CLIENT' });
+    expect(signup.status).toBe(201);
+
+    const res = await api().post('/api/auth/login').send({ email: ' padded@test.local ', password: TEST_PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.email).toBe('padded@test.local');
+  });
+
+  it('rejects a blank email as missing', async () => {
+    const res = await api().post('/api/auth/login').send({ email: '   ', password: TEST_PASSWORD });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
+  });
+
   it('logs in an existing account whose password is shorter than the signup minimum', async () => {
     const user = await makeUser({ password: await bcrypt.hash('short', 4) });
 

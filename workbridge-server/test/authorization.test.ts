@@ -1828,6 +1828,23 @@ describe('error envelope', () => {
     expectExactEnvelope(res, 409, 'Email already in use');
   });
 
+  // body-parser's own message quotes the JSON parser (`Expected property name or '}' in JSON at
+  // position 2 …`); the API answers one fixed sentence instead.
+  it.each([
+    ['a truncated object', '{"email":'],
+    ['an unquoted key', '{email: "a@b.com"}'],
+  ])('answers a malformed JSON body (%s) with a fixed 400 message', async (_label, raw) => {
+    const res = await api().post('/api/auth/login').set('Content-Type', 'application/json').send(raw);
+
+    expectExactEnvelope(res, 400, 'Request body must be valid JSON');
+  });
+
+  it('rejects a malformed JSON body before authentication', async () => {
+    const res = await api().post('/api/projects').set('Content-Type', 'application/json').send('{"title":');
+
+    expectExactEnvelope(res, 400, 'Request body must be valid JSON');
+  });
+
   it('never includes a stack trace or extra keys alongside the message', async () => {
     const res = await api().post('/api/auth/select-role').send({ role: 'CLIENT' });
 

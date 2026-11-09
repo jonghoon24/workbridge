@@ -174,6 +174,11 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     ['an impossible date', () => [{ title: 't', amount: 4_000_000, dueDate: '2099-02-30' }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date'],
     ['yesterday', () => [{ title: 't', amount: 4_000_000, dueDate: inDays(-1) }], 'milestones.0.dueDate: Due date cannot be in the past'],
     ['decreasing dates', () => [{ title: 'a', amount: 2_000_000, dueDate: inDays(10) }, { title: 'b', amount: 2_000_000, dueDate: inDays(9) }], 'milestones.1.dueDate: Due dates must not decrease'],
+    // No zod default message (`Required`, `Expected number, received string`) reaches the client.
+    ['a missing title', () => [{ amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.title: Title is required'],
+    ['a string amount', () => [{ title: 't', amount: '4000000', dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won'],
+    ['a missing amount', () => [{ title: 't', dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won'],
+    ['a missing due date', () => [{ title: 't', amount: 4_000_000 }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date'],
   ])('400s on %s with an exact message', async (_label, items, message) => {
     const { client, contract, milestone } = await makeContractScenario();
 
@@ -182,6 +187,18 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: { message } });
     expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
+  });
+
+  it.each<[string, Record<string, unknown>]>([
+    ['a body without milestones', {}],
+    ['milestones that are not a list', { milestones: 'x' }],
+  ])('400s on %s with the milestone count message', async (_label, body) => {
+    const { client, contract } = await makeContractScenario();
+
+    const res = await authed(client).put(`/api/contracts/${contract.id}/milestones`).send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'milestones: A contract must have between 1 and 10 milestones' } });
   });
 
   it('reports the first failing entry in array order: a past date on #0 wins over a blank title on #1', async () => {

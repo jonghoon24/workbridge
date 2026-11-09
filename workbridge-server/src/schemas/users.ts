@@ -17,7 +17,7 @@ import { normalizeSkillList } from '../lib/skills';
 
 export const PROFILE_MESSAGES = {
   experienceYears: 'Experience years must be a non-negative integer',
-  hourlyRate: 'Hourly rate must be a whole number of won',
+  hourlyRate: 'Hourly rate must be a positive whole number of won',
   hourlyRateMax: 'Hourly rate must be at most 100,000,000 won',
   skills: 'Skills must be strings',
 } as const;
@@ -52,16 +52,16 @@ const experienceYears = z.preprocess(
 );
 
 /**
- * Whole won, 0 to {@link MAX_HOURLY_RATE} (money rule: amounts are integers), as a JSON number or
- * a digit string (`'45000'`). `'45000.5'`, `-1`, `'abc'`, `''` and `null` are 400s. The
- * column is still a `Float` (known debt), so this is the only guard.
+ * Whole won, 1 to {@link MAX_HOURLY_RATE} (money rule: amounts are integers; a rate of 0 won is
+ * not a price), as a JSON number or a digit string (`'45000'`). `0`, `'45000.5'`, `-1`, `'abc'`,
+ * `''` and `null` are 400s. The column is still a `Float` (known debt), so this is the only guard.
  */
 const hourlyRate = z.preprocess(
   numericString(/^\d+$/),
   z
     .number({ invalid_type_error: PROFILE_MESSAGES.hourlyRate })
     .int(PROFILE_MESSAGES.hourlyRate)
-    .min(0, PROFILE_MESSAGES.hourlyRate)
+    .min(1, PROFILE_MESSAGES.hourlyRate)
     .max(MAX_HOURLY_RATE, PROFILE_MESSAGES.hourlyRateMax),
 );
 

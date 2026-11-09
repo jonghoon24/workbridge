@@ -14,6 +14,7 @@ import {
   getMyPayoutAccount,
   putMyPayoutAccount,
 } from '../controllers/payoutAccount.controller';
+import { AppError } from '../lib/errors';
 import { authenticate, requireRole } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
 import { upload } from '../middlewares/upload';
@@ -23,9 +24,18 @@ import { profileUpdateBodyByRole } from '../schemas/users';
 
 const router = Router();
 
-/** `PATCH /me` validates only the caller's role's fields; the other role's are stripped. */
+/**
+ * `PATCH /me` validates only the caller's role's fields; the other role's are stripped. A role with
+ * no schema (a token whose `role` claim is not `CLIENT`/`FREELANCER`) is refused like
+ * `requireRole` refuses it — never let through unvalidated.
+ */
 function validateProfileUpdate(req: Request, res: Response, next: NextFunction) {
-  return validate({ body: profileUpdateBodyByRole[req.user.role] })(req, res, next);
+  const role = req.user.role;
+  const body = Object.hasOwn(profileUpdateBodyByRole, role) ? profileUpdateBodyByRole[role] : undefined;
+  if (!body) {
+    return next(new AppError('Insufficient permissions', 403));
+  }
+  return validate({ body })(req, res, next);
 }
 
 router.get('/me', authenticate, getMe);

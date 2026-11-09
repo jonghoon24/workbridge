@@ -7,13 +7,24 @@ import { buildOpenApiDocument } from '../openapi/document';
  * `GET /api/docs` and `GET /api/openapi.json` — the API reference. Public, so these never read
  * `req.user`.
  *
- * Off in production (`VERCEL_ENV=production`): the document lists internal endpoints and every
- * error message, which is more than the public site needs. There the request leaves the router and
- * ends like an unmatched path — Express's HTML 404 — so the routes do not reveal they exist. Read
- * per request, like the other flags. Local, test and preview deployments serve them.
+ * On only where it is known to be safe (an allowlist, so a misconfigured deployment fails closed):
+ * a Vercel `preview` or `development` deployment, or — with no `VERCEL_ENV` at all — a process
+ * whose `NODE_ENV` is not `production` (local and test). Everywhere else (`VERCEL_ENV=production`,
+ * an unknown `VERCEL_ENV`, or no `VERCEL_ENV` with `NODE_ENV=production`) it is off: the document
+ * lists internal endpoints and every error message, which is more than the public site needs.
+ * There the request leaves the router and ends like an unmatched path — Express's HTML 404 — so
+ * the routes do not reveal they exist. Read per request, like the other flags.
  */
+const DOCS_VERCEL_ENVS = new Set(['preview', 'development']);
+
+function docsEnabled(): boolean {
+  const vercelEnv = env.VERCEL_ENV;
+  if (vercelEnv) return DOCS_VERCEL_ENVS.has(vercelEnv);
+  return env.NODE_ENV !== 'production';
+}
+
 export function requireDocsEnabled(_req: Request, _res: Response, next: NextFunction) {
-  if (env.VERCEL_ENV === 'production') {
+  if (!docsEnabled()) {
     return next('router');
   }
   next();
