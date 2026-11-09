@@ -133,7 +133,7 @@ describe('GET /api/projects', () => {
       const res = await api().get('/api/projects?status=BOGUS');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: expect.any(String) } });
+      expect(res.body).toEqual({ error: { message: 'status: must be one of ALL, UPCOMING, OPEN, CLOSED' } });
     });
 
     it('rejects a lowercase status with 400 — matching is case-sensitive', async () => {
@@ -151,10 +151,14 @@ describe('GET /api/projects', () => {
       },
     );
 
-    it('rejects an empty status value with 400 rather than defaulting', async () => {
+    // Rule 12: an empty query value is absent (Q13 settled).
+    it('treats an empty status value as absent, defaulting to OPEN', async () => {
+      await threeStates();
+
       const res = await api().get('/api/projects?status=');
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      expect(titles(res.body)).toEqual(['Open one']);
     });
   });
 
@@ -223,7 +227,7 @@ describe('GET /api/projects', () => {
       const res = await api().get('/api/projects?sort=cheapest');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: expect.any(String) } });
+      expect(res.body).toEqual({ error: { message: 'sort: must be one of latest, deadline, budget' } });
     });
 
     it('rejects a lowercase-only alias like createdAt with 400', async () => {
@@ -232,10 +236,14 @@ describe('GET /api/projects', () => {
       expect(res.status).toBe(400);
     });
 
-    it('rejects an empty sort value with 400 rather than defaulting', async () => {
+    // Rule 12: an empty query value is absent (Q13 settled).
+    it('treats an empty sort value as absent, defaulting to latest', async () => {
+      await sortFixtures();
+
       const res = await api().get('/api/projects?sort=');
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      expect(titles(res.body)).toEqual(['C', 'B', 'A']);
     });
   });
 
@@ -344,44 +352,43 @@ describe('GET /api/projects', () => {
     });
 
     it.each([
-      ['page=0', '?page=0'],
-      ['page=-1', '?page=-1'],
-      ['page=abc', '?page=abc'],
-      ['page= (empty)', '?page='],
-      ['limit=0', '?limit=0'],
-      ['limit=-5', '?limit=-5'],
-      ['limit=abc', '?limit=abc'],
-      ['limit= (empty)', '?limit='],
-    ])('rejects %s with 400', async (_label, query) => {
+      ['page=0', '?page=0', 'page: must be at least 1'],
+      ['page=-1', '?page=-1', 'page: must be at least 1'],
+      ['page=abc', '?page=abc', 'page: must be an integer'],
+      ['limit=0', '?limit=0', 'limit: must be at least 1'],
+      ['limit=-5', '?limit=-5', 'limit: must be at least 1'],
+      ['limit=abc', '?limit=abc', 'limit: must be an integer'],
+      // Rule 12: a fractional value or trailing garbage is not an integer (`parseInt` used to
+      // truncate them, #37).
+      ['a fractional page', '?page=1.5', 'page: must be an integer'],
+      ['a fractional limit', '?limit=2.7', 'limit: must be an integer'],
+      ['a trailing-garbage page like 3abc', '?page=3abc', 'page: must be an integer'],
+      // Bounded like CT2, so `skip` cannot overflow into a Prisma 500.
+      ['a page above 1,000,000', '?page=1000001', 'page: must be at most 1000000'],
+    ])('rejects %s with 400', async (_label, query, message) => {
       const res = await api().get(`/api/projects${query}`);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: expect.any(String) } });
+      expect(res.body).toEqual({ error: { message } });
     });
 
-    // 알려진 불일치 — #37
-    // No D-number: BEHAVIOR.md says "non-positive or non-integer → 400", but the code runs
-    // `Number.parseInt`, which truncates "1.5" to 1 and then finds it a valid positive
-    // integer. So a fractional page/limit is silently accepted instead of rejected.
-    it.fails('rejects a fractional page with 400 [unlisted]', async () => {
-      const res = await api().get('/api/projects?page=1.5');
+    // Rule 12: an empty query value is absent (Q13 settled).
+    it('treats empty page and limit values as absent, using the defaults', async () => {
+      await makeManyProjects(clientId, 12);
 
-      expect(res.status).toBe(400);
+      const res = await api().get('/api/projects?page=&limit=');
+
+      expect(res.status).toBe(200);
+      expect(res.body.meta).toMatchObject({ page: 1, limit: 10 });
+      expect(res.body.projects).toHaveLength(10);
     });
 
-    // 알려진 불일치 — #37
-    it.fails('rejects a fractional limit with 400 [unlisted]', async () => {
-      const res = await api().get('/api/projects?limit=2.7');
+    it('accepts the largest allowed page, returning an empty page', async () => {
+      const res = await api().get('/api/projects?page=1000000&limit=50');
 
-      expect(res.status).toBe(400);
-    });
-
-    // 알려진 불일치 — #37
-    // Same root cause: parseInt stops at the first non-digit, so "3abc" becomes 3.
-    it.fails('rejects a trailing-garbage page like 3abc with 400 [unlisted]', async () => {
-      const res = await api().get('/api/projects?page=3abc');
-
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(200);
+      expect(res.body.projects).toEqual([]);
+      expect(res.body.meta.page).toBe(1_000_000);
     });
   });
 
@@ -550,7 +557,7 @@ describe('GET /api/projects', () => {
       const res = await api().get('/api/projects?minBudget=9000000&maxBudget=1000000');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: expect.any(String) } });
+      expect(res.body).toEqual({ error: { message: 'minBudget: must not be greater than maxBudget' } });
     });
 
     it('allows minBudget equal to maxBudget', async () => {
@@ -561,15 +568,18 @@ describe('GET /api/projects', () => {
     });
 
     it.each([
-      ['non-numeric minBudget', '?minBudget=abc'],
-      ['non-numeric maxBudget', '?maxBudget=abc'],
-      ['negative minBudget', '?minBudget=-1'],
-      ['negative maxBudget', '?maxBudget=-1'],
-    ])('rejects %s with 400', async (_label, query) => {
+      ['non-numeric minBudget', '?minBudget=abc', 'minBudget: must be a number'],
+      ['non-numeric maxBudget', '?maxBudget=abc', 'maxBudget: must be a number'],
+      ['negative minBudget', '?minBudget=-1', 'minBudget: must be at least 0'],
+      ['negative maxBudget', '?maxBudget=-1', 'maxBudget: must be at least 0'],
+      // Rule 12: trailing garbage is not a number (`parseFloat` used to truncate it).
+      ['trailing-garbage minBudget', '?minBudget=3abc', 'minBudget: must be a number'],
+      ['an exponent maxBudget', '?maxBudget=1e6', 'maxBudget: must be a number'],
+    ])('rejects %s with 400', async (_label, query, message) => {
       const res = await api().get(`/api/projects${query}`);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: expect.any(String) } });
+      expect(res.body).toEqual({ error: { message } });
     });
 
     it('ignores empty budget values instead of rejecting them', async () => {
@@ -618,13 +628,11 @@ describe('GET /api/projects', () => {
 
   /**
    * D16: `normalizeSkillList` calls `.trim()` on every element of an array, so a non-string
-   * element throws `TypeError: skill.trim is not a function` → 500 instead of the 400 that
-   * cross-cutting rule 8 requires. The D16 entry lists `PATCH /api/users/me` and the two project
-   * write paths — but this endpoint reaches the same function through `expandSkillSearchTerms`,
-   * and Express's default `qs` query parser can produce a nested array from a query string, so
-   * `GET /api/projects` is affected too.
+   * element used to throw `TypeError: skill.trim is not a function` → 500. Express's default `qs`
+   * parser can produce a nested array or an object from a query string, so this endpoint was
+   * affected too. `projectListQuery` now admits only a string or a list of strings → 400.
    */
-  describe('malformed skills input (D16)', () => {
+  describe('malformed skills input', () => {
     // Reading is unaffected: `requiredSkills` comes back from Postgres as-is and is never
     // normalized on this path, so odd-but-storable values list and filter normally. (The column
     // is `String[]`, so Prisma will not store a number or a null through the API at all.)
@@ -652,29 +660,37 @@ describe('GET /api/projects', () => {
       expect(titles(byLowercase.body)).toEqual(['Odd skills']);
     });
 
-    it('ignores a skills parameter that parses as an object rather than a list', async () => {
+    // qs turns `skills[a]=React` into `{ a: 'React' }`. It used to be stringified to
+    // '[object Object]' and match nothing; a malformed value is a 400 (rule 8).
+    it('rejects a skills parameter that parses as an object rather than a list with 400', async () => {
       await makeProject(clientId, { title: 'Normal', requiredSkills: ['React'] });
 
-      // qs turns `skills[a]=React` into `{ a: 'React' }`; `normalizeSkillList` is not given an
-      // array, so it stringifies to '[object Object]', matches nothing, and the filter is dropped.
       const res = await api().get('/api/projects?skills[a]=React');
 
-      expect(res.status).toBe(200);
-      expect(res.body.projects).toEqual([]);
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'skills: must be a string or a list of strings' } });
     });
 
-    // 알려진 불일치 D16 — #11
-    // Current behavior: `skills[0][0]=React` parses to `[['React']]`, so the element handed to
-    // `.trim()` is an array → `TypeError: skill.trim is not a function` → 500
-    // `{ error: { message: 'skill.trim is not a function' } }`. Same defect as D16, on the read
-    // path rather than a write path.
-    it.fails('[D16] rejects a nested skills array parameter with 400 rather than 500', async () => {
+    // `skills[0][0]=React` parses to `[['React']]`. It used to reach `.trim()` in
+    // `normalizeSkillList` → `TypeError` → 500 (D16 on the read path).
+    it('rejects a nested skills array parameter with 400 rather than 500', async () => {
       await makeProject(clientId, { title: 'Normal', requiredSkills: ['React'] });
 
       const res = await api().get('/api/projects?skills[0][0]=React');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: expect.any(String) } });
+      expect(res.body).toEqual({ error: { message: 'skills: must be a string or a list of strings' } });
+    });
+
+    it('reads a repeated skills parameter as a list, like a comma-separated one', async () => {
+      await makeProject(clientId, { title: 'Front', requiredSkills: ['React'] });
+      await makeProject(clientId, { title: 'Back', requiredSkills: ['SQL'] });
+      await makeProject(clientId, { title: 'Other', requiredSkills: ['Go'] });
+
+      const res = await api().get('/api/projects?skills=React&skills=PostgreSQL');
+
+      expect(res.status).toBe(200);
+      expect(titles(res.body).sort()).toEqual(['Back', 'Front']);
     });
   });
 
@@ -833,68 +849,25 @@ describe('GET /api/projects', () => {
 
   // ------------------------------------------------- repeated query params ----
 
+  /**
+   * Rule 12: a repeated parameter is a 400, even when one of the values is valid (Q12 settled —
+   * the listing used to fall back to the default). `skills` is the exception: it is a list.
+   */
   describe('repeated query parameters', () => {
-    it('falls back to page 1 for ?page=1&page=2', async () => {
-      await makeManyProjects(clientId, 12);
+    it.each([
+      ['page', '?page=1&page=2'],
+      ['limit', '?limit=1&limit=2'],
+      ['sort', '?sort=latest&sort=budget'],
+      ['status', '?status=CLOSED&status=ALL'],
+      ['search', '?search=nomatch&search=other'],
+      ['category', '?category=None&category=Ops'],
+      ['minBudget', '?minBudget=99999999&minBudget=1'],
+      ['maxBudget', '?maxBudget=1&maxBudget=2'],
+    ])('rejects a repeated %s with 400', async (field, query) => {
+      const res = await api().get(`/api/projects${query}`);
 
-      const res = await api().get('/api/projects?page=1&page=2');
-
-      expect(res.status).toBe(200);
-      expect(res.body.meta.page).toBe(1);
-      expect(titles(res.body)[0]).toBe('Bulk project 0');
-    });
-
-    it('falls back to limit 10 for a repeated limit', async () => {
-      await makeManyProjects(clientId, 12);
-
-      const res = await api().get('/api/projects?limit=1&limit=2');
-
-      expect(res.status).toBe(200);
-      expect(res.body.meta.limit).toBe(10);
-      expect(res.body.projects).toHaveLength(10);
-    });
-
-    it('falls back to the default sort for ?sort=a&sort=b instead of erroring', async () => {
-      await makeProject(clientId, { title: 'Older', createdAt: new Date(Date.now() - 5_000) });
-      await makeProject(clientId, { title: 'Newer', createdAt: new Date(Date.now() - 1_000) });
-
-      const res = await api().get('/api/projects?sort=a&sort=b');
-
-      expect(res.status).toBe(200);
-      expect(titles(res.body)).toEqual(['Newer', 'Older']);
-    });
-
-    it('falls back to the default status for a repeated status, even if one value is valid', async () => {
-      await makeProject(clientId, { title: 'Open one' });
-      await makeProject(clientId, {
-        title: 'Closed one',
-        status: 'CLOSED',
-        deadline: daysFromNow(30),
-      });
-
-      const res = await api().get('/api/projects?status=CLOSED&status=ALL');
-
-      expect(res.status).toBe(200);
-      expect(titles(res.body)).toEqual(['Open one']);
-    });
-
-    it('ignores repeated search, category and budget parameters', async () => {
-      await makeProject(clientId, { title: 'Only one', category: 'Ops', budget: 3_000_000 });
-
-      const res = await api().get(
-        '/api/projects?search=nomatch&search=other&category=None&category=Ops'
-        + '&minBudget=99999999&minBudget=1',
-      );
-
-      expect(res.status).toBe(200);
-      expect(titles(res.body)).toEqual(['Only one']);
-    });
-
-    it('does not reject a repeated invalid page value', async () => {
-      const res = await api().get('/api/projects?page=abc&page=-3');
-
-      expect(res.status).toBe(200);
-      expect(res.body.meta.page).toBe(1);
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: `${field}: must be a single value` } });
     });
   });
 
@@ -1041,8 +1014,8 @@ describe('GET /api/projects', () => {
         .toBe('PENDING');
     });
 
-    it('still closes expired projects when the request is later rejected with 400', async () => {
-      // The sweep runs before any query validation, so a 400 response is not side-effect free.
+    it('validates the query before sweeping, so a rejected request writes nothing', async () => {
+      // `validate()` runs before the controller, and the sweep is the controller's first step.
       const expired = await makeProject(clientId, {
         title: 'Expired',
         recruitmentStartDate: daysFromNow(-10),
@@ -1054,7 +1027,7 @@ describe('GET /api/projects', () => {
 
       expect(res.status).toBe(400);
       const after = await prisma.project.findUniqueOrThrow({ where: { id: expired.id } });
-      expect(after.status).toBe('CLOSED');
+      expect(after.status).toBe('OPEN');
     });
 
     it('is idempotent across repeated calls', async () => {

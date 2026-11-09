@@ -5,7 +5,8 @@ const SKILL_ALIASES: Record<string, string> = {
 };
 
 export function normalizeSkill(skill: string): string {
-  return SKILL_ALIASES[skill] || skill;
+  // Own keys only: `SKILL_ALIASES.constructor` is inherited from Object.prototype.
+  return Object.hasOwn(SKILL_ALIASES, skill) ? SKILL_ALIASES[skill] : skill;
 }
 
 export function normalizeSkillList(value: unknown): string[] {
@@ -22,13 +23,13 @@ export function normalizeSkillList(value: unknown): string[] {
 
 export function expandSkillSearchTerms(value: unknown): string[] {
   const canonicalSkills = normalizeSkillList(value);
-  const aliasesByCanonicalSkill = Object.entries(SKILL_ALIASES)
-    .reduce<Record<string, string[]>>((acc, [alias, canonical]) => {
-      acc[canonical] = [...(acc[canonical] || []), alias];
-      return acc;
-    }, {});
+  // A Map, not an object literal, so a skill named `constructor` finds no aliases.
+  const aliasesByCanonicalSkill = new Map<string, string[]>();
+  for (const [alias, canonical] of Object.entries(SKILL_ALIASES)) {
+    aliasesByCanonicalSkill.set(canonical, [...(aliasesByCanonicalSkill.get(canonical) ?? []), alias]);
+  }
 
   return [
-    ...new Set(canonicalSkills.flatMap((skill) => [skill, ...(aliasesByCanonicalSkill[skill] || [])])),
+    ...new Set(canonicalSkills.flatMap((skill) => [skill, ...(aliasesByCanonicalSkill.get(skill) ?? [])])),
   ];
 }

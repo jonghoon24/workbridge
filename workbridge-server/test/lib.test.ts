@@ -115,12 +115,10 @@ describe('normalizeSkill', () => {
     expect(normalizeSkill('')).toBe('');
   });
 
-  // 알려진 불일치 — #37
-  // The lookup is a bare object literal, so inherited Object.prototype members are
-  // truthy hits: `SKILL_ALIASES['constructor']` returns the Object constructor, not
-  // undefined. Intended behavior is "unknown skills pass through unchanged", so this
-  // asserts the intent and fails today. Listed under BEHAVIOR.md "Found by the suite".
-  it.fails('passes a skill named like an Object.prototype member through unchanged [unlisted]', () => {
+  // The lookup is a bare object literal, so inherited Object.prototype members used to be
+  // truthy hits: `SKILL_ALIASES['constructor']` returned the Object constructor (#37). Only own
+  // keys are aliases now.
+  it('passes a skill named like an Object.prototype member through unchanged', () => {
     expect(normalizeSkill('constructor')).toBe('constructor');
     expect(normalizeSkill('toString')).toBe('toString');
   });
@@ -196,11 +194,9 @@ describe('normalizeSkillList', () => {
     expect(() => normalizeSkillList([1, 2])).toThrow(TypeError);
   });
 
-  // 알려진 불일치 — #37
-  // Same Object.prototype leak as `normalizeSkill`, with a worse consequence: the
-  // returned array is typed `string[]` but contains a function, which then reaches
-  // Prisma as a `String[]` column value.
-  it.fails('returns only strings for a skill named like an Object.prototype member [unlisted]', () => {
+  // Same Object.prototype leak as `normalizeSkill`, with a worse consequence: the returned array
+  // was typed `string[]` but contained a function, which then reached Prisma (#37).
+  it('returns only strings for a skill named like an Object.prototype member', () => {
     expect(normalizeSkillList(['constructor'])).toEqual(['constructor']);
     expect(normalizeSkillList('valueOf').every((s) => typeof s === 'string')).toBe(true);
   });
@@ -218,6 +214,10 @@ describe('expandSkillSearchTerms', () => {
     expect(terms).toContain('PostgreSQL');
     expect(terms).toContain('MySQL');
     expect(terms).toHaveLength(3);
+  });
+
+  it('expands a skill named like an Object.prototype member to just itself', () => {
+    expect(expandSkillSearchTerms(['constructor', 'toString'])).toEqual(['constructor', 'toString']);
   });
 
   it('puts the canonical skill first, then its aliases', () => {

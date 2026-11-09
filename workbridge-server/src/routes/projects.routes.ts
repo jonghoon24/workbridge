@@ -19,19 +19,37 @@ import { rateLimit } from '../middlewares/rateLimit';
 import { validate } from '../middlewares/validate';
 import { ANALYZE_DAILY_RULE, ANALYZE_HOURLY_RULE } from '../lib/rateLimitRules';
 import { recommendationQuery } from '../schemas/profile';
+import { projectCreateBody, projectListQuery, projectStatusBody, projectUpdateBody } from '../schemas/projects';
 
 const router = Router();
 
-router.get('/', getProjects);
-router.post('/', authenticate, requireRole('CLIENT'), requireCompleteProfile, createProject);
+// Pre-existing routes: `authenticate` only, no `requireActiveUser` — 알려진 불일치 D12 (#7).
+// Validation (rule 12) runs after the role and profile guards and before the controller's
+// 404/403 checks.
+router.get('/', validate({ query: projectListQuery }), getProjects);
+router.post(
+  '/',
+  authenticate,
+  requireRole('CLIENT'),
+  requireCompleteProfile,
+  validate({ body: projectCreateBody }),
+  createProject,
+);
 router.get('/:id/bookmark', authenticate, requireRole('FREELANCER'), getProjectBookmark);
 router.post('/:id/bookmark', authenticate, requireRole('FREELANCER'), createProjectBookmark);
 router.delete('/:id/bookmark', authenticate, requireRole('FREELANCER'), deleteProjectBookmark);
 router.get('/:id', getProjectById);
-router.patch('/:id', authenticate, requireRole('CLIENT'), updateProject);
+router.patch('/:id', authenticate, requireRole('CLIENT'), validate({ body: projectUpdateBody }), updateProject);
 router.delete('/:id', authenticate, requireRole('CLIENT'), deleteProject);
-router.patch('/:id/status', authenticate, requireRole('CLIENT'), updateProjectStatus);
+router.patch(
+  '/:id/status',
+  authenticate,
+  requireRole('CLIENT'),
+  validate({ body: projectStatusBody }),
+  updateProjectStatus,
+);
 // Limited before the project lookup: the OpenAI cost is per request, so 404/403/502 count too.
+// The route takes no body or query, so there is nothing to validate.
 router.post(
   '/:id/analyze',
   authenticate,
