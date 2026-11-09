@@ -1,4 +1,4 @@
-// 알림 설정(BEHAVIOR.md NC2, NC5)의 한국어 라벨. 서버는 type과 category 코드만 준다.
+// 알림 설정의 한국어 라벨. 서버는 type과 category 코드만 준다.
 import { toUserMessage } from '@/lib/errorMessages';
 
 export const CATEGORY_LABELS = {
@@ -38,7 +38,7 @@ export function typeLabel(type) {
   return TYPE_LABELS[type] || { label: type, description: '' };
 }
 
-// 알림 설정의 예측 가능한 서버 오류(BEHAVIOR.md NC6). 나머지는 공용 변환표가 맡는다.
+// 알림 설정의 예측 가능한 서버 오류. 나머지는 공용 변환표가 맡는다.
 const SERVER_ERROR_PATTERNS = [
   [/in-app notifications cannot be disabled$/, '필수 알림은 앱 알림을 끌 수 없습니다.'],
   [/email notifications cannot be disabled$/, '필수 알림은 이메일을 끌 수 없습니다.'],

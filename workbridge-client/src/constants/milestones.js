@@ -1,4 +1,4 @@
-// 서버 명세(BEHAVIOR.md M8, M10, M18)의 한도. 화면 검사는 안내용이고 최종 판단은 서버가 한다.
+// 서버 명세의 한도. 화면 검사는 안내용이고 최종 판단은 서버가 한다.
 export const MILESTONE_LIMITS = {
   minCount: 1,
   maxCount: 10,
@@ -14,7 +14,7 @@ export const MILESTONE_LIMITS = {
   reasonMax: 2000,
 };
 
-// rule 12 첨부 정책(이미지, PDF, ZIP, 텍스트, 오피스 문서, HWP)
+// 첨부 정책(이미지, PDF, ZIP, 텍스트, 오피스 문서, HWP)
 export const ATTACHMENT_ACCEPT =
   'image/*,.pdf,.zip,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.hwp';
 
@@ -41,7 +41,7 @@ export const SETTLEMENT_STATUS_LABELS = {
   ON_HOLD: '지급 보류',
 };
 
-// 지급 시도는 최대 3회(BEHAVIOR.md M22). 남은 시도가 있는 FAILED는 재시도 대기다.
+// 지급 시도는 최대 3회. 남은 시도가 있는 FAILED는 재시도 대기다.
 export const MAX_PAYOUT_ATTEMPTS = 3;
 
 export const CONTRACT_STATUS_LABELS = {

@@ -8,7 +8,7 @@ import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { LockIcon } from '@/components/ui/Icons';
 
-// 추천 프로젝트 전체 보기(BEHAVIOR.md RC6–RC8, 최대 20개). 프리랜서 전용이다.
+// 추천 프로젝트 전체 보기(최대 20개). 프리랜서 전용이다.
 export default function MyRecommendationsPage() {
   const [role, setRole] = useState(undefined);
 

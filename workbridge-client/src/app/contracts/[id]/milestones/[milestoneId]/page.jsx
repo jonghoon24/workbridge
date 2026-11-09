@@ -104,7 +104,7 @@ export default function MilestoneDetailPage() {
   const isFreelancer = currentUser?.id === contract.freelancerId;
   const canSubmit = isFreelancer && ['FUNDED', 'REVISION_REQUESTED'].includes(milestone.status);
   const canReview = isClient && milestone.status === 'SUBMITTED';
-  // 앞선 마일스톤이 PENDING이면 서버가 400 `Earlier milestones must be funded first`로 막는다(M13).
+  // 앞선 마일스톤이 PENDING이면 서버가 400 `Earlier milestones must be funded first`로 막는다.
   const canPay = isClient && contract.status === 'ACTIVE' && milestone.status === 'PENDING';
   const remaining = milestone.status === 'SUBMITTED' ? formatRemaining(milestone.autoApproveAt) : null;
   const submissions = milestone.submissions || [];

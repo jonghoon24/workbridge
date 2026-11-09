@@ -2,7 +2,7 @@
 import { formatDate, toKstDateInput } from '@/lib/format';
 import { toUserMessage } from '@/lib/errorMessages';
 
-// BEHAVIOR.md MG1. 화면 검사는 안내용이고 최종 판단은 서버가 한다.
+// 메시지 입력 한도. 화면 검사는 안내용이고 최종 판단은 서버가 한다.
 export const MESSAGE_LIMITS = {
   bodyMax: 5000,
   filesMax: 5,
@@ -11,7 +11,7 @@ export const MESSAGE_LIMITS = {
   pageSize: 30,
 };
 
-// MG20: 열린 대화방은 5초, 안 읽은 수 배지는 30초.
+// 열린 대화방은 5초, 안 읽은 수 배지는 30초.
 export const THREAD_POLL_MS = 5000;
 export const BADGE_POLL_MS = 30000;
 // 목록 화면은 명세에 주기가 없다. 배지보다 자주, 스레드보다 드물게.
@@ -29,7 +29,7 @@ export const CLOSED_REASON_TEXT = {
   COUNTERPART_INACTIVE: '상대방이 탈퇴하여 더 이상 메시지를 보낼 수 없습니다.',
 };
 
-// 메시지 화면에서만 다르게 안내할 서버 오류(MG9, MG15, MG17). 나머지는 공용 변환표가 맡는다.
+// 메시지 화면에서만 다르게 안내할 서버 오류. 나머지는 공용 변환표가 맡는다.
 const ERROR_TEXT = {
   'This conversation is closed': CLOSED_REASON_TEXT.CONTRACT_CLOSED,
   'The other participant is no longer active': CLOSED_REASON_TEXT.COUNTERPART_INACTIVE,
@@ -86,7 +86,7 @@ export function previewText(message) {
 }
 
 // 서버가 준 readByCounterpart는 응답 시점 값이다. 상대 워터마크가 그 뒤에 올라가도 바로
-// 표시되도록 대화방 상세의 counterpartLastReadAt으로 다시 계산한다(MG4와 같은 비교).
+// 표시되도록 대화방 상세의 counterpartLastReadAt으로 다시 계산한다(삭제 판정과 같은 비교).
 export function isReadByCounterpart(message, counterpartLastReadAt) {
   if (message.readByCounterpart === null || message.readByCounterpart === undefined) return null;
   if (message.readByCounterpart) return true;

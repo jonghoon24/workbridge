@@ -16,7 +16,7 @@ function DecisionLabel({ submission }) {
   return <span className="text-xs font-medium text-orange-700 bg-orange-50 rounded px-2 py-0.5">수정 요청</span>;
 }
 
-// 제출 이력(round 내림차순, BEHAVIOR.md MS11). 첨부 url은 공개 버킷 주소다(DECISIONS: 첨부 파일).
+// 제출 이력(round 내림차순). 첨부 url은 공개 버킷 주소다(DECISIONS: 첨부 파일).
 export default function SubmissionHistory({ submissions = [] }) {
   if (submissions.length === 0) {
     return <p className="text-sm text-gray-500">아직 제출한 결과물이 없습니다.</p>;

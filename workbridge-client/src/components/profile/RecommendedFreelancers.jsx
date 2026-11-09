@@ -7,7 +7,7 @@ import Card from '@/components/ui/Card';
 import ProfileImage from './ProfileImage';
 import Tag from '@/components/ui/Tag';
 
-// 프로젝트에 맞는 프리랜서 추천(BEHAVIOR.md RC3–RC5). 이 프로젝트에 이미 지원한 사람은 서버가 뺀다.
+// 프로젝트에 맞는 프리랜서 추천. 이 프로젝트에 이미 지원한 사람은 서버가 뺀다.
 export default function RecommendedFreelancers({ projectId, limit = 10 }) {
   const [freelancers, setFreelancers] = useState(null);
   const [error, setError] = useState('');

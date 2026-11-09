@@ -27,7 +27,7 @@ const NEAR_TOP_PX = 40;
 /** `after` 폴링에서 hasMore가 이어질 때 한 번에 따라잡는 최대 횟수. */
 const MAX_CATCH_UP_PAGES = 5;
 
-// 대화 스레드(BEHAVIOR.md MG13–MG17, MG20). 처음에 최신 30개를 불러오고, 위로 스크롤하면
+// 대화 스레드. 처음에 최신 30개를 불러오고, 위로 스크롤하면
 // `before`로 이전 메시지를, 탭이 보이는 동안 5초마다 `after`로 새 메시지를 가져온다. 상대 메시지가
 // 화면에 보이면 `POST /read`를 부르고 헤더 배지에 알린다. 읽기만으로는 서버가 읽음 처리하지 않는다.
 export default function MessageThread({ conversationId }) {
@@ -197,7 +197,7 @@ export default function MessageThread({ conversationId }) {
       notifyMessagesChanged();
     } catch (err) {
       if (err.response?.status === 409) {
-        // 그사이 대화가 닫혔거나 상대가 탈퇴했다(MG9). 입력창을 이유로 바꾼다.
+        // 그사이 대화가 닫혔거나 상대가 탈퇴했다. 입력창을 이유로 바꾼다.
         api.get(base).then(({ data }) => setConversation(data.conversation)).catch(() => {});
       }
       const wrapped = new Error('send failed');

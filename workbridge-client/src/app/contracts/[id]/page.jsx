@@ -47,7 +47,7 @@ export default function ContractPage() {
       .finally(() => setLoading(false));
   }, [loadContract, router]);
 
-  // 계약의 대화방과 안 읽은 메시지 수(BEHAVIOR.md MG18). 대화방이 없으면(데이터 복구 상황) 버튼을 숨긴다.
+  // 계약의 대화방과 안 읽은 메시지 수. 대화방이 없으면(데이터 복구 상황) 버튼을 숨긴다.
   useEffect(() => {
     let ignored = false;
     api.get(`/api/contracts/${id}/conversation`)
@@ -173,7 +173,7 @@ export default function ContractPage() {
   const milestones = contract.milestones || [];
   const summary = contract.milestoneSummary || {};
   const contractAmount = summary.contractAmount ?? Math.round(contract.amount || 0);
-  // 결제는 sequence 순서대로만 할 수 있으므로(M13) 결제 버튼은 첫 PENDING 마일스톤에만 둔다.
+  // 결제는 sequence 순서대로만 할 수 있으므로 결제 버튼은 첫 PENDING 마일스톤에만 둔다.
   const nextFundable = contract.status === 'ACTIVE'
     ? milestones.find((milestone) => milestone.status === 'PENDING')
     : null;

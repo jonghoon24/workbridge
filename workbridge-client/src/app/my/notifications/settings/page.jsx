@@ -36,12 +36,12 @@ function Toggle({ checked, disabled, onChange, label }) {
   );
 }
 
-// 잠긴 채널의 안내 문구. 잠긴 채널은 켜진 채로 고정이고, 메시지 요약의 앱 알림만 꺼진 채로 고정이다(NC2).
+// 잠긴 채널의 안내 문구. 잠긴 채널은 켜진 채로 고정이고, 메시지 요약의 앱 알림만 꺼진 채로 고정이다.
 function lockHint(on) {
   return on ? '필수 알림' : '이메일 전용';
 }
 
-// 알림 설정(BEHAVIOR.md NC5–NC8). 저장은 화면의 배열 전체를 PUT한다. 잠긴 채널은 자기 값 그대로라
+// 알림 설정. 저장은 화면의 배열 전체를 PUT한다. 잠긴 채널은 자기 값 그대로라
 // 서버가 바꾸지 않고 통과시킨다.
 export default function NotificationSettingsPage() {
   const [preferences, setPreferences] = useState([]);

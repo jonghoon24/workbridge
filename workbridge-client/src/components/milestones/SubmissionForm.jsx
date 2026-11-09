@@ -17,8 +17,8 @@ function isHttpUrl(value) {
   }
 }
 
-// 결과물 제출(BEHAVIOR.md MS12). multipart로 message, links(반복 필드), files를 보낸다.
-// 화면 검사는 M18 한도를 미리 알려주는 용도이고, 파일 형식은 서버가 판단한다.
+// 결과물 제출. multipart로 message, links(반복 필드), files를 보낸다.
+// 화면 검사는 마일스톤 한도를 미리 알려주는 용도이고, 파일 형식은 서버가 판단한다.
 export default function SubmissionForm({ milestoneId, isResubmission = false, onSubmitted }) {
   const [message, setMessage] = useState('');
   const [links, setLinks] = useState(['']);

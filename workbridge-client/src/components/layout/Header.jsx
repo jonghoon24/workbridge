@@ -130,7 +130,7 @@ export default function Header() {
     };
   }, [userId]);
 
-  // 안 읽은 메시지 수(BEHAVIOR.md MG12, MG20): 30초마다(탭이 보일 때만), 그리고 스레드를 읽거나
+  // 안 읽은 메시지 수: 30초마다(탭이 보일 때만), 그리고 스레드를 읽거나
   // 메시지를 보냈을 때(`messages:changed`) 다시 센다.
   const refreshUnreadMessages = useCallback(() => {
     if (!userId) return;

@@ -124,7 +124,7 @@ export default function UserProfilePage() {
         )}
       </Card>
 
-      {/* Portfolio and careers (BEHAVIOR.md PF18, C10) */}
+      {/* Portfolio and careers */}
       {user.portfolioItems?.length > 0 && (
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">포트폴리오</h2>

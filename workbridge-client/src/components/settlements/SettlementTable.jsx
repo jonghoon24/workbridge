@@ -6,7 +6,7 @@ import { formatDate, formatKRW } from '@/lib/format';
 import EmptyState from '@/components/ui/EmptyState';
 import { WalletIcon } from '@/components/ui/Icons';
 
-// 정산 기간은 월 00:00 ~ 다음 월 00:00(미포함, M19)이라 끝 날짜는 하루 전(일요일)으로 보여준다.
+// 정산 기간은 월 00:00 ~ 다음 월 00:00(미포함)이라 끝 날짜는 하루 전(일요일)으로 보여준다.
 export function formatPeriod(settlement) {
   const lastDay = new Date(new Date(settlement.periodEnd).getTime() - 1);
   return `${formatDate(settlement.periodStart)} ~ ${formatDate(lastDay)}`;
