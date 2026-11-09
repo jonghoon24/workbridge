@@ -68,7 +68,7 @@ export default function NotificationsPage() {
         setUnreadCount(data.unreadCount || 0);
       })
       .catch((err) => {
-        setError(toUserMessage(err, '알림을 불러오지 못했습니다'));
+        setError(toUserMessage(err, '알림을 불러오지 못했습니다.'));
       })
       .finally(() => {
         setLoading(false);
@@ -94,7 +94,7 @@ export default function NotificationsPage() {
       setUnreadCount((prev) => Math.max(prev - 1, 0));
       window.dispatchEvent(new Event('notifications:changed'));
     } catch (err) {
-      setError(toUserMessage(err, '알림 상태를 변경하지 못했습니다'));
+      setError(toUserMessage(err, '알림 상태를 변경하지 못했습니다.'));
     } finally {
       setUpdating('');
     }
@@ -111,7 +111,7 @@ export default function NotificationsPage() {
       setUnreadCount(0);
       window.dispatchEvent(new Event('notifications:changed'));
     } catch (err) {
-      setError(toUserMessage(err, '알림 상태를 변경하지 못했습니다'));
+      setError(toUserMessage(err, '알림 상태를 변경하지 못했습니다.'));
     } finally {
       setUpdating('');
     }

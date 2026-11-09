@@ -58,7 +58,7 @@ export default function NotificationSettingsPage() {
         setPreferences(data.preferences || []);
         setSaved(data.preferences || []);
       })
-      .catch((err) => setError(describePreferenceError(err, '알림 설정을 불러오지 못했습니다')))
+      .catch((err) => setError(describePreferenceError(err, '알림 설정을 불러오지 못했습니다.')))
       .finally(() => setLoading(false));
   }, []);
 
@@ -91,9 +91,9 @@ export default function NotificationSettingsPage() {
       const { data } = await api.put('/api/notifications/preferences', { preferences: body });
       setPreferences(data.preferences);
       setSaved(data.preferences);
-      setSuccess('알림 설정을 저장했습니다');
+      setSuccess('알림 설정을 저장했습니다.');
     } catch (err) {
-      setError(describePreferenceError(err, '알림 설정을 저장하지 못했습니다'));
+      setError(describePreferenceError(err, '알림 설정을 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }

@@ -38,7 +38,7 @@ export default function RejectModal({ isOpen, milestone, onClose, onSubmit }) {
     try {
       await onSubmit(reason.trim());
     } catch (err) {
-      setError(toUserMessage(err, '수정 요청을 보내지 못했습니다'));
+      setError(toUserMessage(err, '수정 요청을 보내지 못했습니다.'));
     } finally {
       setSubmitting(false);
     }

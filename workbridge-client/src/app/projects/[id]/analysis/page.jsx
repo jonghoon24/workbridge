@@ -29,7 +29,7 @@ export default function AnalysisPage() {
           setAnalysis(data.pricingAnalysis);
         }
       })
-      .catch((err) => setError(toUserMessage(err, '프로젝트를 불러오지 못했습니다')))
+      .catch((err) => setError(toUserMessage(err, '프로젝트를 불러오지 못했습니다.')))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -42,7 +42,7 @@ export default function AnalysisPage() {
       setAnalysis(data);
       setProject((prev) => (prev ? { ...prev, pricingAnalysis: data } : prev));
     } catch (err) {
-      setError(toUserMessage(err, 'AI 분석에 실패했습니다'));
+      setError(toUserMessage(err, 'AI 분석에 실패했습니다.'));
     } finally {
       setAnalyzing(false);
     }
@@ -60,9 +60,9 @@ export default function AnalysisPage() {
     try {
       const { data } = await api.patch(`/api/projects/${id}`, { budget: analysis.totalAmount });
       setProject((prev) => (prev ? { ...prev, ...data } : data));
-      setSuccess('제안된 예산이 프로젝트 예산에 반영되었습니다');
+      setSuccess('제안된 예산이 프로젝트 예산에 반영되었습니다.');
     } catch (err) {
-      setError(toUserMessage(err, '제안된 예산 반영에 실패했습니다'));
+      setError(toUserMessage(err, '제안된 예산 반영에 실패했습니다.'));
     } finally {
       setApplyingBudget(false);
     }
@@ -79,10 +79,10 @@ export default function AnalysisPage() {
   const isBudgetApplied = hasSuggestedBudget && Math.round(currentBudget) === Math.round(suggestedBudget);
   const canApplySuggestedBudget = isOwner && hasSuggestedBudget && !hasApplications && !isBudgetApplied;
   const budgetApplyMessage = (() => {
-    if (!hasSuggestedBudget) return '분석 결과의 총 단가를 확인할 수 없습니다';
-    if (hasApplications) return '지원자가 있는 프로젝트는 예산을 변경할 수 없습니다';
-    if (isBudgetApplied) return '제안된 예산이 현재 프로젝트 예산과 같습니다';
-    return 'AI가 산정한 총 단가를 프로젝트 예산으로 저장할 수 있습니다';
+    if (!hasSuggestedBudget) return '분석 결과의 총 단가를 확인할 수 없습니다.';
+    if (hasApplications) return '지원자가 있는 프로젝트는 예산을 변경할 수 없습니다.';
+    if (isBudgetApplied) return '제안된 예산이 현재 프로젝트 예산과 같습니다.';
+    return 'AI가 산정한 총 단가를 프로젝트 예산으로 저장할 수 있습니다.';
   })();
 
   return (

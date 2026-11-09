@@ -38,7 +38,7 @@ export default function CareersManagePage() {
         setMe(data);
         if (data.role === 'FREELANCER') await load(data.id);
       })
-      .catch((err) => setError(describeProfileError(err, '경력을 불러오지 못했습니다')))
+      .catch((err) => setError(describeProfileError(err, '경력을 불러오지 못했습니다.')))
       .finally(() => setLoading(false));
   }, []);
 
@@ -50,7 +50,7 @@ export default function CareersManagePage() {
       await api.delete(`/api/users/me/careers/${career.id}`);
       await load(me.id);
     } catch (err) {
-      setError(describeProfileError(err, '경력을 삭제하지 못했습니다'));
+      setError(describeProfileError(err, '경력을 삭제하지 못했습니다.'));
       await load(me.id).catch(() => {});
     } finally {
       setBusy(false);
@@ -59,7 +59,7 @@ export default function CareersManagePage() {
 
   async function handleSaved() {
     setModal({ open: false, career: null });
-    await load(me.id).catch(() => setError('목록을 새로 불러오지 못했습니다'));
+    await load(me.id).catch(() => setError('목록을 새로 불러오지 못했습니다.'));
   }
 
   if (loading) return <PageLoader />;

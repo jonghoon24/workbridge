@@ -33,7 +33,7 @@ export default function SelectRolePage() {
     setError('');
 
     if (!role) {
-      setError('역할을 선택해 주세요');
+      setError('역할을 선택해 주세요.');
       return;
     }
 
@@ -43,7 +43,7 @@ export default function SelectRolePage() {
       setAuth(data.user, data.accessToken);
       router.push('/profile');
     } catch (err) {
-      setError(toUserMessage(err, '역할 선택에 실패했습니다'));
+      setError(toUserMessage(err, '역할 선택에 실패했습니다.'));
     } finally {
       setLoading(false);
     }

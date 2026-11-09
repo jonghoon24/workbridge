@@ -20,7 +20,7 @@ export default function NewProjectPage() {
     api.get('/api/users/me')
       .then(({ data }) => setProfile(data))
       .catch((err) => {
-        setError(toUserMessage(err, '프로필을 불러오지 못했습니다'));
+        setError(toUserMessage(err, '프로필을 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, []);

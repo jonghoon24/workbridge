@@ -23,7 +23,7 @@ export default function MyProjectsPage() {
     api.get('/api/users/me/projects')
       .then(({ data }) => setProjects(data))
       .catch((err) => {
-        setError(toUserMessage(err, '내 프로젝트를 불러오지 못했습니다'));
+        setError(toUserMessage(err, '내 프로젝트를 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, []);

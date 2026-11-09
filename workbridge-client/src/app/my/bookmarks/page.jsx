@@ -20,7 +20,7 @@ export default function MyBookmarksPage() {
     api.get('/api/users/me/bookmarks')
       .then(({ data }) => setProjects(data))
       .catch((err) => {
-        setError(toUserMessage(err, '북마크를 불러오지 못했습니다'));
+        setError(toUserMessage(err, '북마크를 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, []);

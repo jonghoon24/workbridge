@@ -23,7 +23,7 @@ export default function RecommendedProjects({ limit = 10, compact = false }) {
       .then(({ data }) => setProjects(data.projects))
       .catch((err) => {
         if (err.response?.data?.error?.message === INCOMPLETE_PROFILE) setIncomplete(true);
-        else setError('추천 프로젝트를 불러오지 못했습니다');
+        else setError('추천 프로젝트를 불러오지 못했습니다.');
         setProjects([]);
       });
   }, [limit]);

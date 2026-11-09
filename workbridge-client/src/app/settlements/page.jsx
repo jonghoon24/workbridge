@@ -37,7 +37,7 @@ export default function SettlementsPage() {
       .then(({ data }) => setSummary(data))
       .catch((err) => {
         if (err.response?.status === 403) setForbidden(true);
-        else setError(toUserMessage(err, '정산 요약을 불러오지 못했습니다'));
+        else setError(toUserMessage(err, '정산 요약을 불러오지 못했습니다.'));
       });
   }, []);
 
@@ -62,7 +62,7 @@ export default function SettlementsPage() {
       .catch((err) => {
         if (ignored) return;
         if (err.response?.status === 403) setForbidden(true);
-        else setError(toUserMessage(err, '정산 내역을 불러오지 못했습니다'));
+        else setError(toUserMessage(err, '정산 내역을 불러오지 못했습니다.'));
       })
       .finally(() => {
         if (!ignored) setLoading(false);

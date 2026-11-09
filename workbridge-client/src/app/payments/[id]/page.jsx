@@ -45,7 +45,7 @@ export default function PaymentPage() {
     api.get(`/api/milestones/${id}`)
       .then(({ data }) => setMilestone(data))
       .catch((err) => {
-        setLoadError(toUserMessage(err, '결제할 마일스톤을 불러오지 못했습니다'));
+        setLoadError(toUserMessage(err, '결제할 마일스톤을 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -80,7 +80,7 @@ export default function PaymentPage() {
       if (err.code === 'USER_CANCEL' || err.code === 'PAY_PROCESS_CANCELED') {
         setNotice('결제를 취소했습니다. 결제하려면 다시 버튼을 눌러 주세요.');
       } else if (err.response || err.request) {
-        setError(toUserMessage(err, '결제를 시작하지 못했습니다'));
+        setError(toUserMessage(err, '결제를 시작하지 못했습니다.'));
       } else {
         // 토스페이먼츠 SDK 오류는 한국어 message를 준다.
         setError(err.message || '결제를 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.');
@@ -97,7 +97,7 @@ export default function PaymentPage() {
       await api.post('/api/payments/dev-complete', { milestoneId: id });
       router.push(`/payments/result?status=dev-success&${resultQuery}`);
     } catch (err) {
-      setError(toUserMessage(err, '개발용 결제 완료 처리에 실패했습니다'));
+      setError(toUserMessage(err, '개발용 결제 완료 처리에 실패했습니다.'));
     } finally {
       setPaymentLoading(false);
     }
@@ -110,7 +110,7 @@ export default function PaymentPage() {
       <div className="max-w-lg mx-auto px-4 sm:px-6 py-12">
         <EmptyState
           tone="error"
-          title={loadError || '마일스톤을 찾을 수 없습니다'}
+          title={loadError || '마일스톤을 찾을 수 없습니다.'}
           action={(
             <Link href="/my/contracts" className="text-primary-600 hover:text-primary-700 font-semibold">
               내 계약으로 →
