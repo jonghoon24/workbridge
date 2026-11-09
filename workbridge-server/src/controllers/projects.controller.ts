@@ -138,7 +138,6 @@ function normalizePricingAnalysisData(data: RawPricingAnalysis): PricingAnalysis
 
 export async function getProjects(req: Request, res: Response, next: NextFunction) {
   try {
-    console.log('[debug] getProjects query', new Date().toLocaleDateString('ko-KR'), req.query);
     await closeExpiredOpenProjects();
 
     const search = queryString(req.query.search);
