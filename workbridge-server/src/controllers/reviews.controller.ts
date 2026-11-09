@@ -4,18 +4,12 @@ import { AppError } from '../lib/errors';
 // Value import, not `import type` — `instanceof` needs the runtime object.
 import { Prisma } from '@prisma/client';
 import type { AuthedRequest } from '../types/index';
+import type { ReviewInput } from '../schemas/reviews';
 
 export async function createReview(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const { contractId, revieweeId, rating, content, tags } = req.body;
-
-    if (!contractId || !revieweeId || !rating || !content) {
-      throw new AppError('All fields are required', 400);
-    }
-
-    if (rating < 1 || rating > 5) {
-      throw new AppError('Rating must be between 1 and 5', 400);
-    }
+    // Parsed by `reviewBody`: a 1–5 integer rating and a string array of tags.
+    const { contractId, revieweeId, rating, content, tags } = req.body as ReviewInput;
 
     const contract = await prisma.contract.findUnique({
       where: { id: contractId },
@@ -48,9 +42,9 @@ export async function createReview(req: AuthedRequest, res: Response, next: Next
           contractId,
           reviewerId: req.user.id,
           revieweeId,
-          rating: parseInt(rating),
+          rating,
           content,
-          tags: Array.isArray(tags) ? tags : [],
+          tags,
         },
       });
 
