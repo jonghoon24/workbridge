@@ -54,12 +54,13 @@ export default function ProjectForm({ initialData = null }) {
 
   function validate() {
     const errs = {};
-    const budget = Number.parseFloat(form.budget);
+    // 금액은 원 단위 정수다(서버도 소수를 400으로 거절한다).
+    const budget = Number(form.budget);
     if (!form.title.trim()) errs.title = '프로젝트명을 입력해 주세요';
     if (!form.description.trim()) errs.description = '프로젝트 설명을 입력해 주세요';
     if (!form.category) errs.category = '카테고리를 선택해 주세요';
-    if (!hasApplications && (!form.budget || !Number.isFinite(budget) || budget <= 0)) {
-      errs.budget = '예산을 1원 이상의 금액으로 입력해 주세요';
+    if (!hasApplications && (!form.budget || !Number.isSafeInteger(budget) || budget <= 0)) {
+      errs.budget = '예산을 1원 이상의 원 단위 정수로 입력해 주세요';
     }
     if (!hasApplications && !form.recruitmentStartDate) {
       errs.recruitmentStartDate = '모집 시작일을 선택해 주세요';
@@ -128,7 +129,7 @@ export default function ProjectForm({ initialData = null }) {
       };
 
       if (!hasApplications) {
-        payload.budget = parseFloat(form.budget);
+        payload.budget = Number(form.budget);
         payload.recruitmentStartDate = form.recruitmentStartDate;
         payload.deadline = form.deadline;
       }
@@ -253,6 +254,9 @@ export default function ProjectForm({ initialData = null }) {
             label="예산 (원)"
             required
             type="number"
+            min="1"
+            step="1"
+            inputMode="numeric"
             value={form.budget}
             onChange={(e) => setForm({ ...form, budget: e.target.value })}
             error={errors.budget}
