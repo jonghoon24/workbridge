@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 /**
  * Request bodies and queries of `/api/auth` (BEHAVIOR.md "Auth"). A failure is a 400

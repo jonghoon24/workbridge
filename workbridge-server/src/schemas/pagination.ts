@@ -10,5 +10,7 @@ export const MAX_PAGE = 1_000_000;
 
 export const pageQuery = {
   page: queryInt({ min: 1, max: MAX_PAGE, fallback: 1 }),
-  limit: queryInt({ min: 1, fallback: 20 }).transform((limit) => Math.min(limit, MAX_PAGE_SIZE)),
+  limit: queryInt({ min: 1, fallback: 20 })
+    .transform((limit) => Math.min(limit, MAX_PAGE_SIZE))
+    .openapi({ description: `${MAX_PAGE_SIZE}보다 크면 ${MAX_PAGE_SIZE}로 줄인다.` }),
 };

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 /**
  * `POST /api/reviews` (BEHAVIOR.md "Reviews"). A failure is a 400 `<field>: <message>` for the

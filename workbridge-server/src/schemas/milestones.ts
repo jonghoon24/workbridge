@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 import { MAX_MILESTONES, MIN_MILESTONE_AMOUNT, MIN_MILESTONES } from '../lib/money';
 import { kstDateString, kstDateToEndOfDay } from '../lib/time';
@@ -39,7 +39,7 @@ const planItem = z.object({
     } else if (value < kstDateString(new Date())) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date cannot be in the past' });
     }
-  }),
+  }).openapi({ format: 'date', description: 'KST 날짜. 오늘 이전은 안 된다.', example: '2026-12-31' }),
 });
 
 /**
@@ -78,8 +78,9 @@ export const submissionBody = z.object({
   links: z.preprocess(
     (value) => (value === undefined || value === '' ? [] : Array.isArray(value) ? value : [value]),
     z
-      .array(z.string().trim().refine(isHttpUrl, 'Links must be http or https URLs'))
-      .max(5, 'At most 5 links are allowed'),
+      .array(z.string().trim().refine(isHttpUrl, 'Links must be http or https URLs').openapi({ format: 'uri' }))
+      .max(5, 'At most 5 links are allowed')
+      .openapi({ description: 'http(s) URL 최대 5개. multipart에서는 같은 필드를 반복하거나 하나만 보낸다.' }),
   ),
 });
 
