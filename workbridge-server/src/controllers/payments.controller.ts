@@ -9,21 +9,17 @@ import type { AuthedRequest } from '../types/index';
 
 /**
  * Payments are per milestone (BEHAVIOR.md "Payments", PY1–PY12, [C1]). This is a pre-existing
- * controller: hand-written validation, no zod, no `requireActiveUser` — 알려진 불일치 D12 (#7).
- * Moving it to services + zod is #40.
+ * controller: request bodies are parsed by `schemas/payments.ts` in the route, but there is no
+ * `requireActiveUser` — 알려진 불일치 D12 (#7). Moving it to services is #40.
  */
-
-const isPaymentBypassEnabled = () =>
-  env.ALLOW_PAYMENT_BYPASS === 'true';
 
 /**
  * The milestone a payment request names, with what the checks need. Missing, or its contract's
- * project soft-deleted → 404 (rule 5). The id is not validated yet: a non-string id reaches Prisma
- * and is a 500 — 알려진 불일치 D14 (#9), and the [C7] logging vector.
+ * project soft-deleted → 404 (rule 5).
  */
-async function findMilestoneForPayment(milestoneId: unknown) {
+async function findMilestoneForPayment(milestoneId: string) {
   const milestone = await prisma.milestone.findFirst({
-    where: { id: milestoneId as string, contract: { project: { deletedAt: null } } },
+    where: { id: milestoneId, contract: { project: { deletedAt: null } } },
     include: { contract: true, payment: true },
   });
   if (!milestone) {
@@ -42,12 +38,8 @@ async function hasUnfundedPredecessor(contractId: string, sequence: number): Pro
 
 export async function createPayment(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // A `contractId` in the body is ignored (PY1).
+    // Parsed by `milestonePaymentBody`; a `contractId` in the body is stripped (PY1).
     const { milestoneId } = req.body;
-
-    if (!milestoneId) {
-      throw new AppError('Milestone ID is required', 400);
-    }
 
     const milestone = await findMilestoneForPayment(milestoneId);
     const { contract, payment } = milestone;
@@ -123,16 +115,8 @@ export async function createPayment(req: AuthedRequest, res: Response, next: Nex
 
 export async function confirmPayment(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const { paymentKey, orderId, amount } = req.body;
-
-    if (!paymentKey || !orderId || !amount) {
-      throw new AppError('paymentKey, orderId, and amount are required', 400);
-    }
-
-    const requestedAmount = Number(amount);
-    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
-      throw new AppError('Invalid payment amount', 400);
-    }
+    // Parsed by `paymentConfirmBody`: `amount` is a positive number.
+    const { paymentKey, orderId, amount: requestedAmount } = req.body;
 
     // PY5: a payment whose project is soft-deleted is not found — before anything is captured.
     const payment = await prisma.payment.findFirst({
@@ -210,15 +194,9 @@ export async function completePaymentForDev(
   next: NextFunction
 ) {
   try {
-    if (!isPaymentBypassEnabled()) {
-      throw new AppError('Payment bypass is disabled', 403);
-    }
-
+    // `requirePaymentBypass` has already refused the request unless the bypass is on (PY10),
+    // and `milestonePaymentBody` parsed the body.
     const { milestoneId } = req.body;
-
-    if (!milestoneId) {
-      throw new AppError('Milestone ID is required', 400);
-    }
 
     const milestone = await findMilestoneForPayment(milestoneId);
     const { contract, payment } = milestone;

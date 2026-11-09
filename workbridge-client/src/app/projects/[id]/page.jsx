@@ -140,6 +140,12 @@ export default function ProjectDetailPage() {
   async function handleApply(e) {
     e.preventDefault();
     setApplyError('');
+    // 제안 금액은 원 단위 정수다(서버도 소수를 400으로 거절한다).
+    const rate = String(applyForm.expectedRate).trim();
+    if (!/^\d+$/.test(rate) || Number(rate) < 1) {
+      setApplyError('제안 금액은 1원 이상의 원 단위 정수로 입력해 주세요.');
+      return;
+    }
     setApplyLoading(true);
     try {
       await api.post(`/api/projects/${id}/applications`, applyForm);
@@ -412,6 +418,9 @@ export default function ProjectDetailPage() {
           <Input
             label="제안 금액 (원)"
             type="number"
+            min="1"
+            step="1"
+            inputMode="numeric"
             required
             value={applyForm.expectedRate}
             onChange={(e) => setApplyForm({ ...applyForm, expectedRate: e.target.value })}

@@ -13,6 +13,7 @@ import {
   makePayment,
   makeProject,
 } from './helpers/factories';
+import { fundableMilestone, withFailingPaymentInsert } from './helpers/faults';
 
 /**
  * TossPayments is mocked at the module boundary. Every test in this file must go through
@@ -201,7 +202,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Milestone ID is required' } });
+    expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -211,7 +212,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Milestone ID is required' } });
+    expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -491,30 +492,24 @@ describe('POST /api/payments', () => {
     },
   );
 
-  // 알려진 불일치 D14 — #9
-  // `errorHandler` renders `err.message` verbatim, and Prisma formats its errors with the
-  // **absolute source path**, a source excerpt and the offending argument. A non-string
-  // `milestoneId` survives `!milestoneId` and makes Prisma reject the milestone lookup.
-  //
-  // Deliberately status-agnostic: rule 8 says a malformed value should be a 400 rather than a
-  // 500, but *no* status may expose internals, so fixing either defect independently still
-  // leaves this test meaningful.
-  it.fails(
-    'does not expose file paths or source excerpts when Prisma rejects a malformed milestoneId [D14]',
-    async () => {
-      const { client } = await activeScenario();
-      const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
+  // A non-string `milestoneId` used to survive `!milestoneId` and make Prisma reject the
+  // milestone lookup: a 500 whose body carried the absolute source path (rule 8, D14's
+  // deterministic vector). It is a 400 now; D14 itself — `errorHandler` rendering a Prisma
+  // message verbatim — is still pinned by the collision test below.
+  it.each([
+    ['a number', 12345, 'milestoneId: Milestone ID must be a string'],
+    ['an empty string', '', 'milestoneId: Milestone ID is required'],
+    ['an object', { id: 'x' }, 'milestoneId: Milestone ID must be a string'],
+  ])('rejects %s as milestoneId with 400, exposing no internals [PY1]', async (_label, milestoneId, message) => {
+    const { client } = await activeScenario();
 
-      try {
-        const res = await authed(client).post('/api/payments').send({ milestoneId: 12345 });
+    const res = await authed(client).post('/api/payments').send({ milestoneId });
 
-        expect(res.body).toHaveProperty('error.message');
-        assertNoInternalsLeak(res.body.error.message);
-      } finally {
-        logs.mockRestore();
-      }
-    },
-  );
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+    assertNoInternalsLeak(res.body.error.message);
+    expect(await prisma.payment.count()).toBe(0);
+  });
 
   // 알려진 불일치 D14 — #9
   // The same leak on the money path specifically: the D13 collision's 500 body carries
@@ -575,18 +570,16 @@ describe('POST /api/payments/confirm', () => {
   });
 
   it.each([
-    ['paymentKey', { orderId: 'o', amount: 1000 }],
-    ['orderId', { paymentKey: 'pk', amount: 1000 }],
-    ['amount', { paymentKey: 'pk', orderId: 'o' }],
-  ])('rejects a missing %s with 400 and never calls the provider', async (_field, payload) => {
+    ['paymentKey', { orderId: 'o', amount: 1000 }, 'Payment key is required'],
+    ['orderId', { paymentKey: 'pk', amount: 1000 }, 'Order ID is required'],
+    ['amount', { paymentKey: 'pk', orderId: 'o' }, 'Amount is required'],
+  ])('rejects a missing %s with 400 and never calls the provider', async (field, payload, message) => {
     const { client, payment } = await pendingPayment();
 
     const res = await authed(client).post('/api/payments/confirm').send(payload);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({
-      error: { message: 'paymentKey, orderId, and amount are required' },
-    });
+    expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -594,21 +587,16 @@ describe('POST /api/payments/confirm', () => {
   });
 
   /**
-   * `amount: 0` is **falsy**, so `!amount` catches it and the "positive finite number" rule
-   * below is never reached. The message is the load-bearing part of this test: without it the
-   * test name would imply the positivity check while actually exercising the required-field
-   * guard, and it would keep passing even if the positivity check were deleted. The case that
-   * genuinely reaches the positivity rule is the table immediately after.
+   * `amount: 0` is present, so the positivity rule refuses it — the old `!amount` guard used to
+   * answer it as a missing field.
    */
-  it('rejects amount 0 with 400 from the required-field guard, not the positivity check', async () => {
+  it('rejects amount 0 with 400 from the positivity check, not as a missing field', async () => {
     const { client, payment } = await pendingPayment();
 
     const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, 0));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({
-      error: { message: 'paymentKey, orderId, and amount are required' },
-    });
+    expect(res.body).toEqual({ error: { message: 'amount: Amount must be a positive whole number of won' } });
     expect(tossPost).not.toHaveBeenCalled();
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe('PENDING');
@@ -618,21 +606,25 @@ describe('POST /api/payments/confirm', () => {
     ['a non-numeric string', 'abc'],
     ['a negative number', -100],
     ['-1', -1],
-    // Truthy but numerically zero, so unlike `0` it survives `!amount` and is the value that
-    // actually proves the `requestedAmount <= 0` branch exists.
     ["the string '0'", '0'],
     ["the string '-0.0'", '-0.0'],
-    // Truthy and parses, but is not finite — proves the `Number.isFinite` half of the rule.
     ['a non-finite value', 'Infinity'],
-  ])('rejects %s amount with 400 Invalid payment amount', async (_label, amount) => {
+    // Rule 12: `Number()` used to read these as 0 or a number.
+    ['a whitespace-only string', '   '],
+    ['a trailing-garbage string', '4000000abc'],
+    ['a boolean', true],
+    // Money-time rule: amounts are whole won.
+    ['a fraction', 4_000_000.5],
+    ['a fractional string', '1000.5'],
+  ])('rejects %s amount with 400', async (_label, amount) => {
     const { client, payment } = await pendingPayment();
 
     const res = await authed(client)
       .post('/api/payments/confirm')
-      .send(body(payment.orderId, amount));
+      .send(body(payment.orderId, amount as number | string));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Invalid payment amount' } });
+    expect(res.body).toEqual({ error: { message: 'amount: Amount must be a positive whole number of won' } });
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -1228,7 +1220,19 @@ describe('POST /api/payments/dev-complete', () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'Milestone ID is required' } });
+      expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
+      expect(await prisma.payment.count()).toBe(0);
+    });
+
+    it('rejects a non-string milestoneId with 400 rather than reaching Prisma [PY10]', async () => {
+      const { client } = await activeScenario();
+
+      const res = await withBypassEnabled(() =>
+        authed(client).post('/api/payments/dev-complete').send({ milestoneId: 12345 }),
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID must be a string' } });
       expect(await prisma.payment.count()).toBe(0);
     });
 
@@ -1603,17 +1607,16 @@ describe('errorHandler logging (cross-cutting rule 1)', () => {
   });
 
   it('logs a 500 exactly once [C7]', async () => {
-    const { client } = await activeScenario();
+    const { client, milestone } = await fundableMilestone();
 
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      // A non-string `milestoneId` survives `!milestoneId` and makes Prisma reject the
-      // milestone lookup — the same vector as the deterministic [D14] test.
-      const res = await authed(client).post('/api/payments').send({ milestoneId: 12345 });
+      // The suite's standing 500 vector (`helpers/faults.ts`): the payment insert fails at the
+      // database. (The old vector, a non-string `milestoneId`, is a 400 since the body is validated.)
+      const res = await withFailingPaymentInsert(() =>
+        authed(client).post('/api/payments').send({ milestoneId: milestone.id }));
 
-      // Rule 1 ties logging to the status, so assert the pairing rather than the status alone:
-      // rule 8 says this malformed value ought to be a 400, and that fix must not turn this
-      // test into a lie.
+      // Rule 1 ties logging to the status, so assert the pairing rather than the status alone.
       expect(spy.mock.calls).toHaveLength(res.status === 500 ? 1 : 0);
 
       // Coverage tripwire, not an endorsement: if this vector stops producing a 500, the
