@@ -266,10 +266,10 @@ async function createContract({ project, application, client, freelancer, accept
 
 /** The plan as replaced by the client; `endDate` follows the last due date. */
 async function createPlan(contract, plan, createdAt) {
-  check(plan.reduce((sum, m) => sum + m.amount, 0) === Math.round(contract.amount), `plan of ${contract.id} must add up (M11)`);
+  check(plan.reduce((sum, m) => sum + m.amount, 0) === Math.round(contract.amount), `plan of ${contract.id} must add up`);
   const milestones = [];
   for (const [index, m] of plan.entries()) {
-    if (index > 0) check(m.dueDate >= plan[index - 1].dueDate, 'due dates must not decrease (M12)');
+    if (index > 0) check(m.dueDate >= plan[index - 1].dueDate, 'due dates must not decrease');
     milestones.push(await prisma.milestone.create({
       data: {
         contractId: contract.id,
@@ -378,7 +378,7 @@ async function approve(contract, milestone, submission, { at, by }) {
 async function createSettlement(freelancer, n, items, data) {
   const periodStart = weekStart(n);
   const periodEnd = plus(periodStart, 7 * DAY);
-  for (const item of items) check(item.approvedAt >= periodStart && item.approvedAt < periodEnd, 'item outside its settlement week (M20)');
+  for (const item of items) check(item.approvedAt >= periodStart && item.approvedAt < periodEnd, 'item outside its settlement week');
   const totals = items.reduce(
     (t, i) => ({ gross: t.gross + i.grossAmount, fee: t.fee + i.feeAmount, vat: t.vat + i.feeVatAmount, net: t.net + i.netAmount }),
     { gross: 0, fee: 0, vat: 0, net: 0 },
@@ -453,7 +453,7 @@ async function seedConversation(contract, entries, reads = {}) {
   await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: last } });
   for (const [userId, key] of Object.entries(reads)) {
     const message = byKey[key];
-    check(message && message.senderId && message.senderId !== userId, `read watermark of ${userId} must be a counterpart message (MG16)`);
+    check(message && message.senderId && message.senderId !== userId, `read watermark of ${userId} must be a counterpart message`);
     await prisma.conversationParticipant.update({
       where: { conversationId_userId: { conversationId: conversation.id, userId } },
       data: { lastReadAt: message.createdAt },
