@@ -117,7 +117,7 @@ describe('POST /api/auth/signup', () => {
     ['password', { ...valid, password: undefined }, 'password: Password is required'],
     ['name', { ...valid, name: undefined }, 'name: Name is required'],
     ['role', { ...valid, role: undefined }, 'role: Role must be CLIENT or FREELANCER'],
-  ])('rejects a request missing %s with 400 [rule 12]', async (_field, body, message) => {
+  ])('rejects a request missing %s with 400', async (_field, body, message) => {
     const res = await api().post('/api/auth/signup').send(body);
 
     expect(res.status).toBe(400);
@@ -125,7 +125,7 @@ describe('POST /api/auth/signup', () => {
     expect(await prisma.user.count()).toBe(0);
   });
 
-  it('rejects an empty body with 400, reporting the first field [rule 12]', async () => {
+  it('rejects an empty body with 400, reporting the first field', async () => {
     const res = await api().post('/api/auth/signup').send({});
 
     expect(res.status).toBe(400);
@@ -139,7 +139,7 @@ describe('POST /api/auth/signup', () => {
     ['a numeric email', { email: 12345 }, 'email: Email must be a string'],
     ['an object password', { password: { length: 8 } }, 'password: Password must be a string'],
     ['an array name', { name: ['a', 'b'] }, 'name: Name must be a string'],
-  ])('rejects %s with 400 and creates no user [rule 8]', async (_label, patch, message) => {
+  ])('rejects %s with 400 and creates no user', async (_label, patch, message) => {
     const res = await api().post('/api/auth/signup').send({ ...valid, ...patch });
 
     expect(res.status).toBe(400);
@@ -174,7 +174,7 @@ describe('POST /api/auth/signup', () => {
     expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
   });
 
-  // Trimmed, but not lowercased: email normalization is still open (Q16, #21).
+  // Trimmed, but not lowercased: email normalization is still open (#21).
   it('stores the email trimmed but with its case kept', async () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, email: '  NewUser@Test.local ' });
 
@@ -332,13 +332,13 @@ describe('POST /api/auth/login', () => {
 
   // A non-string email used to reach `prisma.user.findFirst({ where: { email } })` as is, so an
   // object became a Prisma filter (`{ not: '' }` matches the first user) or a 500. It is a 400
-  // now, before any lookup [rule 8].
+  // now, before any lookup.
   it.each([
     ['an operator object as email', { email: { not: '' }, password: TEST_PASSWORD }, 'email: Email must be a string'],
     ['a numeric email', { email: 42, password: TEST_PASSWORD }, 'email: Email must be a string'],
     ['an object password', { email: 'someone@test.local', password: { a: 1 } }, 'password: Password must be a string'],
     ['an empty password', { email: 'someone@test.local', password: '' }, 'password: Password is required'],
-  ])('rejects %s with 400 and issues no session [rule 8]', async (_label, body, message) => {
+  ])('rejects %s with 400 and issues no session', async (_label, body, message) => {
     await makeUser();
 
     const res = await api().post('/api/auth/login').send(body);
@@ -480,7 +480,7 @@ describe('POST /api/auth/logout', () => {
     expect(cookie).toMatch(/Expires=Thu, 01 Jan 1970/);
   });
 
-  it('leaves the already-issued access token valid — tokens are stateless by design [Q1]', async () => {
+  it('leaves the already-issued access token valid — tokens are stateless by design', async () => {
     const user = await makeUser();
     const token = tokenFor(user);
 
@@ -585,7 +585,7 @@ describe('POST /api/auth/refresh', () => {
     });
   });
 
-  it('does not rotate the refresh token — by design [Q1]', async () => {
+  it('does not rotate the refresh token — by design', async () => {
     const user = await makeUser();
     const token = generateRefreshToken({ id: user.id, email: user.email, role: user.role });
 

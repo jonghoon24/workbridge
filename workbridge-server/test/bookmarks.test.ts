@@ -73,10 +73,10 @@ describe('GET /api/projects/:id/bookmark', () => {
     expect(theirs.body).toEqual({ bookmarked: true });
   });
 
-  // ---- Q6: GET does not verify the project, unlike POST -------------------------------------
+  // ---- GET does not verify the project, unlike POST ----------------------------------------
   // Current behavior: the handler only looks up the (projectId, userId) bookmark row, so an
   // unknown id simply has no bookmark and answers 200 instead of 404.
-  it('GET bookmark for a non-existent project currently succeeds with { bookmarked: false } (Q6)', async () => {
+  it('GET bookmark for a non-existent project currently succeeds with { bookmarked: false }', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).get(bookmarkPath(MISSING_PROJECT_ID));
@@ -254,9 +254,9 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     expect((await authed(other).get(bookmarkPath(project.id))).body).toEqual({ bookmarked: true });
   });
 
-  // ---- Q6: DELETE does not verify the project, unlike POST ----------------------------------
+  // ---- DELETE does not verify the project, unlike POST -------------------------------------
   // Current behavior: `deleteMany` matches zero rows and the handler answers 200 rather than 404.
-  it('DELETE bookmark for a non-existent project currently succeeds (Q6)', async () => {
+  it('DELETE bookmark for a non-existent project currently succeeds', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).delete(bookmarkPath(MISSING_PROJECT_ID));

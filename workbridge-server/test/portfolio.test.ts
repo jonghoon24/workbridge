@@ -7,7 +7,7 @@ import { makeClient, makeFreelancer, makePortfolioItem } from './helpers/factori
 import { kstMonthString } from '../src/lib/time';
 
 /**
- * Portfolio items — BEHAVIOR.md PF1–PF12, PF16, PF19, PF20. The 401/403 role matrix and the
+ * Portfolio items. The 401/403 role matrix and the
  * 404-vs-403 ownership rows live in `authorization.test.ts`; the soft-deleted writer in
  * `soft-delete.test.ts`.
  *
@@ -53,7 +53,7 @@ async function fillPortfolio(userId: string, count: number) {
 }
 
 describe('POST /api/users/me/portfolio', () => {
-  it('creates an item from a JSON body and returns the PF3 object with YYYY-MM months [PF9] [PF3] [PF2]', async () => {
+  it('creates an item from a JSON body and returns the item object with YYYY-MM months', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, {
@@ -89,7 +89,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(stored.endedAt?.toISOString()).toBe('2025-07-31T15:00:00.000Z');
   });
 
-  it('stores optional text sent empty as null and defaults skills to [] [PF1] [PF9]', async () => {
+  it('stores optional text sent empty as null and defaults skills to []', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, { title: 'Minimal', description: '', url: '', role: '   ' });
@@ -105,7 +105,7 @@ describe('POST /api/users/me/portfolio', () => {
     });
   });
 
-  it('accepts multipart with an image stored under portfolio/<uuid>.<ext> [PF9] [PF1]', async () => {
+  it('accepts multipart with an image stored under portfolio/<uuid>.<ext>', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer)
@@ -122,7 +122,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(res.body.item.skills).toEqual(['React', 'Node.js']);
   });
 
-  it('takes repeated multipart skills fields as a list [PF9]', async () => {
+  it('takes repeated multipart skills fields as a list', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer)
@@ -167,7 +167,7 @@ describe('POST /api/users/me/portfolio', () => {
     { name: 'an end without a start', body: { title: 't', endedAt: '2025-04' }, message: 'endedAt: Start month is required with an end month' },
   ];
 
-  it.each(VALIDATION)('400 for $name, with the exact message [PF9] [PF1] [PF2]', async ({ body, message }) => {
+  it.each(VALIDATION)('400 for $name, with the exact message', async ({ body, message }) => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, body);
@@ -177,7 +177,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(await prisma.portfolioItem.count()).toBe(0);
   });
 
-  it('400s a year before 1900 on create and update — 0000 never reaches the database [PF2]', async () => {
+  it('400s a year before 1900 on create and update — 0000 never reaches the database', async () => {
     const freelancer = await makeFreelancer();
     const item = await makePortfolioItem(freelancer.id);
 
@@ -195,7 +195,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(earliest.status).toBe(201);
   });
 
-  it('allows the current month and an end equal to the start [PF2]', async () => {
+  it('allows the current month and an end equal to the start', async () => {
     const freelancer = await makeFreelancer();
     const current = monthFromNow(0);
 
@@ -205,7 +205,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(res.body.item).toMatchObject({ startedAt: current, endedAt: current });
   });
 
-  it('counts the 10-skill limit after de-duplication through SKILL_ALIASES [PF1]', async () => {
+  it('counts the 10-skill limit after de-duplication through SKILL_ALIASES', async () => {
     const freelancer = await makeFreelancer();
     const skills = [...Array.from({ length: 9 }, (_, i) => `Skill${i}`), 'PostgreSQL', 'MySQL', 'SQL'];
 
@@ -219,7 +219,7 @@ describe('POST /api/users/me/portfolio', () => {
     ['a non-string skill', { title: 't', skills: [1, 2] }, 'skills: '],
     ['a non-string title', { title: 42 }, 'title: '],
     ['a non-string month', { title: 't', startedAt: 202503 }, 'startedAt: '],
-  ])('400 for %s — only the path prefix is asserted (no D16 here) [PF7] [PF9]', async (_name, body, prefix) => {
+  ])('400 for %s, never a 500 — only the path prefix is asserted', async (_name, body, prefix) => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, body);
@@ -228,7 +228,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(res.body.error.message.startsWith(prefix)).toBe(true);
   });
 
-  it('gives the first item sortOrder 0 and later ones the highest + 1, gaps kept [PF9]', async () => {
+  it('gives the first item sortOrder 0 and later ones the highest + 1, gaps kept', async () => {
     const freelancer = await makeFreelancer();
     await makePortfolioItem(freelancer.id, { sortOrder: 0 });
     await makePortfolioItem(freelancer.id, { sortOrder: 7 });
@@ -238,7 +238,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(res.body.item.sortOrder).toBe(8);
   });
 
-  it('409s at 20 items before storing the image [PF9] [PF1]', async () => {
+  it('409s at 20 items before storing the image', async () => {
     const freelancer = await makeFreelancer();
     await fillPortfolio(freelancer.id, 20);
 
@@ -253,7 +253,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(await prisma.portfolioItem.count({ where: { userId: freelancer.id } })).toBe(20);
   });
 
-  it('serializes concurrent creates on the user row: two at 19 items end at 20 and one 409 [PF8]', async () => {
+  it('serializes concurrent creates on the user row: two at 19 items end at 20 and one 409', async () => {
     const freelancer = await makeFreelancer();
     await fillPortfolio(freelancer.id, 19);
 
@@ -265,7 +265,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(new Set(items.map((item) => item.sortOrder)).size).toBe(20);
   });
 
-  it('answers 502 and writes nothing when storage fails [PF9]', async () => {
+  it('answers 502 and writes nothing when storage fails', async () => {
     const freelancer = await makeFreelancer();
     supabaseUpload.mockResolvedValueOnce({ data: null, error: new Error('bucket offline') });
 
@@ -278,7 +278,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(await prisma.portfolioItem.count()).toBe(0);
   });
 
-  it('applies rule 12\'s image policy: 413 over 5 MB, 400 for a non-image, nothing stored [PF1]', async () => {
+  it('applies the image upload policy: 413 over 5 MB, 400 for a non-image, nothing stored', async () => {
     const freelancer = await makeFreelancer();
 
     const big = await authed(freelancer)
@@ -296,7 +296,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(await prisma.portfolioItem.count()).toBe(0);
   });
 
-  it('checks the role before the upload policy and validation [PF7]', async () => {
+  it('checks the role before the upload policy and validation', async () => {
     const client = await makeClient();
 
     const res = await authed(client)
@@ -307,7 +307,7 @@ describe('POST /api/users/me/portfolio', () => {
     expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
   });
 
-  it('checks the upload policy before validation [PF7]', async () => {
+  it('checks the upload policy before validation', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer)
@@ -320,7 +320,7 @@ describe('POST /api/users/me/portfolio', () => {
 });
 
 describe('PATCH /api/users/me/portfolio/:itemId', () => {
-  it('changes only the fields present and clears optional ones sent empty [PF10]', async () => {
+  it('changes only the fields present and clears optional ones sent empty', async () => {
     const freelancer = await makeFreelancer();
     const item = await makePortfolioItem(freelancer.id, {
       title: 'Before',
@@ -342,7 +342,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     });
   });
 
-  it('cannot clear the title [PF10]', async () => {
+  it('cannot clear the title', async () => {
     const freelancer = await makeFreelancer();
     const item = await makePortfolioItem(freelancer.id);
 
@@ -352,7 +352,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     expect(res.body).toEqual({ error: { message: 'title: Title is required' } });
   });
 
-  it('replaces the image, keeping the old file in storage [PF10]', async () => {
+  it('replaces the image, keeping the old file in storage', async () => {
     const freelancer = await makeFreelancer();
     const item = await makePortfolioItem(freelancer.id, { imageUrl: `${PUBLIC_URL_BASE}portfolio/old.png` });
 
@@ -365,7 +365,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     expect(supabaseUpload).toHaveBeenCalledTimes(1);
   });
 
-  it('removeImage=true clears imageUrl; "false" leaves it [PF10]', async () => {
+  it('removeImage=true clears imageUrl; "false" leaves it', async () => {
     const freelancer = await makeFreelancer();
     const item = await makePortfolioItem(freelancer.id, { imageUrl: `${PUBLIC_URL_BASE}portfolio/old.png` });
 
@@ -377,7 +377,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     expect(removed.body.item.imageUrl).toBeNull();
   });
 
-  it('400s an image together with removeImage=true — validation, so even for a missing item [PF10] [PF7]', async () => {
+  it('400s an image together with removeImage=true — validation, so even for a missing item', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer)
@@ -390,7 +390,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     expect(supabaseUpload).not.toHaveBeenCalled();
   });
 
-  it('400s a removeImage that is not true/false [PF10]', async () => {
+  it('400s a removeImage that is not true/false', async () => {
     const freelancer = await makeFreelancer();
     const item = await makePortfolioItem(freelancer.id);
 
@@ -400,7 +400,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     expect(res.body.error.message.startsWith('removeImage: ')).toBe(true);
   });
 
-  it('checks the month order on the stored row merged with the patch [PF10] [PF2]', async () => {
+  it('checks the month order on the stored row merged with the patch', async () => {
     const freelancer = await makeFreelancer();
     const item = await makePortfolioItem(freelancer.id);
     expect((await patch(freelancer, item.id, { startedAt: '2024-05', endedAt: '2024-09' })).status).toBe(200);
@@ -417,7 +417,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     expect(fine.body.item).toMatchObject({ startedAt: '2024-09', endedAt: '2024-09' });
   });
 
-  it('orders its checks validation → existence → ownership → merged month order [PF7] [PF10]', async () => {
+  it('orders its checks validation → existence → ownership → merged month order', async () => {
     const owner = await makeFreelancer();
     const intruder = await makeFreelancer();
     const item = await makePortfolioItem(owner.id, { startedAt: new Date('2024-04-30T15:00:00.000Z') });
@@ -435,7 +435,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
 });
 
 describe('DELETE /api/users/me/portfolio/:itemId', () => {
-  it('hard-deletes, keeps the others\' sortOrder, then 404s [PF11] [PF20]', async () => {
+  it('hard-deletes, keeps the others\' sortOrder, then 404s', async () => {
     const freelancer = await makeFreelancer();
     const [a, b, c] = [
       await makePortfolioItem(freelancer.id),
@@ -456,7 +456,7 @@ describe('DELETE /api/users/me/portfolio/:itemId', () => {
 });
 
 describe('PUT /api/users/me/portfolio/order', () => {
-  it('sets each sortOrder to its 0-based position and returns the items in that order [PF12] [PF5]', async () => {
+  it('sets each sortOrder to its 0-based position and returns the items in that order', async () => {
     const freelancer = await makeFreelancer();
     const items = [
       await makePortfolioItem(freelancer.id, { sortOrder: 4 }),
@@ -474,7 +474,7 @@ describe('PUT /api/users/me/portfolio/order', () => {
     expect(publicList.body.items.map((item: { id: string }) => item.id)).toEqual(ids);
   });
 
-  it('accepts an empty list for a caller with no items [PF12]', async () => {
+  it('accepts an empty list for a caller with no items', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await reorder(freelancer, []);
@@ -483,7 +483,7 @@ describe('PUT /api/users/me/portfolio/order', () => {
     expect(res.body).toEqual({ items: [] });
   });
 
-  it('400s anything but a permutation of the caller\'s items, changing nothing [PF12]', async () => {
+  it('400s anything but a permutation of the caller\'s items, changing nothing', async () => {
     const freelancer = await makeFreelancer();
     const other = await makeFreelancer();
     const a = await makePortfolioItem(freelancer.id);
@@ -504,7 +504,7 @@ describe('PUT /api/users/me/portfolio/order', () => {
     ['ids missing', undefined],
     ['ids a string', 'abc'],
     ['ids of numbers', [1, 2]],
-  ])('400s %s [PF12]', async (_name, ids) => {
+  ])('400s %s', async (_name, ids) => {
     const freelancer = await makeFreelancer();
 
     const res = await reorder(freelancer, ids);
@@ -513,7 +513,7 @@ describe('PUT /api/users/me/portfolio/order', () => {
     expect(res.body.error.message.startsWith('ids')).toBe(true);
   });
 
-  it('never interleaves with a delete: no 500, and the final order is consistent [PF8] [PF11] [PF12]', async () => {
+  it('never interleaves with a delete: no 500, and the final order is consistent', async () => {
     for (let round = 0; round < 5; round += 1) {
       const freelancer = await makeFreelancer();
       const items = [
@@ -540,7 +540,7 @@ describe('PUT /api/users/me/portfolio/order', () => {
 });
 
 describe('GET /api/users/:id/portfolio', () => {
-  it('is public and lists in PF5 order: sortOrder asc, then createdAt desc, then id asc [PF16] [PF5]', async () => {
+  it('is public and lists in display order: sortOrder asc, then createdAt desc, then id asc', async () => {
     const freelancer = await makeFreelancer();
     const late = await makePortfolioItem(freelancer.id, { sortOrder: 1, createdAt: new Date('2025-01-02T00:00:00Z') });
     const early = await makePortfolioItem(freelancer.id, { sortOrder: 1, createdAt: new Date('2025-01-01T00:00:00Z') });
@@ -555,7 +555,7 @@ describe('GET /api/users/:id/portfolio', () => {
     expect(res.body.items.map((item: { id: string }) => item.id)).toEqual([first.id, late.id, early.id, lowId, highId]);
   });
 
-  it('is [] for a CLIENT and 404 for an unknown user, for "me" and for a soft-deleted user [PF16] [PF19] [PF20]', async () => {
+  it('is [] for a CLIENT and 404 for an unknown user, for "me" and for a soft-deleted user', async () => {
     const client = await makeClient();
     const gone = await makeFreelancer({ deletedAt: new Date() });
     await makePortfolioItem(gone.id);

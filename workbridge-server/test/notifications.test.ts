@@ -178,7 +178,7 @@ describe('GET /api/notifications', () => {
     ['null', 'limit: must be an integer'],
     ['NaN', 'limit: must be an integer'],
     ['Infinity', 'limit: must be an integer'],
-  ])('rejects limit=%s with 400 [rule 12]', async (limit, message) => {
+  ])('rejects limit=%s with 400', async (limit, message) => {
     const caller = await makeClient();
     await seedNotifications(caller.id, 2);
 
@@ -188,7 +188,7 @@ describe('GET /api/notifications', () => {
     expect(res.body).toEqual({ error: { message } });
   });
 
-  it('falls back to the default when limit is present but empty [rule 12]', async () => {
+  it('falls back to the default when limit is present but empty', async () => {
     // An empty query value is absent, so `?limit=` is the documented default.
     const caller = await makeClient();
     await seedNotifications(caller.id, 25);
@@ -222,10 +222,10 @@ describe('GET /api/notifications', () => {
     expect(res.body).toEqual({ error: { message: 'limit: must be an integer' } });
   });
 
-  // Q12, decided by rule 12: a repeated parameter is a 400. It used to stringify to '1,2' and
+  // A repeated query parameter is a 400. It used to stringify to '1,2' and
   // `Number.parseInt` took the leading number, so the first value silently won.
   it.each(['limit=1&limit=2', 'limit=2&limit=1', 'limit[]=5'])(
-    'rejects a repeated or array limit (%s) with 400 [rule 12]',
+    'rejects a repeated or array limit (%s) with 400',
     async (query) => {
       const caller = await makeClient();
       await seedNotifications(caller.id, 3);
@@ -489,8 +489,8 @@ describe('PATCH /api/notifications/read-all', () => {
   });
 });
 
-describe('contract, milestone and settlement notification types [C9]', () => {
-  it('renders all 15 new types with the links BEHAVIOR.md lists', () => {
+describe('contract, milestone and settlement notification types', () => {
+  it('renders all 15 new types with their contract, milestone or settlement links', () => {
     const v = { projectTitle: 'P', contractId: 'c1', milestoneId: 'm1', milestoneTitle: 'M', settlementId: 's1', amount: 1_000, reason: 'r' };
     const milestone = '/contracts/c1/milestones/m1';
     const expected: Record<string, string> = {

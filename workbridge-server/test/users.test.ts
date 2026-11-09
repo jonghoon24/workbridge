@@ -153,7 +153,7 @@ describe('PATCH /api/users/me', () => {
     });
   });
 
-  it('silently ignores freelancer-only fields sent by a CLIENT [Q2]', async () => {
+  it('silently ignores freelancer-only fields sent by a CLIENT', async () => {
     const client = await makeClient();
 
     const res = await authed(client).patch('/api/users/me').send({
@@ -165,7 +165,7 @@ describe('PATCH /api/users/me', () => {
       portfolioUrl: 'https://example.com',
     });
 
-    // Ignored, not rejected — intentional per Q2.
+    // Ignored, not rejected — intentional (docs/domain/accounts.md).
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('이름만 반영');
     expect(res.body.skills).toEqual([]);
@@ -180,7 +180,7 @@ describe('PATCH /api/users/me', () => {
     expect(stored.portfolioUrl).toBeNull();
   });
 
-  it('silently ignores client-only fields sent by a FREELANCER [Q2]', async () => {
+  it('silently ignores client-only fields sent by a FREELANCER', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).patch('/api/users/me').send({
@@ -276,7 +276,7 @@ describe('PATCH /api/users/me', () => {
   });
 
   /*
-   * D3 (#1), fixed by the zod schema. `parseInt('abc')` used to be NaN, which Prisma serializes
+   * Fixed by the zod schema (#1). `parseInt('abc')` used to be NaN, which Prisma serializes
    * to `null` on the nullable column: the request answered **200**, persisted the other fields
    * and silently wiped `experienceYears` — which also made the profile incomplete, so every later
    * application 403'd on `requireCompleteProfile`. Now the whole request is a 400 and nothing is
@@ -333,7 +333,7 @@ describe('PATCH /api/users/me', () => {
     expect(stored.hourlyRate).toBe(50_000);
   });
 
-  // BEHAVIOR.md `PATCH /me`: a non-negative integer — the range `requireCompleteProfile` accepts.
+  // `experienceYears` is a non-negative integer — the range `requireCompleteProfile` accepts.
   // An empty multipart field is a present, non-numeric value, not "absent": 400, not a wipe.
   it.each([
     ['a fractional number', 1.5],
@@ -434,7 +434,7 @@ describe('PATCH /api/users/me', () => {
     ['a blank name', { name: '   ' }, 'name: Name is required'],
     ['a numeric name', { name: 7 }, 'name: Name must be a string'],
     ['an object bio', { bio: { text: 'x' } }, 'bio: Bio must be a string'],
-  ])('rejects %s with 400 and writes nothing [rule 8]', async (_label, body, message) => {
+  ])('rejects %s with 400 rather than 500 and writes nothing', async (_label, body, message) => {
     const client = await makeClient({ name: 'Unchanged', bio: 'kept' });
 
     const res = await authed(client).patch('/api/users/me').send(body);
@@ -465,7 +465,7 @@ describe('PATCH /api/users/me', () => {
     expect(stored.website).toBeNull();
   });
 
-  it('validates the CLIENT fields but not the freelancer ones for a CLIENT [Q2]', async () => {
+  it('validates the CLIENT fields but not the freelancer ones for a CLIENT', async () => {
     const client = await makeClient({ companyName: '코드잇' });
 
     const res = await authed(client).patch('/api/users/me').send({ companyName: 42, experienceYears: 'abc' });
@@ -476,7 +476,7 @@ describe('PATCH /api/users/me', () => {
     expect(stored.companyName).toBe('코드잇');
   });
 
-  it('ignores a malformed client-only field from a FREELANCER [Q2]', async () => {
+  it('ignores a malformed client-only field from a FREELANCER', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer)
@@ -489,9 +489,8 @@ describe('PATCH /api/users/me', () => {
     expect(stored.companyName).toBeNull();
   });
 
-  // D16 (#11) on this route, fixed by the zod schema: `normalizeSkillList` used to call `.trim()`
-  // on every element, so a non-string element threw a TypeError → 500. The projects routes still
-  // carry D16 until their own schemas land.
+  // Fixed by the zod schema (#11): `normalizeSkillList` used to call `.trim()` on every element,
+  // so a non-string element threw a TypeError → 500.
   it('rejects a skills array of non-strings with 400', async () => {
     const freelancer = await makeFreelancer();
 
@@ -523,9 +522,9 @@ describe('PATCH /api/users/me', () => {
     expect(res.body.skills).toEqual([]);
   });
 
-  // The half of D16 that already held before the fix: a malformed `skills` writes nothing at all —
+  // The half that already held before the fix: a malformed `skills` writes nothing at all —
   // not even the sibling `name`.
-  it('writes nothing when skills contains non-strings (D16)', async () => {
+  it('writes nothing when skills contains non-strings', async () => {
     const freelancer = await makeFreelancer({ name: 'Unchanged' });
 
     const res = await authed(freelancer)
@@ -534,7 +533,7 @@ describe('PATCH /api/users/me', () => {
 
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.body).toEqual({ error: { message: expect.any(String) } });
-    // Unlike the Prisma-formatted errors in D14, this plain TypeError leaks no source path.
+    // Unlike Prisma-formatted errors (issue #9), this error body leaks no source path.
     expect(res.body.error.message).not.toMatch(/workbridge-server|\.ts:/);
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
@@ -544,7 +543,7 @@ describe('PATCH /api/users/me', () => {
   });
 
   /*
-   * BEHAVIOR.md documents this route as `multipart/form-data`, and the client does send that —
+   * This route is documented as `multipart/form-data`, and the client does send that —
    * it is the only way to attach `profileImage`. A JSON body nevertheless works: `express.json()`
    * is mounted before the router, and `upload.single()` passes a non-multipart request straight
    * through without touching `req.body`. The two are *not* equivalent, because
@@ -898,7 +897,7 @@ describe('GET /api/users/:id', () => {
     expect(res.body).toEqual({ error: { message: 'User not found' } });
   });
 
-  it('adds portfolioItems, careers and careerSummary exactly as the public routes return them [C10] [PF18]', async () => {
+  it('adds portfolioItems, careers and careerSummary exactly as the public routes return them', async () => {
     const freelancer = await makeFreelancer();
     await makePortfolioItem(freelancer.id, { sortOrder: 1, title: 'Second' });
     await makePortfolioItem(freelancer.id, { sortOrder: 0, title: 'First', startedAt: new Date('2025-02-28T15:00:00.000Z') });
@@ -925,7 +924,7 @@ describe('GET /api/users/:id', () => {
     expect(profile.body).toMatchObject({ id: freelancer.id, avgRating: null, reviewCount: 0, receivedReviews: [] });
   });
 
-  it('gives a CLIENT empty lists and a zero summary [C10] [PF18]', async () => {
+  it('gives a CLIENT empty lists and a zero summary', async () => {
     const client = await makeClient();
 
     const res = await api().get(`/api/users/${client.id}`);
@@ -938,7 +937,7 @@ describe('GET /api/users/:id', () => {
     });
   });
 
-  it('404s a soft-deleted user even with portfolio and careers kept [C10] [PF20]', async () => {
+  it('404s a soft-deleted user even with portfolio and careers kept', async () => {
     const freelancer = await makeFreelancer({ deletedAt: new Date() });
     await makePortfolioItem(freelancer.id);
     await makeCareer(freelancer.id);

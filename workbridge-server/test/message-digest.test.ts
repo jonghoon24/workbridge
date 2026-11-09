@@ -11,7 +11,7 @@ import type { MailMessage, MailProvider } from '../src/lib/mail/provider';
 import { MINUTE_MS } from '../src/lib/time';
 
 /**
- * The unread-message digest, second half: J8 steps 3–4 as NC16 specifies them — the
+ * The unread-message digest, second half (throttling and sending) — the
  * 60-minute throttle and the email-only `MESSAGE_UNREAD_DIGEST` through `notify()`, sent by its
  * `notification.email` job on a later runner pass. Driven by `runDueJobs({ now })` alone.
  */
@@ -42,12 +42,12 @@ const digestJobs = async (recipientId: string) =>
 const digestDeliveries = (userId: string) =>
   prisma.emailDelivery.findMany({ where: { userId, type: 'MESSAGE_UNREAD_DIGEST' }, orderBy: { createdAt: 'asc' } });
 
-/** MG15's enqueue as the send path does it, at a fixed time. */
+/** The digest enqueue as sending a message does it, at a fixed time. */
 const enqueueDigest = (conversationId: string, recipientId: string, runAt: Date) =>
   enqueueJob(prisma, { type: 'message.unreadDigest', payload: { conversationId, recipientId }, runAt });
 
-describe('unread digest — send path (J8 step 4) [NC16]', () => {
-  it('a message left unread: the digest run creates one email-only delivery, a later pass sends it [NC16] [J8] [J9]', async () => {
+describe('unread digest — send path', () => {
+  it('a message left unread: the digest run creates one email-only delivery, a later pass sends it', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const sent = await authed(client).post(`/api/conversations/${conversation.id}/messages`).send({ body: '확인 부탁드립니다' });
     expect(sent.status).toBe(201);
@@ -66,7 +66,7 @@ describe('unread digest — send path (J8 step 4) [NC16]', () => {
       status: 'PENDING',
     });
     expect(delivery.createdAt.getTime()).toBe(now.getTime());
-    expect(delivery.body).toContain(`/messages/${conversation.id}`); // NC16's href, not wording
+    expect(delivery.body).toContain(`/messages/${conversation.id}`); // the conversation link, not wording
     expect(await prisma.notification.count()).toBe(0); // the digest's in-app channel is locked off
     const [emailJob] = await jobsOf('notification.email');
     expect(emailJob).toMatchObject({ status: 'PENDING', payload: { deliveryId: delivery.id } });
@@ -80,7 +80,7 @@ describe('unread digest — send path (J8 step 4) [NC16]', () => {
     expect(await digestDeliveries(client.id)).toHaveLength(0);
   });
 
-  it('a recipient who turned the digest off gets nothing, and nothing is re-enqueued [NC16] [NC3]', async () => {
+  it('a recipient who turned the digest off gets nothing, and nothing is re-enqueued', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await makeNotificationPreference(freelancer.id, 'MESSAGE_UNREAD_DIGEST', { email: false });
     await makeMessage(conversation.id, client.id, { createdAt: at(0) });
@@ -95,7 +95,7 @@ describe('unread digest — send path (J8 step 4) [NC16]', () => {
     expect(await jobsOf('notification.email')).toHaveLength(0);
   });
 
-  it('a later message after a turned-off digest schedules its own job as usual [NC16] [MG15]', async () => {
+  it('a later message after a turned-off digest schedules its own job as usual', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await makeNotificationPreference(freelancer.id, 'MESSAGE_UNREAD_DIGEST', { email: false });
 
@@ -108,8 +108,8 @@ describe('unread digest — send path (J8 step 4) [NC16]', () => {
   });
 });
 
-describe('unread digest — throttle path (J8 step 3) [NC16]', () => {
-  it('the NC16 example: a second message within the hour is held and sent with the first 60 minutes after the last digest [NC16] [J8]', async () => {
+describe('unread digest — throttle path', () => {
+  it('a second message within the hour is held and sent with the first 60 minutes after the last digest', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     // Message A at t0 → digest delivery at t0 + 10.
     await makeMessage(conversation.id, client.id, { createdAt: at(0) });
@@ -143,7 +143,7 @@ describe('unread digest — throttle path (J8 step 3) [NC16]', () => {
     expect((await digestJobs(freelancer.id)).every((j) => j.status === 'SUCCEEDED')).toBe(true);
   });
 
-  it('just under 60 minutes is throttled; exactly 60 minutes sends [NC16] [MG1]', async () => {
+  it('just under 60 minutes is throttled; exactly 60 minutes sends', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const contextKey = `conversation:${conversation.id}`;
     await makeEmailDelivery(freelancer, { type: 'MESSAGE_UNREAD_DIGEST', contextKey, status: 'SENT', createdAt: at(0) });
@@ -161,7 +161,7 @@ describe('unread digest — throttle path (J8 step 3) [NC16]', () => {
   });
 
   it.each(['PENDING', 'FAILED', 'SKIPPED'] as const)(
-    'a %s digest delivery throttles too — the newest delivery in any status counts [NC16]',
+    'a %s digest delivery throttles too — the newest delivery in any status counts',
     async (status) => {
       const { client, freelancer, conversation } = await makeContractScenario();
       await makeEmailDelivery(freelancer, {
@@ -180,7 +180,7 @@ describe('unread digest — throttle path (J8 step 3) [NC16]', () => {
     },
   );
 
-  it('the throttled re-run is not added when a PENDING digest for the pair exists [NC16] [J8]', async () => {
+  it('the throttled re-run is not added when a PENDING digest for the pair exists', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await makeEmailDelivery(freelancer, { type: 'MESSAGE_UNREAD_DIGEST', contextKey: `conversation:${conversation.id}`, createdAt: at(0) });
     await makeMessage(conversation.id, client.id, { createdAt: at(5) });
@@ -195,7 +195,7 @@ describe('unread digest — throttle path (J8 step 3) [NC16]', () => {
     ]);
   });
 
-  it('only this conversation and recipient count: other digests do not throttle [NC16]', async () => {
+  it('only this conversation and recipient count: other digests do not throttle', async () => {
     const a = await makeContractScenario();
     const b = await makeContractScenario({ contract: { freelancerId: a.freelancer.id } });
     // A recent digest for the same recipient in another conversation, and one for the other party.
@@ -215,7 +215,7 @@ describe('unread digest — throttle path (J8 step 3) [NC16]', () => {
     expect(mine[0].createdAt.getTime()).toBe(at(11).getTime());
   });
 
-  it('a read before the throttled re-run leaves nothing to send [NC16] [J8]', async () => {
+  it('a read before the throttled re-run leaves nothing to send', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await makeEmailDelivery(freelancer, { type: 'MESSAGE_UNREAD_DIGEST', contextKey: `conversation:${conversation.id}`, createdAt: at(0) });
     const message = await makeMessage(conversation.id, client.id, { createdAt: at(5) });

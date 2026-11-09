@@ -14,8 +14,9 @@ import {
 } from './helpers/factories';
 
 /**
- * Skill-based recommendations — BEHAVIOR.md RC1–RC8. The role matrix and the RC3 404/403 rows live
- * in `authorization.test.ts`; the pure scoring functions are pinned in `lib.test.ts`.
+ * Skill-based recommendations (scoring tables under 추천 in `docs/domain/projects-contracts.md`). The
+ * role matrix and the 404/403 rows live in `authorization.test.ts`; the pure scoring functions are
+ * pinned in `lib.test.ts`.
  */
 
 // ---------------------------------------------------------------------------------------------
@@ -66,11 +67,11 @@ const recommendedProjects = (freelancer: User, query = '') =>
 const ids = (list: { id: string }[]) => list.map((entry) => entry.id);
 
 // ---------------------------------------------------------------------------------------------
-// RC3–RC5
+// Freelancers recommended for a project
 // ---------------------------------------------------------------------------------------------
 
 describe('GET /api/projects/:id/recommended-freelancers', () => {
-  it('scores the RC4 worked example at 69.17 [RC4] [RC2]', async () => {
+  it('scores a partial skill, portfolio and rating match at 69.17', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, { requiredSkills: ['React', 'Node.js', 'SQL'], category: '웹 개발' });
     // Stored under an alias: the prefilter must still find it, and the score compares normalized.
@@ -91,7 +92,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
     });
   });
 
-  it('returns exactly the RC5 fields — no email — with a 3-item portfolio preview in PF5 order [RC5]', async () => {
+  it('returns exactly the public profile fields — no email — with the first 3 portfolio items as a preview', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const candidate = await makeFreelancer({ profileImage: 'https://img.example.com/me.png' });
@@ -119,7 +120,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
     expect(JSON.stringify(res.body)).not.toContain(candidate.email);
   });
 
-  it('prefilters to complete, active freelancers who share a skill and never applied [RC3] [PF20]', async () => {
+  it('prefilters to complete, active freelancers who share a skill and never applied', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, { requiredSkills: ['React'] });
     const eligible = await makeFreelancer();
@@ -147,7 +148,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
     expect(excluded).toHaveLength(10);
   });
 
-  it('against a project with no required skills, every complete freelancer is a candidate with 0 skill points [RC2] [RC3]', async () => {
+  it('against a project with no required skills, every complete freelancer is a candidate with 0 skill points', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, { requiredSkills: [], category: '웹 개발' });
     const a = await makeFreelancer({ skills: ['Java'], experienceYears: 10 });
@@ -159,7 +160,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
       .toEqual([[a.id, 15 + 9 + 10, []], [b.id, 9, []]]);
   });
 
-  it('breaks score ties by reviewCount desc, then id asc [RC4]', async () => {
+  it('breaks score ties by reviewCount desc, then id asc', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, { requiredSkills: ['React'] });
     // A single 3-star review is worth 9 rating points — exactly the no-review default.
@@ -175,7 +176,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
     expect(ids(res.body.freelancers)).toEqual([reviewed.id, ...[plainA.id, plainB.id].sort()]);
   });
 
-  it('cuts the prefilter at 200 rows ordered by createdAt asc, id asc — before scoring [RC1] [RC3]', async () => {
+  it('cuts the prefilter at 200 rows ordered by createdAt asc, id asc — before scoring', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, { requiredSkills: ['React'], category: '웹 개발' });
     const base = Date.now() - 1_000_000;
@@ -194,7 +195,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
     expect(again.body.freelancers[0].id).toBe(late.id);
   });
 
-  it('returns 10 by default and caps limit at 20 [RC1]', async () => {
+  it('returns 10 by default and caps limit at 20', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, { requiredSkills: ['React'] });
     await bulkFreelancers(25, () => ({}));
@@ -211,7 +212,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
   });
 
   it.each(['?limit=0', '?limit=-1', '?limit=1.5', '?limit=2abc', '?limit=1&limit=2', '?page=2&limit=x'])(
-    '400s %s [RC1]',
+    '400s %s',
     async (query) => {
       const client = await makeClient();
       const project = await makeProject(client.id);
@@ -223,7 +224,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
     },
   );
 
-  it('orders its checks role → validation → existence [RC3]', async () => {
+  it('orders its checks role → validation → existence', async () => {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
 
@@ -238,7 +239,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
     expect(validOnMissing.body).toEqual({ error: { message: 'Project not found' } });
   });
 
-  it('404s a soft-deleted project (rule 5) [RC3]', async () => {
+  it('404s a soft-deleted project', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, { deletedAt: new Date() });
 
@@ -248,7 +249,7 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
     expect(res.body).toEqual({ error: { message: 'Project not found' } });
   });
 
-  it('works for any project status and is read-only: no lifecycle sweep [RC1] [RC3]', async () => {
+  it('works for any project status and is read-only: no lifecycle sweep', async () => {
     const client = await makeClient();
     const expired = await makeProject(client.id, { status: 'OPEN', deadline: daysFromNow(-2) });
     const applicant = await makeFreelancer();
@@ -267,11 +268,11 @@ describe('GET /api/projects/:id/recommended-freelancers', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// RC6–RC8
+// Projects recommended for a freelancer
 // ---------------------------------------------------------------------------------------------
 
 describe('GET /api/users/me/recommended-projects', () => {
-  it('scores the RC7 worked example at 66.96 [RC7]', async () => {
+  it('scores a half skill match on a 14-day-old project at 66.96', async () => {
     const freelancer = await makeFreelancer({ skills: ['React', 'TypeScript'], activityCategory: '웹 개발' });
     const project = await makeProject((await makeClient()).id, {
       category: '웹 개발',
@@ -287,7 +288,7 @@ describe('GET /api/users/me/recommended-projects', () => {
     expect(res.body.projects[0]).toMatchObject({ id: project.id, score: 66.96, matchedSkills: ['React'] });
   });
 
-  it('returns exactly the RC8 fields [RC8]', async () => {
+  it('returns exactly the project summary fields', async () => {
     const freelancer = await makeFreelancer();
     const client = await makeClient({ companyName: '코드잇' });
     const project = await makeProject(client.id);
@@ -312,7 +313,7 @@ describe('GET /api/users/me/recommended-projects', () => {
     });
   });
 
-  it('prefilters to OPEN, unexpired, live projects the caller never applied to, by skill or category [RC6] [RC2]', async () => {
+  it('prefilters to OPEN, unexpired, live projects the caller never applied to, by skill or category', async () => {
     const freelancer = await makeFreelancer({ skills: ['SQL', 'React'], activityCategory: '웹 개발' });
     const client = await makeClient();
     const byAlias = await makeProject(client.id, { requiredSkills: ['PostgreSQL'], category: '디자인' });
@@ -336,7 +337,7 @@ describe('GET /api/users/me/recommended-projects', () => {
     expect((await prisma.project.findUniqueOrThrow({ where: { id: expired.id } })).status).toBe('OPEN');
   });
 
-  it('gives no deadline-room points under 3 days and decays freshness to 0 at 30 days [RC7]', async () => {
+  it('gives no deadline-room points under 3 days and decays freshness to 0 at 30 days', async () => {
     const freelancer = await makeFreelancer({ skills: ['React'], activityCategory: '웹 개발' });
     const client = await makeClient();
     // Full coverage and utilization (60) + category (20).
@@ -353,7 +354,7 @@ describe('GET /api/users/me/recommended-projects', () => {
     expect(ids(res.body.projects)).toEqual([fresh.id, soon.id, stale.id]);
   });
 
-  it('breaks score ties by deadline asc, then id asc [RC7]', async () => {
+  it('breaks score ties by deadline asc, then id asc', async () => {
     const freelancer = await makeFreelancer();
     const client = await makeClient();
     const deadline = daysFromNow(20);
@@ -366,7 +367,7 @@ describe('GET /api/users/me/recommended-projects', () => {
     expect(ids(res.body.projects)).toEqual([...[tieA.id, tieB.id].sort(), later.id]);
   });
 
-  it('cuts the prefilter at 200 rows ordered by createdAt desc, id asc — before scoring [RC1] [RC6]', async () => {
+  it('cuts the prefilter at 200 rows ordered by createdAt desc, id asc — before scoring', async () => {
     const freelancer = await makeFreelancer({ skills: ['React', 'Node.js'], activityCategory: '웹 개발' });
     const client = await makeClient();
     const base = Date.now() - 60_000;
@@ -396,7 +397,7 @@ describe('GET /api/users/me/recommended-projects', () => {
     expect(again.body.projects[0].id).toBe(oldest.id);
   });
 
-  it('returns 10 by default and caps limit at 20 [RC1]', async () => {
+  it('returns 10 by default and caps limit at 20', async () => {
     const freelancer = await makeFreelancer();
     const client = await makeClient();
     for (let i = 0; i < 22; i += 1) await makeProject(client.id);
@@ -408,7 +409,7 @@ describe('GET /api/users/me/recommended-projects', () => {
     expect(capped.body.projects).toHaveLength(20);
   });
 
-  it('orders its checks role → complete profile → validation [RC6]', async () => {
+  it('orders its checks role → complete profile → validation', async () => {
     const client = await makeClient();
     const incomplete = await makeFreelancer({ hourlyRate: null });
     const complete = await makeFreelancer();

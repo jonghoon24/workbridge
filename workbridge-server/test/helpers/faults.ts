@@ -2,7 +2,7 @@ import { prisma } from './db';
 import { makeContractScenario } from './factories';
 
 /**
- * The suite's standing 500 vector, for tests of 500 handling (logging, Sentry, rule 1).
+ * The suite's standing 500 vector, for tests of 500 handling (logging, Sentry).
  *
  * The caller's request is `POST /api/payments` with `{ milestoneId }` for the client and milestone
  * of `fundableMilestone()`: it passes validation and every check, then the payment insert fails at

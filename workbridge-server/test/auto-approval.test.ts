@@ -9,8 +9,8 @@ import { markFunded } from '../src/services/milestones.service';
 import { HOUR_MS } from '../src/lib/time';
 
 /**
- * Automatic approval and the scheduled milestone notices — BEHAVIOR.md J1–J5, MS17, MS20, MS21,
- * M14–M16. Time is driven with `runDueJobs({ now })`; nothing sleeps.
+ * Automatic approval and the scheduled milestone notices (auto-approval reminder, due soon,
+ * overdue). Time is driven with `runDueJobs({ now })`; nothing sleeps.
  */
 
 const MS = 1;
@@ -33,8 +33,8 @@ async function submittedViaApi(opts: { extraMilestone?: boolean } = {}) {
 
 const statusOf = async (id: string) => (await prisma.milestone.findUniqueOrThrow({ where: { id } })).status;
 
-describe('milestone.autoApprove (J2, MS20)', () => {
-  it('does nothing before autoApproveAt, then approves automatically at it [J2] [M14]', async () => {
+describe('milestone.autoApprove job', () => {
+  it('does nothing before autoApproveAt, then approves automatically at it', async () => {
     const { milestone, autoApproveAt } = await submittedViaApi({ extraMilestone: true });
 
     await runJobs(new Date(autoApproveAt.getTime() - MS));
@@ -52,7 +52,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     expect(job.status).toBe('SUCCEEDED');
   });
 
-  it('notifies both parties with MILESTONE_AUTO_APPROVED, not MILESTONE_APPROVED [MS20]', async () => {
+  it('notifies both parties with MILESTONE_AUTO_APPROVED, not MILESTONE_APPROVED', async () => {
     const { client, freelancer, autoApproveAt } = await submittedViaApi({ extraMilestone: true });
 
     await runJobs(autoApproveAt);
@@ -62,7 +62,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     expect(await prisma.notification.count({ where: { type: 'MILESTONE_APPROVED' } })).toBe(0);
   });
 
-  it('completes the contract when it approves the last milestone [MS17] [MS20]', async () => {
+  it('completes the contract when it approves the last milestone', async () => {
     const { contract, project, autoApproveAt } = await submittedViaApi();
 
     await runJobs(autoApproveAt);
@@ -74,7 +74,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     expect(await prisma.notification.count({ where: { type: 'CONTRACT_COMPLETED' } })).toBe(2);
   });
 
-  it('is a no-op after a manual approval [J1]', async () => {
+  it('is a no-op after a manual approval', async () => {
     const { client, milestone, autoApproveAt } = await submittedViaApi({ extraMilestone: true });
     await authed(client).post(`/api/milestones/${milestone.id}/approve`);
 
@@ -87,7 +87,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     expect(job.status).toBe('SUCCEEDED');
   });
 
-  it('a rejection cancels the timer; the round-1 job never approves round 2 early [J2] [MS20]', async () => {
+  it('a rejection cancels the timer; the round-1 job never approves round 2 early', async () => {
     const { client, freelancer, milestone, autoApproveAt } = await submittedViaApi({ extraMilestone: true });
     await authed(client).post(`/api/milestones/${milestone.id}/reject`).send({ reason: '다시 확인해 주세요 부탁드립니다' });
 
@@ -106,7 +106,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     expect(await statusOf(milestone.id)).toBe('APPROVED');
   });
 
-  it('proceeds on a soft-deleted project: contract completes, project row untouched, no notifications [J2] [MS17]', async () => {
+  it('proceeds on a soft-deleted project: contract completes, project row untouched, no notifications', async () => {
     const { contract, project, autoApproveAt } = await submittedViaApi();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
     const before = await prisma.notification.count();
@@ -119,7 +119,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     expect(await prisma.notification.count()).toBe(before);
   });
 
-  it('proceeds when the client is soft-deleted, notifying only the freelancer [MS20]', async () => {
+  it('proceeds when the client is soft-deleted, notifying only the freelancer', async () => {
     const { client, freelancer, autoApproveAt } = await submittedViaApi({ extraMilestone: true });
     await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
 
@@ -129,7 +129,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     expect(auto.map((n) => n.userId)).toEqual([freelancer.id]);
   });
 
-  it('manual and automatic approval racing: exactly one wins, one item, one approval notice [MS21] [MS4]', async () => {
+  it('manual and automatic approval racing: exactly one wins, one item, one approval notice', async () => {
     for (let iteration = 0; iteration < 5; iteration += 1) {
       const { client, milestone, autoApproveAt } = await submittedViaApi({ extraMilestone: true });
       // The job may run "now" if autoApproveAt has passed; make it due.
@@ -154,7 +154,7 @@ describe('milestone.autoApprove (J2, MS20)', () => {
     }
   });
 
-  it('fails permanently when the payload names a milestone that does not exist [J1]', async () => {
+  it('fails permanently when the payload names a milestone that does not exist', async () => {
     await prisma.$transaction((tx) => enqueueJob(tx, {
       type: 'milestone.autoApprove',
       payload: { milestoneId: 'no-such-milestone', round: 1 },
@@ -172,8 +172,8 @@ describe('milestone.autoApprove (J2, MS20)', () => {
   });
 });
 
-describe('milestone.autoApproveReminder (J3)', () => {
-  it('reminds the client 48 hours before auto-approval [J3] [M15]', async () => {
+describe('milestone.autoApproveReminder job', () => {
+  it('reminds the client 48 hours before auto-approval', async () => {
     const { client, contract, milestone, autoApproveAt } = await submittedViaApi();
     const remindAt = new Date(autoApproveAt.getTime() - 48 * HOUR_MS);
 
@@ -189,7 +189,7 @@ describe('milestone.autoApproveReminder (J3)', () => {
     });
   });
 
-  it('is a no-op once the milestone was decided, or on a soft-deleted project [J1] [J3]', async () => {
+  it('is a no-op once the milestone was decided, or on a soft-deleted project', async () => {
     const decided = await submittedViaApi({ extraMilestone: true });
     await authed(decided.client).post(`/api/milestones/${decided.milestone.id}/approve`);
     const deleted = await submittedViaApi();
@@ -201,8 +201,8 @@ describe('milestone.autoApproveReminder (J3)', () => {
   });
 });
 
-describe('milestone.dueSoon and milestone.overdue (J4, J5)', () => {
-  /** An ACTIVE contract with a milestone due in 5 days, funded through the service (PY7). */
+describe('milestone.dueSoon and milestone.overdue jobs', () => {
+  /** An ACTIVE contract with a milestone due in 5 days, funded through the service, which schedules its due-date jobs. */
   async function fundedWithJobs() {
     const scenario = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
@@ -214,7 +214,7 @@ describe('milestone.dueSoon and milestone.overdue (J4, J5)', () => {
     return { ...scenario, milestone };
   }
 
-  it('tells the freelancer 24 hours before the due date, and both parties at it [J4] [J5] [M16]', async () => {
+  it('tells the freelancer 24 hours before the due date, and both parties at it', async () => {
     const { client, freelancer, milestone } = await fundedWithJobs();
     const due = milestone.dueDate.getTime();
 
@@ -230,7 +230,7 @@ describe('milestone.dueSoon and milestone.overdue (J4, J5)', () => {
     expect(overdue.map((n) => n.userId).sort()).toEqual([client.id, freelancer.id].sort());
   });
 
-  it('stays quiet once the work is submitted [J4] [J5]', async () => {
+  it('stays quiet once the work is submitted', async () => {
     const { milestone } = await fundedWithJobs();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
 
@@ -239,7 +239,7 @@ describe('milestone.dueSoon and milestone.overdue (J4, J5)', () => {
     expect(await prisma.notification.count({ where: { type: { in: ['MILESTONE_DUE_SOON', 'MILESTONE_OVERDUE'] } } })).toBe(0);
   });
 
-  it('still notifies while REVISION_REQUESTED [J5]', async () => {
+  it('still notifies while REVISION_REQUESTED', async () => {
     const { milestone } = await fundedWithJobs();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'REVISION_REQUESTED' } });
 
@@ -248,7 +248,7 @@ describe('milestone.dueSoon and milestone.overdue (J4, J5)', () => {
     expect(await prisma.notification.count({ where: { type: 'MILESTONE_OVERDUE' } })).toBe(2);
   });
 
-  it('is a no-op on a soft-deleted project [J4] [J5]', async () => {
+  it('is a no-op on a soft-deleted project', async () => {
     const { project, milestone } = await fundedWithJobs();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 

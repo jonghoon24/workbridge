@@ -8,8 +8,9 @@ import { enqueueJob } from '../src/jobs/queue';
 import { MINUTE_MS } from '../src/lib/time';
 
 /**
- * Unread state — BEHAVIOR.md MG4 (`readByCounterpart`), MG8, MG16 — and the unread-message
- * digest job's first half (J8 steps 1–2, MG21), driven with `runDueJobs({ now })`.
+ * Unread state — the unread count, `POST /api/conversations/:id/read` and `readByCounterpart` —
+ * and the unread-message digest job's first half (deciding whether a digest is due), driven with
+ * `runDueJobs({ now })`.
  */
 
 type Scenario = Awaited<ReturnType<typeof makeContractScenario>>;
@@ -26,11 +27,11 @@ const watermark = async (conversationId: string, userId: string) =>
 const ago = (minutes: number) => new Date(Date.now() - minutes * MINUTE_MS);
 
 // ---------------------------------------------------------------------------------------------
-// MG8 — unread count
+// Unread count
 // ---------------------------------------------------------------------------------------------
 
 describe('unread count', () => {
-  it('counts the other participant\'s text newer than the watermark — all of it while null [MG8]', async () => {
+  it('counts the other participant\'s text newer than the watermark — all of it while null', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const first = await makeMessage(conversation.id, freelancer.id, { createdAt: ago(3) });
     await makeMessage(conversation.id, freelancer.id, { createdAt: ago(2) });
@@ -45,7 +46,7 @@ describe('unread count', () => {
     expect(await unread(client, conversation.id)).toBe(2);
   });
 
-  it('never counts system messages or the caller\'s own [MG8]', async () => {
+  it('never counts system messages or the caller\'s own', async () => {
     const { client, conversation } = await makeContractScenario();
     await makeMessage(conversation.id, null, { systemEvent: 'MILESTONE_FUNDED' });
     await makeMessage(conversation.id, client.id);
@@ -53,7 +54,7 @@ describe('unread count', () => {
     expect(await unread(client, conversation.id)).toBe(0);
   });
 
-  it('a message deleted after it was counted stops counting [MG8] [MG17]', async () => {
+  it('a message deleted after it was counted stops counting', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const message = await makeMessage(conversation.id, freelancer.id);
     expect(await unread(client, conversation.id)).toBe(1);
@@ -66,11 +67,11 @@ describe('unread count', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// MG16 — POST /api/conversations/:id/read
+// POST /api/conversations/:id/read
 // ---------------------------------------------------------------------------------------------
 
 describe('POST /api/conversations/:id/read', () => {
-  it('moves the watermark to the newest counterpart message and answers { lastReadAt, unreadCount } [MG16]', async () => {
+  it('moves the watermark to the newest counterpart message and answers { lastReadAt, unreadCount }', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await makeMessage(conversation.id, freelancer.id, { createdAt: ago(3) });
     const newest = await makeMessage(conversation.id, freelancer.id, { createdAt: ago(2) });
@@ -84,7 +85,7 @@ describe('POST /api/conversations/:id/read', () => {
     expect(await watermark(conversation.id, freelancer.id)).toBeNull();
   });
 
-  it('system messages never move it: a later system message does not mark earlier text read [MG16]', async () => {
+  it('system messages never move it: a later system message does not mark earlier text read', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const text = await makeMessage(conversation.id, freelancer.id, { createdAt: ago(2) });
     await makeMessage(conversation.id, null, { createdAt: ago(1) });
@@ -94,7 +95,7 @@ describe('POST /api/conversations/:id/read', () => {
     expect(res.body.lastReadAt).toBe(text.createdAt.toISOString());
   });
 
-  it('counts the newest counterpart message even when it was deleted [MG16]', async () => {
+  it('counts the newest counterpart message even when it was deleted', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await makeMessage(conversation.id, freelancer.id, { createdAt: ago(2) });
     const deleted = await makeMessage(conversation.id, freelancer.id, { createdAt: ago(1), deletedAt: new Date() });
@@ -104,7 +105,7 @@ describe('POST /api/conversations/:id/read', () => {
     expect(res.body.lastReadAt).toBe(deleted.createdAt.toISOString());
   });
 
-  it('without any counterpart message nothing changes [MG16]', async () => {
+  it('without any counterpart message nothing changes', async () => {
     const { client, conversation } = await makeContractScenario();
     await makeMessage(conversation.id, client.id);
     await makeMessage(conversation.id, null);
@@ -115,7 +116,7 @@ describe('POST /api/conversations/:id/read', () => {
     expect(res.body).toEqual({ lastReadAt: null, unreadCount: 0 });
   });
 
-  it('never moves the watermark back [MG16]', async () => {
+  it('never moves the watermark back', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await makeMessage(conversation.id, freelancer.id, { createdAt: ago(5) });
     const ahead = ago(1);
@@ -129,7 +130,7 @@ describe('POST /api/conversations/:id/read', () => {
     expect(res.body.lastReadAt).toBe(ahead.toISOString());
   });
 
-  it('concurrent reads are harmless and land on the same watermark [MG16]', async () => {
+  it('concurrent reads are harmless and land on the same watermark', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const newest = await makeMessage(conversation.id, freelancer.id);
 
@@ -141,7 +142,7 @@ describe('POST /api/conversations/:id/read', () => {
     }
   });
 
-  it('a message sent after the read is unread again, and the header total follows [MG16] [MG12]', async () => {
+  it('a message sent after the read is unread again, and the header total follows', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await authed(freelancer).post(`/api/conversations/${conversation.id}/messages`).send({ body: '첫 메시지' });
     await read(client, conversation.id);
@@ -154,11 +155,11 @@ describe('POST /api/conversations/:id/read', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// MG4 — readByCounterpart
+// readByCounterpart
 // ---------------------------------------------------------------------------------------------
 
 describe('readByCounterpart', () => {
-  it('is true for the caller\'s text the other side has read, false otherwise, null for the rest [MG4] [MG16]', async () => {
+  it('is true for the caller\'s text the other side has read, false otherwise, null for the rest', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const seen = await makeMessage(conversation.id, client.id, { createdAt: ago(4) });
     const reply = await makeMessage(conversation.id, freelancer.id, { createdAt: ago(3) });
@@ -181,7 +182,7 @@ describe('readByCounterpart', () => {
     expect(asClient.body.messages[2].id).toBe(unseen.id);
   });
 
-  it('flips once the other side reads through the API [MG4] [MG16]', async () => {
+  it('flips once the other side reads through the API', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const sent = await authed(client).post(`/api/conversations/${conversation.id}/messages`).send({ body: '확인 부탁드려요' });
     expect(sent.body.message.readByCounterpart).toBe(false);
@@ -194,17 +195,17 @@ describe('readByCounterpart', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// J8 — message.unreadDigest, steps 1–2
+// message.unreadDigest — is a digest due?
 // ---------------------------------------------------------------------------------------------
 
-describe('message.unreadDigest (J8)', () => {
+describe('message.unreadDigest job', () => {
   const sendText = (user: User, conversationId: string, body = '안녕하세요') =>
     authed(user).post(`/api/conversations/${conversationId}/messages`).send({ body });
 
   const digestsFor = async (recipientId: string) =>
     (await jobsOf('message.unreadDigest')).filter((j) => (j.payload as { recipientId: string }).recipientId === recipientId);
 
-  it('a send enqueues one digest for the other participant at createdAt + 10 min; later sends do not add more [J8] [MG15]', async () => {
+  it('a send enqueues one digest for the other participant at createdAt + 10 min; later sends do not add more', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
 
     const first = await sendText(client, conversation.id, '하나');
@@ -222,7 +223,7 @@ describe('message.unreadDigest (J8)', () => {
     expect(await digestsFor(client.id)).toHaveLength(0);
   });
 
-  it('a pending digest for another conversation or recipient does not block one [J8]', async () => {
+  it('a pending digest for another conversation or recipient does not block one', async () => {
     const a = await makeContractScenario();
     const b = await makeContractScenario({ contract: { clientId: a.client.id } });
 
@@ -235,7 +236,7 @@ describe('message.unreadDigest (J8)', () => {
     expect(await digestsFor(a.client.id)).toHaveLength(1);
   });
 
-  it('runs to SUCCEEDED and creates one email-only digest when the messages are still unread at the due time [J8] [MG21] [NC16]', async () => {
+  it('runs to SUCCEEDED and creates one email-only digest when the messages are still unread at the due time', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await sendText(client, conversation.id);
     const [job] = await digestsFor(freelancer.id);
@@ -245,12 +246,12 @@ describe('message.unreadDigest (J8)', () => {
     expect(result).toMatchObject({ claimed: 1, succeeded: 1, failed: 0 });
     expect((await prisma.job.findUniqueOrThrow({ where: { id: job.id } })).status).toBe('SUCCEEDED');
     expect(await digestsFor(freelancer.id)).toHaveLength(1); // nothing re-enqueued
-    expect(await prisma.notification.count()).toBe(0); // email only, never an in-app row (MG20)
+    expect(await prisma.notification.count()).toBe(0); // email only, never an in-app row
     expect(await prisma.emailDelivery.count({ where: { userId: freelancer.id, type: 'MESSAGE_UNREAD_DIGEST' } })).toBe(1);
     expect(await watermark(conversation.id, freelancer.id)).toBeNull();
   });
 
-  it('is a no-op when the recipient read within 10 minutes [J8]', async () => {
+  it('is a no-op when the recipient read within 10 minutes', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await sendText(client, conversation.id);
     await read(freelancer, conversation.id);
@@ -262,7 +263,7 @@ describe('message.unreadDigest (J8)', () => {
     expect(await prisma.job.count()).toBe(1);
   });
 
-  it('re-enqueues at the oldest unread message + 10 min when newer messages arrived after a read (the J8 example) [J8]', async () => {
+  it('re-enqueues at the oldest unread message + 10 min when newer messages arrived after a read', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const t0 = Date.now() - 30 * MINUTE_MS;
     // A at t0 enqueued a job for t0 + 10; the recipient read at t0 + 2; B at t0 + 9 enqueued nothing.
@@ -292,7 +293,7 @@ describe('message.unreadDigest (J8)', () => {
     expect((await digestsFor(freelancer.id)).map((j) => j.status)).toEqual(['SUCCEEDED', 'SUCCEEDED']);
   });
 
-  it('does not re-enqueue when another digest for the pair is already pending [J8]', async () => {
+  it('does not re-enqueue when another digest for the pair is already pending', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const t0 = Date.now() - 30 * MINUTE_MS;
     await makeMessage(conversation.id, client.id, { createdAt: new Date(t0 + 9 * MINUTE_MS) });
@@ -308,7 +309,7 @@ describe('message.unreadDigest (J8)', () => {
   it.each([
     ['the recipient is soft-deleted', 'recipient'],
     ['the project is soft-deleted', 'project'],
-  ] as const)('is a no-op when %s [J8] [MG10]', async (_label, what) => {
+  ] as const)('is a no-op when %s', async (_label, what) => {
     const { client, freelancer, project, conversation } = await makeContractScenario();
     await sendText(client, conversation.id);
     const [job] = await digestsFor(freelancer.id);
@@ -324,7 +325,7 @@ describe('message.unreadDigest (J8)', () => {
     expect(await prisma.job.count()).toBe(1);
   });
 
-  it('a payload naming no participant fails permanently, without retrying [J8] [J1]', async () => {
+  it('a payload naming no participant fails permanently, without retrying', async () => {
     const { conversation } = await makeContractScenario();
     await enqueueJob(prisma, {
       type: 'message.unreadDigest',
@@ -343,7 +344,7 @@ describe('message.unreadDigest (J8)', () => {
     }
   });
 
-  it('serializes with a concurrent read on the participant row: both succeed [J8] [MG16]', async () => {
+  it('serializes with a concurrent read on the participant row: both succeed', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await sendText(client, conversation.id);
     const [job] = await digestsFor(freelancer.id);
@@ -352,7 +353,7 @@ describe('message.unreadDigest (J8)', () => {
 
     expect(result.succeeded).toBe(1);
     expect(res.status).toBe(200);
-    // Either order is consistent: read first → nothing to send; digest first → one email (NC16).
+    // Either order is consistent: read first → nothing to send; digest first → one email.
     expect(await digestsFor(freelancer.id)).toHaveLength(1);
     const deliveries = await prisma.emailDelivery.findMany({ where: { type: 'MESSAGE_UNREAD_DIGEST' } });
     expect(deliveries.length).toBeLessThanOrEqual(1);

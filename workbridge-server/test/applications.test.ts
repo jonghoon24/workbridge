@@ -18,7 +18,7 @@ import {
 
 const MISSING_ID = '00000000-0000-0000-0000-000000000000';
 
-/** Every error body must be exactly `{ error: { message } }` (BEHAVIOR.md § cross-cutting 1). */
+/** Every error body must be exactly `{ error: { message } }`. */
 function expectErrorEnvelope(body: unknown) {
   expect(body).toEqual({ error: { message: expect.any(String) } });
 }
@@ -84,7 +84,7 @@ describe('POST /api/projects/:id/applications', () => {
     ['minus one', -1],
     ['the numeric string "0"', '0'],
     ['whitespace', '   '],
-    // Rule 12: `parseFloat` used to read these as 2500000 and 1.
+    // Strict number parsing: `parseFloat` used to read these as 2500000 and 1.
     ['trailing-garbage', '2500000abc'],
     ['exponent', '1e6'],
     ['boolean', true],
@@ -110,7 +110,7 @@ describe('POST /api/projects/:id/applications', () => {
   it.each([
     ['0.4', 0.4],
     ['the string "0.99"', '0.99'],
-  ])('400s on a positive expectedRate below 1 (%s), which is not a whole number of won [C2] [M7]', async (_label, expectedRate) => {
+  ])('400s on a positive expectedRate below 1 (%s), which is not a whole number of won', async (_label, expectedRate) => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -124,7 +124,7 @@ describe('POST /api/projects/:id/applications', () => {
     expect(await prisma.application.count()).toBe(0);
   });
 
-  it('accepts an expectedRate of exactly 1 [C2]', async () => {
+  it('accepts an expectedRate of exactly 1', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -154,10 +154,9 @@ describe('POST /api/projects/:id/applications', () => {
     }
   }
 
-  // Cross-cutting rule 8: a malformed value must be 400, never 500. `coverLetter` and
-  // `expectedDuration` used to be only truthiness-checked, so a truthy non-string reached
-  // `tx.application.create` and Prisma rejected it — a 500 whose body leaked the source path
-  // (#37, D14). They are strings now.
+  // A malformed value must be 400, never 500. `coverLetter` and `expectedDuration` used to be
+  // only truthiness-checked, so a truthy non-string reached `tx.application.create` and Prisma
+  // rejected it — a 500 whose body leaked the source path (#37). They are strings now.
   it('400s on a non-string expectedDuration rather than 500', async () => {
     const res = await applyWithNonStringDuration();
 
@@ -204,10 +203,10 @@ describe('POST /api/projects/:id/applications', () => {
     expect(res.body.error.message).toBe('Project not found');
   });
 
-  // (Q11) Q11 asks whether the soft-delete rule reaches *joined* owners. On this path it does not:
-  // the project of a soft-deleted client is still open for applications, and the
-  // `APPLICATION_CREATED` notification is addressed to the deleted account. Pinned, not judged.
-  it('still accepts an application for a project whose client is soft-deleted (Q11)', async () => {
+  // Whether the soft-delete rule reaches *joined* owners is an open product question. On this
+  // path it does not: the project of a soft-deleted client is still open for applications, and
+  // the `APPLICATION_CREATED` notification is addressed to the deleted account. Pinned, not judged.
+  it('still accepts an application for a project whose client is soft-deleted', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
@@ -223,11 +222,11 @@ describe('POST /api/projects/:id/applications', () => {
     expect(notifications[0].userId).toBe(client.id);
   });
 
-  // (Q8) Role gating reads the role from the **token**, not the row. A freelancer demoted to
+  // Role gating reads the role from the **token**, not the row. A freelancer demoted to
   // CLIENT keeps FREELANCER access until the token expires: `requireRole` passes on the token's
   // role, and since `requireCompleteProfile` reads the row it only has to be complete for the
   // row's *new* role. The application is then created by a user who is now a CLIENT.
-  it('lets a freelancer demoted to CLIENT keep applying until the token expires (Q8)', async () => {
+  it('lets a freelancer demoted to CLIENT keep applying until the token expires', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -248,10 +247,10 @@ describe('POST /api/projects/:id/applications', () => {
     expect(applicant.role).toBe('CLIENT');
   });
 
-  // (Q8) The other half of the split source of truth: the role gate reads the token, but
+  // The other half of the split source of truth: the role gate reads the token, but
   // completeness reads the row — so the same demotion *without* client fields is stopped by
   // `requireCompleteProfile`, with the profile message rather than a role message.
-  it('403s a demoted freelancer whose row is incomplete for its new role (Q8)', async () => {
+  it('403s a demoted freelancer whose row is incomplete for its new role', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -290,7 +289,7 @@ describe('POST /api/projects/:id/applications', () => {
     // own `$transaction` — *not* `apply`'s in-handler `deadline < now` branch. That branch reads
     // the project after the sweep has already flipped it to CLOSED, so `status === 'OPEN'` is
     // false and the branch is unreachable; the request falls through to the not-OPEN guard.
-    // The [unlisted] test below asserts the message the unreachable branch would have produced.
+    // That dead branch and its 'Project deadline has passed' message are tracked in issue #39.
     const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(after.status).toBe('CLOSED');
     const rejected = await prisma.application.findUniqueOrThrow({ where: { id: pending.id } });
@@ -301,7 +300,7 @@ describe('POST /api/projects/:id/applications', () => {
   });
 
   /**
-   * Rule 12 order: the body is validated before the controller runs, so an invalid body is a 400
+   * Validation order: the body is validated before the controller runs, so an invalid body is a 400
    * with no side effects — the lazy sweep (the controller's first step) does not run either.
    */
   it('validates the body before sweeping, so a 400 writes nothing', async () => {
@@ -576,10 +575,10 @@ describe('GET /api/projects/:id/applications', () => {
     expect(persisted.status).toBe('PENDING');
   });
 
-  // (Q7) The endpoint is unpaginated and no decision has been made to change that: every
+  // The endpoint is unpaginated and no decision has been made to change that: every
   // application comes back in one array and `limit`/`page` are ignored rather than honoured or
   // rejected. Pinned so the switch to pagination cannot happen silently.
-  it('returns every application in one array, ignoring limit and page (Q7)', async () => {
+  it('returns every application in one array, ignoring limit and page', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     for (let i = 0; i < 12; i += 1) {
@@ -659,7 +658,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     expect(res.body).toEqual({ error: { message: 'status: Status is required' } });
   });
 
-  // Rule 12 order, which also settles Q15: validation before existence.
+  // Validation runs before the existence check.
   it('400s on an invalid status before checking that the project exists', async () => {
     const s = await scenario();
 
@@ -753,11 +752,11 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       });
       expect(contract.startDate.getTime()).toBeGreaterThanOrEqual(before - 1_000);
       expect(contract.startDate.getTime()).toBeLessThanOrEqual(Date.now() + 1_000);
-      // [C2] endDate is the default milestone's due date, not the recruitment deadline.
+      // endDate is the default milestone's due date, not the recruitment deadline.
       const dueDate = kstDateToEndOfDay(kstDateString(new Date(before + 30 * DAY_MS)));
       expect(contract.endDate.getTime()).toBe(dueDate.getTime());
 
-      // 4. the default milestone [M9] [C2]
+      // 4. the default milestone
       const milestones = await prisma.milestone.findMany({ where: { contractId: contract.id } });
       expect(milestones).toHaveLength(1);
       expect(milestones[0]).toMatchObject({
@@ -795,7 +794,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(await prisma.notification.count()).toBe(3);
     });
 
-    it('7. opens the conversation: both parties, nothing read, and the CONTRACT_CREATED system message [MG2] [MG3] [MG6] [C2]', async () => {
+    it('7. opens the conversation: both parties, nothing read, and the CONTRACT_CREATED system message', async () => {
       const s = await scenario();
 
       const res = await authed(s.client)
@@ -816,10 +815,10 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
         senderId: null,
         deletedAt: null,
       });
-      // MG7: lastMessageAt is the system message's createdAt.
+      // lastMessageAt is the system message's createdAt.
       expect(conversation.lastMessageAt?.getTime()).toBe(conversation.messages[0].createdAt.getTime());
       expect(await prisma.conversation.count()).toBe(1);
-      // MG20: the system message creates no notification beyond step 6's three.
+      // The system message creates no notification beyond step 6's three.
       expect(await prisma.notification.count()).toBe(3);
     });
 
@@ -844,7 +843,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(res.body.contract).not.toHaveProperty('milestones');
     });
 
-    it('rounds a fractional contract amount to whole won for the default milestone [M7] [M9]', async () => {
+    it('rounds a fractional contract amount to whole won for the default milestone', async () => {
       const client = await makeClient();
       const project = await makeProject(client.id);
       const freelancer = await makeFreelancer();
@@ -959,7 +958,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(await prisma.contract.count()).toBe(1);
     });
 
-    it('409s — not 500 — when accepting a sibling that the accept bulk-rejected [D4/D7]', async () => {
+    it('409s — not 500 — when accepting a sibling that the accept bulk-rejected', async () => {
       const s = await scenario();
 
       const accept = await authed(s.client)
@@ -1055,7 +1054,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(await prisma.notification.count()).toBe(0);
     });
 
-    it('rolls the whole accept back when creating the default milestone fails [C2]', async () => {
+    it('rolls the whole accept back when creating the default milestone fails', async () => {
       const s = await scenario();
       await prisma.$executeRawUnsafe(
         `ALTER TABLE "Milestone" ADD CONSTRAINT "tmp_no_default" CHECK ("title" <> '전체 작업')`,
@@ -1080,7 +1079,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       }
     });
 
-    it('rolls the whole accept back when opening the conversation fails [C2] [MG3]', async () => {
+    it('rolls the whole accept back when opening the conversation fails', async () => {
       const s = await scenario();
       await prisma.$executeRawUnsafe(`ALTER TABLE "Message" ADD CONSTRAINT "tmp_no_messages" CHECK (false) NOT VALID`);
       const logs = vi.spyOn(console, 'error').mockImplementation(() => {});

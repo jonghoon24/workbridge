@@ -239,7 +239,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Conversations and messages (MG10).
+  // Conversations and messages.
   {
     label: 'POST /api/conversations/:id/messages',
     async setup() {
@@ -283,7 +283,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Portfolio and careers (PF20).
+  // Portfolio and careers.
   {
     label: 'POST /api/users/me/portfolio',
     async setup() {
@@ -387,7 +387,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Notification preferences (NC7).
+  // Notification preferences.
   {
     label: 'PUT /api/notifications/preferences',
     async setup() {
@@ -453,10 +453,10 @@ describe('expansion routes refuse a soft-deleted principal (requireActiveUser)',
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 / D1 (resolved) — the read and authentication paths, which must stay fixed
+// The read and authentication paths refuse a soft-deleted user
 // ---------------------------------------------------------------------------------------------
 
-describe('a soft-deleted user cannot authenticate or be looked up (D1, fixed)', () => {
+describe('a soft-deleted user cannot authenticate or be looked up', () => {
   it('cannot log in, even with the correct password', async () => {
     const user = await makeUser();
     await softDelete(user.id);
@@ -579,7 +579,7 @@ describe('a soft-deleted user cannot authenticate or be looked up (D1, fixed)', 
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 — a soft-deleted project is invisible to listing, fetching, applying and bookmarking
+// A soft-deleted project is invisible to listing, fetching, applying and bookmarking
 // ---------------------------------------------------------------------------------------------
 
 type DeletedProjectFixture = {
@@ -615,7 +615,7 @@ async function deletedProjectFixture(): Promise<DeletedProjectFixture> {
 
 /**
  * Every route that resolves a project by id. `GET`/`DELETE /:id/bookmark` are deliberately
- * absent: they do not check the project at all, which is **D19**, covered in `bookmarks.test.ts`.
+ * absent: they do not check the project at all (issue #14).
  */
 const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) => PromiseLike<Sent> }[] = [
   {
@@ -781,20 +781,16 @@ describe('a soft-deleted project', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 / D21 — the contract endpoints never filter deletedAt
+// A contract whose project is soft-deleted
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `getContract` and `signContract` resolve the contract with a plain `findUnique` and never
- * consult `deletedAt` on the joined project. Rule 5 ("every read and write must filter
- * `deletedAt: null`") decides the soft-deleted case, so a contract whose project is gone must be
- * invisible. Today both succeed: the contract is served with the deleted project embedded in
- * the body, and it can be signed. Completion moved to the milestone routes (C3), which do
- * filter — that half of D21 is now a passing test. Interacts with D11/Q4 — once deleting a
- * project with a live contract is blocked, this state becomes much harder to reach.
+ * A contract whose project is gone must be invisible (docs/domain/README.md, soft delete).
+ * Completion goes through the milestone routes, which filter the joined project's `deletedAt`.
+ * `GET /api/contracts/:id` and `POST /api/contracts/:id/sign` do not yet — tracked in issue #16.
  */
-describe('a contract whose project is soft-deleted (D21)', () => {
-  it('cannot be completed: approving its last milestone is 404 and writes nothing [MS5] [D21]', async () => {
+describe('a contract whose project is soft-deleted', () => {
+  it('cannot be completed: approving its last milestone is 404 and writes nothing', async () => {
     const { client, project, contract, milestone } = await activeContract();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
     await makeSubmission(milestone.id);
@@ -813,8 +809,8 @@ describe('a contract whose project is soft-deleted (D21)', () => {
   });
 });
 
-/** Rule 5 on the expansion routes: the deleted project hides its contract's milestones. */
-describe('a contract whose project is soft-deleted, on the expansion routes (rule 5)', () => {
+/** On the expansion routes the deleted project hides its contract and its milestones. */
+describe('a contract whose project is soft-deleted, on the expansion routes', () => {
   async function deletedProjectContract() {
     const scenario = await activeContract();
     await prisma.milestone.update({ where: { id: scenario.milestone.id }, data: { status: 'SUBMITTED' } });
@@ -823,7 +819,7 @@ describe('a contract whose project is soft-deleted, on the expansion routes (rul
     return scenario;
   }
 
-  it('is left out of GET /api/contracts [CT1]', async () => {
+  it('is left out of GET /api/contracts', async () => {
     const { client } = await deletedProjectContract();
 
     const res = await authed(client).get('/api/contracts');
@@ -838,7 +834,7 @@ describe('a contract whose project is soft-deleted, on the expansion routes (rul
     ['GET /api/milestones/:id', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.freelancer).get(`/api/milestones/${s.milestone.id}`), 'Milestone not found'],
     ['POST /api/milestones/:id/reject', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post(`/api/milestones/${s.milestone.id}/reject`).send({ reason: 'Not what we agreed on.' }), 'Milestone not found'],
     ['POST /api/payments', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post('/api/payments').send({ milestoneId: s.milestone.id }), 'Milestone not found'],
-  ] as const)('%s → 404 [MS5] [PY1]', async (_label, send, message) => {
+  ] as const)('%s → 404', async (_label, send, message) => {
     const scenario = await deletedProjectContract();
 
     const res = await send(scenario);
@@ -849,7 +845,7 @@ describe('a contract whose project is soft-deleted, on the expansion routes (rul
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 vs. the review lists — an unaddressed edge, filed under Q11
+// Review lists for a soft-deleted user — an open product question
 // ---------------------------------------------------------------------------------------------
 
 /**
@@ -857,13 +853,12 @@ describe('a contract whose project is soft-deleted, on the expansion routes (rul
  * a user who 404s at `GET /api/users/:id` still has their received reviews served — including
  * the reviewer's name and avatar for a soft-deleted reviewer.
  *
- * Filed as **Q11** rather than a new divergence number, because it is the same unanswered
- * question as the joined-owner case already pinned in `projects-list.test.ts`: rule 5 is
- * written about the record being read, and here the soft-deleted user is a *join target*, not
- * the record. The reviews themselves are not deleted. If Q11 is decided the strict way, these
- * three tests flip to expecting `[]` (or a 404) and move under a D-number.
+ * This is the same open question as the joined-owner case pinned in `projects-list.test.ts`:
+ * the soft-delete rule is written about the record being read, and here the soft-deleted user
+ * is a *join target*, not the record. The reviews themselves are not deleted. If the question is
+ * decided the strict way, these three tests flip to expecting `[]` (or a 404).
  */
-describe('review lists for a soft-deleted user (Q11)', () => {
+describe('review lists for a soft-deleted user', () => {
   async function reviewedPair() {
     const { client, freelancer, contract } = await makeContractScenario({
       project: { status: 'COMPLETED' },

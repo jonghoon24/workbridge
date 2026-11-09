@@ -159,7 +159,7 @@ describe('POST /api/reviews', () => {
    * today purely because validation runs before the contract lookup — the moment that order
    * changed they would 404 and still look like a correct rejection.
    */
-  it.each(requiredFields)('rejects a request missing %s with 400 [rule 12]', async (field, message) => {
+  it.each(requiredFields)('rejects a request missing %s with 400', async (field, message) => {
     const { contract, client, freelancer } = await completedScenario();
     const body: Record<string, unknown> = {
       contractId: contract.id,
@@ -185,7 +185,7 @@ describe('POST /api/reviews', () => {
     expect(res.body).toEqual({ error: { message: 'contractId: Contract ID is required' } });
   });
 
-  // Validation runs before the contract lookup (rule 12), so an unknown contract with a bad body
+  // Validation runs before the contract lookup, so an unknown contract with a bad body
   // is a 400, not a 404.
   it('validates the body before looking the contract up', async () => {
     const client = await makeClient();
@@ -210,7 +210,7 @@ describe('POST /api/reviews', () => {
     // JSON only: a numeric string is not coerced (the client sends a number).
     ['a numeric-string rating', { rating: '5' }, 'rating: Rating must be an integer between 1 and 5'],
     ['a null rating', { rating: null }, 'rating: Rating must be an integer between 1 and 5'],
-  ])('rejects %s with 400 [rule 8]', async (_label, patch, message) => {
+  ])('rejects %s with 400 rather than 500', async (_label, patch, message) => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({
@@ -286,7 +286,7 @@ describe('POST /api/reviews', () => {
     expect(res.body.rating).toBe(rating);
   });
 
-  // D9 (#4), fixed by the zod schema. `rating < 1 || rating > 5` used to run before coercion:
+  // Fixed by the zod schema (#4). `rating < 1 || rating > 5` used to run before coercion:
   // both comparisons are false for "abc", then `parseInt('abc')` was NaN and Prisma rejected it
   // with a 500.
   it('rejects a non-numeric rating with 400', async () => {
@@ -304,7 +304,7 @@ describe('POST /api/reviews', () => {
     expect(await prisma.review.count()).toBe(0);
   });
 
-  // D9: same root cause with a different payload shape — an object escaped both comparisons.
+  // Same root cause with a different payload shape — an object escaped both comparisons.
   it('rejects an object rating with 400', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
@@ -320,8 +320,8 @@ describe('POST /api/reviews', () => {
     expect(await prisma.review.count()).toBe(0);
   });
 
-  // D9's third symptom: 3.7 passed the range check and `parseInt` truncated it to 3, so the review
-  // was accepted with a rating the caller never sent. The spec requires an integer 1–5.
+  // The third symptom: 3.7 passed the range check and `parseInt` truncated it to 3, so the review
+  // was accepted with a rating the caller never sent. A rating is an integer 1–5.
   it('rejects a fractional rating with 400', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
@@ -458,9 +458,9 @@ describe('POST /api/reviews', () => {
     expect(res.body.tags).toEqual([]);
   });
 
-  // D17 (#12), fixed by the zod schema. `Array.isArray(tags)` is true for `[1, 2]`, so the array
-  // used to reach Prisma unchanged and be rejected against the `String[]` column — a 500. Rule 8
-  // requires a 400. (Non-array tags still default to `[]`, covered above.)
+  // Fixed by the zod schema (#12). `Array.isArray(tags)` is true for `[1, 2]`, so the array
+  // used to reach Prisma unchanged and be rejected against the `String[]` column — a 500. A
+  // malformed value is a 400. (Non-array tags still default to `[]`, covered above.)
   it('rejects a tags array of non-strings with 400', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
@@ -476,8 +476,8 @@ describe('POST /api/reviews', () => {
     expect(res.body).toEqual({ error: { message: 'tags.0: Tags must be strings' } });
   });
 
-  // The half of D17 that already held before the fix: the write must not land.
-  it('creates no review when tags is an array of non-strings (D17)', async () => {
+  // The half that already held before the fix: the write must not land.
+  it('creates no review when tags is an array of non-strings', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({

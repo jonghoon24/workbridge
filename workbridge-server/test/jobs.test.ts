@@ -14,7 +14,7 @@ import { startJobWorker } from '../src/jobs/worker';
 import { runWithContext } from '../src/lib/requestContext';
 
 /**
- * The Postgres job queue — BEHAVIOR.md rule 11 and "Background jobs".
+ * The Postgres job queue (see `docs/domain/jobs.md`).
  *
  * The generic queue tests below run `maintenance.cleanup` jobs with its handler replaced by a
  * spy. Claiming a recurring job also
@@ -470,7 +470,7 @@ describe('recurring jobs', () => {
 // job types
 // ---------------------------------------------------------------------------------------------
 
-describe('project.lifecycleSweep [C6]', () => {
+describe('project.lifecycleSweep', () => {
   async function scenario() {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
