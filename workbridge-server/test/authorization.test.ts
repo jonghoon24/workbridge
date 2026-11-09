@@ -1809,7 +1809,7 @@ describe('error envelope', () => {
   it('is exactly { error: { message } } on 400', async () => {
     const res = await api().post('/api/auth/login').send({ email: 'nobody@test.local' });
 
-    expectExactEnvelope(res, 400, 'Email and password are required');
+    expectExactEnvelope(res, 400, 'password: Password is required');
   });
 
   it('is exactly { error: { message } } on 409', async () => {

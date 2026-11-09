@@ -12,11 +12,12 @@ import {
 import { authenticate } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
 import { validate } from '../middlewares/validate';
+import { notificationListQuery } from '../schemas/notifications';
 import { preferencesBody } from '../schemas/notificationPreferences';
 
 const router = Router();
 
-router.get('/', authenticate, getNotifications);
+router.get('/', authenticate, validate({ query: notificationListQuery }), getNotifications);
 router.get('/unread-count', authenticate, getUnreadNotificationCount);
 router.patch('/read-all', authenticate, markAllNotificationsRead);
 router.patch('/:id/read', authenticate, markNotificationRead);

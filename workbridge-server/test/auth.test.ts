@@ -113,30 +113,96 @@ describe('POST /api/auth/signup', () => {
   };
 
   it.each([
-    ['email', { ...valid, email: undefined }],
-    ['password', { ...valid, password: undefined }],
-    ['name', { ...valid, name: undefined }],
-    ['role', { ...valid, role: undefined }],
-  ])('rejects a request missing %s with 400', async (_field, body) => {
+    ['email', { ...valid, email: undefined }, 'email: Email is required'],
+    ['password', { ...valid, password: undefined }, 'password: Password is required'],
+    ['name', { ...valid, name: undefined }, 'name: Name is required'],
+    ['role', { ...valid, role: undefined }, 'role: Role must be CLIENT or FREELANCER'],
+  ])('rejects a request missing %s with 400 [rule 12]', async (_field, body, message) => {
     const res = await api().post('/api/auth/signup').send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'All fields are required' } });
+    expect(res.body).toEqual({ error: { message } });
     expect(await prisma.user.count()).toBe(0);
   });
 
-  it('rejects an empty body with 400', async () => {
+  it('rejects an empty body with 400, reporting the first field [rule 12]', async () => {
     const res = await api().post('/api/auth/signup').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('All fields are required');
+    expect(res.body.error.message).toBe('email: Email is required');
+  });
+
+  it.each([
+    ['an empty email', { email: '' }, 'email: Email is required'],
+    ['an empty password', { password: '' }, 'password: Password is required'],
+    ['a blank name', { name: '   ' }, 'name: Name is required'],
+    ['a numeric email', { email: 12345 }, 'email: Email must be a string'],
+    ['an object password', { password: { length: 8 } }, 'password: Password must be a string'],
+    ['an array name', { name: ['a', 'b'] }, 'name: Name must be a string'],
+  ])('rejects %s with 400 and creates no user [rule 8]', async (_label, patch, message) => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, ...patch });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+    expect(await prisma.user.count()).toBe(0);
+  });
+
+  it('stores the name trimmed', async () => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, name: '  New User  ' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.name).toBe('New User');
+    const stored = await prisma.user.findUniqueOrThrow({ where: { email: valid.email } });
+    expect(stored.name).toBe('New User');
+  });
+
+  it.each(['not-an-email', 'missing-at.test.local', 'user@', '@test.local', 'two@@test.local', 'user@test'])(
+    'rejects a malformed email (%s) with 400 and creates no user',
+    async (email) => {
+      const res = await api().post('/api/auth/signup').send({ ...valid, email });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'email: Email must be a valid email address' } });
+      expect(await prisma.user.count()).toBe(0);
+    },
+  );
+
+  it('rejects a blank email as missing', async () => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, email: '   ' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
+  });
+
+  // Trimmed, but not lowercased: email normalization is still open (Q16, #21).
+  it('stores the email trimmed but with its case kept', async () => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, email: '  NewUser@Test.local ' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.email).toBe('NewUser@Test.local');
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: res.body.user.id } });
+    expect(stored.email).toBe('NewUser@Test.local');
+  });
+
+  it.each(['a', 'short12', '1234567'])('rejects a password shorter than 8 characters (%s) with 400', async (password) => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, password });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'password: Password must be at least 8 characters' } });
+    expect(await prisma.user.count()).toBe(0);
+  });
+
+  it('accepts a password of exactly 8 characters', async () => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, password: '12345678' });
+
+    expect(res.status).toBe(201);
   });
 
   it('rejects a role outside CLIENT|FREELANCER with 400', async () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, role: 'ADMIN' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Role must be CLIENT or FREELANCER' } });
+    expect(res.body).toEqual({ error: { message: 'role: Role must be CLIENT or FREELANCER' } });
     expect(await prisma.user.count()).toBe(0);
   });
 
@@ -144,7 +210,7 @@ describe('POST /api/auth/signup', () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, role: 'client' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('Role must be CLIENT or FREELANCER');
+    expect(res.body.error.message).toBe('role: Role must be CLIENT or FREELANCER');
   });
 
   it('rejects a duplicate email with 409 and creates no second row', async () => {
@@ -254,14 +320,49 @@ describe('POST /api/auth/login', () => {
     const res = await api().post('/api/auth/login').send({ password: TEST_PASSWORD });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Email and password are required' } });
+    expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
   });
 
   it('rejects a missing password with 400', async () => {
     const res = await api().post('/api/auth/login').send({ email: 'someone@test.local' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('Email and password are required');
+    expect(res.body.error.message).toBe('password: Password is required');
+  });
+
+  // A non-string email used to reach `prisma.user.findFirst({ where: { email } })` as is, so an
+  // object became a Prisma filter (`{ not: '' }` matches the first user) or a 500. It is a 400
+  // now, before any lookup [rule 8].
+  it.each([
+    ['an operator object as email', { email: { not: '' }, password: TEST_PASSWORD }, 'email: Email must be a string'],
+    ['a numeric email', { email: 42, password: TEST_PASSWORD }, 'email: Email must be a string'],
+    ['an object password', { email: 'someone@test.local', password: { a: 1 } }, 'password: Password must be a string'],
+    ['an empty password', { email: 'someone@test.local', password: '' }, 'password: Password is required'],
+  ])('rejects %s with 400 and issues no session [rule 8]', async (_label, body, message) => {
+    await makeUser();
+
+    const res = await api().post('/api/auth/login').send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+    expect(refreshCookie(res)).toBeUndefined();
+  });
+
+  // Signup's email format and password length rules do not apply here: a malformed email is just
+  // an unknown account, and accounts created before the length rule must still be able to log in.
+  it('answers a malformed email with the same 401 as an unknown account', async () => {
+    const res = await api().post('/api/auth/login').send({ email: 'not-an-email', password: TEST_PASSWORD });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+  });
+
+  it('logs in an existing account whose password is shorter than the signup minimum', async () => {
+    const user = await makeUser({ password: await bcrypt.hash('short', 4) });
+
+    const res = await api().post('/api/auth/login').send({ email: user.email, password: 'short' });
+
+    expect(res.status).toBe(200);
   });
 
   it('rejects an unknown email with 401 Invalid credentials', async () => {
@@ -547,7 +648,7 @@ describe('POST /api/auth/select-role', () => {
     const res = await authed(user).post('/api/auth/select-role').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Role must be CLIENT or FREELANCER' } });
+    expect(res.body).toEqual({ error: { message: 'role: Role must be CLIENT or FREELANCER' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(stored.roleSelected).toBe(false);
   });
@@ -558,7 +659,7 @@ describe('POST /api/auth/select-role', () => {
     const res = await authed(user).post('/api/auth/select-role').send({ role: 'ADMIN' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('Role must be CLIENT or FREELANCER');
+    expect(res.body.error.message).toBe('role: Role must be CLIENT or FREELANCER');
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(stored.role).toBe('FREELANCER');
     expect(stored.roleSelected).toBe(false);
@@ -775,6 +876,25 @@ describe('GET /api/auth/google/callback', () => {
 
     expect(res.headers.location).toBe(oauthFailed);
     expect(axiosPost).not.toHaveBeenCalled();
+  });
+
+  // The query schema never fails: a malformed parameter reads as absent, so the outcome is the
+  // documented redirect rather than a 400 JSON body — and the code is never exchanged.
+  it.each([
+    ['a repeated code', `?code=a&code=b&state=${OAUTH_STATE}`],
+    ['a nested code', `?code[x]=a&state=${OAUTH_STATE}`],
+    ['an empty code', `?code=&state=${OAUTH_STATE}`],
+    ['a repeated state', `?code=c&state=${OAUTH_STATE}&state=${OAUTH_STATE}`],
+    ['an empty state', '?code=c&state='],
+  ])('redirects with error=oauth_failed on %s, without calling Google', async (_label, query) => {
+    stubGoogle();
+
+    const res = await api().get(`/api/auth/google/callback${query}`).set('Cookie', `oauthState=${OAUTH_STATE}`);
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(oauthFailed);
+    expect(axiosPost).not.toHaveBeenCalled();
+    expect(await prisma.user.count()).toBe(0);
   });
 
   it('clears the state cookie on every outcome, so one state serves one attempt', async () => {
