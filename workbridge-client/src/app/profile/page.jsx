@@ -27,6 +27,9 @@ function resolveSelectableValue(preset, other) {
   return preset === '기타' ? other.trim() : preset;
 }
 
+// 서버의 시간당 단가 상한(workbridge-server/src/schemas/users.ts MAX_HOURLY_RATE)
+const MAX_HOURLY_RATE = 100_000_000;
+
 export default function ProfilePage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
@@ -115,11 +118,22 @@ export default function ProfilePage() {
           return;
         }
 
+        // 서버 규칙(workbridge-server/src/schemas/users.ts): 단가는 원 단위 정수, 1억 원 이하.
+        if (!Number.isInteger(hourlyRate)) {
+          setError('시간당 단가는 원 단위 정수로 입력해 주세요');
+          return;
+        }
+        if (hourlyRate > MAX_HOURLY_RATE) {
+          setError('시간당 단가는 1억 원 이하로 입력해 주세요');
+          return;
+        }
+
         payload.skills = normalizeSkillList(form.skills);
         payload.activityCategory = activityCategory;
         payload.portfolioUrl = form.portfolioUrl;
-        if (form.experienceYears !== '') payload.experienceYears = form.experienceYears;
-        if (form.hourlyRate !== '') payload.hourlyRate = form.hourlyRate;
+        // 숫자 입력칸은 '1e5' 같은 표기도 받으므로, 서버가 받는 정수 문자열로 바꿔 보낸다.
+        payload.experienceYears = String(experienceYears);
+        payload.hourlyRate = String(hourlyRate);
       }
 
       Object.entries(payload).forEach(([key, value]) => {

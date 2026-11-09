@@ -17,12 +17,16 @@ import { normalizeSkillList } from '../lib/skills';
 
 export const PROFILE_MESSAGES = {
   experienceYears: 'Experience years must be a non-negative integer',
-  hourlyRate: 'Hourly rate must be a number',
+  hourlyRate: 'Hourly rate must be a whole number of won',
+  hourlyRateMax: 'Hourly rate must be at most 100,000,000 won',
   skills: 'Skills must be strings',
 } as const;
 
 /** `experienceYears` is an `Int` column; a larger value would be a database error (a 500). */
 const MAX_INT32 = 2_147_483_647;
+
+/** An hourly rate above 100 million won is a typo, not a price; it would also skew rate analysis. */
+export const MAX_HOURLY_RATE = 100_000_000;
 
 /** A text column that may be cleared: a string (an empty one is stored as is) or JSON `null`. */
 function optionalText(label: string) {
@@ -48,10 +52,18 @@ const experienceYears = z.preprocess(
     .max(MAX_INT32, PROFILE_MESSAGES.experienceYears),
 );
 
-/** A finite number, as a JSON number or a decimal string (`'45000.5'`). Anything else is a 400 (D3). */
+/**
+ * Whole won, 0 to {@link MAX_HOURLY_RATE} (money rule: amounts are integers), as a JSON number or
+ * a digit string (`'45000'`). `'45000.5'`, `-1`, `'abc'`, `''` and `null` are 400s (D3). The
+ * column is still a `Float` (known debt), so this is the only guard.
+ */
 const hourlyRate = z.preprocess(
-  numericString(/^-?\d+(\.\d+)?$/),
-  z.number({ invalid_type_error: PROFILE_MESSAGES.hourlyRate }).finite(PROFILE_MESSAGES.hourlyRate),
+  numericString(/^\d+$/),
+  z
+    .number({ invalid_type_error: PROFILE_MESSAGES.hourlyRate })
+    .int(PROFILE_MESSAGES.hourlyRate)
+    .min(0, PROFILE_MESSAGES.hourlyRate)
+    .max(MAX_HOURLY_RATE, PROFILE_MESSAGES.hourlyRateMax),
 );
 
 /**

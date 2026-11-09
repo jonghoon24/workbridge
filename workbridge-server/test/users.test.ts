@@ -208,7 +208,7 @@ describe('PATCH /api/users/me', () => {
       skills: ['React', 'Node.js', 'TypeScript'],
       activityCategory: '데이터 분석',
       experienceYears: 7,
-      hourlyRate: 88_000.5,
+      hourlyRate: 88_000,
       portfolioUrl: 'https://portfolio.example',
     });
 
@@ -219,7 +219,7 @@ describe('PATCH /api/users/me', () => {
       skills: ['React', 'Node.js', 'TypeScript'],
       activityCategory: '데이터 분석',
       experienceYears: 7,
-      hourlyRate: 88_000.5,
+      hourlyRate: 88_000,
       portfolioUrl: 'https://portfolio.example',
     });
   });
@@ -302,7 +302,7 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate: 'abc' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a number' } });
+    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a whole number of won' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.hourlyRate).toBe(50_000);
   });
@@ -362,6 +362,8 @@ describe('PATCH /api/users/me', () => {
     ['a fractional multipart value', 'experienceYears', '2.5'],
     ['an empty multipart field', 'hourlyRate', ''],
     ['a non-numeric multipart value', 'hourlyRate', '5만원'],
+    ['a fractional multipart value', 'hourlyRate', '45000.5'],
+    ['a comma-grouped multipart value', 'hourlyRate', '45,000'],
   ])('rejects %s for %s with 400, row unchanged', async (_label, field, value) => {
     const freelancer = await makeFreelancer({ experienceYears: 3, hourlyRate: 50_000 });
 
@@ -378,27 +380,53 @@ describe('PATCH /api/users/me', () => {
     ['an empty string', ''],
     ['an object', { amount: 1 }],
     ['a value that overflows to Infinity', '1e400'],
+    // Money rule: amounts are whole won.
+    ['a fractional number', 45_000.5],
+    ['a fractional string', '45000.5'],
+    ['a negative number', -1],
+    ['a negative string', '-1'],
   ])('rejects %s as hourlyRate with 400, row unchanged', async (_label, hourlyRate) => {
     const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
 
     const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a number' } });
+    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a whole number of won' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.hourlyRate).toBe(50_000);
   });
 
-  it('accepts experienceYears 0 and a decimal-string hourlyRate', async () => {
+  it('accepts experienceYears 0 and a digit-string hourlyRate', async () => {
     const freelancer = await makeFreelancer({ experienceYears: 3, hourlyRate: 50_000 });
 
     const res = await authed(freelancer)
       .patch('/api/users/me')
-      .send({ experienceYears: '0', hourlyRate: '12000.75' });
+      .send({ experienceYears: '0', hourlyRate: '12000' });
 
     expect(res.status).toBe(200);
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
-    expect(stored).toMatchObject({ experienceYears: 0, hourlyRate: 12_000.75 });
+    expect(stored).toMatchObject({ experienceYears: 0, hourlyRate: 12_000 });
+  });
+
+  it.each([0, 100_000_000])('accepts the boundary hourlyRate %s', async (hourlyRate) => {
+    const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
+
+    const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate });
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored.hourlyRate).toBe(hourlyRate);
+  });
+
+  it('rejects an hourlyRate above 100,000,000 won with 400, row unchanged', async () => {
+    const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
+
+    const res = await authed(freelancer).patch('/api/users/me').field('hourlyRate', '100000001');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be at most 100,000,000 won' } });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored.hourlyRate).toBe(50_000);
   });
 
   it.each([
@@ -602,17 +630,17 @@ describe('PATCH /api/users/me', () => {
       const jsonRes = await authed(viaJson)
         .patch('/api/users/me')
         .set('Content-Type', 'application/json')
-        .send(JSON.stringify({ experienceYears: 7, hourlyRate: 45_000.5 }));
+        .send(JSON.stringify({ experienceYears: 7, hourlyRate: 45_000 }));
       const multipartRes = await authed(viaMultipart)
         .patch('/api/users/me')
         .field('experienceYears', '7')
-        .field('hourlyRate', '45000.5');
+        .field('hourlyRate', '45000');
 
       expect([jsonRes.status, multipartRes.status]).toEqual([200, 200]);
       for (const user of [viaJson, viaMultipart]) {
         const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
         expect(stored.experienceYears).toBe(7);
-        expect(stored.hourlyRate).toBe(45_000.5);
+        expect(stored.hourlyRate).toBe(45_000);
       }
     });
   });
