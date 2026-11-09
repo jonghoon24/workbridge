@@ -127,7 +127,9 @@ const MESSAGES = {
   // 요청 검증(zod) — 회원가입·로그인·역할 선택, 내 정보 수정, 리뷰 작성
   // (workbridge-server/src/schemas/auth.ts, users.ts, reviews.ts). 형식이 틀린 값은 PATTERNS의 같은 묶음.
   'Email is required': '이메일을 입력해 주세요.',
+  'Email must be a valid email address': '올바른 이메일 주소를 입력해 주세요.',
   'Password is required': '비밀번호를 입력해 주세요.',
+  'Password must be at least 8 characters': '비밀번호는 8자 이상이어야 합니다.',
   'Name is required': '이름을 입력해 주세요.',
   'Experience years must be a non-negative integer': '경력은 0 이상의 정수(년 단위)로 입력해 주세요.',
   'Hourly rate must be a number': '시간당 단가는 숫자로 입력해 주세요.',

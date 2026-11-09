@@ -8,6 +8,9 @@ import { z } from 'zod';
 
 export const ROLE_MESSAGE = 'Role must be CLIENT or FREELANCER';
 
+/** Signup only — login takes any password, so accounts created before the rule keep working. */
+export const MIN_PASSWORD_LENGTH = 8;
+
 /** A required, non-empty string. Not trimmed: email and password are compared verbatim (Q16). */
 function requiredString(label: string) {
   return z
@@ -18,17 +21,25 @@ function requiredString(label: string) {
 /** `CLIENT` or `FREELANCER`, case-sensitive. Missing, wrong type and unknown value share one message. */
 export const roleField = z.enum(['CLIENT', 'FREELANCER'], { errorMap: () => ({ message: ROLE_MESSAGE }) });
 
-/** `POST /signup`. */
+/**
+ * `POST /signup`. The email is trimmed and must look like an address; it is **not** lowercased —
+ * normalization is still open (Q16, #21). The password needs `MIN_PASSWORD_LENGTH` characters,
+ * the same rule as the client's signup form.
+ */
 export const signupBody = z.object({
-  email: requiredString('Email'),
-  password: requiredString('Password'),
+  email: requiredString('Email').trim().min(1, 'Email is required').email('Email must be a valid email address'),
+  password: requiredString('Password').min(
+    MIN_PASSWORD_LENGTH,
+    `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+  ),
   name: requiredString('Name').trim().min(1, 'Name is required'),
   role: roleField,
 });
 
 /**
  * `POST /login`. Runs after both rate limits (rule 10). A non-string `email` or `password` (an
- * object such as `{ "not": "" }` would otherwise reach Prisma as a filter) is a 400.
+ * object such as `{ "not": "" }` would otherwise reach Prisma as a filter) is a 400. No format or
+ * length rule: a malformed email simply matches no account (401), and older passwords still work.
  */
 export const loginBody = z.object({
   email: requiredString('Email'),

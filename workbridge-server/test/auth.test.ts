@@ -156,6 +156,48 @@ describe('POST /api/auth/signup', () => {
     expect(stored.name).toBe('New User');
   });
 
+  it.each(['not-an-email', 'missing-at.test.local', 'user@', '@test.local', 'two@@test.local', 'user@test'])(
+    'rejects a malformed email (%s) with 400 and creates no user',
+    async (email) => {
+      const res = await api().post('/api/auth/signup').send({ ...valid, email });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'email: Email must be a valid email address' } });
+      expect(await prisma.user.count()).toBe(0);
+    },
+  );
+
+  it('rejects a blank email as missing', async () => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, email: '   ' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
+  });
+
+  // Trimmed, but not lowercased: email normalization is still open (Q16, #21).
+  it('stores the email trimmed but with its case kept', async () => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, email: '  NewUser@Test.local ' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.email).toBe('NewUser@Test.local');
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: res.body.user.id } });
+    expect(stored.email).toBe('NewUser@Test.local');
+  });
+
+  it.each(['a', 'short12', '1234567'])('rejects a password shorter than 8 characters (%s) with 400', async (password) => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, password });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'password: Password must be at least 8 characters' } });
+    expect(await prisma.user.count()).toBe(0);
+  });
+
+  it('accepts a password of exactly 8 characters', async () => {
+    const res = await api().post('/api/auth/signup').send({ ...valid, password: '12345678' });
+
+    expect(res.status).toBe(201);
+  });
+
   it('rejects a role outside CLIENT|FREELANCER with 400', async () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, role: 'ADMIN' });
 
@@ -304,6 +346,23 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: { message } });
     expect(refreshCookie(res)).toBeUndefined();
+  });
+
+  // Signup's email format and password length rules do not apply here: a malformed email is just
+  // an unknown account, and accounts created before the length rule must still be able to log in.
+  it('answers a malformed email with the same 401 as an unknown account', async () => {
+    const res = await api().post('/api/auth/login').send({ email: 'not-an-email', password: TEST_PASSWORD });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+  });
+
+  it('logs in an existing account whose password is shorter than the signup minimum', async () => {
+    const user = await makeUser({ password: await bcrypt.hash('short', 4) });
+
+    const res = await api().post('/api/auth/login').send({ email: user.email, password: 'short' });
+
+    expect(res.status).toBe(200);
   });
 
   it('rejects an unknown email with 401 Invalid credentials', async () => {

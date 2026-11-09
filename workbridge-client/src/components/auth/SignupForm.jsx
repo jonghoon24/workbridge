@@ -9,6 +9,10 @@ import useAuthStore from '@/store/authStore';
 import authApi from '@/lib/authApi';
 import { toUserMessage } from '@/lib/errorMessages';
 
+// 서버 signup 스키마(workbridge-server/src/schemas/auth.ts)와 같은 규칙. 로그인에는 적용하지 않는다.
+const MIN_PASSWORD_LENGTH = 8;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 export default function SignupForm() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
@@ -21,7 +25,10 @@ export default function SignupForm() {
     const errs = {};
     if (!form.name.trim()) errs.name = '이름을 입력해 주세요';
     if (!form.email.trim()) errs.email = '이메일을 입력해 주세요';
-    if (!form.password || form.password.length < 6) errs.password = '비밀번호는 6자 이상이어야 합니다';
+    else if (!EMAIL_PATTERN.test(form.email.trim())) errs.email = '올바른 이메일 주소를 입력해 주세요';
+    if (!form.password || form.password.length < MIN_PASSWORD_LENGTH) {
+      errs.password = `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다`;
+    }
     if (!form.role) errs.role = '역할을 선택해 주세요';
     return errs;
   }
@@ -80,7 +87,7 @@ export default function SignupForm() {
         value={form.password}
         onChange={(e) => setForm({ ...form, password: e.target.value })}
         error={errors.password}
-        placeholder="6자 이상 입력해 주세요"
+        placeholder="8자 이상 입력해 주세요"
       />
 
       <div>
