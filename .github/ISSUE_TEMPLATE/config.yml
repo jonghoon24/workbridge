@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: API 명세 (docs/BEHAVIOR.md)
-    url: https://github.com/jonghoon24/workbridge/blob/main/docs/BEHAVIOR.md
-    about: 의도한 동작과 알려진 불일치(D), 미결 질문(Q) 목록. 이슈를 열기 전에 이미 기록된 항목인지 확인한다.
+  - name: 도메인 규칙 (docs/domain/)
+    url: https://github.com/jonghoon24/workbridge/blob/main/docs/domain/README.md
+    about: "의도한 동작과 그 이유. 코드가 다른 곳에는 이슈가 링크돼 있다(현재 다름 표시). 이슈를 열기 전에 이미 기록된 항목인지 확인한다."
