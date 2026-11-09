@@ -4,7 +4,7 @@ import ProfileImage from './ProfileImage';
 import { formatPeriod } from './profileFormat';
 import Tag from '@/components/ui/Tag';
 
-// 포트폴리오 카드 그리드(BEHAVIOR.md PF3, PF5 순서). editable이면 위/아래 이동, 수정, 삭제 버튼을 붙인다.
+// 포트폴리오 카드 그리드. editable이면 위/아래 이동, 수정, 삭제 버튼을 붙인다.
 export default function PortfolioGrid({ items, editable = false, busy = false, onMove, onEdit, onDelete }) {
   if (!items?.length) return null;
 

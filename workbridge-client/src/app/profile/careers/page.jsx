@@ -15,7 +15,7 @@ import { LockIcon } from '@/components/ui/Icons';
 
 const MAX_CAREERS = 30;
 
-// 경력 관리(BEHAVIOR.md PF13–PF15, PF17). 총 경력은 겹치는 기간을 한 번만 센 값이다(PF6).
+// 경력 관리. 총 경력은 겹치는 기간을 한 번만 센 값이다.
 export default function CareersManagePage() {
   const [me, setMe] = useState(null);
   const [careers, setCareers] = useState([]);

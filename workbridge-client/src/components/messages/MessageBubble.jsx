@@ -32,7 +32,7 @@ function AttachmentList({ attachments, mine }) {
 }
 
 // 시스템 메시지는 가운데 회색 띠로, 내 메시지는 오른쪽, 상대 메시지는 왼쪽에 그린다.
-// 삭제된 메시지(MG4 tombstone)는 내용 없이 "삭제된 메시지입니다"만 보인다.
+// 삭제된 메시지(tombstone)는 내용 없이 "삭제된 메시지입니다"만 보인다.
 export default function MessageBubble({ message, mine, readByCounterpart, now, deleting, onDelete }) {
   if (message.kind === 'SYSTEM') {
     return (

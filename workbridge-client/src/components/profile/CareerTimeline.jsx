@@ -2,7 +2,7 @@
 
 import { employmentTypeLabel, formatPeriod } from './profileFormat';
 
-// 경력 타임라인(BEHAVIOR.md PF4, PF5 순서: 최근 시작 먼저, 같은 시작이면 재직 중 먼저).
+// 경력 타임라인(순서: 최근 시작 먼저, 같은 시작이면 재직 중 먼저).
 export default function CareerTimeline({ careers, editable = false, busy = false, onEdit, onDelete }) {
   if (!careers?.length) return null;
 

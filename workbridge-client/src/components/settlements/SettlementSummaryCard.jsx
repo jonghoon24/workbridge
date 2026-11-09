@@ -13,7 +13,7 @@ function Stat({ label, value, sub, tone = 'text-gray-900' }) {
   );
 }
 
-// GET /api/settlements/summary (BEHAVIOR.md S15). 모든 정산은 scheduled/onHold/failed/paidTotal 중
+// GET /api/settlements/summary. 모든 정산은 scheduled/onHold/failed/paidTotal 중
 // 정확히 하나에 들어간다. 보류와 최종 실패는 있을 때만 보여준다.
 export default function SettlementSummaryCard({ summary }) {
   if (!summary) return null;

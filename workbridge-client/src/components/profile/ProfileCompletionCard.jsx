@@ -6,8 +6,8 @@ import api from '@/lib/api';
 import Card from '@/components/ui/Card';
 import { COMPLETION_ITEMS, completionLabel } from './completionLabels';
 
-// 프로필 완성도(BEHAVIOR.md PF21). percent는 표시용 점수이고, isComplete는 지원·등록 게이트
-// (규칙 4)라서 둘은 따로 움직인다. refreshKey가 바뀌면 다시 불러온다(프로필 저장 직후 등).
+// 프로필 완성도. percent는 표시용 점수이고, isComplete는 지원·등록 게이트라서
+// 둘은 따로 움직인다. refreshKey가 바뀌면 다시 불러온다(프로필 저장 직후 등).
 export default function ProfileCompletionCard({ refreshKey = 0 }) {
   const [completion, setCompletion] = useState(null);
   const [error, setError] = useState('');

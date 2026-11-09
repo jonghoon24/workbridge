@@ -7,7 +7,7 @@ import UnreadBadge from './UnreadBadge';
 import { formatListTime, previewText } from './messageUtils';
 import { MessageIcon } from '@/components/ui/Icons';
 
-// 대화방 목록(BEHAVIOR.md MG11). 정렬은 서버 순서(마지막 메시지 최신순) 그대로다.
+// 대화방 목록. 정렬은 서버 순서(마지막 메시지 최신순) 그대로다.
 export default function ConversationList({ conversations, activeId, loading, error }) {
   if (loading) {
     return <div className="p-6 text-center text-sm text-gray-500">대화방을 불러오는 중...</div>;

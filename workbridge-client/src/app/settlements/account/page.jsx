@@ -16,7 +16,7 @@ import { LockIcon } from '@/components/ui/Icons';
 
 const EMPTY_FORM = { bankCode: '', accountNumber: '', holderName: '' };
 
-// 지급 계좌(BEHAVIOR.md PA1–PA7). 응답에는 마스킹된 번호만 오므로 변경할 때는 번호를 새로 입력한다.
+// 지급 계좌. 응답에는 마스킹된 번호만 오므로 변경할 때는 번호를 새로 입력한다.
 export default function PayoutAccountPage() {
   const { user } = useAuthStore();
   const [forbidden, setForbidden] = useState(false);

@@ -65,7 +65,7 @@ export default function MyContractsPage() {
     };
   }, [status, page]);
 
-  // 목록에는 대화방 id가 없으므로(MG19는 수만 준다) 계약의 대화방을 찾아서 연다(MG18).
+  // 목록에는 대화방 id가 없으므로(수만 준다) 계약의 대화방을 찾아서 연다.
   async function openConversation(contractId) {
     setOpeningChat(contractId);
     try {

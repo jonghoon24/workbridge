@@ -22,7 +22,7 @@ function toForm(career) {
   };
 }
 
-// 경력 추가·수정(BEHAVIOR.md PF13, PF14). JSON으로 보낸다. 재직 중이면 endDate를 null로 보낸다.
+// 경력 추가·수정. JSON으로 보낸다. 재직 중이면 endDate를 null로 보낸다.
 // 폼은 첫 렌더부터 career로 채운다(PortfolioItemModal과 같은 이유). 부모가 key로 새로 마운트한다.
 export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
   const [form, setForm] = useState(() => toForm(career));

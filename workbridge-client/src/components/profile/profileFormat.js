@@ -2,7 +2,7 @@
 import { kstToday } from '@/lib/format';
 import { toUserMessage } from '@/lib/errorMessages';
 
-// 서버가 "이번 달"을 KST로 판정하므로(BEHAVIOR.md PF2) 월 입력의 max도 KST 기준이다.
+// 서버가 "이번 달"을 KST로 판정하므로 월 입력의 max도 KST 기준이다.
 export function currentKstMonth() {
   return kstToday().slice(0, 7);
 }
@@ -40,7 +40,7 @@ export function employmentTypeLabel(value) {
   return EMPLOYMENT_TYPES.find((type) => type.value === value)?.label || value;
 }
 
-// 포트폴리오·경력 화면에서만 다르게 안내할 서버 오류. 나머지(PF1–PF15, 업로드)는 공용 변환표가 맡는다.
+// 포트폴리오·경력 화면에서만 다르게 안내할 서버 오류. 나머지(업로드 포함)는 공용 변환표가 맡는다.
 const SERVER_ERROR_MESSAGES = {
   'File too large (max 5MB)': '이미지는 5MB 이하만 올릴 수 있습니다.',
   'File upload failed': '이미지 업로드에 실패했습니다. 잠시 후 다시 시도해 주세요.',

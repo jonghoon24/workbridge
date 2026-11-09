@@ -15,7 +15,7 @@ import { LockIcon } from '@/components/ui/Icons';
 
 const MAX_ITEMS = 20;
 
-// 포트폴리오 관리(BEHAVIOR.md PF9–PF12, PF16). 목록은 공개 GET을 내 id로 읽는다(PF19).
+// 포트폴리오 관리. 목록은 공개 GET을 내 id로 읽는다.
 export default function PortfolioManagePage() {
   const [me, setMe] = useState(null);
   const [items, setItems] = useState([]);

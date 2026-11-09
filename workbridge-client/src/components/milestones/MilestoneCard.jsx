@@ -8,7 +8,7 @@ import { formatDate, formatDateTime, formatKRW, formatRemaining } from '@/lib/fo
 import { PAYMENT_STATUS_LABELS } from '@/constants/milestones';
 
 // 계약 페이지의 마일스톤 한 줄. 행동 버튼은 상태와 역할로 정한다.
-// - 의뢰인: 결제(순서상 다음 PENDING만, M13), 검수 대기면 승인/수정 요청
+// - 의뢰인: 결제(순서상 다음 PENDING만), 검수 대기면 승인/수정 요청
 // - 프리랜서: FUNDED/REVISION_REQUESTED면 제출(상세 페이지의 제출 폼으로 이동)
 export default function MilestoneCard({
   milestone,
