@@ -38,6 +38,7 @@
 | `MAIL_FROM` | 이메일 발신자(기본 `WorkBridge <no-reply@workbridge.local>`). 메일 본문의 링크 기준 주소는 `CLIENT_URL`이다 |
 | `SENTRY_DSN` | Sentry DSN(선택). 비우면 오류 보고가 꺼지고 `@sentry/node`를 아예 불러오지 않는다. 설정하면 500 응답과 최종 실패한 작업만 보낸다([DEPLOYMENT.md](DEPLOYMENT.md#sentry)). 호출마다 읽는다 |
 | `SENTRY_ENVIRONMENT` | Sentry `environment`(선택). 비우면 `VERCEL_ENV` → `NODE_ENV` → `development` 순으로 정한다. `release`는 Vercel이 넣어 주는 `VERCEL_GIT_COMMIT_SHA`가 있으면 그 값이다 |
+| `VERCEL_ENV` | Vercel이 넣는다(직접 넣지 않는다). `production`이면 API 문서(`GET /api/docs`, `GET /api/openapi.json`)가 꺼져 경로가 없는 것처럼 404다. 문서에 내부 엔드포인트와 모든 오류 메시지가 있어서다. 로컬·테스트·프리뷰에서는 켜진다. 요청마다 읽는다 |
 
 작업 큐는 개발 서버 워커 외에 `npm run jobs:run`(한 번 실행)과 `npm run jobs:worker`(단독 워커)로도 돌릴 수 있다. 운영(Vercel)에는 상주 워커가 없고, GitHub Actions(`.github/workflows/jobs.yml`)가 15분마다 운영 서버의 `POST /api/internal/jobs/run`을 부른다. 이 워크플로는 리포지토리 시크릿 `PROD_INTERNAL_JOB_TOKEN`(운영 서버의 `INTERNAL_JOB_TOKEN`과 같은 값)을 쓴다([DEPLOYMENT.md](DEPLOYMENT.md#1-작업-큐는-15분마다-돈다)).
 

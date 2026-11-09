@@ -23,6 +23,7 @@ import reviewRoutes from './routes/reviews.routes';
 import notificationRoutes from './routes/notifications.routes';
 import conversationRoutes from './routes/conversations.routes';
 import internalRoutes from './routes/internal.routes';
+import docsRoutes from './routes/docs.routes';
 import { errorHandler } from './middlewares/errorHandler';
 import { accessLog } from './middlewares/accessLog';
 import { bindRequestContext, requestId } from './middlewares/requestId';
@@ -119,6 +120,8 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/internal', internalRoutes);
+// `GET /api/docs` and `GET /api/openapi.json`. Last, and touching no other router's paths.
+app.use('/api', docsRoutes);
 
 app.use(errorHandler);
 

@@ -36,10 +36,11 @@ declare global {
        * mounted behind `authenticate`, so in practice it is always present, and this
        * keeps the ~77 `req.user.id` reads free of `!` assertions.
        *
-       * The tradeoff: on the 12 public handlers (`signup`, `login`, `refresh`, `googleAuth`,
+       * The tradeoff: on the 14 public handlers (`signup`, `login`, `refresh`, `googleAuth`,
        * `googleCallback`, `getProjects`, `getProjectById`, `getUserById`, `getUserReviews` —
-       * mounted twice — `getUserPortfolio`, `getUserCareers`, and `runJobs`, the internal job
-       * endpoint, which is guarded by `requireInternalToken` instead of a JWT; 13 public routes)
+       * mounted twice — `getUserPortfolio`, `getUserCareers`, `runJobs`, the internal job
+       * endpoint, which is guarded by `requireInternalToken` instead of a JWT, and the API
+       * reference's `getOpenApiDocument` and `getDocsPage`; 15 public routes)
        * `req.user` is actually `undefined` at runtime,
        * and the type will not warn you. Middleware that runs on every route (`accessLog`) must
        * read it as optional. **Do not read `req.user` in a handler that is not behind
