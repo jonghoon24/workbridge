@@ -86,7 +86,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     // `deletedAt` is not part of a unique constraint.
     const user = await prisma.user.findFirst({ where: { email, deletedAt: null } });
     // Every `Invalid credentials` outcome counts toward the email + IP failure limit — unknown
-    // emails included, so the limiter cannot be used to tell accounts apart (rule 10).
+    // emails included, so the limiter cannot be used to tell accounts apart.
     if (!user || !user.password) {
       await recordLoginFailure(req);
       throw new AppError('Invalid credentials', 401);

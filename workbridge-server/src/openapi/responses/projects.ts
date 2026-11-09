@@ -81,7 +81,7 @@ export const projectDetail = z
 
 export const bookmarkState = z.object({ bookmarked: z.boolean() });
 
-/** RC3–RC5 (`recommendFreelancers` in `lib/recommendations.ts`). */
+/** `recommendFreelancers` in `lib/recommendations.ts`. */
 export const recommendedFreelancers = z.object({
   freelancers: z.array(
     z.object({

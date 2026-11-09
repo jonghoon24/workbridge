@@ -15,7 +15,7 @@ import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // Parsed by `applicationCreateBody`: `expectedRate` is a number >= 1 (M7, [C2]).
+    // Parsed by `applicationCreateBody`: `expectedRate` is a number >= 1; it may be fractional and becomes the contract amount.
     const { coverLetter, expectedRate, expectedDuration } = req.body;
     const projectId = req.params.id;
 
@@ -64,8 +64,8 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
           },
         });
 
-        // The wording stays inline here (pre-existing type); `notify()` applies the channel
-        // policy and preferences (NC9). The client is notified even when soft-deleted (Q11).
+        // The wording stays inline here (not in the template table); `notify()` applies the channel
+        // policy and preferences. The client is notified even when soft-deleted (joined owners: #20).
         await notify(tx, {
           userId: project.clientId,
           type: 'APPLICATION_CREATED',
@@ -170,7 +170,7 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
 
     if (status === 'ACCEPTED') {
       // Atomic transaction: accept application, reject others, create contract and its default
-      // milestone, close recruitment, notify, open the conversation (BEHAVIOR.md accept steps 1–7).
+      // milestone, close recruitment, notify, open the conversation (steps 1–7 below).
       const now = new Date();
       const milestoneDueDate = defaultMilestoneDueDate(now);
       let result;
@@ -200,7 +200,7 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
               amount: application.expectedRate,
               startDate: now,
               // The last milestone's due date — not the recruitment deadline, which may have
-              // passed already ([C2]).
+              // passed already.
               endDate: milestoneDueDate,
               status: 'PENDING',
             },
@@ -230,7 +230,7 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
           })), now);
 
           // 7. The conversation, its participants and `CONTRACT_CREATED` — last, so the
-          // conversation lock is the last one taken (MG3, MG7).
+          // conversation lock is the last one taken.
           await openContractConversation(tx, contract);
 
           return { application: updatedApp, contract };

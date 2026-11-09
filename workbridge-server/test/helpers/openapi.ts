@@ -15,10 +15,10 @@ import { errorBody } from '../../src/openapi/responses/common';
  * - Bodies are checked **strictly**: every object rejects keys the schema does not list, so a field
  *   added to a response without documenting it is caught.
  * - A request whose path matches no documented route is not checked — it is the app's own HTML 404
- *   for an unknown path (BEHAVIOR.md Q10), or one of the docs routes (`UNDOCUMENTED_ROUTES`).
+ *   for an unknown path (#19), or one of the docs routes (`UNDOCUMENTED_ROUTES`).
  *   `test/openapi.test.ts` keeps the documented routes equal to the mounted ones.
- * - A 500 is never documented — it is a bug by definition (rule 1) — so it is only checked to be
- *   the error envelope. The suite's deliberate 500s (`test/helpers/faults.ts`, D6) pass that.
+ * - A 500 is never documented — it is a bug by definition — so it is only checked to be
+ *   the error envelope. The suite's deliberate 500s (`test/helpers/faults.ts`, and the profile image upload's 500 for a bad file) pass that.
  * - A documented response without content (the OAuth redirects) has its body ignored.
  */
 

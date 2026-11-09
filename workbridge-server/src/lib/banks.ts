@@ -1,5 +1,5 @@
 /**
- * Banks a payout account may use (BEHAVIOR.md M23). The client keeps the same list in
+ * Banks a payout account may use (docs/domain/milestones-payments.md "지급 계좌"). The client keeps the same list in
  * `constants/banks.js` — the duplication is intended.
  */
 export const BANKS = {
@@ -27,7 +27,7 @@ export function bankName(code: string): string {
   return isBankCode(code) ? BANKS[code] : code;
 }
 
-/** M23: every digit but the last four replaced by `*` (`110123456789` → `********6789`). */
+/** Every digit but the last four replaced by `*` (`110123456789` → `********6789`). */
 export function maskAccountNumber(accountNumber: string): string {
   const visible = accountNumber.slice(-4);
   return '*'.repeat(Math.max(accountNumber.length - 4, 0)) + visible;

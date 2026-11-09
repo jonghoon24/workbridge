@@ -44,7 +44,7 @@ const USER_NOT_FOUND = notFound('User not found', '없거나 탈퇴한 사용자
 const ITEM_NOT_FOUND = notFound('Portfolio item not found', '없는 포트폴리오 항목');
 const CAREER_NOT_FOUND = notFound('Career not found', '없는 경력');
 
-/** JSON, or multipart with the optional `image` file (PF9, PF10). */
+/** JSON, or multipart with the optional `image` file. */
 function withImage(schema: z.ZodTypeAny) {
   return {
     required: true,

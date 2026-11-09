@@ -11,7 +11,7 @@ import {
 import type { PlanItem, SubmissionInput } from '../services/milestones.service';
 import type { AuthedRequest } from '../types/index';
 
-/** `GET /api/contracts/:id/milestones` (MS6). */
+/** `GET /api/contracts/:id/milestones`. */
 export async function getContractMilestones(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     res.json(await listContractMilestones(req.params.id, req.user.id));
@@ -20,7 +20,7 @@ export async function getContractMilestones(req: AuthedRequest, res: Response, n
   }
 }
 
-/** `PUT /api/contracts/:id/milestones` (MS7–MS10). */
+/** `PUT /api/contracts/:id/milestones`. */
 export async function putContractMilestones(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { milestones } = req.body as { milestones: PlanItem[] };
@@ -30,7 +30,7 @@ export async function putContractMilestones(req: AuthedRequest, res: Response, n
   }
 }
 
-/** `GET /api/milestones/:id` (MS11). */
+/** `GET /api/milestones/:id`. */
 export async function getMilestone(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     res.json(await getMilestoneDetail(req.params.id, req.user.id));
@@ -39,7 +39,7 @@ export async function getMilestone(req: AuthedRequest, res: Response, next: Next
   }
 }
 
-/** `POST /api/milestones/:id/submissions` (MS12–MS14). */
+/** `POST /api/milestones/:id/submissions`. */
 export async function createSubmission(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const files = Array.isArray(req.files) ? req.files : [];
@@ -50,7 +50,7 @@ export async function createSubmission(req: AuthedRequest, res: Response, next: 
   }
 }
 
-/** `POST /api/milestones/:id/approve` (MS15–MS17). */
+/** `POST /api/milestones/:id/approve`. */
 export async function approve(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const result = await approveMilestone(req.params.id, { kind: 'MANUAL', actorId: req.user.id, now: new Date() });
@@ -60,7 +60,7 @@ export async function approve(req: AuthedRequest, res: Response, next: NextFunct
   }
 }
 
-/** `POST /api/milestones/:id/reject` (MS18–MS19). */
+/** `POST /api/milestones/:id/reject`. */
 export async function reject(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { reason } = req.body as { reason: string };

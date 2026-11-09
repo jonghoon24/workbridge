@@ -3,24 +3,24 @@ import { z } from '../lib/zod';
 import { NOTIFICATION_TYPES, isNotificationType, policyFor } from '../lib/notifications/policy';
 import type { NotificationType } from '../lib/notifications/types';
 
-/** One validated `PUT` entry: an omitted channel keeps its current setting (NC6). */
+/** One validated `PUT` entry: an omitted channel keeps its current setting. */
 export interface PreferenceEntry {
   type: NotificationType;
   inApp?: boolean;
   email?: boolean;
 }
 
-const MAX_ENTRIES = NOTIFICATION_TYPES.length; // NC1: 1–20
+const MAX_ENTRIES = NOTIFICATION_TYPES.length; // 1–20 entries, one per notification type
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
- * `PUT /api/notifications/preferences` (NC6). Two passes, each reporting only its first failure
- * (rule 12's `<path>: <message>`): the **shape** of every entry, in array order and `type` →
- * `inApp` → `email` within an entry; then, once the whole shape is valid, the **entry rules** in
- * array order. Written as one transform rather than a zod object so the order and the messages
- * are exactly NC6's. Unknown keys are ignored.
+ * `PUT /api/notifications/preferences`. Two passes, each reporting only its first failure (as
+ * `<path>: <message>`, like `validate()`): the **shape** of every entry, in array order and
+ * `type` → `inApp` → `email` within an entry; then, once the whole shape is valid, the **entry
+ * rules** in array order. Written as one transform rather than a zod object so the order and
+ * the messages stay exactly what the tests assert. Unknown keys are ignored.
  */
 export const preferencesBody = z.unknown().transform((body, ctx): { preferences: PreferenceEntry[] } => {
   const fail = (path: (string | number)[], message: string) => {
@@ -73,7 +73,7 @@ export const preferencesBody = z.unknown().transform((body, ctx): { preferences:
 
   return { preferences: entries };
 }).openapi({
-  // The parser above is hand-written to keep NC6's order and messages, so it carries no shape of
+  // The parser above is hand-written to keep its check order and messages, so it carries no shape of
   // its own; this is the documented shape (metadata only).
   type: 'object',
   required: ['preferences'],

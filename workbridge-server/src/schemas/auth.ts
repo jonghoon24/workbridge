@@ -1,8 +1,8 @@
 import { z } from '../lib/zod';
 
 /**
- * Request bodies and queries of `/api/auth` (BEHAVIOR.md "Auth"). A failure is a 400
- * `<field>: <message>` for the first failing field (rule 12); the client maps the messages to
+ * Request bodies and queries of `/api/auth`. A failure is a 400
+ * `<field>: <message>` for the first failing field; the client maps the messages to
  * Korean (`workbridge-client/src/lib/errorMessages.js`), so keep the two in sync.
  */
 
@@ -11,7 +11,7 @@ export const ROLE_MESSAGE = 'Role must be CLIENT or FREELANCER';
 /** Signup only — login takes any password, so accounts created before the rule keep working. */
 export const MIN_PASSWORD_LENGTH = 8;
 
-/** A required, non-empty string. Not trimmed: email and password are compared verbatim (Q16). */
+/** A required, non-empty string. Not trimmed: email and password are compared verbatim (#21). */
 function requiredString(label: string) {
   return z
     .string({ required_error: `${label} is required`, invalid_type_error: `${label} must be a string` })
@@ -23,7 +23,7 @@ export const roleField = z.enum(['CLIENT', 'FREELANCER'], { errorMap: () => ({ m
 
 /**
  * `POST /signup`. The email is trimmed and must look like an address; it is **not** lowercased —
- * normalization is still open (Q16, #21). The password needs `MIN_PASSWORD_LENGTH` characters,
+ * normalization is still open (#21). The password needs `MIN_PASSWORD_LENGTH` characters,
  * the same rule as the client's signup form.
  */
 export const signupBody = z.object({
@@ -37,7 +37,7 @@ export const signupBody = z.object({
 });
 
 /**
- * `POST /login`. Runs after both rate limits (rule 10). A non-string `email` or `password` (an
+ * `POST /login`. Runs after both login rate limits. A non-string `email` or `password` (an
  * object such as `{ "not": "" }` would otherwise reach Prisma as a filter) is a 400. No format or
  * length rule: a malformed email simply matches no account (401), and older passwords still work.
  */

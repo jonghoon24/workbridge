@@ -13,15 +13,15 @@ export interface NotifyInput {
   title: string;
   message: string;
   href?: string | null;
-  /** `conversation:<id>` for the digest (NC16); `null` otherwise. Stored on the email only. */
+  /** `conversation:<id>` for the digest; `null` otherwise. Stored on the email only. */
   contextKey?: string | null;
 }
 
 /**
- * The single way notifications are created (BEHAVIOR.md NC9). Per recipient and type it applies
- * the channel policy and the recipient's preferences (NC2–NC3): an in-app `Notification` row
- * when in-app is on, and an `EmailDelivery` plus its `notification.email` job (J9) when email is
- * on and the recipient is active with an address (NC10).
+ * The single way notifications are created (docs/domain/messaging-notifications.md). Per
+ * recipient and type it applies the channel policy and the recipient's preferences: an in-app
+ * `Notification` row when in-app is on, and an `EmailDelivery` plus its `notification.email` job
+ * when email is on and the recipient is active with an address.
  *
  * Pass the transaction client of the state change that causes the notification, so the row,
  * the delivery and the job commit or roll back with it. Given the root client instead, it opens
@@ -60,8 +60,8 @@ export interface Recipient {
 }
 
 /**
- * Notifies every recipient that is **not soft-deleted** (BEHAVIOR.md rule 5: notifications
- * created by expansion code are never addressed to a deleted user; the state change still happens).
+ * Notifies every recipient that is **not soft-deleted**: a deleted user is never notified, while
+ * the state change itself still happens (`notify()` alone filters only the email).
  * Returns how many in-app rows were written.
  */
 export async function notifyRecipients(
@@ -86,13 +86,14 @@ function withTransaction<R>(client: PrismaTransactionClient, fn: (tx: PrismaTran
   return fn(client);
 }
 
-/** NC9 steps 1–3 for every input. Returns the in-app rows written, in input order. */
+/** Steps 1–3 below for every input. Returns the in-app rows written, in input order. */
 function deliver(client: PrismaTransactionClient, inputs: readonly NotifyInput[], now: Date): Promise<Notification[]> {
   return withTransaction(client, async (tx) => {
     const userIds = [...new Set(inputs.map((input) => input.userId))];
     const types = [...new Set(inputs.map((input) => input.type))];
 
-    // 1. Recipients and their preference rows — read once, without a lock (NC7).
+    // 1. Recipients and their preference rows — read once, without a lock (a concurrent
+    // preference write is not waited for).
     const users = await tx.user.findMany({
       where: { id: { in: userIds } },
       select: { id: true, email: true, deletedAt: true },
@@ -126,7 +127,7 @@ function deliver(client: PrismaTransactionClient, inputs: readonly NotifyInput[]
       });
     const createdById = new Map(notifications.map((row) => [row.id, row]));
 
-    // 3. Email: on, to an active recipient (NC10) with a non-empty address.
+    // 3. Email: on, to an active (not soft-deleted) recipient with a non-empty address.
     const deliveries = planned.flatMap(({ input, channels, notificationId }) => {
       const user = userById.get(input.userId);
       if (!channels.email || !user || user.deletedAt || user.email.trim() === '') return [];

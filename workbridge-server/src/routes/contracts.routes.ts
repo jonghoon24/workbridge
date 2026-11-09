@@ -11,7 +11,7 @@ import { milestonePlanBody } from '../schemas/milestones';
 
 const router = Router();
 
-// Expansion routes (BEHAVIOR.md rule 12). `/` must stay before `/:id`.
+// `/` must stay before `/:id`.
 router.get('/', authenticate, requireActiveUser, validate({ query: contractListQuery }), getMyContracts);
 router.get('/:id/milestones', authenticate, requireActiveUser, getContractMilestones);
 router.put(
@@ -24,7 +24,8 @@ router.put(
 );
 router.get('/:id/conversation', authenticate, requireActiveUser, getConversationOfContract);
 
-// Pre-existing routes: `authenticate` only — 알려진 불일치 D12 (#7), D21 (#16).
+// `authenticate` only: no `requireActiveUser` yet (#7), and no soft-delete filter on the
+// project (#16).
 router.get('/:id', authenticate, getContract);
 router.patch('/:id', authenticate, completeContract);
 router.post('/:id/sign', authenticate, signContract);

@@ -3449,7 +3449,7 @@
           "Users"
         ],
         "summary": "내 프로필 수정",
-        "description": "보낸 필드만 바꾼다. 프로필 이미지는 `multipart/form-data`의 `profileImage`(이미지 하나, 5MB)로 보낸다. 이미지가 아니거나 5MB를 넘으면 지금은 500이 난다(알려진 불일치 D6).",
+        "description": "보낸 필드만 바꾼다. 프로필 이미지는 `multipart/form-data`의 `profileImage`(이미지 하나, 5MB)로 보낸다. 이미지가 아니거나 5MB를 넘으면 지금은 500이 난다(알려진 버그).",
         "security": [
           {
             "bearerAuth": []
@@ -7761,7 +7761,7 @@
           "Contracts"
         ],
         "summary": "계약 상세",
-        "description": "마일스톤, 리뷰, 마일스톤 요약을 함께 준다. 삭제된 프로젝트의 계약도 보인다(알려진 불일치 D21).",
+        "description": "마일스톤, 리뷰, 마일스톤 요약을 함께 준다. 삭제된 프로젝트의 계약도 보인다(알려진 버그, 이슈 #16).",
         "security": [
           {
             "bearerAuth": []

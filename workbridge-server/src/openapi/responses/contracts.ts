@@ -50,7 +50,7 @@ export const payment = z
   })
   .openapi('Payment');
 
-/** MS2: exactly these keys. */
+/** A stored attachment: exactly these keys. */
 export const attachment = z
   .object({
     id,
@@ -80,12 +80,12 @@ export const submission = z
   })
   .openapi('MilestoneSubmission');
 
-/** M3: `fee = floor(gross × 10%)`, `vat = floor(fee × 10%)`, `net = gross − fee − vat`. */
+/** `fee = floor(gross × 10%)`, `vat = floor(fee × 10%)`, `net = gross − fee − vat`. */
 export const payoutBreakdown = z
   .object({ gross: won, fee: won, vat: won, net: won })
   .openapi('PayoutBreakdown');
 
-/** MS1 (`serializeMilestone`): the row plus `payment`, `latestSubmission` and `payoutPreview`. */
+/** `serializeMilestone`: the row plus `payment`, `latestSubmission` and `payoutPreview`. */
 export const milestoneFields = {
   id,
   contractId: id,
@@ -110,7 +110,7 @@ export const milestoneFields = {
 
 export const milestone = z.object(milestoneFields).openapi('Milestone');
 
-/** CT6. */
+/** The contract's milestone totals (`milestoneSummary`). */
 export const milestoneSummary = z
   .object({
     count,
@@ -134,7 +134,7 @@ const reviewWithParties = z.object({
   reviewee: userCard,
 });
 
-/** CT5 (`serializeContract`): `GET /api/contracts/:id` and the sign route. */
+/** `serializeContract`: `GET /api/contracts/:id` and the sign route. */
 export const contractDetail = z
   .object({
     ...contractFields,
@@ -165,7 +165,7 @@ export const contractDetail = z
   })
   .openapi('ContractDetail');
 
-/** CT1–CT3 and MG19 (`listContracts`). */
+/** `listContracts`: the caller's contracts, each with its unread message count. */
 export const contractList = z.object({
   contracts: z.array(
     z
@@ -190,10 +190,10 @@ export const contractList = z.object({
   meta: paginationMeta,
 });
 
-/** MS6. */
+/** `GET /api/contracts/:id/milestones`. */
 export const contractMilestones = z.object({ milestones: z.array(milestone), milestoneSummary });
 
-/** MS7–MS10: the contract's changed fields (signatures reset) and the new plan. */
+/** `PUT /api/contracts/:id/milestones`: the contract's changed fields (signatures reset) and the new plan. */
 export const replacedPlan = z.object({
   contract: z.object({
     id,
@@ -206,10 +206,10 @@ export const replacedPlan = z.object({
   milestones: z.array(milestone),
 });
 
-/** MG18. */
+/** `GET /api/contracts/:id/conversation`: the conversation id and the caller's unread count. */
 export const contractConversation = z.object({ id, unreadCount: count });
 
-/** MS11. */
+/** `GET /api/milestones/:id`. */
 export const milestoneDetail = z.object({
   ...milestoneFields,
   submissions: z.array(submission).openapi({ description: '회차 내림차순' }),
@@ -223,16 +223,16 @@ export const milestoneDetail = z.object({
   }),
 });
 
-/** MS12–MS14. */
+/** A new submission round and the milestone it moved to `SUBMITTED`. */
 export const submissionCreated = z.object({ milestone, submission });
 
-/** MS15–MS17. */
+/** A manual approval. */
 export const milestoneApproved = z.object({
   milestone,
   contract: z.object({ id, status: contractStatusEnum, completedAt: dateTime.nullable() }),
 });
 
-/** MS18. */
+/** A revision request. */
 export const milestoneRejected = z.object({ milestone });
 
 /** `POST /api/payments`: the payment to open the TossPayments window with. */

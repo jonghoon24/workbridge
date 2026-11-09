@@ -4,9 +4,9 @@ import { recommendFreelancers, recommendProjects } from '../lib/recommendations'
 import type { RecommendationQuery } from '../schemas/profile';
 import type { AuthedRequest } from '../types/index';
 
-/** BEHAVIOR.md "Recommendations" (RC1–RC8). Both are read-only: no lifecycle sweep. */
+/** Recommendations (docs/domain/projects-contracts.md). Both are read-only: no lifecycle sweep. */
 
-/** `GET /api/projects/:id/recommended-freelancers` (RC3–RC5). */
+/** `GET /api/projects/:id/recommended-freelancers`. */
 export async function getRecommendedFreelancers(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { limit } = res.locals.query as RecommendationQuery;
@@ -16,7 +16,7 @@ export async function getRecommendedFreelancers(req: AuthedRequest, res: Respons
   }
 }
 
-/** `GET /api/users/me/recommended-projects` (RC6–RC8). */
+/** `GET /api/users/me/recommended-projects`. */
 export async function getRecommendedProjects(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { limit } = res.locals.query as RecommendationQuery;

@@ -24,7 +24,7 @@ function parse(schema: ZodTypeAny, value: unknown): unknown {
 }
 
 /**
- * zod request validation for every route that reads a body or query (BEHAVIOR.md rule 12). Mount
+ * zod request validation for every route that reads a body or query. Mount
  * it after authentication, role and profile checks, and before the controller, so a malformed
  * request is a 400 before any lookup can 404, 403 or 409. Schemas live in `src/schemas/`.
  *

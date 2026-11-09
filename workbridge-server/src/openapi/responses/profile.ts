@@ -1,7 +1,7 @@
 import { z } from '../../lib/zod';
 import { count, dateTime, employmentTypeEnum, id, month, projectStatusEnum, won } from './common';
 
-/** `serializePortfolioItem` (`services/portfolio.service.ts`, PF3). */
+/** `serializePortfolioItem` (`services/portfolio.service.ts`). */
 export const portfolioItem = z
   .object({
     id,
@@ -20,7 +20,7 @@ export const portfolioItem = z
   })
   .openapi('PortfolioItem');
 
-/** `serializeCareer` (`services/careers.service.ts`, PF4). `endDate: null` is a current position. */
+/** `serializeCareer` (`services/careers.service.ts`). `endDate: null` is a current position. */
 export const career = z
   .object({
     id,
@@ -36,7 +36,7 @@ export const career = z
   })
   .openapi('Career');
 
-/** PF6: merged career months. Display only. */
+/** Total career length with overlapping months merged. Display only. */
 export const careerSummary = z
   .object({
     totalMonths: count,
@@ -51,7 +51,7 @@ export const careerList = z.object({ careers: z.array(career), careerSummary });
 export const careerBody = z.object({ career });
 export const deletedBody = z.object({ id, deleted: z.literal(true) });
 
-/** PF21. `isComplete` (the rule 4 gate) and `percent` are independent. */
+/** `isComplete` (the gate on posting, applying and recommendations) and `percent` (guidance only) are independent. */
 export const profileCompletion = z
   .object({
     isComplete: z.boolean(),
@@ -60,7 +60,7 @@ export const profileCompletion = z
   })
   .openapi('ProfileCompletion');
 
-/** RC6–RC8 (`recommendProjects` in `lib/recommendations.ts`). */
+/** `recommendProjects` in `lib/recommendations.ts`. */
 export const recommendedProjects = z.object({
   projects: z.array(
     z.object({

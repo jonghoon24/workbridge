@@ -4,14 +4,14 @@ import { z } from '../lib/zod';
 import { normalizeSkillList } from '../lib/skills';
 
 /**
- * `PATCH /api/users/me` (BEHAVIOR.md "Users"). The route takes `multipart/form-data` (the client
+ * `PATCH /api/users/me`. The route takes `multipart/form-data` (the client
  * sends that, for `profileImage`) or JSON, so numbers may arrive as strings. Validation runs after
- * the upload middleware, which fills `req.body` (rule 12). A failure is a 400
+ * the upload middleware, which fills `req.body`. A failure is a 400
  * `<field>: <message>`; the client maps the messages to Korean
  * (`workbridge-client/src/lib/errorMessages.js`), so keep the two in sync.
  *
  * Only fields present in the body change. Fields of the other role are **not validated** and are
- * stripped, so they are silently ignored rather than rejected (Q2): a CLIENT and a FREELANCER have
+ * stripped, so they are silently ignored rather than rejected (a deliberate choice): a CLIENT and a FREELANCER have
  * separate schemas, picked by the caller's role ({@link profileUpdateBodyByRole}).
  */
 
@@ -40,8 +40,7 @@ function numericString(pattern: RegExp) {
 
 /**
  * An integer `>= 0`, as a JSON number or a decimal string (`'7'`). `'abc'`, `'1.5'`, `-1`, an
- * empty multipart field and `null` are 400s — the row is left unchanged (D3: they used to be
- * stored as `null`).
+ * empty multipart field and `null` are 400s — the row is left unchanged, never set to `null`.
  */
 const experienceYears = z.preprocess(
   numericString(/^\d+$/),
@@ -54,7 +53,7 @@ const experienceYears = z.preprocess(
 
 /**
  * Whole won, 0 to {@link MAX_HOURLY_RATE} (money rule: amounts are integers), as a JSON number or
- * a digit string (`'45000'`). `'45000.5'`, `-1`, `'abc'`, `''` and `null` are 400s (D3). The
+ * a digit string (`'45000'`). `'45000.5'`, `-1`, `'abc'`, `''` and `null` are 400s. The
  * column is still a `Float` (known debt), so this is the only guard.
  */
 const hourlyRate = z.preprocess(
@@ -69,7 +68,7 @@ const hourlyRate = z.preprocess(
 /**
  * One comma-separated string (multipart, or JSON), an array of strings (repeated multipart
  * fields, or a JSON array — kept verbatim, so a skill may contain a comma), or `null` (cleared).
- * Normalized through `SKILL_ALIASES` and de-duplicated. A non-string element is a 400 (D16).
+ * Normalized through `SKILL_ALIASES` and de-duplicated. A non-string element is a 400.
  */
 const skills = z
   .union([z.string(), z.array(z.string()), z.null()], {
@@ -103,7 +102,7 @@ export const freelancerProfileUpdateBody = z.object({
   portfolioUrl: optionalText('Portfolio URL'),
 });
 
-/** The body schema for the caller's role (Q2). */
+/** The body schema for the caller's role; the other role's fields are stripped. */
 export const profileUpdateBodyByRole = {
   CLIENT: clientProfileUpdateBody,
   FREELANCER: freelancerProfileUpdateBody,

@@ -408,8 +408,8 @@ export async function updateProjectStatus(req: AuthedRequest, res: Response, nex
 
       const recipientIds = [...new Set(project.applications.map((application) => application.freelancerId))];
       if (status === 'CLOSED' && recipientIds.length > 0) {
-        // Inline wording (pre-existing type), routed through `notifyMany()` for preferences and
-        // email (NC9).
+        // Inline wording (not in the template table), routed through `notifyMany()` for preferences
+        // and email.
         await notifyMany(tx, recipientIds.map((userId) => ({
           userId,
           type: 'PROJECT_STATUS_CHANGED' as const,

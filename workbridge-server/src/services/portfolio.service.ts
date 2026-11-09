@@ -8,20 +8,20 @@ import { storeUploadedFile } from '../middlewares/attachmentUpload';
 import { monthRangeIssue, PORTFOLIO_LIMITS } from '../schemas/profile';
 import type { PortfolioCreateInput, PortfolioPatchInput } from '../schemas/profile';
 
-/** BEHAVIOR.md "Portfolio and careers", PF1–PF12, PF16. */
+/** Portfolio items: serialization, order, the public list and the writes (docs/domain/accounts.md). */
 
 const NOT_FOUND = 'Portfolio item not found';
 const LIMIT_REACHED = `Portfolio is limited to ${PORTFOLIO_LIMITS.items} items`;
 const BAD_ORDER = 'ids: Must list each of your portfolio items exactly once';
 
-/** PF5. */
+/** `sortOrder` ascending, then newest first, then `id`. */
 export const PORTFOLIO_ORDER: Prisma.PortfolioItemOrderByWithRelationInput[] = [
   { sortOrder: 'asc' },
   { createdAt: 'desc' },
   { id: 'asc' },
 ];
 
-/** PF3: months as `YYYY-MM`, never timestamps (PF2). */
+/** Months as `YYYY-MM`, never timestamps. */
 export function serializePortfolioItem(item: PortfolioItem) {
   return {
     id: item.id,
@@ -45,20 +45,20 @@ function toMonth(value: string | null | undefined): Date | null {
   return value == null ? null : kstMonthToDate(value);
 }
 
-/** The items of `userId` in PF5 order. The caller has already checked the user is visible. */
+/** The items of `userId` in `PORTFOLIO_ORDER`. The caller has already checked the user is visible. */
 export async function listPortfolioItems(userId: string) {
   const items = await prisma.portfolioItem.findMany({ where: { userId }, orderBy: PORTFOLIO_ORDER });
   return items.map(serializePortfolioItem);
 }
 
-/** PF16. */
+/** `GET /api/users/:id/portfolio`: 404 for a missing or soft-deleted user. */
 export async function getPublicPortfolio(userId: string) {
   const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { id: true } });
   if (!user) throw new AppError('User not found', 404);
   return { items: await listPortfolioItems(userId) };
 }
 
-/** PF9. */
+/** Create an item, appended after the caller's last one. */
 export async function createPortfolioItem(
   userId: string,
   input: PortfolioCreateInput,
@@ -71,13 +71,13 @@ export async function createPortfolioItem(
 
   // …and the upload happens outside the transaction: holding the row lock across a network call
   // would stall this user's other writes. A request that then loses the race leaves its image
-  // unreferenced (PF9).
+  // unreferenced.
   const imageUrl = image ? (await storeUploadedFile(image, 'portfolio')).url : null;
 
   const item = await prisma.$transaction(async (tx) => {
     await lockUserRow(tx, userId);
 
-    // …and again under the lock (PF8): two creates at 19 items end at 20 and one 409.
+    // …and again under the user-row lock: two creates at 19 items end at 20 and one 409.
     const [count, last] = await Promise.all([
       tx.portfolioItem.count({ where: { userId } }),
       tx.portfolioItem.findFirst({ where: { userId }, orderBy: { sortOrder: 'desc' }, select: { sortOrder: true } }),
@@ -103,14 +103,14 @@ export async function createPortfolioItem(
   return { item: serializePortfolioItem(item) };
 }
 
-/** PF7's existence-then-ownership check, shared by PATCH and DELETE. */
+/** Existence (404), then ownership (403), shared by PATCH and DELETE. */
 function assertOwnItem<T extends { userId: string }>(item: T | null, userId: string): T {
   if (!item) throw new AppError(NOT_FOUND, 404);
   if (item.userId !== userId) throw new AppError('Not authorized', 403);
   return item;
 }
 
-/** PF10. Validation (including the image/removeImage conflict) has already run. */
+/** Partial update. Validation (including the image/removeImage conflict) has already run. */
 export async function updatePortfolioItem(
   userId: string,
   itemId: string,
@@ -136,10 +136,10 @@ export async function updatePortfolioItem(
   if (input.startedAt !== undefined) data.startedAt = toMonth(input.startedAt);
   if (input.endedAt !== undefined) data.endedAt = toMonth(input.endedAt);
   if (input.removeImage) data.imageUrl = null;
-  // The replaced or removed file stays in storage (PF10).
+  // The replaced or removed file stays in storage.
   if (image) data.imageUrl = (await storeUploadedFile(image, 'portfolio')).url;
 
-  // No lock: an update changes neither the count nor the order (PF8). An item deleted since the
+  // No lock: an update changes neither the count nor the order. An item deleted since the
   // read above is a 404.
   // An empty patch writes nothing (Prisma skips an `updateMany` without data and reports 0 rows).
   const { count } = Object.keys(data).length
@@ -151,7 +151,7 @@ export async function updatePortfolioItem(
   return { item: serializePortfolioItem(item) };
 }
 
-/** PF11: under PF8's lock, so it serializes with a reorder. Other items keep their `sortOrder`. */
+/** Hard delete under the user-row lock, so it serializes with a reorder. Other items keep their `sortOrder`. */
 export async function deletePortfolioItem(userId: string, itemId: string) {
   return prisma.$transaction(async (tx) => {
     await lockUserRow(tx, userId);
@@ -162,7 +162,7 @@ export async function deletePortfolioItem(userId: string, itemId: string) {
   });
 }
 
-/** PF12. */
+/** `ids` must list each of the caller's items exactly once; checked under the user-row lock. */
 export async function reorderPortfolio(userId: string, ids: string[]) {
   return prisma.$transaction(async (tx) => {
     await lockUserRow(tx, userId);

@@ -7,7 +7,7 @@
 //
 // Sample dataset for local development and the shared environments (docs/SEED_DATA.md describes it). Every date is computed from the
 // moment the seed runs, so OPEN projects always have a future deadline and settlement weeks line
-// up with the real calendar. The rows follow the same invariants the services keep (BEHAVIOR.md):
+// up with the real calendar. The rows follow the same invariants the services keep (docs/domain/):
 // milestone sums, sequential funding, one payment per funded milestone, fee math, settlement
 // sums, strictly increasing message times, and one system message per contract/milestone event.
 const { PrismaClient } = require('@prisma/client');
@@ -17,7 +17,7 @@ const { v4: uuidv4 } = require('uuid');
 const prisma = new PrismaClient();
 
 // ─── Time ─────────────────────────────────────────────
-// KST is a fixed UTC+9 offset (BEHAVIOR.md rule 11). These mirror src/lib/time.ts, which a plain
+// KST is a fixed UTC+9 offset (docs/domain/README.md, 시간대). These mirror src/lib/time.ts, which a plain
 // JS file cannot import.
 const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
@@ -32,7 +32,7 @@ const later = (ms) => plus(now, ms);
 function startOfKstDay(date) {
   return new Date(Math.floor((date.getTime() + KST_OFFSET) / DAY) * DAY - KST_OFFSET);
 }
-/** M12: a due date is the last millisecond of its KST day. */
+/** A due date is the last millisecond of its KST day. */
 function endOfKstDay(date) {
   return new Date(startOfKstDay(date).getTime() + DAY - 1);
 }
@@ -40,12 +40,12 @@ function endOfKstDay(date) {
 function kstWeekday(date) {
   return new Date(startOfKstDay(date).getTime() + KST_OFFSET).getUTCDay();
 }
-/** PF2: a `YYYY-MM` month is stored as the first instant of that month in KST. */
+/** A `YYYY-MM` month is stored as the first instant of that month in KST. */
 function kstMonth(month) {
   const [year, mon] = month.split('-').map(Number);
   return new Date(Date.UTC(year, mon - 1, 1) - KST_OFFSET);
 }
-/** The first Wednesday 10:00 KST strictly after `after` (M19's payout time). */
+/** The first Wednesday 10:00 KST strictly after `after` (the weekly payout time). */
 function nextWednesday10(after) {
   const dayStart = startOfKstDay(after);
   const ahead = (3 - kstWeekday(after) + 7) % 7;
@@ -53,7 +53,7 @@ function nextWednesday10(after) {
   return candidate > after ? candidate : plus(candidate, 7 * DAY);
 }
 
-// Settlement calendar (M19). A period runs Monday 00:00 → next Monday 00:00 KST; its batch runs at
+// Settlement calendar. A period runs Monday 00:00 → next Monday 00:00 KST; its batch runs at
 // Monday 03:00 and pays out on Wednesday 10:00. `settledUntil` is the end of the newest period whose
 // batch has already run, so items approved before it are in a settlement and items approved after
 // it are still unsettled — whichever day of the week the seed runs.
@@ -70,11 +70,11 @@ const inWeek = (n, day, hour, minute = 0) => plus(weekStart(n), day * DAY + hour
 /** A point in the still-unsettled window [settledUntil, now): 0 = its start, 1 = now. */
 const recent = (fraction) => new Date(settledUntil.getTime() + (now.getTime() - settledUntil.getTime()) * fraction);
 
-/** M14: the default auto-approval delay (MILESTONE_AUTO_APPROVE_DAYS unset). */
+/** The default auto-approval delay (MILESTONE_AUTO_APPROVE_DAYS unset). */
 const AUTO_APPROVE_MS = 7 * DAY;
 
 // ─── Money ────────────────────────────────────────────
-// Same constants and integer arithmetic as src/lib/money.ts (M1–M3).
+// Same constants and integer arithmetic as src/lib/money.ts.
 const PLATFORM_FEE_RATE_BPS = 1000;
 const FEE_VAT_RATE_BPS = 1000;
 function payoutBreakdown(gross) {
@@ -84,7 +84,7 @@ function payoutBreakdown(gross) {
 }
 const won = (amount) => `${amount.toLocaleString('ko-KR')}원`;
 
-// Same list as src/lib/banks.ts (M23).
+// Same entries as src/lib/banks.ts.
 const BANKS = { '004': 'KB국민', '088': '신한', '090': '카카오뱅크' };
 const maskAccountNumber = (digits) => '*'.repeat(Math.max(digits.length - 4, 0)) + digits.slice(-4);
 
@@ -96,8 +96,8 @@ function check(condition, message) {
 }
 
 // ─── Notification wording ─────────────────────────────
-// Copies of src/lib/notifications/templates.ts and of the inline wording of the four pre-existing
-// types (applications.controller.ts). Only the types the seed uses.
+// Copies of src/lib/notifications/templates.ts and of the inline wording of the four types that keep
+// their strings in their controllers (applications.controller.ts). Only the types the seed uses.
 const milestoneHref = (contractId, milestoneId) => `/contracts/${contractId}/milestones/${milestoneId}`;
 const TEMPLATES = {
   APPLICATION_CREATED: (v) => ({
@@ -198,7 +198,7 @@ const SYSTEM_BODIES = {
   CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨 주세요.',
 };
 
-// NC13 rendering (src/lib/notifications/templates.ts `renderEmail`).
+// Email rendering (src/lib/notifications/templates.ts `renderEmail`).
 const LINK_BASE = ((process.env.CLIENT_URL || '').split(',')[0].trim() || 'http://localhost:3000').replace(/\/+$/, '');
 function renderEmail({ title, message, href }) {
   const lines = [message, ''];
@@ -248,7 +248,7 @@ async function jobRow(type, payload, runAt, dedupeKey) {
   return prisma.job.create({ data: { type, payload, runAt, dedupeKey } });
 }
 
-/** Accepting an application: the PENDING contract (amount = expectedRate, M7). */
+/** Accepting an application: the PENDING contract (amount = expectedRate). */
 async function createContract({ project, application, client, freelancer, acceptedAt }) {
   return prisma.contract.create({
     data: {
@@ -258,13 +258,13 @@ async function createContract({ project, application, client, freelancer, accept
       freelancerId: freelancer.id,
       amount: application.expectedRate,
       startDate: acceptedAt,
-      endDate: acceptedAt, // replaced by the last due date once the plan exists (MS8)
+      endDate: acceptedAt, // replaced by the last due date once the plan exists
       createdAt: acceptedAt,
     },
   });
 }
 
-/** MS8: the plan as replaced by the client; `endDate` follows the last due date. */
+/** The plan as replaced by the client; `endDate` follows the last due date. */
 async function createPlan(contract, plan, createdAt) {
   check(plan.reduce((sum, m) => sum + m.amount, 0) === Math.round(contract.amount), `plan of ${contract.id} must add up (M11)`);
   const milestones = [];
@@ -295,7 +295,7 @@ async function signContract(contract, { clientSignedAt = null, freelancerSignedA
 }
 
 let paymentSerial = 0;
-/** PY6/PY7: the payment completes and the milestone is funded. */
+/** The payment completes and the milestone is funded. */
 async function fund(contract, milestone, fundedAt) {
   paymentSerial += 1;
   const ymd = new Date(fundedAt.getTime() + KST_OFFSET).toISOString().slice(0, 10).replace(/-/g, '');
@@ -314,7 +314,7 @@ async function fund(contract, milestone, fundedAt) {
   return prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'FUNDED', fundedAt } });
 }
 
-/** MS13: a submission round; the milestone waits for review until `autoApproveAt` (M14). */
+/** A submission round; the milestone waits for review until `autoApproveAt`. */
 async function submit(milestone, { round, at, message, links = [], attachments = [] }) {
   const submission = await prisma.milestoneSubmission.create({
     data: {
@@ -333,7 +333,7 @@ async function submit(milestone, { round, at, message, links = [], attachments =
   return { milestone: updated, submission };
 }
 
-/** MS19. */
+/** A revision request: the latest submission is rejected and the auto-approval timer cleared. */
 async function requestRevision(milestone, submission, { at, by, reason }) {
   await prisma.milestoneSubmission.update({
     where: { id: submission.id },
@@ -345,7 +345,7 @@ async function requestRevision(milestone, submission, { at, by, reason }) {
   });
 }
 
-/** MS16 (by a client) or MS20 (`by` null: automatic), plus the S3 settlement item. */
+/** A manual approval (by a client) or an automatic one (`by` null), plus the settlement item. */
 async function approve(contract, milestone, submission, { at, by }) {
   const auto = by === null;
   await prisma.milestoneSubmission.update({
@@ -374,7 +374,7 @@ async function approve(contract, milestone, submission, { at, by }) {
   return { milestone: updated, item };
 }
 
-/** S4/S5: the weekly batch's settlement of week n, totals summed from its items (M5). */
+/** The weekly batch's settlement of week n, totals summed from its items. */
 async function createSettlement(freelancer, n, items, data) {
   const periodStart = weekStart(n);
   const periodEnd = plus(periodStart, 7 * DAY);
@@ -402,7 +402,7 @@ async function createSettlement(freelancer, n, items, data) {
   return settlement;
 }
 
-/** S9's account snapshot. */
+/** The account snapshot a payout takes on entering `PROCESSING`. */
 const accountSnapshot = (account) => ({
   bankName: BANKS[account.bankCode],
   accountNumberMasked: maskAccountNumber(account.accountNumber),
@@ -410,10 +410,10 @@ const accountSnapshot = (account) => ({
 });
 
 /**
- * MG3/MG7: the contract's conversation, its two participants and its messages. Message times are
- * forced strictly increasing (`max(at, last + 1 ms)`, as MG7 does) and `lastMessageAt` follows the
+ * The contract's conversation, its two participants and its messages. Message times are
+ * forced strictly increasing (`max(at, last + 1 ms)`, as the service does) and `lastMessageAt` follows the
  * newest one. `reads` maps a participant to the key of the newest counterpart message they have
- * read (MG16); a participant missing from it has read nothing.
+ * read; a participant missing from it has read nothing.
  */
 async function seedConversation(contract, entries, reads = {}) {
   const conversation = await prisma.conversation.create({
@@ -996,7 +996,7 @@ async function main() {
 
   console.log('Applications created');
 
-  // ─── Payout accounts (PA1–PA7) ───────────────────────
+  // ─── Payout accounts ───────────────────────────────
   // 정하은·윤서아는 계좌가 없다. 정하은의 정산이 보류(ON_HOLD)된 이유다.
   const accountHan = await prisma.payoutAccount.create({
     data: { userId: freelancer3.id, bankCode: '004', accountNumber: '94820201234567', holderName: '한도윤', createdAt: inWeek(6, 2, 20) },
@@ -1076,7 +1076,7 @@ async function main() {
       createdAt: inWeek(5, 5, 10),
     },
   });
-  // Completed more than 30 days ago: the conversation is closed (MG9).
+  // Completed more than 30 days ago: the conversation is closed.
   await seedConversation(contract12, [
     { system: 'CONTRACT_CREATED', at: accept12 },
     { key: 'kim1', from: client1, at: plus(accept12, 20 * MINUTE), body: '박지윤님, 사내 위키 검색이 너무 느려서 직원들 불만이 많습니다. 인덱스 개선과 화면 개선 두 단계로 진행하시죠.' },
@@ -1257,11 +1257,11 @@ async function main() {
     attachments: [{ url: placeholder('Sales Report Check', '0369a1'), fileName: '매출통계_대조결과.png', mimeType: 'image/png', size: 183640 }],
   });
   m8b = s8b.milestone;
-  // MS13: the auto-approval and its reminder for round 2 (J2, J3).
+  // The auto-approval and its reminder for round 2, enqueued by the submission.
   await jobRow('milestone.autoApprove', { milestoneId: m8b.id, round: 2 }, m8b.autoApproveAt, `milestone.autoApprove:${m8b.id}:2`);
   const reminder8 = plus(m8b.autoApproveAt, -48 * HOUR);
   await jobRow('milestone.autoApproveReminder', { milestoneId: m8b.id, round: 2 }, reminder8, `milestone.autoApproveReminder:${m8b.id}:2`);
-  // PY7: due-date notices enqueued when it was funded (no-ops while it is SUBMITTED).
+  // Due-date notices enqueued when it was funded (no-ops while it is SUBMITTED).
   await jobRow('milestone.dueSoon', { milestoneId: m8b.id }, plus(m8b.dueDate, -DAY), `milestone.dueSoon:${m8b.id}`);
   await jobRow('milestone.overdue', { milestoneId: m8b.id }, m8b.dueDate, `milestone.overdue:${m8b.id}`);
 
@@ -1299,7 +1299,7 @@ async function main() {
     { key: 'park3', from: freelancer1, at: plus(rejected8At, 90 * MINUTE), body: '확인했습니다. 수정해서 다시 올릴게요.' },
     { system: 'MILESTONE_SUBMITTED', vars: { milestoneTitle: m8b.title, round: 2 }, at: r2At },
     { key: 'park4', from: freelancer1, at: plus(r2At, 5 * MINUTE), body: '수정본 제출했습니다. 스테이징 주소에서 바로 확인하실 수 있어요.' },
-    // Sent by mistake and deleted within 5 minutes: a tombstone (MG17).
+    // Sent by mistake and deleted within 5 minutes: a tombstone.
     { from: freelancer1, at: plus(r2At, 6 * MINUTE), body: 'https://ecommerce-admin-staging.vercel.app/debug', deletedAt: plus(r2At, 7 * MINUTE) },
     { key: 'park5', from: freelancer1, at: unread8a, body: '참고로 매출 통계에 일 단위 캐시를 붙여서 첫 로딩이 2초 안쪽으로 줄었습니다.' },
     { key: 'park6', from: freelancer1, at: unread8b, body: '배포·QA 일정도 미리 맞춰보면 좋을 것 같아요. 다음 주 화요일 오후 괜찮으실까요?' },
@@ -1362,7 +1362,7 @@ async function main() {
     links: ['https://www.figma.com/file/campaign-landing-v1'],
     attachments: [{ url: placeholder('Landing Draft A/B', 'db2777'), fileName: '캠페인_랜딩_시안_AB.png', mimeType: 'image/png', size: 356201 }],
   });
-  // Nobody reviewed it for 7 days: approved automatically (MS20), a minute after autoApproveAt.
+  // Nobody reviewed it for 7 days: approved automatically, a minute after autoApproveAt.
   const autoApproved10 = plus(s10a.milestone.autoApproveAt, 1 * MINUTE);
   const a10a = await approve(contract10, s10a.milestone, s10a.submission, { at: autoApproved10, by: null });
   m10b = await fund(contract10, m10b, inWeek(2, 3, 15));
@@ -1373,7 +1373,7 @@ async function main() {
   await jobRow('milestone.dueSoon', { milestoneId: m10b.id }, plus(m10b.dueDate, -DAY), `milestone.dueSoon:${m10b.id}`);
   await jobRow('milestone.overdue', { milestoneId: m10b.id }, m10b.dueDate, `milestone.overdue:${m10b.id}`);
 
-  // 계좌가 없어 지급일에 보류됐다 (S8). 계좌를 등록하면 다음 수요일로 다시 잡힌다 (PA4).
+  // 계좌가 없어 지급일에 보류됐다. 계좌를 등록하면 다음 수요일로 다시 잡힌다.
   const settlementJung2 = await createSettlement(freelancer2, 2, [a10a.item], { status: 'ON_HOLD' });
 
   const conv10 = await seedConversation(contract10, [
@@ -1420,7 +1420,7 @@ async function main() {
   await jobRow('milestone.dueSoon', { milestoneId: m11b.id }, plus(m11b.dueDate, -DAY), `milestone.dueSoon:${m11b.id}`);
   await jobRow('milestone.overdue', { milestoneId: m11b.id }, m11b.dueDate, `milestone.overdue:${m11b.id}`);
 
-  // 지급을 세 번 시도해 모두 실패했다 (S11): 수요일, 목요일, 금요일 10:00. 운영자 확인 대상.
+  // 지급을 세 번 시도해 모두 실패했다: 수요일, 목요일, 금요일 10:00. 운영자 확인 대상.
   const firstPayout11 = plus(plus(weekStart(2), 7 * DAY), PAYOUT_DELAY);
   const lastPayout11 = plus(firstPayout11, 2 * PAYOUT_RETRY);
   const settlementSong2 = await createSettlement(freelancer5, 2, [a11a.item], {
@@ -1447,7 +1447,7 @@ async function main() {
 
   console.log('Active and pending contracts created');
 
-  // Every contract has exactly one conversation (MG2, MG3).
+  // Every contract has exactly one conversation.
   check((await prisma.contract.count({ where: { conversation: null } })) === 0, 'every contract has a conversation');
 
   // ─── Bookmarks ───────────────────────────────────────
@@ -1460,7 +1460,7 @@ async function main() {
     ],
   });
 
-  // ─── Portfolio and careers (PF1–PF6) ─────────────────
+  // ─── Portfolio and careers ───────────────────────────
   // Skills are stored normalized (no PostgreSQL/MySQL aliases). Months are KST month starts.
   const portfolio = [
     [freelancer1, [
@@ -1541,7 +1541,7 @@ async function main() {
 
   console.log('Portfolio and careers created');
 
-  // ─── Notification preferences (NC4: only values that differ from the default) ──
+  // ─── Notification preferences (only values that differ from the default) ──
   await prisma.notificationPreference.createMany({
     data: [
       // 박지윤: 결제 완료 메일은 끄고(기본 on), 정산 예정 메일은 켰다(기본 off).
@@ -1618,12 +1618,12 @@ async function main() {
 
   console.log('Notifications created');
 
-  // ─── Email deliveries (NC11–NC16) ────────────────────
+  // ─── Email deliveries ──────────────────────────────
   // A few rows of the audit trail, as their `notification.email` jobs left them.
   await emailRow(freelancer1, 'MILESTONE_REVISION_REQUESTED', v(contract8, project8, m8b, { reason: reason8 }), { createdAt: rejected8At, notification: revisionNotice8 });
   await emailRow(freelancer3, 'CONTRACT_COMPLETED', v(contract7, project7), { createdAt: plus(completed7, 1), notification: completedNotice7 });
   await emailRow(freelancer5, 'SETTLEMENT_FAILED', { settlementId: settlementSong2.id, amount: settlementSong2.netAmount }, { createdAt: lastPayout11, notification: failedNotice11 });
-  // MAIL_PROVIDER was briefly set to an unsupported value: FAILED without a provider call (NC14).
+  // MAIL_PROVIDER was briefly set to an unsupported value: FAILED without a provider call.
   await emailRow(freelancer2, 'SETTLEMENT_ON_HOLD', { amount: settlementJung2.netAmount }, {
     createdAt: settlementJung2.scheduledPayoutAt,
     notification: onHoldNotice10,
@@ -1632,7 +1632,7 @@ async function main() {
     attempts: 0,
     error: 'Unsupported MAIL_PROVIDER "ses"',
   });
-  // Unread-message digests (J8, NC16): sent 10 minutes after each still-unread message.
+  // Unread-message digests: sent 10 minutes after each still-unread message.
   const digests = [
     [client3, conv8, project8, unread8a, 2],
     [freelancer4, conv9, project9, conv9.messages.kim2.createdAt, 1],

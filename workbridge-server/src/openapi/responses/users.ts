@@ -23,7 +23,7 @@ const profileFields = {
 /** `GET`/`PATCH /api/users/me`. */
 export const myProfile = z.object({ ...profileFields, email: z.string() }).openapi('MyProfile');
 
-/** `GET /api/users/:id` — no email; received reviews, rating, portfolio and careers (PF18). */
+/** `GET /api/users/:id` — no email; received reviews, rating, portfolio and careers. */
 export const publicProfile = z
   .object({
     ...profileFields,
@@ -45,7 +45,7 @@ export const publicProfile = z
   })
   .openapi('PublicProfile');
 
-/** PA1: never the full account number. */
+/** Never the full account number. */
 export const payoutAccount = z
   .object({
     bankCode: z.string().openapi({ example: '088' }),

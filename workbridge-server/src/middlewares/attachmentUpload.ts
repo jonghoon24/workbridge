@@ -8,10 +8,11 @@ import { buildStorageKey, decodeOriginalName } from '../lib/storageKey';
 import { uploadToSupabase } from './upload';
 
 /**
- * Upload middlewares for the **expansion domains** (BEHAVIOR.md rule 12). Unlike the
- * profile-image `upload` in `./upload.ts` — whose filter throws a plain `Error` and so surfaces
- * as a 500 (알려진 불일치 D6) — every rejection here is an `AppError`: oversized → 413, anything
- * else → 400. The profile-image middleware has not been moved to this pattern yet.
+ * Upload middlewares for message and milestone-submission attachments and portfolio images.
+ * Unlike the profile-image `upload` in `./upload.ts` — whose filter throws a plain `Error`, so an
+ * oversized or non-image profile image still surfaces as a 500 — every rejection here is an
+ * `AppError`: oversized → 413, anything else → 400. The profile-image middleware has not been
+ * moved to this pattern yet.
  */
 
 export interface UploadPolicy {
@@ -126,7 +127,7 @@ export interface StoredFile {
 
 /**
  * Uploads one parsed file under `folder` (e.g. `milestones/<id>`) with a `<uuid>.<ext>` key.
- * A storage failure is an upstream failure → 502 (rule 8), never a raw 500.
+ * A storage failure is an upstream failure → 502, never a raw 500.
  */
 export async function storeUploadedFile(file: Express.Multer.File, folder: string): Promise<StoredFile> {
   const key = buildStorageKey(folder, file.mimetype, file.originalname);

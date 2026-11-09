@@ -11,7 +11,7 @@ export interface RateLimitOptions {
 }
 
 /**
- * Enforces one rule: over the limit → `Retry-After` + 429 (BEHAVIOR.md rule 10). Stack several
+ * Enforces one rule: over the limit → `Retry-After` + 429. Stack several
  * to apply several rules; a request refused by one never reaches (or counts toward) the next.
  * `RATE_LIMIT_ENABLED` is read per request.
  */
