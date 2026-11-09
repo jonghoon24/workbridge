@@ -51,7 +51,7 @@ API 문서(OpenAPI 3.1)는 코드에서 생성한다. 요청 스키마는 `valid
 응답 스키마는 `src/openapi/responses/`, 경로 등록(상태 코드별 응답과 오류 메시지)은 `src/openapi/paths/<도메인>.ts`에
 있다. 모든 스키마는 `.openapi()`가 붙은 `z`(`src/lib/zod.ts`)를 import한다. `npm run openapi`가
 `workbridge-server/openapi.json`을 쓰고 이 파일을 커밋한다(CI가 최신인지 확인). 문서는 `GET /api/docs`(Scalar)와
-`GET /api/openapi.json`으로도 보이고, 운영에서는 꺼진다. 어긋남은 두 테스트가 막는다: `test/openapi.test.ts`가 앱의
+`GET /api/openapi.json`으로도 보이고, 프리뷰·로컬에서만 켜진다(허용 목록, `docs/ENV.md`의 `VERCEL_ENV`). 어긋남은 두 테스트가 막는다: `test/openapi.test.ts`가 앱의
 라우트와 문서의 경로를 양방향으로 비교하고, `test/helpers/api.ts`의 `api()`·`authed()`가 모든 테스트의 응답을 문서의
 응답 스키마(객체는 strict)로 검사한다(`test/helpers/openapi.ts`). 라우트를 추가하거나 응답 모양을 바꾸면 경로 등록과
 응답 스키마도 함께 고친다.

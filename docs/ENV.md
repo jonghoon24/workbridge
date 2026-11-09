@@ -9,7 +9,7 @@
 | `PORT` | 서버 포트 (기본 4000) |
 | `DATABASE_URL` | PostgreSQL 연결 문자열 (Supabase Transaction mode 포트 6543 권장). Vercel(프리뷰·운영)에서는 끝에 `&connection_limit=3`을 붙인다(필요하면 `&pool_timeout=10`도). 없으면 Prisma가 함수 인스턴스마다 `CPU 수 × 2 + 1`개 연결을 열어, 인스턴스가 늘 때 Supavisor 연결 한도에 먼저 닿는다. `1`은 권하지 않는다: `Promise.all([findMany, count])`가 직렬화되고, 트랜잭션 안에서 루트 `prisma`를 쓰는 헬퍼가 있으면 풀을 기다리다 멈춘다. 로컬은 붙이지 않아도 된다 |
 | `DIRECT_URL` | pgbouncer를 거치지 않는 직접 연결 문자열. `prisma migrate`가 쓴다(`schema.prisma`의 `directUrl`). 로컬에서는 `DATABASE_URL`과 같게 둔다 |
-| `NODE_ENV` | `production`이면 `app.listen()`과 개발 작업 워커를 시작하지 않고(Vercel), CORS 기본 허용 목록에서 `http://localhost:3000`을 뺀다. 테스트는 `test` |
+| `NODE_ENV` | `production`이면 `app.listen()`과 개발 작업 워커를 시작하지 않고(Vercel), CORS 기본 허용 목록에서 `http://localhost:3000`을 뺀다. `VERCEL_ENV`가 없을 때 `production`이면 API 문서도 끈다(아래 `VERCEL_ENV`). 테스트는 `test` |
 | `JWT_ACCESS_SECRET` | Access Token 서명 시크릿 |
 | `JWT_REFRESH_SECRET` | Refresh Token 서명 시크릿 |
 | `JWT_ACCESS_EXPIRES_IN` | Access Token 만료 시간 (기본 15m) |
@@ -38,7 +38,7 @@
 | `MAIL_FROM` | 이메일 발신자(기본 `WorkBridge <no-reply@workbridge.local>`). 메일 본문의 링크 기준 주소는 `CLIENT_URL`이다 |
 | `SENTRY_DSN` | Sentry DSN(선택). 비우면 오류 보고가 꺼지고 `@sentry/node`를 아예 불러오지 않는다. 설정하면 500 응답과 최종 실패한 작업만 보낸다([DEPLOYMENT.md](DEPLOYMENT.md#sentry)). 호출마다 읽는다 |
 | `SENTRY_ENVIRONMENT` | Sentry `environment`(선택). 비우면 `VERCEL_ENV` → `NODE_ENV` → `development` 순으로 정한다. `release`는 Vercel이 넣어 주는 `VERCEL_GIT_COMMIT_SHA`가 있으면 그 값이다 |
-| `VERCEL_ENV` | Vercel이 넣는다(직접 넣지 않는다). `production`이면 API 문서(`GET /api/docs`, `GET /api/openapi.json`)가 꺼져 경로가 없는 것처럼 404다. 문서에 내부 엔드포인트와 모든 오류 메시지가 있어서다. 로컬·테스트·프리뷰에서는 켜진다. 요청마다 읽는다 |
+| `VERCEL_ENV` | Vercel이 넣는다(직접 넣지 않는다). API 문서(`GET /api/docs`, `GET /api/openapi.json`)는 허용 목록으로 켠다: `VERCEL_ENV`가 `preview`·`development`이거나, `VERCEL_ENV`가 없고 `NODE_ENV`가 `production`이 아닐 때(로컬·테스트)만 열린다. 그 밖(`production`, 모르는 값, `VERCEL_ENV` 없이 `NODE_ENV=production`)에서는 꺼져 경로가 없는 것처럼 404다. 문서에 내부 엔드포인트와 모든 오류 메시지가 있어서다. 요청마다 읽는다 |
 
 작업 큐는 개발 서버 워커 외에 `npm run jobs:run`(한 번 실행)과 `npm run jobs:worker`(단독 워커)로도 돌릴 수 있다. 운영(Vercel)에는 상주 워커가 없고, GitHub Actions(`.github/workflows/jobs.yml`)가 15분마다 운영 서버의 `POST /api/internal/jobs/run`을 부른다. 이 워크플로는 리포지토리 시크릿 `PROD_INTERNAL_JOB_TOKEN`(운영 서버의 `INTERNAL_JOB_TOKEN`과 같은 값)을 쓴다([DEPLOYMENT.md](DEPLOYMENT.md#1-작업-큐는-15분마다-돈다)).
 

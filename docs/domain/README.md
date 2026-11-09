@@ -90,6 +90,13 @@ WorkBridge가 **왜 이렇게 동작하는지**를 도메인별로 적는다. �
 
 화면의 "프로필 완성도" 퍼센트는 이 관문과 별개인 안내용 점수다([accounts.md](accounts.md#프로필-완성도)).
 
+### 오류 응답
+
+오류는 `{ error: { message } }` 하나로 답하고, 메시지는 호출자가 고칠 수 있는 원인만 말한다. 오류 응답은 상태
+코드와 상관없이 **내부 정보(파일 경로, 소스 발췌, SQL)를 드러내지 않는다**(현재 다름: [#9]). 깨진 JSON 본문처럼
+파서가 던진 오류도 파서의 원문 대신 정해진 문장으로 답한다.
+
 [#7]: https://github.com/jonghoon24/workbridge/issues/7
+[#9]: https://github.com/jonghoon24/workbridge/issues/9
 [#16]: https://github.com/jonghoon24/workbridge/issues/16
 [#20]: https://github.com/jonghoon24/workbridge/issues/20

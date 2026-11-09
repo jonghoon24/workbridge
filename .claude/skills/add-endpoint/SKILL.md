@@ -35,7 +35,7 @@ applications, contracts, payments, reviews, notifications)는 이 작업에서 �
 
 - `z`는 `src/lib/zod.ts`에서 import한다(`.openapi()`가 붙어 있어 이 스키마가 그대로 문서의 요청 스키마가 된다).
 - body/query/params마다 `z.object({...})`. 메시지는 1단계에서 정한 문장 그대로(`'Title is required'`).
-- 금액: 원 단위 정수(`z.number().int()`), 상수는 `lib/money.ts`에서.
+- 금액: 원 단위 정수(`src/schemas/common.ts`의 `bodyWholeWon(label, { min })`), 상수는 `lib/money.ts`에서.
 - 날짜: `YYYY-MM-DD` / `YYYY-MM` 문자열을 검증하고 `lib/time.ts` 헬퍼로 비교한다.
 - 서비스가 쓸 추론 타입을 export한다(`export type XInput = z.infer<typeof xBody>`).
 

@@ -54,7 +54,8 @@ DB에 있어서 서버 인스턴스끼리 공유한다(`src/lib/rateLimitRules.t
 | `name`, `bio`, `profileImage` | `companyName`, `businessField`, `website` | `skills`, `activityCategory`, `experienceYears`, `hourlyRate`, `portfolioUrl` |
 
 - 다른 역할의 필드를 보내면 거절하지 않고 **조용히 무시한다.** 화면이 역할과 상관없이 같은 폼을 보낼 수 있게 한 의도된 동작이다.
-- 보낸 필드만 바뀐다. 숫자 필드는 `experienceYears`가 0 이상 정수, `hourlyRate`가 유한한 수여야 한다. 잘못된 값은
+- 보낸 필드만 바뀐다. 숫자 필드는 `experienceYears`가 0 이상 정수, `hourlyRate`가 1원 이상 1억 원 이하의 원 단위
+  정수여야 한다(0원은 거절. 규칙 전에 저장된 0원은 단가를 수정할 때까지 그대로 둔다). 잘못된 값은
   거절하고 저장된 값을 건드리지 않는다. 오타 하나로 프로필이 미완성이 되어 지원이 막히면 안 되기 때문이다.
 - 기술(`skills`)은 저장 전에 별칭 표(`SKILL_ALIASES`, `src/lib/skills.ts`)로 정규화하고 중복을 없앤다. 예를 들어
   `PostgreSQL`은 `SQL`로 저장된다. 프로젝트의 요구 기술, 포트폴리오 기술, 검색과 추천도 같은 정규화를 쓴다.
