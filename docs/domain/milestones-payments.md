@@ -196,6 +196,7 @@ stateDiagram-v2
 - 계좌번호는 하이픈과 공백을 뺀 10~14자리 숫자다. **예금주는 회원 본인이어야 한다.** 공백과 대소문자를 무시하고
   프로필 이름과 같아야 한다.
 - 계좌번호는 어떤 응답, 로그, 정산에도 전체가 나가지 않는다. 마지막 네 자리만 보인다(`110123456789` → `********6789`).
+  DB에는 평문으로 저장한다. 저장 시 암호화와 은행 API로 예금주를 확인할지는 정하지 않았다([#28]).
 - **지급이 `PROCESSING`인 동안에는 계좌를 바꾸거나 지울 수 없다.** 다른 상태의 정산은 지급 시점에 있는 계좌를 쓴다.
   계좌 변경과 지급 결정은 같은 사용자 행 잠금을 잡아 섞이지 않는다.
 - 계좌를 등록하면 그 프리랜서의 `ON_HOLD` 정산이 모두 `SCHEDULED`로 돌아가고, 지금과 원래 예정 시각 **둘 다보다
@@ -206,3 +207,4 @@ stateDiagram-v2
 [#13]: https://github.com/jonghoon24/workbridge/issues/13
 [#17]: https://github.com/jonghoon24/workbridge/issues/17
 [#22]: https://github.com/jonghoon24/workbridge/issues/22
+[#28]: https://github.com/jonghoon24/workbridge/issues/28

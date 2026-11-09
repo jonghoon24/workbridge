@@ -1,7 +1,7 @@
 # 구조
 
-WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 동작의 기준은 [BEHAVIOR.md](BEHAVIOR.md)이고, 파일을
-고칠 때 지킬 것은 `.claude/rules/`에 경로별로 있다. 이 문서는 "어디에 무엇이 있고 왜 그렇게 나뉘었는지"만 다룬다.
+WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 제품 규칙은 [domain/](domain/README.md), API 계약은 OpenAPI 문서
+(아래 "API 계약: OpenAPI")가 기준이고, 파일을 고칠 때 지킬 것은 `.claude/rules/`에 경로별로 있다. 이 문서는 "어디에 무엇이 있고 왜 그렇게 나뉘었는지"만 다룬다.
 패키지는 `workbridge-server/`(Express + Prisma, TypeScript, 진입점 `src/index.ts`)와 `workbridge-client/`
 (Next.js 14 App Router, JSX) 둘이다. 브라우저는 클라이언트의 같은 출처 `/api/*`만 부르고, Next 라우트
 핸들러가 서버로 전달한다.
@@ -22,23 +22,21 @@ WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 동작의 기�
 | --- | --- | --- |
 | 도메인 | auth, users, projects, applications, contracts, payments, reviews, notifications | milestones, settlements, payout account, contract list, conversations, portfolio/careers, recommendations, notification preferences |
 | 흐름 | `routes → controllers → lib` | `routes → controllers → services → lib` |
-| 검증 | 컨트롤러 안의 수동 검사 | zod 스키마(`src/schemas/`) + `validate()`(`src/middlewares/validate.ts`) |
 | 로직 | 컨트롤러 안 | `src/services/*.service.ts`, 일부는 `src/lib/`(추천은 `lib/recommendations.ts`) |
-| 소프트 삭제된 호출자 | 다시 확인하지 않는다(D12) | `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |
+| 소프트 삭제된 호출자 | 다시 확인하지 않는다([#7](https://github.com/jonghoon24/workbridge/issues/7)) | `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |
 
-확장 라우트가 기존 라우터 파일에 들어간 곳도 있다(지급 계좌 `users.routes.ts`, 계약 목록 `contracts.routes.ts`,
-추천 프리랜서 `projects.routes.ts`). 혼재는 의도된 것이다. 기존 동작 가운데 명세와 다른 것은 `it.fails` 핀으로
-고정돼 있어서, 기존 컨트롤러를 확장 방식으로 "정리"하면 핀이 예기치 않게 통과해 스위트가 깨진다. 기존 도메인은
-불일치를 하나씩 고치는 별도 작업으로만 바꾼다(BEHAVIOR.md 규칙 12, `fix-divergence` 스킬). 도메인별로 불일치를
-먼저 고치고 services + zod로 옮기는 계획과 순서는 [#40](https://github.com/jonghoon24/workbridge/issues/40)에 있다.
+요청 검증은 양쪽 모두 zod 스키마(`src/schemas/`)와 `validate()`(`src/middlewares/validate.ts`)가 맡는다(400
+`<path>: <문장>`). 확장 라우트가 기존 라우터 파일에 들어간 곳도 있다(지급 계좌 `users.routes.ts`, 계약 목록 `contracts.routes.ts`,
+추천 프리랜서 `projects.routes.ts`). 혼재는 의도된 것이다. 기존 컨트롤러를 서비스 레이어로 옮기는 일은 버그 수정이나
+기능 변경에 섞지 않고 도메인 단위로 따로 한다. 계획과 순서는 [#40](https://github.com/jonghoon24/workbridge/issues/40)에 있다.
 
 ### 인증과 권한
 
 - `authenticate`(`src/middlewares/auth.ts`): `Authorization: Bearer <access token>`을 검증해 `req.user`를 채운다(실패 401).
 - 확장 라우트의 체인: `authenticate → requireActiveUser → requireRole(...) → [업로드] → validate → controller`.
   가드는 라우트마다 붙이고 `router.use`는 쓰지 않는다.
-- 기존 라우트는 `authenticate → requireRole(...)` 뒤에 컨트롤러가 소유권을 직접 확인한다. 프로젝트 등록은
-  `requireCompleteProfile`(`src/middlewares/profile.ts`)도 거친다.
+- 기존 라우트는 `authenticate → requireRole(...) → validate`(입력이 있을 때) 뒤에 컨트롤러가 소유권을 직접
+  확인한다. 프로젝트 등록은 `requireCompleteProfile`(`src/middlewares/profile.ts`)도 거친다.
 - 로그인과 AI 분석에는 `rateLimit`(`src/middlewares/rateLimit.ts`, 카운터는 `RateLimitCounter` 테이블)이 붙는다.
   `POST /api/internal/jobs/run`은 JWT 대신 `requireInternalToken`(`X-Internal-Token`)으로 지킨다.
 - 공개 핸들러 14개에서는 `req.user`가 `undefined`다. 목록은 `src/types/index.ts`에 있다.
@@ -71,7 +69,7 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 ```
 
 - `User`와 `Project`는 소프트 삭제(`deletedAt`)다. 읽기와 쓰기 모두 `deletedAt: null`로 거른다. 예외는
-  BEHAVIOR.md 규칙 5(가입 이메일 중복 확인, 정산과 지급 계좌).
+  가입 이메일 중복 확인, 정산과 지급 계좌다([domain/README.md](domain/README.md#소프트-삭제)).
 - 여러 행을 바꾸는 변경은 `prisma.$transaction` 하나다. 같은 사용자의 쓰기가 섞이면 안 되는 곳(지급 계좌,
   포트폴리오·경력, 알림 설정)은 트랜잭션 첫 문장에서 `lockUserRow`(`src/lib/locks.ts`)로 사용자 행을 잠근다.
 
@@ -79,8 +77,9 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 
 `GET /api/projects`와 `GET /api/projects/:id`는 응답 전에 `closeExpiredOpenProjects()`
 (`src/lib/projectLifecycle.ts`)를 부른다. 모집 시작일이 지난 `UPCOMING`을 `OPEN`으로, 마감이 지난 `UPCOMING`·`OPEN`을
-`CLOSED`로 바꾸고 대기 중인 지원을 거절한다(지연 스윕, BEHAVIOR.md 규칙 7). 작업 큐의
-`project.lifecycleSweep`도 10분마다 같은 함수를 부르지만, 운영에는 워커가 없어서 읽기 경로의 스윕이 보장 장치다.
+`CLOSED`로 바꾸고 대기 중인 지원을 거절한다([지연 스윕](domain/projects-contracts.md#지연-스윕-읽기가-행을-쓴다)). 작업 큐의
+`project.lifecycleSweep`도 10분마다 같은 함수를 부르지만, 운영에서는 작업 큐가 15분 간격으로만 돌아서 읽기 경로의
+스윕이 보장 장치다.
 
 ## 작업 큐 (`src/jobs/`, Postgres `Job` 테이블)
 
@@ -91,8 +90,8 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 - **반복 작업**: `jobs/recurring.ts` — 수명주기 스윕(10분), 정리(매일 04:00 KST), 주간 정산 배치(월요일 03:00 KST).
 - **실행 주체**: 개발 서버가 띄우는 워커(`jobs/worker.ts`, `JOB_WORKER_ENABLED`), `npm run jobs:run`(한 번),
   `npm run jobs:worker`(상주), `POST /api/internal/jobs/run`. **운영(Vercel)에는 상주 프로세스가 없어서**
-  외부 스케줄러가 내부 엔드포인트를 부르기 전까지 자동 승인, 정산, 이메일이 돌지 않는다
-  ([DEPLOYMENT.md](DEPLOYMENT.md)).
+  GitHub Actions `jobs.yml`이 15분마다 내부 엔드포인트를 부른다. 작업은 예정 시각보다 최대 15분 늦게 돌고,
+  지급·메일 작업은 플래그로 꺼져 있다([DEPLOYMENT.md](DEPLOYMENT.md#운영-환경의-한계)).
 
 ## 알림과 이메일
 

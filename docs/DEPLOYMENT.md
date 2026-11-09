@@ -81,12 +81,12 @@ Vercel에는 상주 프로세스가 없어서 개발 서버가 띄우는 워커(
 
 크론이 도는 운영에서는 자동 승인과 그 리마인더, 마일스톤 기한 알림, 주간 정산 배치(월요일 03:00 KST), 프로젝트 상태 스윕, `maintenance.cleanup`이 돈다. 시각이 정해진 작업은 호출 간격(최대 15분, GitHub의 스케줄 지연이 더해질 수 있다)만큼 늦게 돈다. 시간 초과로 끊긴 작업은 10분 뒤 stale lock 회수로 다시 시도된다. 리포지토리에 60일 동안 활동이 없으면 GitHub가 스케줄을 끈다.
 
-**두 작업은 환경변수로 꺼 두었다**(기본값 꺼짐, BEHAVIOR.md J10). 운영 서버에서 정확히 `true`로 켜기 전까지는 다음이 **일어나지 않는다**.
+**두 작업은 환경변수로 꺼 두었다**(기본값 꺼짐, [domain/jobs.md](domain/jobs.md#플래그로-꺼-둔-작업)). 운영 서버에서 정확히 `true`로 켜기 전까지는 다음이 **일어나지 않는다**.
 
 | 작업 | 플래그 | 꺼져 있을 때 | 켜는 조건 |
 | --- | --- | --- | --- |
 | `settlement.payout`(수요일 10:00 KST 지급) | `JOB_PAYOUT_ENABLED` | 러너가 가져가지 않아 `PENDING`으로 남는다. 정산은 `SCHEDULED`에 머문다 | 실제 은행 이체 provider 연동. 지금 `LogPayoutProvider`는 돈을 보내지 않고 성공을 보고해 정산을 `PAID`로 만든다 |
-| `notification.email`(알림 메일과 미확인 메시지 요약 메일) | `JOB_EMAIL_ENABLED` | 작업은 돌고 delivery가 `SKIPPED`(`Email sending is disabled …`)로 끝난다 | 실제 메일 provider 연결과 로그 개인정보 문제(Q24) 해결 — 아래 4번 |
+| `notification.email`(알림 메일과 미확인 메시지 요약 메일) | `JOB_EMAIL_ENABLED` | 작업은 돌고 delivery가 `SKIPPED`(`Email sending is disabled …`)로 끝난다 | 실제 메일 provider 연결과 로그 개인정보 문제 해결([#26](https://github.com/jonghoon24/workbridge/issues/26)) — 아래 4번 |
 
 둘을 다르게 다루는 이유: 지급은 줘야 할 돈이라 버리면 안 되고, 켜는 날 밀린 지급이 실행되는 것이 맞다(핸들러가 정산을 다시 읽으므로 재일정된 것은 건너뛴다). 메일은 제때 가야 쓸모가 있어서, 쌓아 두면 켜는 날 몇 주 묵은 알림과 요약 메일이 한꺼번에 나간다. 그래서 메일은 건너뛰고 끝낸다. 로컬은 `.env.example`대로 둘 다 켜 둔다(지급은 로그 provider, 메일은 로그에만 쓴다).
 
@@ -100,15 +100,15 @@ DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
 
 ### 3. 큰 첨부 파일은 Vercel이 막는다
 
-로컬에서는 마일스톤 제출과 메시지에 파일을 10MB × 5개까지 올릴 수 있다. Vercel 서버리스 함수의 **요청 본문 한도는 4.5MB**라서 운영에서는 그보다 큰 요청이 플랫폼에서 413으로 막힌다(앱의 오류 형식이 아니다). 브라우저 요청은 Next 프록시와 백엔드 두 함수를 거치므로 두 곳 모두 이 한도에 걸린다. 코드로 우회하지 않았다. 해결은 브라우저가 저장소에 직접 올리는 서명된 업로드 URL 방식이고, 첨부를 비공개 버킷과 서명 URL로 옮기는 문제(BEHAVIOR.md Q21)와 함께 정한다.
+로컬에서는 마일스톤 제출과 메시지에 파일을 10MB × 5개까지 올릴 수 있다. Vercel 서버리스 함수의 **요청 본문 한도는 4.5MB**라서 운영에서는 그보다 큰 요청이 플랫폼에서 413으로 막힌다(앱의 오류 형식이 아니다). 브라우저 요청은 Next 프록시와 백엔드 두 함수를 거치므로 두 곳 모두 이 한도에 걸린다. 코드로 우회하지 않았다. 해결은 브라우저가 저장소에 직접 올리는 서명된 업로드 URL 방식이고([#25](https://github.com/jonghoon24/workbridge/issues/25)), 첨부를 비공개 버킷과 서명 URL로 옮기는 문제([#22](https://github.com/jonghoon24/workbridge/issues/22))와 함께 정한다.
 
 ### 4. 이메일은 로그로만 나간다
 
-실제 메일 서비스는 연결돼 있지 않다. `MAIL_PROVIDER`는 비우거나 `log`만 지원하고, 이 provider는 메일을 보내지 않고 받는 주소와 본문 전체를 `info` 로그 `mail.sent` 한 줄로 남긴다. 운영 로그에 개인정보(이메일 주소와 알림 내용)가 남는다는 뜻이다(Q24). 그래서 운영에서는 `JOB_EMAIL_ENABLED`를 켜지 않아 메일 작업이 delivery를 `SKIPPED`로 끝내고, 메일은 로그에도 나가지 않는다(1번). 실제 메일 provider를 연결하고 Q24를 정한 뒤에 켠다. 다른 `MAIL_PROVIDER` 값을 넣으면 시작 때 경고 한 줄을 남기고 모든 발송이 `FAILED`가 된다. 구독 해지 링크도 없다(Q25).
+실제 메일 서비스는 연결돼 있지 않다. `MAIL_PROVIDER`는 비우거나 `log`만 지원하고, 이 provider는 메일을 보내지 않고 받는 주소와 본문 전체를 `info` 로그 `mail.sent` 한 줄로 남긴다. 운영 로그에 개인정보(이메일 주소와 알림 내용)가 남는다는 뜻이다. 그래서 운영에서는 `JOB_EMAIL_ENABLED`를 켜지 않아 메일 작업이 delivery를 `SKIPPED`로 끝내고, 메일은 로그에도 나가지 않는다(1번). 실제 메일 provider와 발송 기록 보관 기간을 정한 뒤에 켠다([#26](https://github.com/jonghoon24/workbridge/issues/26)). 다른 `MAIL_PROVIDER` 값을 넣으면 시작 때 경고 한 줄을 남기고 모든 발송이 `FAILED`가 된다. 구독 해지 링크도 없다(같은 이슈).
 
 ### 5. 클라이언트 IP
 
-로그인 요청 제한과 접근 로그의 `ip`는 클라이언트 IP를 쓴다(`src/lib/clientIp.ts`, BEHAVIOR.md 규칙 10). 프리뷰에서 확인한 Vercel의 동작(2026-11-08):
+로그인 요청 제한과 접근 로그의 `ip`는 클라이언트 IP를 쓴다(`src/lib/clientIp.ts`). 프리뷰에서 확인한 Vercel의 동작(2026-11-08):
 
 - 서버 함수의 소켓 주소와 `req.ip`는 **언제나 `127.0.0.1`**이다(`@vercel/node`가 Express를 로컬 소켓 뒤에서 돌린다).
 - 서버를 직접 부르면 Vercel 엣지가 `X-Forwarded-For`·`X-Real-IP`·`X-Vercel-Forwarded-For`를 실제 클라이언트 IP로 **덮어쓴다**. 클라이언트가 보낸 같은 헤더는 버려진다.
@@ -120,10 +120,10 @@ DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
 2. Vercel(`VERCEL=1`)에서는 `X-Vercel-Forwarded-For` — 직접 호출의 실제 IP.
 3. 그 밖에는 `req.ip`. `TRUST_PROXY`가 설정되면 `X-Forwarded-For`에서 신뢰하는 프록시를 뺀 주소, 비어 있으면 소켓 주소다. 로컬은 `TRUST_PROXY=loopback`이고 `PROXY_SHARED_SECRET`은 비워 둔다.
 
-**자체 호스팅**: `TRUST_PROXY=loopback`은 Next 포트에 신뢰하는 클라이언트만 닿을 때만 안전하다. 아니면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다(Q23). 헤더를 다시 쓰는 프록시를 Next 앞에 두거나 `TRUST_PROXY`를 비운다. Next 프록시는 Vercel에서만 `X-Client-IP`를 보낸다.
+**자체 호스팅**: `TRUST_PROXY=loopback`은 Next 포트에 신뢰하는 클라이언트만 닿을 때만 안전하다. 아니면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다. 헤더를 다시 쓰는 프록시를 Next 앞에 두거나 `TRUST_PROXY`를 비운다. Next 프록시는 Vercel에서만 `X-Client-IP`를 보낸다.
 
 ### 6. 그 밖에
 
-- **첨부 파일은 공개 버킷**(`workbridge`)에 추측하기 어려운 키로 저장되고 공개 URL로 나간다. URL을 아는 사람은 로그인 없이 내려받을 수 있고, 메시지를 지워도 파일은 남는다(Q21).
-- **지급 계좌번호는 평문 저장**이고 응답·로그·정산에는 마스킹한 값만 나간다(Q22).
+- **첨부 파일은 공개 버킷**(`workbridge`)에 추측하기 어려운 키로 저장되고 공개 URL로 나간다. URL을 아는 사람은 로그인 없이 내려받을 수 있고, 메시지를 지워도 파일은 남는다([#22](https://github.com/jonghoon24/workbridge/issues/22)).
+- **지급 계좌번호는 평문 저장**이고 응답·로그·정산에는 마스킹한 값만 나간다. 저장 시 암호화와 예금주 확인은 미정이다([#28](https://github.com/jonghoon24/workbridge/issues/28)).
 - 로그는 한 줄 JSON이고 `error`만 stderr로 간다. `LOG_LEVEL`로 기준을 정한다.
