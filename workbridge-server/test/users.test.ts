@@ -1,3 +1,4 @@
+import type { Role } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 
@@ -116,6 +117,23 @@ describe('GET /api/users/me', () => {
 });
 
 describe('PATCH /api/users/me', () => {
+  // The body schema is picked by the token's role. A role with no schema must be refused, not let
+  // through to the update unvalidated.
+  it('refuses a token whose role has no profile schema with 403 and changes nothing', async () => {
+    const client = await makeClient({ name: 'Old Name' });
+    const unknownRole = tokenFor({ id: client.id, email: client.email, role: 'ADMIN' as Role });
+
+    const res = await api()
+      .patch('/api/users/me')
+      .set('Authorization', `Bearer ${unknownRole}`)
+      .send({ name: 'New Name', hourlyRate: 'not a number' });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
+    expect(stored.name).toBe('Old Name');
+  });
+
   it('updates name and bio for a CLIENT and persists them', async () => {
     const client = await makeClient({ name: 'Old Name', bio: null });
 
@@ -302,7 +320,7 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate: 'abc' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a whole number of won' } });
+    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a positive whole number of won' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.hourlyRate).toBe(50_000);
   });
@@ -385,13 +403,16 @@ describe('PATCH /api/users/me', () => {
     ['a fractional string', '45000.5'],
     ['a negative number', -1],
     ['a negative string', '-1'],
+    // A rate is at least 1 won.
+    ['zero', 0],
+    ['a zero string', '0'],
   ])('rejects %s as hourlyRate with 400, row unchanged', async (_label, hourlyRate) => {
     const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
 
     const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a whole number of won' } });
+    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a positive whole number of won' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.hourlyRate).toBe(50_000);
   });
@@ -408,7 +429,7 @@ describe('PATCH /api/users/me', () => {
     expect(stored).toMatchObject({ experienceYears: 0, hourlyRate: 12_000 });
   });
 
-  it.each([0, 100_000_000])('accepts the boundary hourlyRate %s', async (hourlyRate) => {
+  it.each([1, 100_000_000])('accepts the boundary hourlyRate %s', async (hourlyRate) => {
     const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
 
     const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate });

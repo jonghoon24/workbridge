@@ -145,7 +145,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
       });
       onSaved?.(data, { signaturesReset: hasSignature });
     } catch (err) {
-      setError(describeMilestoneField(err.response?.data?.error?.message) || toUserMessage(err, '마일스톤 계획을 저장하지 못했습니다'));
+      setError(describeMilestoneField(err.response?.data?.error?.message) || toUserMessage(err, '마일스톤 계획을 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }

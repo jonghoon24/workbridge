@@ -30,6 +30,16 @@ function resolveSelectableValue(preset, other) {
 // 서버의 시간당 단가 상한(workbridge-server/src/schemas/users.ts MAX_HOURLY_RATE)
 const MAX_HOURLY_RATE = 100_000_000;
 
+// 웹사이트·포트폴리오 URL. 예전 type="url" 입력의 브라우저 검사를 대신한다(http/https만).
+function isHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export default function ProfilePage() {
   const router = useRouter();
   const { setAuth } = useAuthStore();
@@ -58,8 +68,8 @@ export default function ProfilePage() {
           skills: normalizeSkillList(data.skills || []),
           activityCategoryPreset: resolvePreset(data.activityCategory, FREELANCER_ACTIVITY_CATEGORIES),
           activityCategoryOther: resolveOtherValue(data.activityCategory, FREELANCER_ACTIVITY_CATEGORIES),
-          experienceYears: data.experienceYears || '',
-          hourlyRate: data.hourlyRate || '',
+          experienceYears: data.experienceYears ?? '',
+          hourlyRate: data.hourlyRate ?? '',
           portfolioUrl: data.portfolioUrl || '',
         });
       })
@@ -69,7 +79,7 @@ export default function ProfilePage() {
           router.push('/login?redirect=/profile');
           return;
         }
-        setLoadError(toUserMessage(err, '프로필을 불러오지 못했습니다'));
+        setLoadError(toUserMessage(err, '프로필을 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, [router]);
@@ -87,10 +97,25 @@ export default function ProfilePage() {
         bio: form.bio,
       };
 
+      // 브라우저 기본 검증은 끄고(<form noValidate>) 여기서 검사한다. 안내 문구는 같은 오류에 대한
+      // 서버 문구의 한국어 매핑(lib/errorMessages.js)과 같다.
+      if (!form.name.trim()) {
+        setError('이름을 입력해 주세요.');
+        return;
+      }
+
       if (profile?.role === 'CLIENT') {
         const businessField = resolveSelectableValue(form.businessFieldPreset, form.businessFieldOther);
-        if (!form.companyName?.trim() || !businessField) {
-          setError('회사명과 사업 분야를 입력해 주세요');
+        if (!form.companyName?.trim()) {
+          setError('회사명을 입력해 주세요.');
+          return;
+        }
+        if (!businessField) {
+          setError('사업 분야를 선택해 주세요.');
+          return;
+        }
+        if (form.website.trim() && !isHttpUrl(form.website.trim())) {
+          setError('웹사이트는 http:// 또는 https://로 시작하는 주소여야 합니다.');
           return;
         }
 
@@ -101,30 +126,33 @@ export default function ProfilePage() {
 
       if (profile?.role === 'FREELANCER') {
         const activityCategory = resolveSelectableValue(form.activityCategoryPreset, form.activityCategoryOther);
-        const experienceYears = Number(form.experienceYears);
-        const hourlyRate = Number(form.hourlyRate);
+        // 숫자 입력칸은 숫자가 아닌 입력을 ''로 준다. 빈 값도 형식 오류와 같은 안내를 쓴다.
+        const experienceYears = form.experienceYears === '' ? NaN : Number(form.experienceYears);
+        const hourlyRate = form.hourlyRate === '' ? NaN : Number(form.hourlyRate);
 
-        if (
-          form.skills.length === 0
-          || !activityCategory
-          || form.experienceYears === ''
-          || !Number.isInteger(experienceYears)
-          || experienceYears < 0
-          || form.hourlyRate === ''
-          || !Number.isFinite(hourlyRate)
-          || hourlyRate <= 0
-        ) {
-          setError('기술 스택, 활동 카테고리, 경력, 시간당 단가를 입력해 주세요');
+        if (form.skills.length === 0) {
+          setError('기술 스택을 하나 이상 선택해 주세요.');
           return;
         }
-
-        // 서버 규칙(workbridge-server/src/schemas/users.ts): 단가는 원 단위 정수, 1억 원 이하.
-        if (!Number.isInteger(hourlyRate)) {
-          setError('시간당 단가는 원 단위 정수로 입력해 주세요');
+        if (!activityCategory) {
+          setError('활동 카테고리를 선택해 주세요.');
+          return;
+        }
+        if (!Number.isSafeInteger(experienceYears) || experienceYears < 0) {
+          setError('경력은 0 이상의 정수(년 단위)로 입력해 주세요.');
+          return;
+        }
+        // 서버 규칙(workbridge-server/src/schemas/users.ts): 단가는 1원 이상 1억 원 이하의 원 단위 정수.
+        if (!Number.isSafeInteger(hourlyRate) || hourlyRate <= 0) {
+          setError('시간당 단가는 1원 이상의 원 단위 정수로 입력해 주세요.');
           return;
         }
         if (hourlyRate > MAX_HOURLY_RATE) {
-          setError('시간당 단가는 1억 원 이하로 입력해 주세요');
+          setError('시간당 단가는 1억 원 이하로 입력해 주세요.');
+          return;
+        }
+        if (form.portfolioUrl.trim() && !isHttpUrl(form.portfolioUrl.trim())) {
+          setError('포트폴리오 URL은 http:// 또는 https://로 시작하는 주소여야 합니다.');
           return;
         }
 
@@ -152,10 +180,10 @@ export default function ProfilePage() {
 
       setProfile(data);
       setAuth(data, useAuthStore.getState().accessToken);
-      setSuccess('프로필이 저장되었습니다');
+      setSuccess('프로필이 저장되었습니다.');
       setCompletionKey((key) => key + 1);
     } catch (err) {
-      setError(toUserMessage(err, '저장에 실패했습니다'));
+      setError(toUserMessage(err, '저장에 실패했습니다.'));
     } finally {
       setSaving(false);
     }
@@ -199,7 +227,8 @@ export default function ProfilePage() {
       )}
 
       <Card className="p-6" id="profile-form">
-        <form onSubmit={handleSubmit} className="space-y-5">
+        {/* noValidate: 브라우저 기본 검증 말풍선 대신 handleSubmit의 한국어 안내를 보여 준다. */}
+        <form noValidate onSubmit={handleSubmit} className="space-y-5">
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
           {success && <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm">{success}</div>}
 

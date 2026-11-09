@@ -79,7 +79,7 @@ export default function ContractPage() {
         alert('계약이 체결되었습니다. 첫 마일스톤을 결제하면 작업이 시작됩니다.');
       }
     } catch (err) {
-      setActionError(toUserMessage(err, '서명하지 못했습니다'));
+      setActionError(toUserMessage(err, '서명하지 못했습니다.'));
     } finally {
       setSigning(false);
     }
@@ -106,7 +106,7 @@ export default function ContractPage() {
       }
       await loadContract();
     } catch (err) {
-      setActionError(toUserMessage(err, '승인하지 못했습니다'));
+      setActionError(toUserMessage(err, '승인하지 못했습니다.'));
     } finally {
       setBusyMilestoneId('');
     }
@@ -155,7 +155,7 @@ export default function ContractPage() {
       setReviewForm({ rating: 5, content: '', tags: [] });
       setReviewSuccess('리뷰가 등록되었습니다.');
     } catch (err) {
-      setReviewError(toUserMessage(err, '리뷰를 등록하지 못했습니다'));
+      setReviewError(toUserMessage(err, '리뷰를 등록하지 못했습니다.'));
     } finally {
       setReviewLoading(false);
     }

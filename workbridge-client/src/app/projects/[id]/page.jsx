@@ -51,7 +51,7 @@ export default function ProjectDetailPage() {
       .then(({ data }) => setProject(data))
       .catch((err) => {
         setProject(null);
-        setError(toUserMessage(err, '프로젝트를 불러오지 못했습니다'));
+        setError(toUserMessage(err, '프로젝트를 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -140,10 +140,19 @@ export default function ProjectDetailPage() {
   async function handleApply(e) {
     e.preventDefault();
     setApplyError('');
-    // 제안 금액은 원 단위 정수다(서버도 소수를 400으로 거절한다).
+    if (!applyForm.coverLetter.trim()) {
+      setApplyError('지원서를 입력해 주세요.');
+      return;
+    }
+    // 제안 금액은 원 단위 정수다(서버도 소수를 400으로 거절한다). 숫자 입력칸은 '1.5'·'-1'·'1e6'을
+    // 그대로 주고, 숫자가 아닌 입력은 ''을 준다 — 모두 여기서 걸린다.
     const rate = String(applyForm.expectedRate).trim();
     if (!/^\d+$/.test(rate) || Number(rate) < 1) {
       setApplyError('제안 금액은 1원 이상의 원 단위 정수로 입력해 주세요.');
+      return;
+    }
+    if (!applyForm.expectedDuration.trim()) {
+      setApplyError('예상 기간을 입력해 주세요.');
       return;
     }
     setApplyLoading(true);
@@ -152,7 +161,7 @@ export default function ProjectDetailPage() {
       setApplyModal(false);
       router.push('/my/applications');
     } catch (err) {
-      const message = toUserMessage(err, '지원에 실패했습니다');
+      const message = toUserMessage(err, '지원에 실패했습니다.');
       if (err.response?.status === 403 && message.includes('프로필')) {
         alert(getProfileCompletionMessage('FREELANCER'));
         setApplyModal(false);
@@ -177,7 +186,7 @@ export default function ProjectDetailPage() {
 
       setApplyModal(true);
     } catch (err) {
-      alert(toUserMessage(err, '프로필을 확인하지 못했습니다'));
+      alert(toUserMessage(err, '프로필을 확인하지 못했습니다.'));
     } finally {
       setProfileChecking(false);
     }
@@ -189,7 +198,7 @@ export default function ProjectDetailPage() {
       await api.delete(`/api/projects/${id}`);
       router.push('/projects');
     } catch (err) {
-      alert(toUserMessage(err, '프로젝트를 삭제하지 못했습니다'));
+      alert(toUserMessage(err, '프로젝트를 삭제하지 못했습니다.'));
     }
   }
 
@@ -199,7 +208,7 @@ export default function ProjectDetailPage() {
       const { data } = await api.patch(`/api/projects/${id}/status`, { status: 'CLOSED' });
       setProject((prev) => ({ ...prev, status: data.status }));
     } catch (err) {
-      alert(toUserMessage(err, '모집을 마감하지 못했습니다'));
+      alert(toUserMessage(err, '모집을 마감하지 못했습니다.'));
     }
   }
 
@@ -398,7 +407,8 @@ export default function ProjectDetailPage() {
 
       {/* Apply Modal */}
       <Modal isOpen={applyModal} onClose={() => setApplyModal(false)} title="프로젝트 지원">
-        <form onSubmit={handleApply} className="space-y-4">
+        {/* noValidate: 브라우저 기본 검증 말풍선 대신 handleApply의 한국어 안내를 보여 준다. */}
+        <form noValidate onSubmit={handleApply} className="space-y-4">
           {applyError && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
               {applyError}

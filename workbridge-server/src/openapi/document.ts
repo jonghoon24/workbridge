@@ -27,6 +27,7 @@ const DESCRIPTION = [
   '`src/openapi/`의 응답 스키마에서 생성된다(`npm run openapi`).',
   '',
   '- 오류는 언제나 `{ "error": { "message": "…" } }`다. 요청 검증 실패(400)는 첫 번째 오류 하나를 `<필드>: <메시지>`로 준다.',
+  '- `Content-Type: application/json` 본문이 JSON으로 읽히지 않으면 경로와 상관없이 인증·검증보다 먼저 400 `Request body must be valid JSON`이다.',
   '- 금액은 원 단위 정수, 시각은 ISO 8601(UTC)이다. 날짜 계산은 KST(UTC+9)로 한다.',
   '- 문서에 없는 500은 서버 버그다.',
 ].join('\n');

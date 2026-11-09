@@ -15,7 +15,7 @@ import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // Parsed by `applicationCreateBody`: `expectedRate` is a number >= 1; it may be fractional and becomes the contract amount.
+    // Parsed by `applicationCreateBody`: `expectedRate` is a whole number of won >= 1; it becomes the contract amount.
     const { coverLetter, expectedRate, expectedDuration } = req.body;
     const projectId = req.params.id;
 

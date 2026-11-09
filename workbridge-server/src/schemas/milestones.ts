@@ -9,6 +9,8 @@ import { kstDateString, kstDateToEndOfDay } from '../lib/time';
  */
 
 const COUNT_MESSAGE = `A contract must have between ${MIN_MILESTONES} and ${MAX_MILESTONES} milestones`;
+const AMOUNT_MESSAGE = 'Amount must be a whole number of won';
+const DUE_DATE_FORMAT_MESSAGE = 'Due date must be a YYYY-MM-DD date';
 
 function isCalendarDate(value: string): boolean {
   try {
@@ -19,23 +21,25 @@ function isCalendarDate(value: string): boolean {
   }
 }
 
+// Every field states its missing / wrong-type message, so no zod default (`Required`,
+// `Expected number, received string`) reaches the client.
 const planItem = z.object({
-  title: z.string().trim().min(1, 'Title is required').max(100, 'Title must be at most 100 characters'),
+  title: z.string({ required_error: 'Title is required', invalid_type_error: 'Title must be a string' }).trim().min(1, 'Title is required').max(100, 'Title must be at most 100 characters'),
   description: z
-    .string()
+    .string({ invalid_type_error: 'Description must be a string' })
     .trim()
     .max(2000, 'Description must be at most 2000 characters')
     .nullish()
     .transform((value) => (value ? value : null)),
   amount: z
-    .number()
-    .int('Amount must be a whole number of won')
+    .number({ required_error: AMOUNT_MESSAGE, invalid_type_error: AMOUNT_MESSAGE })
+    .int(AMOUNT_MESSAGE)
     .min(MIN_MILESTONE_AMOUNT, `Amount must be at least ${MIN_MILESTONE_AMOUNT}`),
   // Format and "not before today" are per-item checks, so they are reported in array order with
   // the other per-item checks. Today is the KST date at request time.
-  dueDate: z.string().superRefine((value, ctx) => {
+  dueDate: z.string({ required_error: DUE_DATE_FORMAT_MESSAGE, invalid_type_error: DUE_DATE_FORMAT_MESSAGE }).superRefine((value, ctx) => {
     if (!isCalendarDate(value)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date must be a YYYY-MM-DD date' });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: DUE_DATE_FORMAT_MESSAGE });
     } else if (value < kstDateString(new Date())) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date cannot be in the past' });
     }
@@ -48,7 +52,11 @@ const planItem = z.object({
  */
 export const milestonePlanBody = z
   .object({
-    milestones: z.array(planItem).min(MIN_MILESTONES, COUNT_MESSAGE).max(MAX_MILESTONES, COUNT_MESSAGE),
+    // Missing or not a list reads as "no milestones": the same count message.
+    milestones: z
+      .array(planItem, { required_error: COUNT_MESSAGE, invalid_type_error: COUNT_MESSAGE })
+      .min(MIN_MILESTONES, COUNT_MESSAGE)
+      .max(MAX_MILESTONES, COUNT_MESSAGE),
   })
   .superRefine((body, ctx) => {
     body.milestones.forEach((item, index) => {

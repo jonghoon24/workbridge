@@ -40,7 +40,8 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     tags,
     summary: '이메일 로그인',
     description:
-      '레이트 리밋: 같은 IP의 모든 시도 15분에 20회, 같은 이메일+IP의 실패 15분에 5회. 한도 검사는 요청 검증보다 먼저다.',
+      '이메일은 가입과 같이 앞뒤 공백만 지우고 대소문자는 그대로 비교한다. '
+      + '레이트 리밋: 같은 IP의 모든 시도 15분에 20회, 같은 이메일+IP의 실패 15분에 5회. 한도 검사는 요청 검증보다 먼저다.',
     security: publicRoute,
     request: { body: jsonBody(loginBody) },
     responses: {

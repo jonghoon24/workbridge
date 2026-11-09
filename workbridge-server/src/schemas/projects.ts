@@ -59,8 +59,8 @@ function projectDate(label: string, dateOnlyAs: 'startOfDay' | 'endOfDay') {
   });
 }
 
-/** A non-negative whole number of won; `0` is a valid budget. */
-const budget = bodyWholeWon('Budget', { min: 0 });
+/** A positive whole number of won: a budget is at least 1 won (`0` is a 400). */
+const budget = bodyWholeWon('Budget', { min: 1 });
 
 const SKILLS_BODY_MESSAGE = 'Required skills must be a string or a list of strings';
 

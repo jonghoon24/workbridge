@@ -23,13 +23,13 @@ export default function SignupForm() {
 
   function validate() {
     const errs = {};
-    if (!form.name.trim()) errs.name = '이름을 입력해 주세요';
-    if (!form.email.trim()) errs.email = '이메일을 입력해 주세요';
-    else if (!EMAIL_PATTERN.test(form.email.trim())) errs.email = '올바른 이메일 주소를 입력해 주세요';
+    if (!form.name.trim()) errs.name = '이름을 입력해 주세요.';
+    if (!form.email.trim()) errs.email = '이메일을 입력해 주세요.';
+    else if (!EMAIL_PATTERN.test(form.email.trim())) errs.email = '올바른 이메일 주소를 입력해 주세요.';
     if (!form.password || form.password.length < MIN_PASSWORD_LENGTH) {
-      errs.password = `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다`;
+      errs.password = `비밀번호는 ${MIN_PASSWORD_LENGTH}자 이상이어야 합니다.`;
     }
-    if (!form.role) errs.role = '역할을 선택해 주세요';
+    if (!form.role) errs.role = '역할을 선택해 주세요.';
     return errs;
   }
 
@@ -47,14 +47,16 @@ export default function SignupForm() {
       setAuth(data.user, data.accessToken);
       router.push('/');
     } catch (err) {
-      setErrors({ submit: toUserMessage(err, '회원가입에 실패했습니다') });
+      setErrors({ submit: toUserMessage(err, '회원가입에 실패했습니다.') });
     } finally {
       setLoading(false);
     }
   }
 
+  // noValidate: 브라우저 기본 검증 말풍선 대신 위 validate()의 한국어 안내를 보여 준다.
+  // type="email"은 모바일 키보드 힌트로 남겨 둔다.
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form noValidate onSubmit={handleSubmit} className="space-y-4">
       {errors.submit && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           {errors.submit}

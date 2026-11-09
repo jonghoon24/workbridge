@@ -97,7 +97,7 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
       if (err.response?.status === 413) {
         setError(toUserMessage(err, '파일이 너무 큽니다. 크기를 줄여 다시 올려 주세요.'));
       } else {
-        setError(toUserMessage(err, '결과물을 제출하지 못했습니다'));
+        setError(toUserMessage(err, '결과물을 제출하지 못했습니다.'));
       }
     } finally {
       setSubmitting(false);
@@ -105,7 +105,8 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
   }
 
   return (
-    <form id="submission-form" onSubmit={handleSubmit} className="space-y-4">
+    // noValidate: 브라우저 기본 검증(url 입력) 말풍선 대신 validate()의 한국어 안내를 보여 준다.
+    <form id="submission-form" noValidate onSubmit={handleSubmit} className="space-y-4">
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           {error}

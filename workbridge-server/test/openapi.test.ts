@@ -88,9 +88,12 @@ describe('the document', () => {
 
 describe('GET /api/openapi.json and GET /api/docs', () => {
   const vercelEnv = process.env.VERCEL_ENV;
+  const nodeEnv = process.env.NODE_ENV;
   afterEach(() => {
     if (vercelEnv === undefined) delete process.env.VERCEL_ENV;
     else process.env.VERCEL_ENV = vercelEnv;
+    if (nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = nodeEnv;
   });
 
   it('serves the generated document', async () => {
@@ -120,8 +123,42 @@ describe('GET /api/openapi.json and GET /api/docs', () => {
     expect(res.text).toContain(`Cannot GET ${path}`);
   });
 
+  it.each(['/api/openapi.json', '/api/docs'])(
+    '%s is the plain HTML 404 when VERCEL_ENV is unset and NODE_ENV is production',
+    async (path) => {
+      delete process.env.VERCEL_ENV;
+      process.env.NODE_ENV = 'production';
+
+      const res = await api().get(path);
+
+      expect(res.status).toBe(404);
+      expect(res.headers['content-type']).toMatch(/text\/html/);
+      expect(res.text).toContain(`Cannot GET ${path}`);
+    },
+  );
+
+  it('is off on a deployment whose VERCEL_ENV is not a known non-production value', async () => {
+    process.env.VERCEL_ENV = 'staging';
+
+    expect((await api().get('/api/openapi.json')).status).toBe(404);
+  });
+
   it.each(['preview', 'development'])('is served on a %s deployment', async (environment) => {
     process.env.VERCEL_ENV = environment;
+
+    expect((await api().get('/api/openapi.json')).status).toBe(200);
+  });
+
+  it('is served on a preview deployment even though NODE_ENV is production', async () => {
+    process.env.VERCEL_ENV = 'preview';
+    process.env.NODE_ENV = 'production';
+
+    expect((await api().get('/api/openapi.json')).status).toBe(200);
+  });
+
+  it('is served locally when VERCEL_ENV is unset and NODE_ENV is not production', async () => {
+    delete process.env.VERCEL_ENV;
+    process.env.NODE_ENV = 'test';
 
     expect((await api().get('/api/openapi.json')).status).toBe(200);
   });

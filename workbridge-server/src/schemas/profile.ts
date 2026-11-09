@@ -209,10 +209,15 @@ export type PortfolioPatchInput = z.infer<typeof portfolioPatchBody>;
 // Careers
 // ---------------------------------------------------------------------------------------------
 
+const EMPLOYMENT_TYPE_MESSAGE = 'Employment type must be one of FULL_TIME, CONTRACT, FREELANCE, INTERN';
+
 const careerFields = {
   company: requiredText('Company', CAREER_LIMITS.company),
   position: requiredText('Position', CAREER_LIMITS.position),
-  employmentType: z.enum(['FULL_TIME', 'CONTRACT', 'FREELANCE', 'INTERN']),
+  // Missing, wrong type and unknown value share one sentence (no zod default `Required`).
+  employmentType: z.enum(['FULL_TIME', 'CONTRACT', 'FREELANCE', 'INTERN'], {
+    errorMap: () => ({ message: EMPLOYMENT_TYPE_MESSAGE }),
+  }),
   startDate: requiredMonth,
   // Absent, `null` or `''` → a current position.
   endDate: optionalMonth,

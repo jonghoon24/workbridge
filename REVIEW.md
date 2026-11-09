@@ -14,7 +14,7 @@
 
 3. **금액 계산(수수료, 부가세, 반올림)은 `lib/money.ts`만 쓴다.**
    - 왜: 금액은 원 단위 정수이고 `payoutBreakdown`(수수료 floor → 부가세 floor → 실지급)과 `sumBreakdowns`(합계는 항목의 합)가 정산 금액의 기준이다(`docs/domain/milestones-payments.md` "돈 규칙"). 인라인 `* 0.1`이나 `Math.round`는 1원 어긋남을 만든다. `Float` 컬럼은 의도된 부채라 마이그레이션하지 않는다.
-   - 확인: 추가된 줄에서 `0.1`, `* 0.`, `toFixed`, `Math.round(`/`Math.floor(`가 금액에 쓰였는지, 새 금액 필드의 zod가 정수(`int()`)인지 본다.
+   - 확인: 추가된 줄에서 `0.1`, `* 0.`, `toFixed`, `Math.round(`/`Math.floor(`가 금액에 쓰였는지, 새 금액 필드의 zod가 정수인지(`bodyWholeWon(`, 또는 확장 스키마의 기존 방식인 `.int()`) 본다. `z.number()`만 쓰거나 `z.coerce.number()`로 받은 금액은 위반이다.
 
 4. **달력 규칙은 `lib/time.ts`(고정 UTC+9)로 계산하고 `now`를 인자로 받는다.**
    - 왜: CI와 Vercel은 UTC, 개발 PC는 KST라 `getDate()`·`setHours()` 같은 호스트 시간대 함수는 기기마다 다른 "오늘"을 만든다. 서비스와 작업 핸들러가 `new Date()`를 직접 읽으면 테스트가 `runJobs(now)`로 시간을 제어할 수 없다.

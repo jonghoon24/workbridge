@@ -18,7 +18,7 @@ export default function ProfileCompletionCard({ refreshKey = 0 }) {
         setCompletion(data);
         setError('');
       })
-      .catch(() => setError('프로필 완성도를 불러오지 못했습니다'));
+      .catch(() => setError('프로필 완성도를 불러오지 못했습니다.'));
   }, [refreshKey]);
 
   if (error) {

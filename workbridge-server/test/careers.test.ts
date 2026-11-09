@@ -99,6 +99,22 @@ describe('POST /api/users/me/careers', () => {
   });
 
   it.each([
+    ['an unknown employmentType', { ...VALID, employmentType: 'PART_TIME' }],
+    ['a missing employmentType', { ...VALID, employmentType: undefined }],
+    ['a non-string employmentType', { ...VALID, employmentType: 3 }],
+  ])('400 for %s with one sentence naming the allowed values', async (_name, body) => {
+    const freelancer = await makeFreelancer();
+
+    const res = await post(freelancer, body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: { message: 'employmentType: Employment type must be one of FULL_TIME, CONTRACT, FREELANCE, INTERN' },
+    });
+    expect(await prisma.career.count()).toBe(0);
+  });
+
+  it.each([
     ['an unknown employmentType', { ...VALID, employmentType: 'PART_TIME' }, 'employmentType: '],
     ['a missing employmentType', { ...VALID, employmentType: undefined }, 'employmentType: '],
     ['a missing startDate', { ...VALID, startDate: undefined }, 'startDate: '],

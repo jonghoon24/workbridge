@@ -11,7 +11,7 @@ export const ROLE_MESSAGE = 'Role must be CLIENT or FREELANCER';
 /** Signup only — login takes any password, so accounts created before the rule keep working. */
 export const MIN_PASSWORD_LENGTH = 8;
 
-/** A required, non-empty string. Not trimmed: email and password are compared verbatim (#21). */
+/** A required, non-empty string, not trimmed (the email fields trim on top of it; passwords are verbatim). */
 function requiredString(label: string) {
   return z
     .string({ required_error: `${label} is required`, invalid_type_error: `${label} must be a string` })
@@ -38,11 +38,13 @@ export const signupBody = z.object({
 
 /**
  * `POST /login`. Runs after both login rate limits. A non-string `email` or `password` (an
- * object such as `{ "not": "" }` would otherwise reach Prisma as a filter) is a 400. No format or
- * length rule: a malformed email simply matches no account (401), and older passwords still work.
+ * object such as `{ "not": "" }` would otherwise reach Prisma as a filter) is a 400. The email is
+ * trimmed like signup's (so an address typed with stray spaces at signup still logs in), not
+ * lowercased (#21). No format or length rule: a malformed email simply matches no account (401),
+ * and older passwords still work.
  */
 export const loginBody = z.object({
-  email: requiredString('Email'),
+  email: requiredString('Email').trim().min(1, 'Email is required'),
   password: requiredString('Password'),
 });
 

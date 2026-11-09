@@ -30,7 +30,7 @@ export default function MyPaymentsPage() {
     useAuthStore.getState().initAuth();
     api.get('/api/payments')
       .then(({ data }) => setPayments(data.filter((payment) => !HIDDEN_STATUSES.has(payment.status))))
-      .catch((err) => setError(toUserMessage(err, '결제 내역을 불러오지 못했습니다')))
+      .catch((err) => setError(toUserMessage(err, '결제 내역을 불러오지 못했습니다.')))
       .finally(() => setLoading(false));
   }, []);
 

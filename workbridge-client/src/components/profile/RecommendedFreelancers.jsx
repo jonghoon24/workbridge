@@ -21,7 +21,7 @@ export default function RecommendedFreelancers({ projectId, limit = 10 }) {
         setError(
           status === 403 ? '이 프로젝트의 의뢰인만 추천 프리랜서를 볼 수 있습니다.'
             : status === 404 ? '프로젝트를 찾을 수 없어 추천을 보여드릴 수 없습니다.'
-              : '추천 프리랜서를 불러오지 못했습니다',
+              : '추천 프리랜서를 불러오지 못했습니다.',
         );
         setFreelancers([]);
       });

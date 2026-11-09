@@ -115,7 +115,7 @@ export async function createPayment(req: AuthedRequest, res: Response, next: Nex
 
 export async function confirmPayment(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // Parsed by `paymentConfirmBody`: `amount` is a positive number.
+    // Parsed by `paymentConfirmBody`: `amount` is a positive whole number of won.
     const { paymentKey, orderId, amount: requestedAmount } = req.body;
 
     // A payment whose project is soft-deleted is not found — before anything is captured.

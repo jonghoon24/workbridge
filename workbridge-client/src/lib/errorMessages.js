@@ -83,7 +83,7 @@ const MESSAGES = {
   'Category is required': '카테고리를 선택해 주세요.',
   'Category must be a string': '카테고리를 다시 선택해 주세요.',
   'Budget is required': '예산을 입력해 주세요.',
-  'Budget must be a non-negative whole number of won': '예산은 0원 이상의 원 단위 정수로 입력해 주세요.',
+  'Budget must be a positive whole number of won': '예산은 1원 이상의 원 단위 정수로 입력해 주세요.',
   'Deadline is required': '마감일을 선택해 주세요.',
   'Deadline must be a valid date': '마감일을 다시 선택해 주세요.',
   'Recruitment start date must be a valid date': '모집 시작일을 다시 선택해 주세요.',
@@ -138,6 +138,9 @@ const MESSAGES = {
   'Due date must be a YYYY-MM-DD date': '기한을 선택해 주세요.',
   'Due date cannot be in the past': '기한은 오늘 이후로 선택해 주세요.',
   'Due dates must not decrease': '기한은 앞 마일스톤보다 빠를 수 없습니다.',
+  'Title must be a string': '제목을 다시 입력해 주세요.',
+  'Description must be a string': '설명을 다시 입력해 주세요.',
+  'status: must be one of PENDING, ACTIVE, COMPLETED': '계약 상태 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.',
 
   // 결제
   'Payment verification failed': '결제 승인에 실패했습니다. 결제 내역을 확인한 뒤 다시 시도해 주세요.',
@@ -176,7 +179,7 @@ const MESSAGES = {
   'Password must be at least 8 characters': '비밀번호는 8자 이상이어야 합니다.',
   'Name is required': '이름을 입력해 주세요.',
   'Experience years must be a non-negative integer': '경력은 0 이상의 정수(년 단위)로 입력해 주세요.',
-  'Hourly rate must be a whole number of won': '시간당 단가는 원 단위 정수로 입력해 주세요.',
+  'Hourly rate must be a positive whole number of won': '시간당 단가는 1원 이상의 원 단위 정수로 입력해 주세요.',
   'Hourly rate must be at most 100,000,000 won': '시간당 단가는 1억 원 이하로 입력해 주세요.',
   'Contract ID is required': '리뷰할 계약 정보가 없습니다. 새로고침한 뒤 다시 시도해 주세요.',
   'Reviewee ID is required': '리뷰 대상 정보가 없습니다. 새로고침한 뒤 다시 시도해 주세요.',
@@ -187,6 +190,8 @@ const MESSAGES = {
 
   // 정산·지급 계좌
   'Settlement not found': '정산 내역을 찾을 수 없습니다.',
+  'status: must be one of SCHEDULED, PROCESSING, PAID, FAILED, ON_HOLD':
+    '정산 상태 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.',
   'Account holder must match your name': '예금주가 회원 이름과 같아야 합니다. 본인 명의 계좌만 등록할 수 있습니다.',
   'Account holder is required': '예금주를 입력해 주세요.',
   'Account number must be 10 to 14 digits': '계좌번호는 숫자 10~14자리로 입력해 주세요.',
@@ -196,6 +201,8 @@ const MESSAGES = {
 
   // 알림
   'Notification not found': '알림을 찾을 수 없습니다.',
+  'Unknown notification type': '알 수 없는 알림 종류가 있습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'preferences: Expected 1 to 20 entries': '알림 설정을 저장하지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.',
 
   // 메시지
   'Conversation not found': '대화방을 찾을 수 없습니다.',
@@ -228,6 +235,7 @@ const MESSAGES = {
   'Company must be at most 100 characters': '회사명은 100자 이하로 입력해 주세요.',
   'Position is required': '직책을 입력해 주세요.',
   'Position must be at most 100 characters': '직책은 100자 이하로 입력해 주세요.',
+  'Employment type must be one of FULL_TIME, CONTRACT, FREELANCE, INTERN': '고용 형태를 선택해 주세요.',
   'Cannot upload and remove an image at once': '이미지 교체와 삭제를 동시에 할 수 없습니다.',
 
   // 업로드
@@ -236,6 +244,7 @@ const MESSAGES = {
   'Only image files are allowed': '이미지 파일만 올릴 수 있습니다.',
   'File too large': '파일이 너무 큽니다. 크기를 줄여 다시 올려 주세요.',
   'request entity too large': STATUS_DEFAULTS[413],
+  'Request body must be valid JSON': '요청을 읽지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.',
   'Request Entity Too Large': STATUS_DEFAULTS[413],
 };
 
@@ -249,6 +258,8 @@ const PATTERNS = [
     (m) => `마일스톤 금액의 합계가 계약 금액(${Number(m[1]).toLocaleString('ko-KR')}원)과 같아야 합니다.`,
   ],
   [/^Cannot transition from /, '지금 상태에서는 이 작업을 할 수 없습니다. 새로고침한 뒤 다시 확인해 주세요.'],
+  [/^Amount must be at least (\d+)$/, (m) => `금액은 ${Number(m[1]).toLocaleString('ko-KR')}원 이상이어야 합니다.`],
+  [/^A contract must have between (\d+) and (\d+) milestones$/, (m) => `마일스톤은 ${m[1]}~${m[2]}개여야 합니다.`],
   [/must be a valid date$/, '날짜를 다시 선택해 주세요.'],
   [/must be a (positive integer|non-negative number)$/, '숫자를 올바르게 입력해 주세요.'],
   [/Message not found in this conversation$/, '메시지를 찾을 수 없습니다. 새로고침해 주세요.'],
@@ -257,6 +268,11 @@ const PATTERNS = [
     /^(Email|Password|Name|Bio|Company name|Business field|Website|Activity category|Portfolio URL|Contract ID|Reviewee ID|Content) must be a string$/,
     '입력 형식이 올바르지 않습니다. 다시 확인해 주세요.',
   ],
+  // zod 기본 문구(서버 스키마가 문장을 정하지 않은 필드). 필드 접두어를 뗀 뒤 비교하므로 어느 필드든
+  // 안전한 일반 안내로 바꾼다. 위의 표와 패턴이 먼저다.
+  [/^Required$/, '필수 항목을 입력해 주세요.'],
+  [/^Expected .+, received .+$/, '입력 형식이 올바르지 않습니다. 다시 확인해 주세요.'],
+  [/^Invalid enum value\b/, '입력 형식이 올바르지 않습니다. 다시 확인해 주세요.'],
 ];
 
 function applyPattern(patterns, text) {

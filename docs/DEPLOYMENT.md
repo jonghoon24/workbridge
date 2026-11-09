@@ -38,7 +38,7 @@ Claude Code 세션에서는 이 커맨드가 권한 규칙(deny)으로 막혀 �
 - Prisma 클라이언트는 `package.json`의 `postinstall: prisma generate`가 설치 단계에서 만든다. 대시보드의 Build Command에도 `npx prisma generate`가 있지만 `vercel.json`에 `builds`가 있으면 대시보드 빌드 설정은 무시되므로 실제로 동작하는 것은 `postinstall`이다
 - 마이그레이션은 손으로 적용하지 않는다. 위 `migrate.yml`이 `prisma migrate deploy`를 돌리며, 이때 `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 5432)이어야 한다
 - 운영(`NODE_ENV=production`)에서는 `app.listen()`도 작업 큐 워커도 시작하지 않는다
-- API 문서(`/api/docs`의 Scalar 화면과 `/api/openapi.json`)는 프리뷰에서만 열린다. 운영(`VERCEL_ENV=production`)에서는 내부 엔드포인트가 드러나지 않게 404로 끈다. 문서 원본은 커밋된 `workbridge-server/openapi.json`이고 CI가 최신인지 확인한다
+- API 문서(`/api/docs`의 Scalar 화면과 `/api/openapi.json`)는 프리뷰에서만 열린다. 허용 목록이라 `VERCEL_ENV`가 `preview`·`development`일 때(그리고 `VERCEL_ENV` 없이 `NODE_ENV`가 `production`이 아닌 로컬)만 켜지고, 운영(`VERCEL_ENV=production`)이나 `VERCEL_ENV` 없이 `NODE_ENV=production`인 곳에서는 내부 엔드포인트가 드러나지 않게 404로 끈다. 문서 원본은 커밋된 `workbridge-server/openapi.json`이고 CI가 최신인지 확인한다
 
 ## 프론트엔드
 

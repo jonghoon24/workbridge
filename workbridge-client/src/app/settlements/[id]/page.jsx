@@ -32,7 +32,7 @@ export default function SettlementDetailPage() {
     api.get(`/api/settlements/${id}`)
       .then(({ data }) => setSettlement(data))
       .catch((err) => {
-        setError(toUserMessage(err, '정산 내역을 불러오지 못했습니다'));
+        setError(toUserMessage(err, '정산 내역을 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -44,7 +44,7 @@ export default function SettlementDetailPage() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12">
         <EmptyState
           tone="error"
-          title={error || '정산을 찾을 수 없습니다'}
+          title={error || '정산을 찾을 수 없습니다.'}
           action={(
             <Link href="/settlements" className="text-primary-600 hover:text-primary-700 font-semibold">
               정산 목록으로 →

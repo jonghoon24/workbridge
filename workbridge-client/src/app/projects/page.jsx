@@ -1,10 +1,10 @@
 'use client';
 
-import { Suspense, useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useProjectStore from '@/store/projectStore';
 import ProjectCard from '@/components/projects/ProjectCard';
-import ProjectFilters from '@/components/projects/ProjectFilters';
+import ProjectFilters, { toBudgetParam } from '@/components/projects/ProjectFilters';
 import api from '@/lib/api';
 import EmptyState from '@/components/ui/EmptyState';
 import { FilterIcon, SearchIcon } from '@/components/ui/Icons';
@@ -69,38 +69,69 @@ function ProjectsContent() {
     router.replace(query ? `/projects?${query}` : '/projects', { scroll: false });
   }, [filters, initialized, page, router]);
 
-  const fetchProjects = useCallback(async () => {
-    if (!initialized) return;
+  // 예산 범위는 한 자씩 칠 때마다 요청하지 않도록 검색어처럼 디바운스한다. 입력칸 값은 그대로 두고
+  // 보낼 때만 정규화한다('1e6' → '1000000').
+  const debouncedMinBudget = toBudgetParam(useDebounce(filters.minBudget, 400));
+  const debouncedMaxBudget = toBudgetParam(useDebounce(filters.maxBudget, 400));
+  const budgetRangeInvalid = debouncedMinBudget !== ''
+    && debouncedMaxBudget !== ''
+    && Number(debouncedMinBudget) > Number(debouncedMaxBudget);
+
+  // 조건이 바뀌면 이전 요청을 취소한다(AbortController). 늦게 도착한 이전 응답이 새 결과를 덮지 않는다.
+  useEffect(() => {
+    if (!initialized) return undefined;
+
+    // 서버도 400으로 거절하는 조합은 보내지 않고 바로 안내한다.
+    if (budgetRangeInvalid) {
+      setProjects([]);
+      setMeta({ total: 0, totalPages: 1 });
+      setLoadError('최소 예산이 최대 예산보다 클 수 없습니다.');
+      setLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: '10',
+      sort: filters.sort,
+    });
+    if (debouncedSearch) params.append('search', debouncedSearch);
+    if (filters.category) params.append('category', filters.category);
+    if (debouncedMinBudget) params.append('minBudget', debouncedMinBudget);
+    if (debouncedMaxBudget) params.append('maxBudget', debouncedMaxBudget);
+    if (filters.skills) params.append('skills', filters.skills);
+    if (filters.status) params.append('status', filters.status);
 
     setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: '10',
-        sort: filters.sort,
+    api.get(`/api/projects?${params}`, { signal: controller.signal })
+      .then(({ data }) => {
+        setProjects(data.projects);
+        setMeta(data.meta);
+        setLoadError('');
+      })
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setProjects([]);
+        setLoadError(toUserMessage(err, '프로젝트 목록을 불러오지 못했습니다.'));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
-      if (debouncedSearch) params.append('search', debouncedSearch);
-      if (filters.category) params.append('category', filters.category);
-      if (filters.minBudget) params.append('minBudget', filters.minBudget);
-      if (filters.maxBudget) params.append('maxBudget', filters.maxBudget);
-      if (filters.skills) params.append('skills', filters.skills);
-      if (filters.status) params.append('status', filters.status);
 
-      const { data } = await api.get(`/api/projects?${params}`);
-      setProjects(data.projects);
-      setMeta(data.meta);
-      setLoadError('');
-    } catch (err) {
-      setProjects([]);
-      setLoadError(toUserMessage(err, '프로젝트 목록을 불러오지 못했습니다'));
-    } finally {
-      setLoading(false);
-    }
-  }, [debouncedSearch, filters.category, filters.minBudget, filters.maxBudget, filters.skills, filters.sort, filters.status, initialized, page]);
-
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+    return () => controller.abort();
+  }, [
+    budgetRangeInvalid,
+    debouncedMaxBudget,
+    debouncedMinBudget,
+    debouncedSearch,
+    filters.category,
+    filters.skills,
+    filters.sort,
+    filters.status,
+    initialized,
+    page,
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -161,7 +192,7 @@ function ProjectsContent() {
             <EmptyState
               icon={SearchIcon}
               title="프로젝트가 없습니다"
-              description="다른 검색어나 필터를 사용해 보세요"
+              description="다른 검색어나 필터를 사용해 보세요."
             />
           ) : (
             <>
