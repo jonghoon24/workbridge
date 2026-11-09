@@ -18,11 +18,15 @@ paths:
 ## 새 라우트 만드는 법 (확장 방식)
 
 - 체인: `authenticate → requireActiveUser → requireRole(...) → validate({ body|query|params }) → controller`.
-  가드는 **라우트마다** 붙이고 `router.use`는 쓰지 않는다(맞지 않는 경로는 그대로 다음으로 넘어가야 한다 — Q10).
+  가드는 **라우트마다** 붙이고 `router.use`는 쓰지 않는다(같은 접두사에 나중에 마운트된 라우터로 가야 할
+  요청까지 가드가 가로챈다).
 - `validate()`는 파싱한 값을 `req.body`, `res.locals.query`, `res.locals.params`에 넣는다. multipart
   라우트에서는 `attachmentUpload` / `imageUpload` **다음에** 마운트한다.
 - 컨트롤러는 얇게: 서비스를 부르고 `res.json(...)`, `catch (err) { next(err) }`.
 - 비즈니스 로직, 트랜잭션, `AppError`는 `src/services/<domain>.service.ts`에 둔다.
+- OpenAPI에 등록한다: 경로와 상태 코드별 응답·오류 메시지는 `src/openapi/paths/<domain>.ts`, 응답 모양은
+  `src/openapi/responses/<domain>.ts`. 그다음 `npm run openapi`로 `openapi.json`을 다시 만들어 함께 커밋한다.
+  등록하지 않으면 `test/openapi.test.ts`가, 응답이 문서와 다르면 그 라우트를 부르는 모든 테스트가 실패한다.
 - 쓰기 라우트는 모두 `guardedMutations`(`test/soft-delete.test.ts`)와
   `PROTECTED_ROUTES`(`test/authorization.test.ts`)에 등록한다. 전체 단계: `add-endpoint` 스킬.
 
@@ -41,26 +45,27 @@ paths:
   컨트롤러에서 `res.status(4xx).json(...)`을 직접 쓰지 않는다.
 - `errorHandler`는 매개변수 네 개를 모두 유지한다(Express는 인자 개수로 에러 핸들러를 알아본다).
 - 핸들러에 `Promise<void>`를 붙이지 않는다 — 핸들러가 함수 중간에 `return res.json(...)`한다.
-- 상태 코드 규칙(BEHAVIOR.md 규칙 8): 잘못된 입력 → 400, 유니크 충돌 → 409,
-  외부 서비스 실패 → 502/400 — 500은 절대 아니다.
+- 상태 코드: 잘못된 입력 → 400, 유니크 충돌 → 409, 외부 서비스 실패 → 502/400 — 500은 절대 아니다.
+  500은 버그라서 OpenAPI 문서에 넣지 않는다. 기존 응답 코드를 바꾸면 `src/openapi/paths`도 고친다.
 
 ## req.user
 
-- non-optional로 타입이 잡혀 있지만(`src/types/index.ts`) 거기 적힌 공개 핸들러 12개에서는 `undefined`다
+- non-optional로 타입이 잡혀 있지만(`src/types/index.ts`) 거기 적힌 공개 핸들러 14개에서는 `undefined`다
   (`signup`, `login`, `refresh`, `googleAuth`, `googleCallback`, `getProjects`, `getProjectById`,
-  `getUserById`, `getUserReviews`, `getUserPortfolio`, `getUserCareers`, `runJobs`).
+  `getUserById`, `getUserReviews`, `getUserPortfolio`, `getUserCareers`, `runJobs`,
+  `getOpenApiDocument`, `getDocsPage`).
   컴파일러는 경고하지 않는다. 보완 장치는 `test/authorization.test.ts`다.
 - 모든 라우트에서 도는 미들웨어(`accessLog`)는 optional로 읽는다.
 
 ## 트랜잭션
 
-- 행 두 개 이상을 바꾸는 변경은 `prisma.$transaction` 하나다(BEHAVIOR.md 규칙 6). 기준 예:
+- 행 두 개 이상을 바꾸는 변경은 `prisma.$transaction` 하나다(`docs/domain/README.md` "원자성"). 기준 예:
   `applications.controller.ts`의 지원 수락(지원, 다른 지원 거절, 계약 + 기본 마일스톤, 프로젝트 마감,
   알림, 대화방 + 시스템 메시지).
 - 트랜잭션 안팎에서 모두 쓰는 헬퍼는 `PrismaTransactionClient`를 받는다
   (`src/types/index.ts`, `lib/projectLifecycle.ts` 참고).
 - 인터랙티브 트랜잭션 *안에서* P2002를 catch하지 않는다 — Postgres가 이미 트랜잭션을 중단했다.
-  `createMany({ skipDuplicates: true })`(`jobs/queue.ts` 참고)를 쓰거나 밖에서 catch한다(D4 수정 방식).
+  `createMany({ skipDuplicates: true })`(`jobs/queue.ts` 참고)를 쓰거나 밖에서 catch한다(지원 수락의 방식).
 - 트랜잭션이 지급 계좌, 포트폴리오/경력, 알림 설정을 쓸 때는 `lockUserRow(tx, userId)`가
   **첫** 문장이다(경합 테스트가 여기에 의존한다).
 
@@ -69,5 +74,5 @@ paths:
 - 타입: 공유 타입은 `src/types/index.ts`, 환경변수는 `src/env.ts`, 모델·enum·`WhereInput`은
   `@prisma/client`에서 import한다. 직접 만들지 않는다.
 - AI 단가 분석(`analyzeProject`): 모델이 준 JSON은 저장하기 전에 항상 정규화한다.
-- 업로드: 기존 프로필 이미지 → `middlewares/upload.ts`(500이 날 수 있다, D6), 확장 →
+- 업로드: 기존 프로필 이미지 → `middlewares/upload.ts`(크기·형식 오류가 아직 500이다), 확장 →
   `middlewares/attachmentUpload.ts`(413/400, 저장소 실패 502).

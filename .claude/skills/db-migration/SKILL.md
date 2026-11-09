@@ -79,6 +79,10 @@ npm test
 관련 있으면 소프트 삭제나 잠금 메모, 그리고 "마이그레이션과 백필 메모" 표의 한 행
 (`| \`<timestamp>_<name>\` | <내용> |`)과 백필 메모.
 
+새 컬럼이 API 응답에 나가면 `src/openapi/responses/<domain>.ts`의 응답 스키마에도 추가하고 `npm run openapi`로
+`openapi.json`을 다시 만든다. 테스트가 응답을 문서와 strict하게 대조하므로 빠뜨리면 그 응답을 받는 테스트가 실패한다.
+새 제품 규칙(상태 전이, 정책 수치)이 생기면 `docs/domain/`의 해당 문서도 고친다.
+
 ## 8. 배포
 
 - `schema.prisma`와 새 마이그레이션 폴더 전체를 그것을 쓰는 코드와 함께 커밋한다.

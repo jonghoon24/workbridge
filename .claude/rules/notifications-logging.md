@@ -9,7 +9,7 @@ paths:
 
 - 알림은 `notify()` / `notifyMany()` / `notifyRecipients()`(`src/lib/notifications/notify.ts`)로만
   만들고, 상태 변경의 **트랜잭션 클라이언트**를 넘긴다. 이 함수가 채널 정책(`lib/notifications/policy.ts`)과
-  받는 사람의 설정을 적용하고, 인앱 행, `EmailDelivery`, 그 `notification.email` 작업을 함께 쓴다(NC9).
+  받는 사람의 설정을 적용하고, 인앱 행, `EmailDelivery`, 그 `notification.email` 작업을 함께 쓴다.
 - 새 코드에서 `tx.notification.create(...)`를 직접 부르지 않는다. 소프트 삭제된 사용자에게 보내지 않는다.
 - 새 타입: `lib/notifications/types.ts`, `policy.ts`, `templates.ts`에 추가한다.
 - 기존 타입 네 개는 일부러 기존 컨트롤러 안에 한국어 문구를 그대로 둔다

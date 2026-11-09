@@ -18,8 +18,8 @@ paths:
 - `prisma/seed.js`는 트랜스파일 없이 `node`로 도는 순수 CommonJS JavaScript로 둔다. `tsconfig.json`은
   일부러 `prisma/`를 뺀다. 변환하지 않는다. 시드하는 모델이 바뀌면 함께 고친다(`docs/SEED_DATA.md`도).
 - 소프트 삭제: `User`와 `Project`에 `deletedAt`이 있다. 모든 읽기와 쓰기가 `deletedAt: null`로 거른다
-  (`findUnique`가 아니라 필터를 건 `findFirst`). 예외는 BEHAVIOR.md 규칙 5에 있다
-  (가입의 이메일 중복 확인, 정산과 지급 계좌).
+  (`findUnique`가 아니라 필터를 건 `findFirst`). 예외(가입의 이메일 중복 확인, 정산과 지급 계좌)와
+  이유는 `docs/domain/README.md` "소프트 삭제"에 있다.
 - 불변식: `Project.contract` 1:1, `Payment.milestoneId`와 `SettlementItem.milestoneId` 유니크,
   `Application`은 `(projectId, freelancerId)`마다 하나, `Review`는 `(contractId, reviewerId)`마다 하나.
   유니크 충돌 → 409(P2002는 트랜잭션 밖에서 catch).
