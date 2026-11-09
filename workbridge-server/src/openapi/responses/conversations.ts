@@ -11,7 +11,7 @@ import {
 } from './common';
 import { attachment } from './contracts';
 
-/** MG4 (`serializeMessage`). A deleted message is a tombstone: `body: ''`, `attachments: []`. */
+/** `serializeMessage`. A deleted message is a tombstone: `body: ''`, `attachments: []`. */
 export const message = z
   .object({
     id,
@@ -43,7 +43,7 @@ export const message = z
   })
   .openapi('Message');
 
-/** MG5 (`serializeConversation`). */
+/** `serializeConversation`. */
 const conversationFields = {
   id,
   contractId: id,

@@ -2,12 +2,12 @@ import { z } from '../lib/zod';
 
 import { bodyEnum, bodyWholeWon, requiredString } from './common';
 
-/** Request bodies of the application routes (BEHAVIOR.md § Applications, rules 8 and 12). */
+/** Request bodies of the application routes. A failure is a 400 `<field>: <message>`. */
 
 /**
  * `POST /api/projects/:id/applications`. `expectedRate` is a whole number of won of at least 1 — it
  * becomes the contract amount, and a rate below 1 won would create a milestone that can never be
- * paid (M7, [C2]).
+ * paid.
  */
 export const applicationCreateBody = z.object({
   coverLetter: requiredString('Cover letter'),

@@ -3,7 +3,7 @@ import type { JobType } from './types';
 
 /**
  * Job types switched off by environment flag until production can run them for real
- * (BEHAVIOR.md "Background jobs", J10). Both default to off; each is on only when its flag is
+ * (docs/domain/jobs.md "플래그로 꺼 둔 작업"). Both default to off; each is on only when its flag is
  * exactly `'true'`, read at every runner pass so a flag change needs no restart.
  *
  * The two are gated differently on purpose:

@@ -26,7 +26,7 @@ export const notificationList = z.object({
   unreadCount: count,
 });
 
-/** NC5: the caller's role's types in NC2 order, each with its effective channels. */
+/** The caller's role's notification types in policy order, each with its effective channels. */
 export const notificationPreferences = z.object({
   preferences: z.array(
     z

@@ -7,11 +7,11 @@ import { lockUserRow } from '../lib/locks';
 import type { PrismaTransactionClient } from '../types/index';
 import { rescheduleHeldSettlements } from './settlements.service';
 
-/** BEHAVIOR.md "Payout account", PA1–PA7. The number is stored in plaintext (Q22). */
+/** The payout account (docs/domain/milestones-payments.md "지급 계좌"). The number is stored in plaintext (#28). */
 
 const LOCKED = 'Payout account cannot be changed while a payout is processing';
 
-/** PA1: never the full number. */
+/** Never the full number. */
 export function serializePayoutAccount(account: PayoutAccount | null) {
   if (!account) return null;
   return {
@@ -24,13 +24,16 @@ export function serializePayoutAccount(account: PayoutAccount | null) {
   };
 }
 
-/** M23: the holder must be the member — compared ignoring all whitespace and letter case. */
+/** The holder must be the member — compared ignoring all whitespace and letter case. */
 export function holderMatches(holderName: string, userName: string): boolean {
   const normalize = (value: string) => value.replace(/\s+/g, '').toLowerCase();
   return normalize(holderName) === normalize(userName);
 }
 
-/** PA7: the user-row lock shared with the payout decision (S17), then PA3/PA5's check. */
+/**
+ * The user-row lock shared with the payout decision, then the check that refuses a change or
+ * removal while a payout is processing.
+ */
 async function lockAndAssertNotProcessing(tx: PrismaTransactionClient, userId: string): Promise<void> {
   await lockUserRow(tx, userId);
   const processing = await tx.settlement.count({ where: { freelancerId: userId, status: 'PROCESSING' } });
@@ -49,7 +52,7 @@ export interface PayoutAccountInput {
   holderName: string;
 }
 
-/** PA3–PA4. */
+/** Creates or replaces the account and reschedules the freelancer's held settlements. */
 export async function putPayoutAccount(userId: string, input: PayoutAccountInput, now: Date = new Date()) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true } });
   if (!holderMatches(input.holderName, user.name)) {
@@ -58,7 +61,7 @@ export async function putPayoutAccount(userId: string, input: PayoutAccountInput
 
   return prisma.$transaction(async (tx) => {
     await lockAndAssertNotProcessing(tx, userId);
-    // A native upsert is safe here: PA7's lock serializes this user's writes.
+    // A native upsert is safe here: the user-row lock serializes this user's writes.
     const data = { bankCode: input.bankCode, accountNumber: input.accountNumber, holderName: input.holderName };
     const account = await tx.payoutAccount.upsert({
       where: { userId },
@@ -70,7 +73,7 @@ export async function putPayoutAccount(userId: string, input: PayoutAccountInput
   });
 }
 
-/** PA5: idempotent. */
+/** Idempotent. */
 export async function deletePayoutAccount(userId: string) {
   return prisma.$transaction(async (tx) => {
     await lockAndAssertNotProcessing(tx, userId);

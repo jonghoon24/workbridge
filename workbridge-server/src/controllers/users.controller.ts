@@ -136,7 +136,8 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
       ? user.receivedReviews.reduce((sum, r) => sum + r.rating, 0) / user.receivedReviews.length
       : null;
 
-    // C10 (PF18): the public portfolio and career lists, exactly as PF16 and PF17 return them.
+    // The public portfolio and career lists, exactly as `GET /:id/portfolio` and `GET /:id/careers`
+    // return them.
     const [portfolioItems, { careers, careerSummary }] = await Promise.all([
       listPortfolioItems(user.id),
       listCareers(user.id),

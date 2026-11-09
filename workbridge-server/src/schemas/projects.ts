@@ -7,8 +7,8 @@ import { bodyEnum, bodyWholeWon, queryEnum, queryInt, queryNumber, queryString, 
 import { MAX_PAGE, MAX_PAGE_SIZE } from './pagination';
 
 /**
- * Request schemas of the project routes (BEHAVIOR.md § Projects, rules 8 and 12). Failures are
- * `<path>: <message>` (rule 12): body messages are sentences (`budget: Budget is required`), query
+ * Request schemas of the project routes. Failures are 400
+ * `<path>: <message>`: body messages are sentences (`budget: Budget is required`), query
  * messages keep the `common.ts` query style (`page: must be an integer`).
  */
 
@@ -19,7 +19,7 @@ import { MAX_PAGE, MAX_PAGE_SIZE } from './pagination';
 /**
  * Skills as a comma-separated string or a list of strings — what `normalizeSkillList` accepts.
  * Anything else (a number, `[1, 2]`, a nested list, an object) is a 400 here rather than a
- * `TypeError` in `normalizeSkillList` (D16). Both uses are optional.
+ * `TypeError` in `normalizeSkillList`. Both uses are optional.
  */
 function skillsInput(message: string) {
   return z.union([z.string(), z.array(z.string())], { errorMap: () => ({ message }) });
@@ -59,7 +59,7 @@ function projectDate(label: string, dateOnlyAs: 'startOfDay' | 'endOfDay') {
   });
 }
 
-/** A non-negative whole number of won; `0` is a valid budget (D15). */
+/** A non-negative whole number of won; `0` is a valid budget. */
 const budget = bodyWholeWon('Budget', { min: 0 });
 
 const SKILLS_BODY_MESSAGE = 'Required skills must be a string or a list of strings';
@@ -71,9 +71,9 @@ const SKILLS_BODY_MESSAGE = 'Required skills must be a string or a list of strin
 export const PROJECT_LIST_DEFAULT_LIMIT = 10;
 
 /**
- * Rule 12 query conventions: an empty value is absent, a repeated parameter (other than
+ * The shared query conventions: an empty value is absent, a repeated parameter (other than
  * `skills`, which is a list) is a 400, and `page`/`limit` are plain integers. `page` is bounded
- * like CT2 so `skip` cannot overflow into a Prisma 500.
+ * like `pageQuery` (`MAX_PAGE`) so `skip` cannot overflow into a Prisma 500.
  */
 export const projectListQuery = z
   .object({

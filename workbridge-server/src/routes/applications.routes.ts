@@ -11,9 +11,8 @@ import { applicationCreateBody, applicationDecisionBody } from '../schemas/appli
 
 const router = Router();
 
-// Pre-existing routes: no `requireActiveUser` — 알려진 불일치 D12 (#7). Validation (rule 12) runs
-// before the controller, so an invalid body is a 400 before the lifecycle sweep and the
-// project lookup (Q15).
+// These routes do not mount `requireActiveUser` yet (#7). Validation runs before the
+// controller, so an invalid body is a 400 before the lifecycle sweep and the project lookup.
 router.post(
   '/:id/applications',
   authenticate,

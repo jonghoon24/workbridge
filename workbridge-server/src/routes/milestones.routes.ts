@@ -7,7 +7,7 @@ import { attachmentUpload } from '../middlewares/attachmentUpload';
 import { validate } from '../middlewares/validate';
 import { rejectBody, submissionBody } from '../schemas/milestones';
 
-/** `/api/milestones` — expansion routes (BEHAVIOR.md rule 12, MS5). */
+/** `/api/milestones` — every route mounts `authenticate` → `requireActiveUser`, then the role where one applies. */
 const router = Router();
 
 router.get('/:id', authenticate, requireActiveUser, getMilestone);

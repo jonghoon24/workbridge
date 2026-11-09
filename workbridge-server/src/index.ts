@@ -68,7 +68,7 @@ if (isProduction && !hasAllowedOrigins) {
   logger.warn('CLIENT_URL or CORS_ORIGINS must be set for browser CORS requests.');
 }
 
-// NC14: a set but unsupported MAIL_PROVIDER is a `warn` line once per process, never a throw.
+// A set but unsupported MAIL_PROVIDER is a `warn` line once per process, never a throw.
 warnIfUnsupportedMailProvider();
 
 // First, so every response — CORS rejections and body-parse errors included — carries

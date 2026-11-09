@@ -12,11 +12,11 @@ import { milestonePaymentBody, paymentConfirmBody } from '../schemas/payments';
 
 const router = Router();
 
-// Pre-existing routes: `authenticate` only, no `requireActiveUser` — 알려진 불일치 D12 (#7).
-// Validation (rule 12) runs before the controller's 404/403/409 checks.
+// `authenticate` only: these routes do not mount `requireActiveUser` yet (#7).
+// Validation runs before the controller's 404/403/409 checks.
 router.post('/', authenticate, validate({ body: milestonePaymentBody }), createPayment);
 router.post('/confirm', authenticate, validate({ body: paymentConfirmBody }), confirmPayment);
-// The bypass check comes before validation: with the bypass off, every request is 403 (PY10).
+// The bypass check comes before validation: with the bypass off, every request is 403.
 router.post(
   '/dev-complete',
   authenticate,

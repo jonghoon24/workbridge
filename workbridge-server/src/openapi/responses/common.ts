@@ -27,7 +27,7 @@ import { z } from '../../lib/zod';
 /** A `DateTime` column as `res.json` serializes it. */
 export const dateTime = z.string().datetime();
 
-/** A `YYYY-MM` month in KST (portfolio and career months, BEHAVIOR.md PF2). */
+/** A `YYYY-MM` month in KST (portfolio and career months). */
 export const month = z
   .string()
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
@@ -38,7 +38,7 @@ export const won = z.number().int().openapi({ description: '원 단위 정수' }
 
 /**
  * An amount stored before amounts had to be whole won: `Application.expectedRate` and the
- * `Contract.amount` copied from it may be fractional on old rows (BEHAVIOR.md M7). Everything
+ * `Contract.amount` copied from it may be fractional on old rows. Everything
  * derived from them (milestones, payments, `contractAmount`) is rounded to whole won.
  */
 export const legacyWon = z
@@ -63,7 +63,7 @@ export const settlementStatusEnum = z.nativeEnum(SettlementStatus).openapi('Sett
 export const messageKindEnum = z.nativeEnum(MessageKind).openapi('MessageKind');
 export const employmentTypeEnum = z.nativeEnum(EmploymentType).openapi('EmploymentType');
 
-/** The body of every error response (`errorHandler`, BEHAVIOR.md rule 1). */
+/** The body of every error response (`errorHandler`). */
 export const errorBody = z
   .object({
     error: z.object({

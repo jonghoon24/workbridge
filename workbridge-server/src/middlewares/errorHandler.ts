@@ -10,7 +10,8 @@ import type { ErrorEnvelope } from '../types/index';
  * **Must keep all four parameters** — Express identifies error handlers by arity, so
  * dropping `next` would silently demote this to an ordinary middleware.
  *
- * The only error-level log in the request path, and only for a 500 (BEHAVIOR.md rules 1, 9).
+ * Answers every error passed to `next(err)` with `{ error: { message } }`. The only error-level
+ * log in the request path, and only for a 500.
  *
  * A 500 is also reported to Sentry when `SENTRY_DSN` is set. The handler itself stays
  * synchronous (Express 4 ignores a returned promise, and a rejection would go unhandled); the

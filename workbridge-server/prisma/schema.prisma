@@ -69,7 +69,7 @@ enum SettlementStatus {
 
 enum MessageKind {
   TEXT // written by a participant
-  SYSTEM // contract/milestone event log; no sender (BEHAVIOR.md MG6)
+  SYSTEM // contract/milestone event log; no sender
 }
 
 enum EmploymentType {
@@ -215,8 +215,8 @@ model Milestone {
   sequence      Int // 1-based
   title         String
   description   String?
-  amount        Float // whole won only (BEHAVIOR.md M6)
-  dueDate       DateTime // 23:59:59.999 KST of the due date (M12)
+  amount        Float // whole won only (docs/domain/milestones-payments.md)
+  dueDate       DateTime // 23:59:59.999 KST of the due date
   status        MilestoneStatus @default(PENDING)
   fundedAt      DateTime?
   submittedAt   DateTime? // latest submission
@@ -341,20 +341,20 @@ model PayoutAccount {
   userId        String   @unique
   user          User     @relation(fields: [userId], references: [id])
   bankCode      String // lib/banks.ts
-  accountNumber String // digits only, plaintext (BEHAVIOR.md Q22); never returned unmasked
+  accountNumber String // digits only, plaintext (#28); never returned unmasked
   holderName    String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
 
-// ─── Messaging (BEHAVIOR.md "Conversations") ────────────────────────────────
+// ─── Messaging (docs/domain/messaging-notifications.md) ────────────────────
 
-/// One per contract (MG2), created with the contract (MG3).
+/// One per contract, created in the same transaction as the contract.
 model Conversation {
   id            String    @id @default(uuid())
   contractId    String    @unique
   contract      Contract  @relation(fields: [contractId], references: [id])
-  /// `createdAt` of the newest message; strictly increasing (MG7). null = no message yet.
+  /// `createdAt` of the newest message; strictly increasing. null = no message yet.
   lastMessageAt DateTime?
   createdAt     DateTime  @default(now())
 
@@ -362,14 +362,14 @@ model Conversation {
   messages     Message[]
 }
 
-/// Exactly two per conversation: the contract's client and freelancer (MG2).
+/// Exactly two per conversation: the contract's client and freelancer.
 model ConversationParticipant {
   id             String       @id @default(uuid())
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   userId         String
   user           User         @relation(fields: [userId], references: [id])
-  /// Read watermark: `createdAt` of the newest counterpart message read (MG16). Never moves back.
+  /// Read watermark: `createdAt` of the newest counterpart message read. Never moves back.
   lastReadAt     DateTime?
   createdAt      DateTime     @default(now())
 
@@ -384,16 +384,16 @@ model Message {
   /// null for SYSTEM messages
   senderId       String?
   /// `onDelete: Restrict` on purpose: the default SetNull would turn a TEXT message into a
-  /// sender-less pseudo-system message (MG2). Users are only ever soft-deleted.
+  /// sender-less pseudo-system message. Users are only ever soft-deleted.
   sender         User?        @relation("SentMessages", fields: [senderId], references: [id], onDelete: Restrict)
   kind           MessageKind  @default(TEXT)
-  /// SYSTEM only: `CONTRACT_CREATED`, `MILESTONE_FUNDED`, … (MG6). A bare String like `Notification.type`.
+  /// SYSTEM only: `CONTRACT_CREATED`, `MILESTONE_FUNDED`, …. A bare String like `Notification.type`.
   systemEvent    String?
   /// '' when a message carries only attachments
   body           String
-  /// Soft delete by the sender within 5 minutes (MG17)
+  /// Soft delete by the sender within 5 minutes
   deletedAt      DateTime?
-  /// Server clock after the conversation lock; strictly increasing per conversation (MG7)
+  /// Server clock after the conversation lock; strictly increasing per conversation
   createdAt      DateTime     @default(now())
 
   attachments MessageAttachment[]
@@ -406,7 +406,7 @@ model MessageAttachment {
   messageId String
   message   Message  @relation(fields: [messageId], references: [id])
   url       String
-  /// Original name restored to UTF-8 (rule 12); never part of the storage key
+  /// Original name restored to UTF-8; never part of the storage key
   fileName  String
   mimeType  String
   size      Int
@@ -415,7 +415,7 @@ model MessageAttachment {
   @@index([messageId])
 }
 
-// ─── Profile (BEHAVIOR.md "Portfolio and careers") ──────────────────────────
+// ─── Profile: portfolio and careers (docs/domain/accounts.md) ──────────────
 
 model PortfolioItem {
   id          String    @id @default(uuid())
@@ -427,9 +427,9 @@ model PortfolioItem {
   imageUrl    String?
   /// The freelancer's role in the work, e.g. "프론트엔드 리드"
   role        String?
-  /// normalizeSkillList-normalized (PF1)
+  /// normalizeSkillList-normalized
   skills      String[]
-  /// First instant of the month in KST (PF2); returned as `YYYY-MM`
+  /// First instant of the month in KST; returned as `YYYY-MM`
   startedAt   DateTime?
   endedAt     DateTime?
   sortOrder   Int       @default(0)
@@ -446,7 +446,7 @@ model Career {
   company        String
   position       String
   employmentType EmploymentType
-  /// First instant of the month in KST (PF2); returned as `YYYY-MM`
+  /// First instant of the month in KST; returned as `YYYY-MM`
   startDate      DateTime
   /// null = current position
   endDate        DateTime?
@@ -501,16 +501,16 @@ model PricingAnalysis {
   createdAt       DateTime @default(now())
 }
 
-// ─── Notification channels (BEHAVIOR.md "Notification channels") ───────────
+// ─── Notification channels (docs/domain/messaging-notifications.md) ────────
 
 enum EmailDeliveryStatus {
-  PENDING // created by notify(), awaiting its `notification.email` job (J9)
+  PENDING // created by notify(), awaiting its `notification.email` job
   SENT
   FAILED // the provider threw on the last attempt, or MAIL_PROVIDER is unsupported
   SKIPPED // the recipient was soft-deleted before the send; the provider was not called
 }
 
-/// Sparse per-user overrides of the notification policy (NC4): a row exists only while a channel
+/// Sparse per-user overrides of the notification policy: a row exists only while a channel
 /// departs from its default. No backfill — a user without rows gets the defaults.
 model NotificationPreference {
   id        String   @id @default(uuid())
@@ -518,9 +518,9 @@ model NotificationPreference {
   user      User     @relation(fields: [userId], references: [id])
   /// `NotificationType` (TS union), a bare String like `Notification.type`
   type      String
-  /// null = follow the policy default (NC2); never stored for a locked channel
+  /// null = follow the policy default; never stored for a locked channel
   inApp     Boolean?
-  /// null = follow the policy default (NC2); never stored for a locked channel
+  /// null = follow the policy default; never stored for a locked channel
   email     Boolean?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -528,8 +528,8 @@ model NotificationPreference {
   @@unique([userId, type])
 }
 
-/// One email, from `notify()` to the provider (NC11, NC12). The audit trail of what was sent;
-/// no route reads it and nothing deletes it (Q24).
+/// One email, from `notify()` to the provider. The audit trail of what was sent;
+/// no route reads it and nothing deletes it (#26).
 model EmailDelivery {
   id                String              @id @default(uuid())
   userId            String
@@ -542,7 +542,7 @@ model EmailDelivery {
   toAddress         String
   subject           String
   body              String
-  /// 'conversation:<id>' for MESSAGE_UNREAD_DIGEST (the J8 throttle lookup); null otherwise
+  /// 'conversation:<id>' for MESSAGE_UNREAD_DIGEST (the digest's throttle lookup); null otherwise
   contextKey        String?
   status            EmailDeliveryStatus @default(PENDING)
   /// Provider calls made; incremented just before each call
@@ -572,7 +572,7 @@ enum JobStatus {
   CANCELLED
 }
 
-/// Postgres-backed job queue. See BEHAVIOR.md "Background jobs".
+/// Postgres-backed job queue. See docs/domain/jobs.md.
 model Job {
   id          String    @id @default(uuid())
   /// TS union `JobType` (src/jobs/types.ts) — a bare String like `Notification.type`.

@@ -4,8 +4,8 @@ import { MAX_MILESTONES, MIN_MILESTONE_AMOUNT, MIN_MILESTONES } from '../lib/mon
 import { kstDateString, kstDateToEndOfDay } from '../lib/time';
 
 /**
- * Request bodies of the milestone routes (BEHAVIOR.md MS7, MS12, MS18). Messages are part of the
- * spec — tests assert them exactly — so keep them in sync with BEHAVIOR.md.
+ * Request bodies of the milestone routes. Messages are part of the API contract — tests assert
+ * them exactly — so change them only together with the tests.
  */
 
 const COUNT_MESSAGE = `A contract must have between ${MIN_MILESTONES} and ${MAX_MILESTONES} milestones`;
@@ -32,7 +32,7 @@ const planItem = z.object({
     .int('Amount must be a whole number of won')
     .min(MIN_MILESTONE_AMOUNT, `Amount must be at least ${MIN_MILESTONE_AMOUNT}`),
   // Format and "not before today" are per-item checks, so they are reported in array order with
-  // the other per-item checks (MS7). Today is the KST date at request time (M12).
+  // the other per-item checks. Today is the KST date at request time.
   dueDate: z.string().superRefine((value, ctx) => {
     if (!isCalendarDate(value)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date must be a YYYY-MM-DD date' });
@@ -43,7 +43,7 @@ const planItem = z.object({
 });
 
 /**
- * MS7. The order check compares entries with each other, so it runs only once every entry has
+ * The whole plan. The order check compares entries with each other, so it runs only once every entry has
  * passed its own checks — a decreasing date is reported after any per-item failure.
  */
 export const milestonePlanBody = z
@@ -68,7 +68,7 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-/** MS12. Multipart fields arrive as strings; a single `links` value is a one-element list. */
+/** A submission. Multipart fields arrive as strings; a single `links` value is a one-element list. */
 export const submissionBody = z.object({
   message: z
     .string({ required_error: 'Message is required' })
@@ -84,7 +84,7 @@ export const submissionBody = z.object({
   ),
 });
 
-/** MS18. */
+/** A revision request. */
 export const rejectBody = z.object({
   reason: z
     .string({ required_error: 'Reason must be at least 10 characters' })

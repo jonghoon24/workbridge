@@ -5,12 +5,11 @@ import { isKstMonth, kstMonthString } from '../lib/time';
 import { queryInt } from './common';
 
 /**
- * Request bodies and queries of the portfolio, career and recommendation routes (BEHAVIOR.md
- * PF1, PF2, PF9–PF14, RC1). Messages are part of the spec — tests assert them exactly — so keep
- * them in sync with BEHAVIOR.md.
+ * Request bodies and queries of the portfolio, career and recommendation routes. Messages are
+ * part of the API contract — tests assert them exactly — so change them deliberately.
  */
 
-/** PF1. */
+/** Portfolio limits: item count and field lengths. */
 export const PORTFOLIO_LIMITS = {
   items: 20,
   title: 100,
@@ -21,7 +20,7 @@ export const PORTFOLIO_LIMITS = {
   skill: 50,
 } as const;
 
-/** PF1. */
+/** Career limits: entry count and field lengths. */
 export const CAREER_LIMITS = {
   entries: 30,
   company: 100,
@@ -85,7 +84,7 @@ const optionalUrl = z
   .refine((value) => value == null || isHttpUrl(value), 'URL must be an http or https URL');
 
 /**
- * PF2: a `YYYY-MM` month no later than the current KST month. Absent stays absent, `null` or `''`
+ * A `YYYY-MM` month no later than the current KST month. Absent stays absent, `null` or `''`
  * becomes `null` (cleared), anything else stays the month string — conversion to an instant is the
  * service's job, so cross-field checks can compare strings.
  */
@@ -117,9 +116,9 @@ const requiredMonth = z
   .openapi({ description: '`YYYY-MM`(KST 월). 이번 달 이후는 안 된다.', example: '2023-01' });
 
 /**
- * PF9 `skills`: repeated multipart fields (an array), one comma-separated value, or a JSON array of
- * strings. A non-string entry is a 400 — `normalizeSkillList` would throw on it, which is
- * 알려진 불일치 D16 (#11) on the pre-existing routes; this route does not have it. Normalized and de-duplicated before the limits apply.
+ * Portfolio `skills`: repeated multipart fields (an array), one comma-separated value, or a JSON array of
+ * strings. A non-string entry is a 400 — `normalizeSkillList` would throw on it. Normalized and
+ * de-duplicated before the limits apply.
  */
 const skillList = z
   .union([z.string(), z.array(z.string({ invalid_type_error: 'Skills must be strings' })), z.null()])
@@ -147,8 +146,9 @@ const formBoolean = z
 type MonthRange = { start?: string | null; end?: string | null };
 
 /**
- * PF9/PF13's cross-field month rules, reported on the end field. Only runs on values that already
- * passed their own checks, so a malformed month is reported once, by its field.
+ * The cross-field month rules of portfolio items and careers (an end needs a start and is not
+ * before it), reported on the end field. Only runs on values that already passed their own
+ * checks, so a malformed month is reported once, by its field.
  */
 export function monthRangeIssue({ start, end }: MonthRange): string | null {
   if (!end || !isKstMonth(end)) return null;
@@ -158,7 +158,7 @@ export function monthRangeIssue({ start, end }: MonthRange): string | null {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Portfolio (PF9, PF10, PF12)
+// Portfolio
 // ---------------------------------------------------------------------------------------------
 
 const portfolioFields = {
@@ -171,7 +171,7 @@ const portfolioFields = {
   endedAt: optionalMonth,
 };
 
-/** PF9. `skills` defaults to `[]`; the months default to `null`. */
+/** Create. `skills` defaults to `[]`; the months default to `null`. */
 export const portfolioCreateBody = z
   .object({
     ...portfolioFields,
@@ -183,7 +183,7 @@ export const portfolioCreateBody = z
   });
 
 /**
- * PF10. Every field optional; only present ones change. The month order is checked later, on the
+ * Every field optional; only present ones change. The month order is checked later, on the
  * stored row merged with the patch (after existence and ownership).
  */
 export const portfolioPatchBody = z.object({
@@ -197,7 +197,7 @@ export const portfolioPatchBody = z.object({
   removeImage: formBoolean.optional(),
 });
 
-/** PF12. Whether `ids` is a permutation of the caller's items is checked under the lock. */
+/** Reorder. Whether `ids` is a permutation of the caller's items is checked under the lock. */
 export const portfolioOrderBody = z.object({
   ids: z.array(z.string()),
 });
@@ -206,7 +206,7 @@ export type PortfolioCreateInput = z.infer<typeof portfolioCreateBody>;
 export type PortfolioPatchInput = z.infer<typeof portfolioPatchBody>;
 
 // ---------------------------------------------------------------------------------------------
-// Careers (PF13, PF14)
+// Careers
 // ---------------------------------------------------------------------------------------------
 
 const careerFields = {
@@ -219,7 +219,7 @@ const careerFields = {
   description: optionalText(`Description must be at most ${CAREER_LIMITS.description} characters`, CAREER_LIMITS.description),
 };
 
-/** PF13. */
+/** Create. `endDate` absent or empty is `null`, a current position. */
 export const careerCreateBody = z
   .object({
     ...careerFields,
@@ -230,7 +230,7 @@ export const careerCreateBody = z
     if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: issue });
   });
 
-/** PF14. The month order is checked on the merged row after existence and ownership. */
+/** Every field optional. The month order is checked on the merged row after existence and ownership. */
 export const careerPatchBody = z.object({
   company: careerFields.company.optional(),
   position: careerFields.position.optional(),
@@ -244,13 +244,13 @@ export type CareerCreateInput = z.infer<typeof careerCreateBody>;
 export type CareerPatchInput = z.infer<typeof careerPatchBody>;
 
 // ---------------------------------------------------------------------------------------------
-// Recommendations (RC1)
+// Recommendations
 // ---------------------------------------------------------------------------------------------
 
 export const RECOMMENDATION_DEFAULT_LIMIT = 10;
 export const RECOMMENDATION_MAX_LIMIT = 20;
 
-/** RC1: `limit` ≥ 1, default 10, a larger value capped at 20. There is no `page`. */
+/** `limit` ≥ 1, default 10, a larger value capped at 20. There is no `page`. */
 export const recommendationQuery = z.object({
   limit: queryInt({ min: 1, fallback: RECOMMENDATION_DEFAULT_LIMIT })
     .transform((limit) => Math.min(limit, RECOMMENDATION_MAX_LIMIT))

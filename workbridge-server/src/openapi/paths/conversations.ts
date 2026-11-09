@@ -19,7 +19,7 @@ import { conversationBody, conversationList, messagePage, messageResult, readRes
 const tags = ['Conversations'];
 
 const conversationId = pathParams({ id: '대화방 ID' });
-/** Every `/:id` route looks the conversation up first (MG13). */
+/** Every `/:id` route looks the conversation up first: missing → 404, not a participant → 403. */
 const LOOKUP = {
   403: ['`Not authorized` — 대화방 참여자가 아님'],
   404: ['`Conversation not found` — 없는 대화방, 또는 프로젝트가 삭제됨'],

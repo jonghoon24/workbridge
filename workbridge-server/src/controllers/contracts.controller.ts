@@ -12,7 +12,7 @@ import type { AuthedRequest } from '../types/index';
 
 export async function getContract(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // 알려진 불일치 D21 (#16): no soft-delete filter on this pre-existing route.
+    // No soft-delete filter on the project here (#16).
     const contract = await prisma.contract.findUnique({
       where: { id: req.params.id },
       include: contractInclude,
@@ -51,7 +51,7 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
       throw new AppError('A completed contract cannot be signed again', 400);
     }
 
-    // CT7: a PENDING contract needs a valid plan, or the signature is not recorded at all.
+    // A PENDING contract needs a valid plan, or the signature is not recorded at all.
     if (contract.status === 'PENDING' && !isValidPlan(contract.milestones, contract.amount)) {
       throw new AppError('Cannot sign a contract without a valid milestone plan', 400);
     }
@@ -64,7 +64,7 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
     // Both writes in one transaction. Postgres serializes the two parties on the row lock the
     // UPDATE takes — verified: 15 concurrent sign pairs all activated correctly — so this is not
     // fixing a live race. It closes the window where a failure between the two statements leaves
-    // a contract signed-but-inactive, and keeps activation and its notifications atomic (CT8).
+    // a contract signed-but-inactive, and keeps activation and its notifications atomic.
     const updated = await prisma.$transaction(async (tx) => {
       const signed = await tx.contract.update({
         where: { id: contract.id },
@@ -87,7 +87,8 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
           type: 'CONTRACT_ACTIVATED',
           ...renderTemplate('CONTRACT_ACTIVATED', { projectTitle: signed.project.title, contractId: contract.id }),
         });
-        // MG6: the activating signature only, as the transaction's last write (MG7).
+        // A system message for the activating signature only, as the transaction's last write
+        // (the conversation lock is taken last).
         await postSystemMessage(tx, contract.id, 'CONTRACT_ACTIVATED');
         return activated;
       }
@@ -104,7 +105,7 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
   }
 }
 
-/** CT11: completion is automatic now (MS17); the route stays so callers get the envelope. */
+/** Completion happens automatically when the last milestone is approved; the route stays so callers get the envelope. */
 export async function completeContract(_req: AuthedRequest, _res: Response, next: NextFunction) {
   next(new AppError('Contracts are completed automatically when every milestone is approved', 410));
 }

@@ -1,7 +1,7 @@
 import { z } from '../lib/zod';
 
 /**
- * Query-string building blocks for every route's query schema (BEHAVIOR.md rule 12): an empty
+ * Query-string building blocks for every route's query schema: an empty
  * value is absent, a repeated parameter is a 400, and integers must be plain integers (`1.5` and
  * `2abc` are 400s).
  *
@@ -82,8 +82,8 @@ export function queryEnum<const T extends readonly [string, ...string[]]>(values
 }
 
 // ---------------------------------------------------------------------------------------------
-// Added when the pre-existing routes moved to zod. Query helpers keep the style above (lowercase,
-// `validate()` prefixes the field path).
+// Helpers used by the project, application and payment schemas. Query helpers keep the style
+// above (lowercase, `validate()` prefixes the field path).
 // ---------------------------------------------------------------------------------------------
 
 const DECIMAL = /^-?\d+(\.\d+)?$/;
@@ -119,13 +119,13 @@ export function queryNumber({ min }: QueryNumberOptions = {}) {
 
 /**
  * Body fields below take a `label` and produce sentence messages (`Budget is required`), the style
- * of the expansion bodies (`schemas/milestones.ts`). `validate()` prefixes the field path.
+ * of the milestone bodies (`schemas/milestones.ts`). `validate()` prefixes the field path.
  */
 
 const WHOLE_WON = /^-?\d+$/;
 
 /**
- * A whole number of won (money-time rule, rule 12) of at least `min`: a JSON integer or a plain
+ * A whole number of won (every amount is integer won, docs/domain/milestones-payments.md) of at least `min`: a JSON integer or a plain
  * integer string (`'2500000'` — form inputs and the TossPayments redirect deliver strings).
  * Anything else — a fraction (`1000.5`), `'3abc'`, `'1e6'`, `'Infinity'`, whitespace, a boolean,
  * `null`, an unsafe integer, or a value below `min` — is one message:

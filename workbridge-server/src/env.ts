@@ -72,7 +72,7 @@ export const env = {
     return withDefault('LOG_LEVEL', 'info');
   },
   /**
-   * Days a submitted milestone waits for review before it is approved automatically (M14).
+   * Days a submitted milestone waits for review before it is approved automatically.
    * Raw string; `autoApproveDays()` in `services/milestones.service.ts` interprets it.
    */
   get MILESTONE_AUTO_APPROVE_DAYS(): string {
@@ -82,7 +82,7 @@ export const env = {
   get JOB_POLL_INTERVAL_MS(): string {
     return withDefault('JOB_POLL_INTERVAL_MS', '5000');
   },
-  /** The `From` of every email (NC1). */
+  /** The `From` of every email. */
   get MAIL_FROM(): string {
     return withDefault('MAIL_FROM', 'WorkBridge <no-reply@workbridge.local>');
   },
@@ -131,7 +131,7 @@ export const env = {
     return process.env.INTERNAL_JOB_TOKEN;
   },
   /**
-   * Which mail provider sends email (NC14). Unset, empty or `log` → the log provider; any other
+   * Which mail provider sends email. Unset, empty or `log` → the log provider; any other
    * value is unsupported and fails the sends that need it. Read at every send.
    */
   get MAIL_PROVIDER(): string | undefined {
@@ -148,7 +148,7 @@ export const env = {
   /**
    * `notification.email` jobs send only when this is exactly `'true'`; otherwise each delivery is
    * marked `SKIPPED` (`jobs/gates.ts`). Off by default: the only mail provider writes the address
-   * and the whole body to the log (Q24). Read at every send.
+   * and the whole body to the log (#26). Read at every send.
    */
   get JOB_EMAIL_ENABLED(): string | undefined {
     return process.env.JOB_EMAIL_ENABLED;

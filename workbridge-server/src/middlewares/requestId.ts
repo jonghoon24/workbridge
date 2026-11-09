@@ -6,7 +6,7 @@ import { requestContext } from '../lib/requestContext';
 const VALID_REQUEST_ID = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
- * Assigns the request id (BEHAVIOR.md rule 9): a well-formed incoming `X-Request-Id` is kept,
+ * Assigns the request id: a well-formed incoming `X-Request-Id` is kept,
  * anything else is replaced by a UUID v4. Always echoed in the response header, never in a
  * body. Mounted first so even CORS rejections and body-parse errors carry it.
  */

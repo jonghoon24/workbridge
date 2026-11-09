@@ -21,7 +21,7 @@ const supabase = createClient(
 
 /**
  * Uploads to the `workbridge` bucket at `<folder>/<filename>` and returns the public URL.
- * `folder` defaults to `profiles`, the only folder the pre-existing profile upload uses.
+ * `folder` defaults to `profiles`, the folder of the profile image (`PATCH /api/users/me`).
  */
 export async function uploadToSupabase(
   buffer: Buffer,

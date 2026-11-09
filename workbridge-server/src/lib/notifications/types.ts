@@ -1,10 +1,10 @@
 /**
  * `Notification.type` (and `NotificationPreference.type`, `EmailDelivery.type`) is a bare
- * `String` in the schema. These are the values ever written: BEHAVIOR.md "Notifications" lists
- * the 19 in-app types with recipients and links, NC2 all 20 with their channel policy.
+ * `String` in the schema. These are the values ever written: 19 in-app types plus the email-only
+ * digest, with their channel policy in `policy.ts` (docs/domain/messaging-notifications.md).
  */
 export type NotificationType =
-  // Pre-existing; their wording is inline in their controllers.
+  // Applications and project status; their wording is inline in their controllers.
   | 'APPLICATION_CREATED'
   | 'APPLICATION_ACCEPTED'
   | 'APPLICATION_REJECTED'
@@ -25,5 +25,5 @@ export type NotificationType =
   | 'SETTLEMENT_PAID'
   | 'SETTLEMENT_ON_HOLD'
   | 'SETTLEMENT_FAILED'
-  // Notification channels; email only — never an in-app row (NC2, NC16).
+  // Messages; email only — never an in-app row.
   | 'MESSAGE_UNREAD_DIGEST';

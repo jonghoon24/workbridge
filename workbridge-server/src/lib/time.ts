@@ -1,8 +1,8 @@
 /**
  * KST helpers. Calendar rules ("today", day windows, daily schedules) use a **fixed UTC+9
- * offset** — Korea has no daylight saving, so no timezone library is needed (BEHAVIOR.md
- * rule 11). Every function takes the instant to reason about rather than reading the clock,
- * so callers (and tests) control time.
+ * offset** — Korea has no daylight saving, so no timezone library is needed
+ * (docs/domain/README.md#시간대). Every function takes the instant to reason about rather than
+ * reading the clock, so callers (and tests) control time.
  */
 
 export const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -70,7 +70,7 @@ export function nextKstWeekday(now: Date, weekday: number, hour = 0, minute = 0)
 }
 
 // ---------------------------------------------------------------------------------------------
-// Calendar months (BEHAVIOR.md PF2): portfolio and career periods are `YYYY-MM` months, stored
+// Calendar months: portfolio and career periods are `YYYY-MM` months, stored
 // as the first instant of that month in KST and returned as `YYYY-MM` again.
 // ---------------------------------------------------------------------------------------------
 

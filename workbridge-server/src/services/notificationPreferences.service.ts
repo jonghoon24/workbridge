@@ -8,7 +8,7 @@ import type { NotificationType } from '../lib/notifications/types';
 import type { PreferenceEntry } from '../schemas/notificationPreferences';
 import type { PrismaTransactionClient } from '../types/index';
 
-/** BEHAVIOR.md "Notification channels" — `GET`/`PUT /api/notifications/preferences` (NC4–NC8). */
+/** `GET`/`PUT /api/notifications/preferences` (docs/domain/messaging-notifications.md). */
 
 export interface PreferenceView {
   type: NotificationType;
@@ -25,7 +25,7 @@ interface StoredRow {
   email: boolean | null;
 }
 
-/** NC5: the caller's role's types in NC2 order, each with its effective channels (NC3). */
+/** The caller's role's types in channel-policy order, each with its effective channels. */
 function serialize(role: Role, rows: readonly StoredRow[]): PreferenceView[] {
   const byType = new Map(rows.map((row) => [row.type, row]));
   return typesForRole(role).map((policy) => {
@@ -41,7 +41,7 @@ function serialize(role: Role, rows: readonly StoredRow[]): PreferenceView[] {
   });
 }
 
-/** The role comes from the stored row, not the token (as PF21). */
+/** The role comes from the stored row, not the token (as `GET /api/users/me/profile-completion`). */
 async function readPreferences(client: PrismaTransactionClient, userId: string) {
   const user = await client.user.findUniqueOrThrow({ where: { id: userId }, select: { role: true } });
   const rows = await client.notificationPreference.findMany({
@@ -51,16 +51,17 @@ async function readPreferences(client: PrismaTransactionClient, userId: string) 
   return { preferences: serialize(user.role, rows) };
 }
 
-/** NC5. Writes nothing. */
+/** Writes nothing. */
 export function getNotificationPreferences(userId: string) {
   return readPreferences(prisma, userId);
 }
 
 /**
- * NC7–NC8. One transaction whose first statement locks the caller's `User` row (PA7, PF8), so
- * two `PUT`s of one user serialize and no insert can collide on `(userId, type)` — hence plain
- * create/update/delete and no upsert. Each entry is merged into its row (a given channel replaces
- * the stored value, an omitted one keeps it) and normalized per NC4.
+ * One transaction whose first statement locks the caller's `User` row (as payout-account and
+ * portfolio/career writes do), so two `PUT`s of one user serialize and no insert can collide on
+ * `(userId, type)` — hence plain create/update/delete and no upsert. Each entry is merged into
+ * its row (a given channel replaces the stored value, an omitted one keeps it) and normalized by
+ * `normalizeStored()`.
  */
 export async function putNotificationPreferences(userId: string, entries: readonly PreferenceEntry[]) {
   return prisma.$transaction(async (tx) => {

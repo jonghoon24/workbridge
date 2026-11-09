@@ -2,8 +2,8 @@ import { closeExpiredOpenProjects } from '../../lib/projectLifecycle';
 import type { JobHandler } from '../types';
 
 /**
- * `project.lifecycleSweep` — the scheduled twin of the lazy sweep on read paths (BEHAVIOR.md
- * rule 7). The sweep is idempotent, so it is harmless when a read path got there first.
+ * `project.lifecycleSweep` — the scheduled twin of the lazy sweep on read paths
+ * (docs/domain/projects-contracts.md "지연 스윕: 읽기가 행을 쓴다"). The sweep is idempotent, so it is harmless when a read path got there first.
  */
 export const projectLifecycleSweep: JobHandler<'project.lifecycleSweep'> = async ({ now, logger }) => {
   const closed = await closeExpiredOpenProjects(now);

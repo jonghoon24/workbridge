@@ -1,7 +1,7 @@
 import { z } from '../../lib/zod';
 import { count, dateTime, id, paginationMeta, settlementStatusEnum, won } from './common';
 
-/** A `Settlement` row (S13). The account fields are a masked snapshot taken on entering `PROCESSING`. */
+/** A `Settlement` row. The account fields are a masked snapshot taken on entering `PROCESSING`. */
 const settlementFields = {
   id,
   freelancerId: id,
@@ -31,7 +31,7 @@ export const settlementList = z.object({ settlements: z.array(settlement), meta:
 
 const bucket = z.object({ count, net: won });
 
-/** S15. Every settlement lands in exactly one of `scheduled`, `onHold`, `failed`, `paidTotal`. */
+/** `GET /api/settlements/summary`. Every settlement lands in exactly one of `scheduled`, `onHold`, `failed`, `paidTotal`. */
 export const settlementSummary = z.object({
   unsettled: z
     .object({ count, gross: won, fee: won, vat: won, net: won })
@@ -45,7 +45,7 @@ export const settlementSummary = z.object({
   hasPayoutAccount: z.boolean(),
 });
 
-/** S16. */
+/** `GET /api/settlements/:id`: the settlement and its items. */
 export const settlementDetail = z.object({
   ...settlementFields,
   items: z.array(

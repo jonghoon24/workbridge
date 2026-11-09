@@ -4,7 +4,7 @@ import { env } from '../../env';
 import { logger } from '../logger';
 
 /**
- * Outgoing email (BEHAVIOR.md NC14). No real mail service is connected (Q24): the only supported
+ * Outgoing email. No real mail service is connected (#26): the only supported
  * `MAIL_PROVIDER` is `log`, which writes each email to the log. Tests swap in a failing provider
  * with `setMailProvider` to exercise the retry path, like `setPayoutProvider`.
  */
@@ -58,7 +58,7 @@ export type MailProviderSelection =
   | { supported: false; name: string };
 
 /**
- * NC14: `MAIL_PROVIDER` read now. Unset, empty or exactly `log` → the log provider (recorded as
+ * `MAIL_PROVIDER` read now. Unset, empty or exactly `log` → the log provider (recorded as
  * `log`); anything else is unsupported and carries the value as given, for `EmailDelivery.provider`.
  */
 export function selectMailProvider(): MailProviderSelection {
@@ -78,7 +78,7 @@ let warned = false;
 /**
  * Called once at process start (the server, `jobs:run`, `jobs:worker`): a set but unsupported
  * `MAIL_PROVIDER` is reported as one `warn` line and never thrown — the sends that need it fail,
- * not the process (NC14, the lazy-env principle of `src/env.ts`).
+ * not the process (the lazy-env principle of `src/env.ts`).
  */
 export function warnIfUnsupportedMailProvider(): void {
   if (warned) return;

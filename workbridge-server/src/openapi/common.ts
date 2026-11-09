@@ -93,7 +93,7 @@ export const AUTHENTICATED: ErrorSpec = {
   ],
 };
 
-/** `authenticate` → `requireActiveUser` (expansion routes). */
+/** `authenticate` → `requireActiveUser`, on the routes that mount it. */
 export const ACTIVE_USER: ErrorSpec = {
   401: [...(AUTHENTICATED[401] ?? []), '`Account is no longer active` — 탈퇴(소프트 삭제)한 사용자'],
 };
@@ -103,7 +103,7 @@ export function role(name: 'CLIENT' | 'FREELANCER'): ErrorSpec {
   return { 403: [`\`Insufficient permissions\` — ${name} 역할이 아님`] };
 }
 
-/** `requireCompleteProfile` (BEHAVIOR.md rule 4). */
+/** `requireCompleteProfile` (see `docs/domain/README.md`, 프로필 완성). */
 export const COMPLETE_PROFILE: ErrorSpec = {
   403: ['`프로필을 먼저 완성해주세요` — 역할의 프로필 필수 항목이 비어 있음'],
 };

@@ -18,7 +18,7 @@ const router = Router();
 
 router.post('/signup', validate({ body: signupBody }), signup);
 // Per-IP limit first (counts every attempt), then the email + IP failure limit, which only
-// peeks here — `login` records failures itself (BEHAVIOR.md rule 10). Both run before
+// peeks here — `login` records failures itself. Both run before
 // validation, so a 400 still counts toward the per-IP limit.
 router.post(
   '/login',

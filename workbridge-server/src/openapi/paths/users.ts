@@ -32,7 +32,7 @@ const payoutTags = ['Payout account'];
 const PAYOUT_LOCKED = { 409: ['`Payout account cannot be changed while a payout is processing` — 지급 중(`PROCESSING`)인 정산이 있음'] };
 
 export function registerUserPaths(registry: OpenAPIRegistry): void {
-  // `PATCH /me` validates the caller's role's fields only and strips the other role's (Q2): one
+  // `PATCH /me` validates the caller's role's fields only and strips the other role's: one
   // body schema per role, documented as `oneOf`.
   registry.register('ClientProfileUpdate', clientProfileUpdateBody);
   registry.register('FreelancerProfileUpdate', freelancerProfileUpdateBody);
@@ -65,7 +65,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     summary: '내 프로필 수정',
     description:
       '보낸 필드만 바꾼다. 프로필 이미지는 `multipart/form-data`의 `profileImage`(이미지 하나, 5MB)로 보낸다. '
-      + '이미지가 아니거나 5MB를 넘으면 지금은 500이 난다(알려진 불일치 D6).',
+      + '이미지가 아니거나 5MB를 넘으면 지금은 500이 난다(알려진 버그).',
     security: bearer,
     request: {
       body: {

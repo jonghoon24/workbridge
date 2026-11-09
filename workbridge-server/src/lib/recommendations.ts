@@ -5,17 +5,17 @@ import { isProfileComplete } from './profileCompletion';
 import { expandSkillSearchTerms, normalizeSkill } from './skills';
 
 /**
- * Skill-based recommendations (BEHAVIOR.md RC1–RC8): freelancers for a client's project, and
+ * Skill-based recommendations (docs/domain/projects-contracts.md): freelancers for a client's project, and
  * projects for a freelancer. Both are read-only — no lifecycle sweep — and work in two stages: a
  * database prefilter ordered **before** it is cut to `PREFILTER_LIMIT` rows (so which rows enter
  * never varies between runs), then scoring in memory with a deterministic tie-break.
  *
- * The score tables are stated once, here: `scoreFreelancer` (RC4) and `scoreProject` (RC7).
+ * The score tables are stated once, here: `scoreFreelancer` and `scoreProject`.
  */
 
 export const PREFILTER_LIMIT = 200;
 
-/** RC1: two decimals, and results are sorted by this rounded value. */
+/** Two decimals, and results are sorted by this rounded value. */
 export function roundScore(score: number): number {
   return Math.round(score * 100) / 100;
 }
@@ -26,7 +26,7 @@ function canonicalSkills(skills: readonly string[]): string[] {
 }
 
 /**
- * RC2: the project's normalized required skills that the candidate has, in the project's order.
+ * The project's normalized required skills that the candidate has, in the project's order.
  * Comparison is exact (case-sensitive) after `normalizeSkill`, so `PostgreSQL` matches `SQL`.
  */
 export function matchSkills(requiredSkills: readonly string[], candidateSkills: readonly string[]): string[] {
@@ -35,7 +35,7 @@ export function matchSkills(requiredSkills: readonly string[], candidateSkills: 
 }
 
 // ---------------------------------------------------------------------------------------------
-// RC4 — a freelancer for a project
+// A freelancer for a project
 // ---------------------------------------------------------------------------------------------
 
 export interface FreelancerScoreInput {
@@ -49,7 +49,7 @@ export interface FreelancerScoreInput {
 }
 
 /**
- * RC4, out of 100:
+ * A freelancer's score, out of 100:
  *
  * | component  | points                                                                   |
  * |------------|--------------------------------------------------------------------------|
@@ -78,7 +78,7 @@ export function scoreFreelancer(
   return { score: roundScore(skills + portfolio + category + rating + experience), matchedSkills };
 }
 
-/** RC3/RC4: score desc → `reviewCount` desc → `id` asc. */
+/** Score desc → `reviewCount` desc → `id` asc. */
 export function compareFreelancers(
   a: { score: number; reviewCount: number; id: string },
   b: { score: number; reviewCount: number; id: string },
@@ -86,7 +86,7 @@ export function compareFreelancers(
   return b.score - a.score || b.reviewCount - a.reviewCount || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
-/** RC3–RC5: `GET /api/projects/:id/recommended-freelancers`. */
+/** `GET /api/projects/:id/recommended-freelancers`. */
 export async function recommendFreelancers(projectId: string, clientId: string, limit: number) {
   const project = await prisma.project.findFirst({
     where: { id: projectId, deletedAt: null },
@@ -125,7 +125,7 @@ export async function recommendFreelancers(projectId: string, clientId: string, 
       hourlyRate: true,
       skills: true,
       portfolioItems: {
-        // PF5, as `portfolio.service.ts` orders them, so the preview is the profile's first three.
+        // In `PORTFOLIO_ORDER`, as `portfolio.service.ts` orders them, so the preview is the profile's first three.
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
         select: { id: true, title: true, imageUrl: true, skills: true },
       },
@@ -172,14 +172,14 @@ export async function recommendFreelancers(projectId: string, clientId: string, 
 }
 
 // ---------------------------------------------------------------------------------------------
-// RC7 — a project for a freelancer
+// A project for a freelancer
 // ---------------------------------------------------------------------------------------------
 
 const FRESH_FOR_MS = 7 * DAY_MS;
 const STALE_AFTER_MS = 30 * DAY_MS;
 const DEADLINE_ROOM_MS = 3 * 24 * HOUR_MS;
 
-/** RC7's freshness: 10 up to 7 days old, then linear to 0 at 30 days. */
+/** Freshness: 10 up to 7 days old, then linear to 0 at 30 days. */
 export function freshnessPoints(createdAt: Date, now: Date): number {
   const age = now.getTime() - createdAt.getTime();
   if (age <= FRESH_FOR_MS) return 10;
@@ -188,7 +188,7 @@ export function freshnessPoints(createdAt: Date, now: Date): number {
 }
 
 /**
- * RC7, out of 100 (`age = now − project.createdAt`):
+ * A project's score, out of 100 (`age = now − project.createdAt`):
  *
  * | component     | points                                                                |
  * |---------------|-----------------------------------------------------------------------|
@@ -216,7 +216,7 @@ export function scoreProject(
   return { score: roundScore(coverage + utilization + category + freshness + deadlineRoom), matchedSkills };
 }
 
-/** RC7: score desc → `deadline` asc → `id` asc. */
+/** Score desc → `deadline` asc → `id` asc. */
 export function compareProjects(
   a: { score: number; deadline: Date; id: string },
   b: { score: number; deadline: Date; id: string },
@@ -227,8 +227,8 @@ export function compareProjects(
 }
 
 /**
- * RC6–RC8: `GET /api/users/me/recommended-projects`. The route's guards have already checked the
- * role and rule 4's complete profile.
+ * `GET /api/users/me/recommended-projects`. The route's guards have already checked the
+ * role and the complete profile.
  */
 export async function recommendProjects(freelancerId: string, limit: number, now: Date = new Date()) {
   const caller = await prisma.user.findUniqueOrThrow({
@@ -240,7 +240,7 @@ export async function recommendProjects(freelancerId: string, limit: number, now
   const projects = await prisma.project.findMany({
     where: {
       status: 'OPEN',
-      // No sweep (RC1): an OPEN project past its deadline is excluded here, not by its status.
+      // No sweep (read-only): an OPEN project past its deadline is excluded here, not by its status.
       deadline: { gte: now },
       deletedAt: null,
       applications: { none: { freelancerId } },

@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 /**
- * Storage object keys and display names for uploads (expansion domains).
+ * Storage object keys and display names for attachment and portfolio-image uploads
+ * (`middlewares/attachmentUpload.ts`).
  *
  * Keys are always `<folder>/<uuid>.<ext>`, ASCII only: the original file name never goes into
  * a key, because Supabase Storage may reject non-ASCII keys and multer mangles them anyway.

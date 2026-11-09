@@ -5,11 +5,11 @@ import { unreadByContract } from './messaging.service';
 import { milestoneInclude, milestoneSummary, serializeMilestone } from './milestones.service';
 
 /**
- * Contract reads shared by the pre-existing contract controller (`GET /:id`, sign) and the
- * expansion list route (BEHAVIOR.md CT1–CT6).
+ * Contract reads shared by the contract controller (`GET /:id`, sign) and the contract list
+ * route (`GET /api/contracts`).
  */
 
-/** CT5: the full contract. `satisfies` keeps literal types like `'desc'` for Prisma. */
+/** The full contract. `satisfies` keeps literal types like `'desc'` for Prisma. */
 export const contractInclude = {
   project: { select: { id: true, title: true, description: true, category: true, status: true } },
   client: { select: { id: true, name: true, email: true, companyName: true, profileImage: true } },
@@ -26,7 +26,7 @@ export const contractInclude = {
 
 export type ContractWithRelations = Prisma.ContractGetPayload<{ include: typeof contractInclude }>;
 
-/** CT5/CT6: milestones serialized (MS1) plus `milestoneSummary`; no `payment` key (C4). */
+/** Milestones serialized (each with its own `payment`) plus `milestoneSummary`; the contract has no `payment` key. */
 export function serializeContract(contract: ContractWithRelations) {
   return {
     ...contract,
@@ -41,7 +41,7 @@ export interface ContractListQuery {
   limit: number;
 }
 
-/** CT1–CT3, plus `unreadMessageCount` (MG19). */
+/** The caller's contracts as client or freelancer, paginated, each with `unreadMessageCount`. */
 export async function listContracts(userId: string, query: ContractListQuery) {
   const where: Prisma.ContractWhereInput = {
     OR: [{ clientId: userId }, { freelancerId: userId }],

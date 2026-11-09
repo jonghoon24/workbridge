@@ -4,13 +4,13 @@ import { isBankCode } from '../lib/banks';
 import { queryEnum } from './common';
 import { pageQuery } from './pagination';
 
-/** `GET /api/settlements` (S14). */
+/** `GET /api/settlements`. */
 export const settlementListQuery = z.object({
   status: queryEnum(['SCHEDULED', 'PROCESSING', 'PAID', 'FAILED', 'ON_HOLD'] as const),
   ...pageQuery,
 });
 
-/** `PUT /api/users/me/payout-account` (PA3, M23). */
+/** `PUT /api/users/me/payout-account`. */
 export const payoutAccountBody = z.object({
   bankCode: z.string({ required_error: 'Unknown bank code' }).refine(isBankCode, 'Unknown bank code'),
   accountNumber: z

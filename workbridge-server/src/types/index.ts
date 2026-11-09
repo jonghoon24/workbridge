@@ -108,26 +108,26 @@ export type ProfileCompletionInput = Pick<
 >;
 
 /**
- * The fields `getProfileCompletion` scores (BEHAVIOR.md PF21): the gate's seven plus the optional
+ * The fields `getProfileCompletion` scores: the gate's seven plus the optional
  * profile fields of both roles.
  */
 export type ProfileScoreInput = ProfileCompletionInput & Pick<User, 'bio' | 'profileImage' | 'website'>;
 
-/** What PF21 counts outside the `User` row. */
+/** What the completion score counts outside the `User` row. */
 export interface ProfileCompletionCounts {
   portfolioItems: number;
   careers: number;
   hasPayoutAccount: boolean;
 }
 
-/** One PF21 checklist entry. The client supplies the Korean label for `key`. */
+/** One completion checklist entry. The client supplies the Korean label for `key`. */
 export interface ProfileCompletionItem {
   key: string;
   weight: number;
   done: boolean;
 }
 
-/** `GET /api/users/me/profile-completion` (PF21). `isComplete` and `percent` are independent. */
+/** `GET /api/users/me/profile-completion`. `isComplete` and `percent` are independent. */
 export interface ProfileCompletion {
   isComplete: boolean;
   percent: number;
@@ -140,7 +140,7 @@ export type ProjectStatusTransitions = Partial<Record<ProjectStatus, readonly Pr
 /** `Notification.type` values. Defined next to `notify()`; re-exported here. */
 export type { NotificationType } from '../lib/notifications/types';
 
-/** `Message.systemEvent` values (BEHAVIOR.md MG6). Defined next to `postSystemMessage()`; re-exported here. */
+/** `Message.systemEvent` values. Defined next to `postSystemMessage()`; re-exported here. */
 export type { MessageSystemEvent } from '../services/messaging.service';
 
 // ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ export type { MessageSystemEvent } from '../services/messaging.service';
 /** Job queue types. Defined in `src/jobs/types.ts` alongside the payload map; re-exported here. */
 export type { JobHandler, JobType } from '../jobs/types';
 
-/** One fixed-window rate-limit rule (BEHAVIOR.md rule 10). */
+/** One fixed-window rate-limit rule (`lib/rateLimitRules.ts`). */
 export interface RateLimitRule {
   /** Prefix of the counter key, e.g. `login.ip`. */
   name: string;

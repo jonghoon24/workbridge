@@ -23,8 +23,8 @@ import { projectCreateBody, projectListQuery, projectStatusBody, projectUpdateBo
 
 const router = Router();
 
-// Pre-existing routes: `authenticate` only, no `requireActiveUser` — 알려진 불일치 D12 (#7).
-// Validation (rule 12) runs after the role and profile guards and before the controller's
+// `authenticate` only: these routes do not mount `requireActiveUser` yet (#7).
+// Validation runs after the role and profile guards and before the controller's
 // 404/403 checks.
 router.get('/', validate({ query: projectListQuery }), getProjects);
 router.post(
@@ -59,7 +59,7 @@ router.post(
   analyzeProject,
 );
 
-// Expansion route (rule 12): freelancers recommended for the caller's project (RC3). Read-only —
+// Freelancers recommended for the caller's project. Read-only —
 // unlike `GET /:id`, it runs no lifecycle sweep.
 router.get(
   '/:id/recommended-freelancers',

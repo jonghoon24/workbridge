@@ -6,8 +6,8 @@ import { hit, isRateLimitEnabled, reset } from './rateLimit';
 import type { JwtUserPayload, RateLimitRule } from '../types/index';
 
 /**
- * The rate-limit rules of BEHAVIOR.md rule 10. The client IP comes from `clientIp()`
- * (`lib/clientIp.ts`).
+ * The rate-limit rules: login (docs/domain/accounts.md) and AI rate analysis
+ * (docs/domain/projects-contracts.md). The client IP comes from `clientIp()` (`lib/clientIp.ts`).
  */
 
 function normalizedEmail(req: Request): string | null {

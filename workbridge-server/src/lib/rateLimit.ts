@@ -4,7 +4,7 @@ import { startOfKstWindow } from './time';
 import { env } from '../env';
 
 /**
- * Fixed-window rate-limit counters in Postgres (BEHAVIOR.md rule 10), so every serverless
+ * Fixed-window rate-limit counters in Postgres, so every serverless
  * instance shares one count. Windows are aligned to KST boundaries — identical to UTC for 15
  * minutes and an hour, and 00:00 KST for a day.
  */

@@ -23,19 +23,20 @@ import { profileUpdateBodyByRole } from '../schemas/users';
 
 const router = Router();
 
-/** `PATCH /me` validates only the caller's role's fields; the other role's are stripped (Q2). */
+/** `PATCH /me` validates only the caller's role's fields; the other role's are stripped. */
 function validateProfileUpdate(req: Request, res: Response, next: NextFunction) {
   return validate({ body: profileUpdateBodyByRole[req.user.role] })(req, res, next);
 }
 
 router.get('/me', authenticate, getMe);
-// The upload runs before validation (multer fills `req.body`); its errors come first (D6).
+// The upload runs before validation (multer fills `req.body`); its errors come first. A
+// non-image or oversized file is currently a 500, not a 400.
 router.patch('/me', authenticate, upload.single('profileImage'), validateProfileUpdate, updateMe);
 router.get('/me/applications', authenticate, getMyApplications);
 router.get('/me/bookmarks', authenticate, getMyBookmarks);
 router.get('/me/projects', authenticate, getMyProjects);
 
-// Expansion routes (rule 12): the payout account (PA1–PA7). Must stay before `/:id`.
+// The payout account. Must stay before `/:id`.
 const payoutGuard = [authenticate, requireActiveUser, requireRole('FREELANCER')];
 router.get('/me/payout-account', ...payoutGuard, getMyPayoutAccount);
 router.put('/me/payout-account', ...payoutGuard, validate({ body: payoutAccountBody }), putMyPayoutAccount);

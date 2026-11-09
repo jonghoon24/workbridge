@@ -17,7 +17,7 @@ function firstAddress(value: string | undefined): string | null {
 }
 
 /**
- * The client IP of BEHAVIOR.md rule 10 — the rate-limit key and the access log's `ip`. In order:
+ * The client IP — the rate-limit key and the access log's `ip`. In order:
  *
  * 1. `X-Client-IP`, only when `PROXY_SHARED_SECRET` is set and `X-Proxy-Secret` equals it. This is
  *    how the Next.js proxy passes on the browser's address; without the secret anyone could pick
