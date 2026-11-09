@@ -8,9 +8,9 @@
    - 왜: 확장 도메인(마일스톤, 정산, 지급 계좌, 계약 목록, 대화, 포트폴리오/경력, 추천, 알림 설정)은 BEHAVIOR.md 규칙 12의 검사 순서와 `<path>: <message>` 400 형식을 이 체인으로 보장한다. 기존 컨트롤러를 서비스로 옮기는 "정리"도, 새 라우트를 기존 방식으로 쓰는 것도 이 혼합을 깨뜨린다.
    - 확인: `git diff origin/main...HEAD -- workbridge-server/src/routes`에서 새 `router.<method>(`마다 가드 순서와 `validate(`를 본다. `router.use(`로 가드를 거는 것도 위반이다(Q10).
 
-2. **기존 컨트롤러(auth, users, projects, applications, contracts, payments, reviews, notifications)에 zod `validate()`, 서비스 레이어, `requireActiveUser`를 추가하지 않는다.**
-   - 왜: `test/soft-delete.test.ts`의 `mutations`(D12) 같은 `it.fails` 핀이 기존 동작에 묶여 있다. 정리 목적으로 가드를 하나 붙이면 핀이 예기치 않게 통과해 스위트가 깨진다. 예외는 D12 같은 불일치를 의도적으로 고치는 변경뿐이고, 그때는 같은 PR에서 핀을 `it`으로 뒤집고 BEHAVIOR.md의 Resolved 표로 옮겨야 한다(`fix-divergence` 스킬).
-   - 확인: diff에서 위 8개 도메인의 `*.routes.ts`/`*.controller.ts`에 `requireActiveUser`, `validate(`, `from '../services/`가 새로 생겼는지 grep한다.
+2. **기존 컨트롤러(auth, users, projects, applications, contracts, payments, reviews, notifications)를 서비스 레이어로 옮기는 일은 다른 변경에 섞지 않는다.**
+   - 왜: 이 이전은 #40에서 도메인 단위로 한다. 버그 수정이나 기능 PR에 일부만 섞이면 한 도메인 안에 두 방식이 생긴다.
+   - 확인: #40이 아닌 PR의 diff에서 위 8개 도메인의 `*.controller.ts`에 `from '../services/`가 새로 생겼는지 grep한다.
 
 3. **금액 계산(수수료, 부가세, 반올림)은 `lib/money.ts`만 쓴다.**
    - 왜: 금액은 원 단위 정수이고 `payoutBreakdown`(M3: 수수료 floor → 부가세 floor → 실지급)과 `sumBreakdowns`(M5: 합계는 항목의 합)가 정산 금액의 기준이다. 인라인 `* 0.1`이나 `Math.round`는 1원 어긋남을 만든다. `Float` 컬럼은 의도된 부채라 마이그레이션하지 않는다.

@@ -7,15 +7,13 @@ paths:
 
 ## 기존 라우트와 확장 라우트 — 혼재는 의도된 것
 
+- 요청 검증은 모든 라우트가 `src/schemas/`의 zod 스키마와 `validate()`로 한다.
 - 기존 도메인(auth, users, projects, applications, contracts, payments, reviews, notifications)은
-  컨트롤러 안에 로직과 수동 검사를 그대로 둔다(`routes → controllers → lib`).
+  컨트롤러 안에 로직을 둔다(`routes → controllers → lib`).
 - 확장 도메인(milestones, settlements, payout account, contract list, conversations,
   portfolio/careers, recommendations, notification preferences)은
-  `routes → controllers → services → lib`이고 zod 스키마는 `src/schemas/`에 있다.
-- 정리한다는 이유로 기존 컨트롤러에 zod `validate()`, 서비스 레이어, `requireActiveUser`를 추가하지 않는다.
-  `it.fails` 핀이 지금 동작에 묶여 있다(예: `test/soft-delete.test.ts`의 D12 `mutations` — 소프트 삭제된
-  사용자가 기존 라우트로 아직 쓸 수 있다). 가드를 하나 붙이면 핀이 예기치 않게 통과해 스위트가 깨진다.
-  유일한 예외는 같은 변경에서 그 핀을 뒤집는 의도적인 불일치 수정이다(`fix-divergence` 스킬).
+  `routes → controllers → services → lib`이다.
+- 기존 컨트롤러를 서비스 레이어로 옮기는 일은 #40에서 한다. 다른 변경에 섞지 않는다.
 
 ## 새 라우트 만드는 법 (확장 방식)
 
