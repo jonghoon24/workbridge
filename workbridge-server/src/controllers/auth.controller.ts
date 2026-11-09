@@ -10,6 +10,7 @@ import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
 import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
 import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index';
+import type { GoogleCallbackQuery, LoginInput, SelectRoleInput, SignupInput } from '../schemas/auth';
 import jwt from 'jsonwebtoken';
 
 function setRefreshTokenCookie(res: Response, token: string) {
@@ -48,15 +49,8 @@ function authUserPayload(user: Pick<User, 'id' | 'email' | 'name' | 'role'>): Au
 
 export async function signup(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password, name, role } = req.body;
-
-    if (!email || !password || !name || !role) {
-      throw new AppError('All fields are required', 400);
-    }
-
-    if (!['CLIENT', 'FREELANCER'].includes(role)) {
-      throw new AppError('Role must be CLIENT or FREELANCER', 400);
-    }
+    // Parsed by `signupBody`.
+    const { email, password, name, role } = req.body as SignupInput;
 
     // Deliberately does NOT filter `deletedAt: null`. `email` is unique at the database
     // level, so a soft-deleted user still occupies the address — filtering here would
@@ -85,11 +79,8 @@ export async function signup(req: Request, res: Response, next: NextFunction) {
 
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      throw new AppError('Email and password are required', 400);
-    }
+    // Parsed by `loginBody`.
+    const { email, password } = req.body as LoginInput;
 
     // `findFirst`, not `findUnique`: soft-deleted users must not be able to log in, and
     // `deletedAt` is not part of a unique constraint.
@@ -188,7 +179,8 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
 
 export async function googleCallback(req: Request, res: Response, next: NextFunction) {
   try {
-    const { code, state } = req.query;
+    // Parsed by `googleCallbackQuery`: a missing, empty or malformed value reads as absent.
+    const { code, state } = res.locals.query as GoogleCallbackQuery;
     const expectedState: unknown = req.cookies?.[OAUTH_STATE_COOKIE];
     // One attempt per cookie, whatever the outcome.
     res.clearCookie(OAUTH_STATE_COOKIE, oauthStateCookieOptions());
@@ -198,7 +190,7 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
     }
 
     if (
-      typeof state !== 'string' || !state
+      !state
       || typeof expectedState !== 'string' || !expectedState
       || !safeEqual(state, expectedState)
     ) {
@@ -267,11 +259,8 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
 
 export async function selectRole(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const { role } = req.body;
-
-    if (!['CLIENT', 'FREELANCER'].includes(role)) {
-      throw new AppError('Role must be CLIENT or FREELANCER', 400);
-    }
+    // Parsed by `selectRoleBody`.
+    const { role } = req.body as SelectRoleInput;
 
     const user = await prisma.user.findFirst({ where: { id: req.user.id, deletedAt: null } });
 

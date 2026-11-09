@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
 /**
- * Query-string building blocks for expansion routes (BEHAVIOR.md rule 12): an empty value is
- * absent, a repeated parameter is a 400, and integers must be plain integers (`1.5` and `2abc`
- * are 400s). Pre-existing endpoints do not use these — their Q12/Q13 behavior is untouched.
+ * Query-string building blocks for every route's query schema (BEHAVIOR.md rule 12): an empty
+ * value is absent, a repeated parameter is a 400, and integers must be plain integers (`1.5` and
+ * `2abc` are 400s).
  */
 
 const SINGLE_VALUE = 'must be a single value';
