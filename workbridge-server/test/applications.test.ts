@@ -78,20 +78,17 @@ describe('POST /api/projects/:id/applications', () => {
         .send(body);
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('All fields are required');
+      expect(res.body.error.message).toBe(`${field}: Required`);
       expect(await prisma.application.count()).toBe(0);
       expect(await prisma.notification.count()).toBe(0);
     });
   });
 
   /**
-   * `expectedRate: 0` never reaches the `parsedExpectedRate <= 0` check: `!expectedRate` is true
-   * for `0`, so the required-field guard rejects it first. Both are 400 and the spec only
-   * requires that a non-positive rate is refused, so this is not a divergence — but the message
-   * is the one honest way to say *which* branch ran, and it is what makes the positivity cases
-   * below distinguishable from this one.
+   * `expectedRate: 0` is present, so it is the positivity check that refuses it — the old
+   * `!expectedRate` required-field guard used to answer `All fields are required` first.
    */
-  it('400s on expectedRate 0 via the required-field guard, not the positivity check', async () => {
+  it('400s on expectedRate 0 from the positivity check, not as a missing field', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -101,7 +98,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ ...validApplyBody, expectedRate: 0 });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('All fields are required');
+    expect(res.body.error.message).toBe('expectedRate: must be a positive number');
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -110,10 +107,13 @@ describe('POST /api/projects/:id/applications', () => {
     ['negative', -5000],
     ['negative string', '-5000'],
     ['minus one', -1],
-    // Truthy, unlike a bare `0`, so it gets past the required-field guard and is the one input
-    // that actually exercises `parsedExpectedRate <= 0`.
     ['the numeric string "0"', '0'],
     ['whitespace', '   '],
+    // Rule 12: `parseFloat` used to read these as 2500000 and 1.
+    ['trailing-garbage', '2500000abc'],
+    ['exponent', '1e6'],
+    ['boolean', true],
+    ['null', null],
   ])('400s on a %s expectedRate, from the positivity check', async (_label, expectedRate) => {
     const client = await makeClient();
     const project = await makeProject(client.id);
@@ -125,7 +125,7 @@ describe('POST /api/projects/:id/applications', () => {
 
     expect(res.status).toBe(400);
     expectErrorEnvelope(res.body);
-    expect(res.body.error.message).toBe('expectedRate must be a positive number');
+    expect(res.body.error.message).toBe('expectedRate: must be a positive number');
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -142,7 +142,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ ...validApplyBody, expectedRate });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'expectedRate must be at least 1' } });
+    expect(res.body).toEqual({ error: { message: 'expectedRate: must be at least 1' } });
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -176,30 +176,43 @@ describe('POST /api/projects/:id/applications', () => {
     }
   }
 
-  // 알려진 불일치 — #37
   // Cross-cutting rule 8: a malformed value must be 400, never 500. `coverLetter` and
-  // `expectedDuration` are only truthiness-checked, so any truthy non-string reaches
-  // `tx.application.create` and Prisma rejects it — 500. Same defect class as D16/D17 (a
-  // non-string inside an array reaching Prisma), on fields the divergence table does not list.
-  it.fails('400s on a non-string expectedDuration rather than 500 [unlisted, rule 8]', async () => {
+  // `expectedDuration` used to be only truthiness-checked, so a truthy non-string reached
+  // `tx.application.create` and Prisma rejected it — a 500 whose body leaked the source path
+  // (#37, D14). They are strings now.
+  it('400s on a non-string expectedDuration rather than 500', async () => {
     const res = await applyWithNonStringDuration();
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'expectedDuration: Expected string, received number' } });
     expect(await prisma.application.count()).toBe(0);
   });
 
-  // 알려진 불일치 D14 — #9
-  // The same request also shows the leak: `errorHandler` renders `err.message` verbatim and
-  // Prisma's formatted message embeds the absolute source path plus a source excerpt of the
-  // controller. Asserted separately from the status above so each test fails for one reason —
-  // this one stays failing even if rule 8 is fixed with a still-leaky message.
-  it.fails('does not leak an absolute source path or source excerpt in the error body [D14]', async () => {
+  it('does not leak an absolute source path or source excerpt for a non-string expectedDuration', async () => {
     const res = await applyWithNonStringDuration();
 
     const { message } = res.body.error;
     expect(message).not.toContain('src/controllers');
     expect(message).not.toContain('applications.controller');
     expect(message).not.toMatch(/→/);
+  });
+
+  it.each([
+    ['coverLetter', { coverLetter: 42 }, 'coverLetter: Expected string, received number'],
+    ['coverLetter', { coverLetter: '   ' }, 'coverLetter: Required'],
+    ['expectedDuration', { expectedDuration: '' }, 'expectedDuration: Required'],
+  ])('400s on a malformed %s (%j)', async (_field, override, message) => {
+    const client = await makeClient();
+    const project = await makeProject(client.id);
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer)
+      .post(`/api/projects/${project.id}/applications`)
+      .send({ ...validApplyBody, ...override });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+    expect(await prisma.application.count()).toBe(0);
   });
 
   it('404s for a project that does not exist', async () => {
@@ -299,9 +312,7 @@ describe('POST /api/projects/:id/applications', () => {
     // own `$transaction` — *not* `apply`'s in-handler `deadline < now` branch. That branch reads
     // the project after the sweep has already flipped it to CLOSED, so `status === 'OPEN'` is
     // false and the branch is unreachable; the request falls through to the not-OPEN guard.
-    // The [unlisted] test below asserts the message the unreachable branch would have produced,
-    // and the sweep-before-validation test after it shows the writes happen even on a request
-    // that 400s long before that branch.
+    // The [unlisted] test below asserts the message the unreachable branch would have produced.
     const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(after.status).toBe('CLOSED');
     const rejected = await prisma.application.findUniqueOrThrow({ where: { id: pending.id } });
@@ -336,12 +347,10 @@ describe('POST /api/projects/:id/applications', () => {
   });
 
   /**
-   * Direct evidence for the claim above: the required-field guard sits *after* the sweep and
-   * *before* the project is even read, so this request cannot have reached the `deadline < now`
-   * branch — yet the project is closed and its pending application rejected anyway. The sweep is
-   * the only possible author of those writes (cross-cutting rule 7: read paths write rows).
+   * Rule 12 order: the body is validated before the controller runs, so an invalid body is a 400
+   * with no side effects — the lazy sweep (the controller's first step) does not run either.
    */
-  it('sweeps before validating the body, so an expired OPEN project closes even on a 400', async () => {
+  it('validates the body before sweeping, so a 400 writes nothing', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id, {
       status: 'OPEN',
@@ -357,12 +366,23 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ coverLetter: 'no rate, no duration' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('All fields are required');
+    expect(res.body.error.message).toBe('expectedRate: Required');
 
     const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(after.status).toBe('CLOSED');
-    const rejected = await prisma.application.findUniqueOrThrow({ where: { id: pending.id } });
-    expect(rejected.status).toBe('REJECTED');
+    expect(after.status).toBe('OPEN');
+    const untouched = await prisma.application.findUniqueOrThrow({ where: { id: pending.id } });
+    expect(untouched.status).toBe('PENDING');
+  });
+
+  it('validates the body before the existence check: an invalid body for an unknown project is 400', async () => {
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer)
+      .post(`/api/projects/${MISSING_ID}/applications`)
+      .send({ ...validApplyBody, expectedRate: -1 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toBe('expectedRate: must be a positive number');
   });
 
   it.each([
@@ -739,7 +759,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('Status must be ACCEPTED or REJECTED');
+    expect(res.body.error.message).toBe('status: must be one of ACCEPTED, REJECTED');
     const unchanged = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
     expect(unchanged.status).toBe('PENDING');
     expect(await prisma.contract.count()).toBe(0);
@@ -751,7 +771,17 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({});
 
     expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body);
+    expect(res.body).toEqual({ error: { message: 'status: Required' } });
+  });
+
+  // Rule 12 order, which also settles Q15: validation before existence.
+  it('400s on an invalid status before checking that the project exists', async () => {
+    const s = await scenario();
+
+    const res = await authed(s.client).patch(url(MISSING_ID, s.chosen.id)).send({ status: 'BOGUS' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toBe('status: must be one of ACCEPTED, REJECTED');
   });
 
   it('404s for a project that does not exist', async () => {

@@ -15,24 +15,11 @@ import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
+    // Parsed by `applicationCreateBody`: `expectedRate` is a number >= 1 (M7, [C2]).
     const { coverLetter, expectedRate, expectedDuration } = req.body;
     const projectId = req.params.id;
 
     await closeExpiredOpenProjects();
-
-    if (!coverLetter || !expectedRate || !expectedDuration) {
-      throw new AppError('All fields are required', 400);
-    }
-
-    const parsedExpectedRate = Number.parseFloat(expectedRate);
-    if (!Number.isFinite(parsedExpectedRate) || parsedExpectedRate <= 0) {
-      throw new AppError('expectedRate must be a positive number', 400);
-    }
-
-    // A rate that rounds to 0 won would create a milestone that can never be paid (M7, [C2]).
-    if (parsedExpectedRate < 1) {
-      throw new AppError('expectedRate must be at least 1', 400);
-    }
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
@@ -71,7 +58,7 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
             projectId,
             freelancerId: req.user.id,
             coverLetter,
-            expectedRate: parsedExpectedRate,
+            expectedRate,
             expectedDuration,
             status: 'PENDING',
           },
@@ -151,11 +138,8 @@ export async function getApplications(req: AuthedRequest, res: Response, next: N
 export async function updateApplication(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { projectId, appId } = req.params;
+    // Parsed by `applicationDecisionBody`: `ACCEPTED` or `REJECTED`.
     const { status } = req.body;
-
-    if (!['ACCEPTED', 'REJECTED'].includes(status)) {
-      throw new AppError('Status must be ACCEPTED or REJECTED', 400);
-    }
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
