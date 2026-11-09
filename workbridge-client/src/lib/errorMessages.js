@@ -39,7 +39,6 @@ const SERVER_ERROR = '일시적인 오류가 발생했습니다. 잠시 후 다�
 const MESSAGES = {
   // 인증·계정
   'Invalid credentials': '이메일 또는 비밀번호가 올바르지 않습니다.',
-  'Email and password are required': '이메일과 비밀번호를 입력해 주세요.',
   'All fields are required': '필수 항목을 모두 입력해 주세요.',
   'Email already in use': '이미 가입된 이메일입니다. 로그인하거나 다른 이메일을 사용해 주세요.',
   'Role must be CLIENT or FREELANCER': '역할을 선택해 주세요.',
@@ -66,7 +65,6 @@ const MESSAGES = {
     '지원자가 있는 프로젝트는 예산과 모집 기간을 바꿀 수 없습니다.',
   'status must be ALL, UPCOMING, OPEN, or CLOSED': '프로젝트 상태 조건이 올바르지 않습니다.',
   'sort must be latest, deadline, or budget': '정렬 조건이 올바르지 않습니다.',
-  'limit must be a positive integer': '목록 조건이 올바르지 않습니다.',
   'AI analysis did not return a response': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
   'AI analysis did not return valid feature pricing': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
 
@@ -124,8 +122,21 @@ const MESSAGES = {
   // 리뷰
   'You have already reviewed this contract': '이미 리뷰를 작성한 계약입니다.',
   'Reviews can only be written after project completion': '계약이 완료된 뒤에 리뷰를 작성할 수 있습니다.',
-  'Rating must be between 1 and 5': '별점은 1점에서 5점 사이로 선택해 주세요.',
   'Invalid reviewee': '리뷰 대상이 올바르지 않습니다.',
+
+  // 요청 검증(zod) — 회원가입·로그인·역할 선택, 내 정보 수정, 리뷰 작성
+  // (workbridge-server/src/schemas/auth.ts, users.ts, reviews.ts). 형식이 틀린 값은 PATTERNS의 같은 묶음.
+  'Email is required': '이메일을 입력해 주세요.',
+  'Password is required': '비밀번호를 입력해 주세요.',
+  'Name is required': '이름을 입력해 주세요.',
+  'Experience years must be a non-negative integer': '경력은 0 이상의 정수(년 단위)로 입력해 주세요.',
+  'Hourly rate must be a number': '시간당 단가는 숫자로 입력해 주세요.',
+  'Contract ID is required': '리뷰할 계약 정보가 없습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'Reviewee ID is required': '리뷰 대상 정보가 없습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'Rating is required': '별점을 선택해 주세요.',
+  'Rating must be an integer between 1 and 5': '별점은 1점에서 5점 사이로 선택해 주세요.',
+  'Content is required': '리뷰 내용을 입력해 주세요.',
+  'Tags must be strings': '태그를 다시 선택해 주세요.',
 
   // 정산·지급 계좌
   'Settlement not found': '정산 내역을 찾을 수 없습니다.',
@@ -194,6 +205,11 @@ const PATTERNS = [
   [/must be a valid date$/, '날짜를 다시 선택해 주세요.'],
   [/must be a (positive integer|non-negative number)$/, '숫자를 올바르게 입력해 주세요.'],
   [/Message not found in this conversation$/, '메시지를 찾을 수 없습니다. 새로고침해 주세요.'],
+  // 요청 검증(zod) — 회원가입·로그인, 내 정보 수정, 리뷰 작성의 형식이 틀린 값
+  [
+    /^(Email|Password|Name|Bio|Company name|Business field|Website|Activity category|Portfolio URL|Contract ID|Reviewee ID|Content) must be a string$/,
+    '입력 형식이 올바르지 않습니다. 다시 확인해 주세요.',
+  ],
 ];
 
 function applyPattern(patterns, text) {
