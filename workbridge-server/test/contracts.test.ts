@@ -13,15 +13,14 @@ import {
 } from './helpers/factories';
 
 /**
- * Contracts — `/api/contracts`. Oracle: `docs/BEHAVIOR.md` § Contracts, plus the cross-cutting
- * rules on the error envelope (1), authentication (2), authorization (3) and atomicity (6).
+ * Contracts — `/api/contracts`, plus the error envelope, authentication, authorization and
+ * atomicity as they apply to these routes.
  *
- * No divergences are assigned to this unit: every test asserts intended behavior and is expected
- * to pass. Two tests pin still-undecided behavior instead — `(Q5)` on the project going straight
- * from `CLOSED` to `COMPLETED`, and `(Q9)` on both parties' email addresses being returned.
+ * A few tests pin still-undecided behavior rather than a decision — notably both parties' email
+ * addresses being returned on the contract responses.
  */
 
-/** The system events posted so far, oldest first (BEHAVIOR.md MG6). */
+/** The system events posted so far, oldest first. */
 async function systemEvents(conversationId: string) {
   const messages = await prisma.message.findMany({
     where: { conversationId, kind: 'SYSTEM' },
@@ -30,7 +29,7 @@ async function systemEvents(conversationId: string) {
   return messages.map((m) => m.systemEvent);
 }
 
-/** Every error body is exactly `{ error: { message } }` — cross-cutting rule 1. */
+/** Every error body is exactly `{ error: { message } }`. */
 function expectErrorEnvelope(body: unknown, message?: string) {
   expect(body).toEqual({ error: { message: message ?? expect.any(String) } });
 }
@@ -52,8 +51,8 @@ type TxReader = {
 };
 
 /**
- * Forces one step of an interactive `prisma.$transaction` to reject, so atomicity (cross-cutting
- * rule 6) can be tested for real rather than inferred from the happy path.
+ * Forces one step of an interactive `prisma.$transaction` to reject, so atomicity can be tested
+ * for real rather than inferred from the happy path.
  *
  * Mocked at the prisma-client boundary — `src/` is untouched. Note that spying on
  * `prisma.contract.update` would *not* work: Prisma hands the callback its own transaction
@@ -150,7 +149,7 @@ describe('GET /api/contracts/:id', () => {
     });
   });
 
-  it('includes the project, both parties and the milestones with their payments [CT5] [C4]', async () => {
+  it('includes the project, both parties and the milestones with their payments', async () => {
     const { client, freelancer, project, contract, milestone } = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
       milestone: { status: 'SUBMITTED', amount: 3_000_000 },
@@ -183,7 +182,7 @@ describe('GET /api/contracts/:id', () => {
     expect(res.body.milestones[1]).toMatchObject({ payment: null, latestSubmission: null });
   });
 
-  it('reports the milestone summary, and empty reviews, for a fresh contract [CT6]', async () => {
+  it('reports the milestone summary, and empty reviews, for a fresh contract', async () => {
     const { client, contract } = await makeContractScenario();
 
     const res = await authed(client).get(`/api/contracts/${contract.id}`);
@@ -199,7 +198,7 @@ describe('GET /api/contracts/:id', () => {
     expect(res.body.reviews).toEqual([]);
   });
 
-  it('counts funded and approved milestones in the summary; contractAmount is whole won [CT6] [M7]', async () => {
+  it('counts funded and approved milestones in the summary; contractAmount is whole won', async () => {
     const { client, contract, milestone } = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true, amount: 4_000_000.5 },
       milestone: { status: 'APPROVED', amount: 1_000_000 },
@@ -254,13 +253,14 @@ describe('GET /api/contracts/:id', () => {
   });
 
   /**
-   * Q9 is still open, so this pins what happens today rather than asserting a decision:
+   * Whether contract responses should expose email addresses is an open product question, so
+   * this pins what happens today rather than asserting a decision:
    * `contractInclude` selects `email` for both the client and the freelancer, so either party
    * sees the other's address. Every other endpoint withholds it — the public profile below is the
    * contrast. Deliberate (counterparties to a signed contract) or an oversight is the open
    * question; this test exists so whoever decides it can find the behavior and the blast radius.
    */
-  it("returns both parties' email addresses to either party (Q9)", async () => {
+  it("returns both parties' email addresses to either party", async () => {
     const { client, freelancer, contract } = await makeContractScenario();
 
     const clientView = await authed(client).get(`/api/contracts/${contract.id}`);
@@ -376,7 +376,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(after.status).toBe('ACTIVE');
   });
 
-  it('returns the full contract with its relations on activation [CT5] [C4]', async () => {
+  it('returns the full contract with its relations on activation', async () => {
     const { client, freelancer, project, contract, milestone } = await makeContractScenario();
 
     await authed(client).post(`/api/contracts/${contract.id}/sign`);
@@ -409,7 +409,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(after.status).toBe('ACTIVE');
   });
 
-  it('refuses to sign a COMPLETED contract and preserves its status [D2 fixed] [CT10]', async () => {
+  it('refuses to sign a COMPLETED contract and preserves its status', async () => {
     const { client, contract } = await makeContractScenario({
       contract: { status: 'COMPLETED', clientSigned: true, freelancerSigned: true },
     });
@@ -422,7 +422,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(after.status).toBe('COMPLETED');
   });
 
-  it('refuses to sign a COMPLETED contract for the freelancer too [D2 fixed] [CT10]', async () => {
+  it('refuses to sign a COMPLETED contract for the freelancer too', async () => {
     const { freelancer, contract } = await makeContractScenario({
       contract: { status: 'COMPLETED', clientSigned: true, freelancerSigned: true },
     });
@@ -445,8 +445,8 @@ describe('POST /api/contracts/:id/sign', () => {
    * compiles to a single `UPDATE … RETURNING`, so the second signer's update blocks until the
    * first signer's transaction commits and then re-reads the committed row — seeing the first
    * signature. Exactly one signer therefore observes both flags set while the status is still
-   * PENDING, and only that one activates. See the "Correction on D2" note in BEHAVIOR.md: a probe
-   * of concurrent sign pairs found zero stuck contracts even *before* the transaction was added.
+   * PENDING, and only that one activates. A probe of concurrent sign pairs found zero stuck
+   * contracts even *before* the transaction was added.
    * The transaction earns its place by closing the crash window between the two statements — see
    * the forced-failure test below, which is the one that actually exercises it.
    *
@@ -478,7 +478,7 @@ describe('POST /api/contracts/:id/sign', () => {
   });
 
   /**
-   * Atomicity (cross-cutting rule 6) — the reason `signContract` wraps the signature write and
+   * Atomicity — the reason `signContract` wraps the signature write and
    * the activation in one transaction. The second party's request performs two
    * `tx.contract.update` calls: the signature, then the activation. Failing the activation must
    * roll the signature back too.
@@ -544,11 +544,11 @@ describe('POST /api/contracts/:id/sign', () => {
   });
 
   /**
-   * Q9, continued: `POST /:id/sign` returns the same `contractInclude` as `GET /:id`, so the
-   * email exposure is not confined to one endpoint. Recorded here
-   * so a decision on Q9 covers every response shape rather than only the one it was raised about.
+   * The same email exposure, continued: `POST /:id/sign` returns the same `contractInclude` as
+   * `GET /:id`, so it is not confined to one endpoint. Recorded here so a decision on it covers
+   * every response shape rather than only the one it was raised about.
    */
-  it("exposes both parties' email addresses on the sign response too (Q9)", async () => {
+  it("exposes both parties' email addresses on the sign response too", async () => {
     const { client, freelancer, contract } = await makeContractScenario();
 
     const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
@@ -558,7 +558,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(res.body.freelancer.email).toBe(freelancer.email);
   });
 
-  it('refuses to sign a PENDING contract whose plan does not add up, recording no signature [CT7] [C5]', async () => {
+  it('refuses to sign a PENDING contract whose plan does not add up, recording no signature', async () => {
     const { client, contract, milestone } = await makeContractScenario();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { amount: 3_999_999 } });
 
@@ -573,7 +573,7 @@ describe('POST /api/contracts/:id/sign', () => {
   it.each([
     ['no milestones at all', async (contractId: string) => prisma.milestone.deleteMany({ where: { contractId } })],
     ['a milestone that is not PENDING', async (contractId: string) => prisma.milestone.updateMany({ where: { contractId }, data: { status: 'FUNDED' } })],
-  ])('refuses to sign with %s [CT7]', async (_label, corrupt) => {
+  ])('refuses to sign with %s', async (_label, corrupt) => {
     const { freelancer, contract } = await makeContractScenario();
     await corrupt(contract.id);
 
@@ -583,7 +583,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expectErrorEnvelope(res.body, 'Cannot sign a contract without a valid milestone plan');
   });
 
-  it('accepts a plan that adds up to the rounded contract amount [CT7] [M7]', async () => {
+  it('accepts a plan that adds up to the rounded contract amount', async () => {
     const { client, contract } = await makeContractScenario({ contract: { amount: 2_500_000.5 } });
     // The factory's default milestone is Math.round(amount) = 2,500,001.
 
@@ -593,7 +593,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(res.body.clientSigned).toBe(true);
   });
 
-  it('does not re-check the plan of an ACTIVE contract: re-signing stays idempotent [CT7]', async () => {
+  it('does not re-check the plan of an ACTIVE contract: re-signing stays idempotent', async () => {
     const { client, contract } = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
       milestone: { status: 'FUNDED' },
@@ -605,7 +605,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(res.body.status).toBe('ACTIVE');
   });
 
-  it('notifies each party once with CONTRACT_ACTIVATED on activation [CT8] [C5]', async () => {
+  it('notifies each party once with CONTRACT_ACTIVATED on activation', async () => {
     const { client, freelancer, contract } = await makeContractScenario();
 
     await authed(client).post(`/api/contracts/${contract.id}/sign`);
@@ -618,7 +618,7 @@ describe('POST /api/contracts/:id/sign', () => {
     for (const n of notifications) expect(n.href).toBe(`/contracts/${contract.id}`);
   });
 
-  it('skips the activation notice for a soft-deleted party (rule 5) [CT8]', async () => {
+  it('skips the activation notice for a soft-deleted party', async () => {
     const { client, freelancer, contract } = await makeContractScenario();
     await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
     await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
@@ -629,7 +629,7 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(notifications.map((n) => n.userId)).toEqual([client.id]);
   });
 
-  it('creates exactly two activation notices when both parties sign concurrently [CT9]', async () => {
+  it('creates exactly two activation notices when both parties sign concurrently', async () => {
     for (let iteration = 0; iteration < 5; iteration += 1) {
       const { client, freelancer, contract } = await makeContractScenario();
 
@@ -647,7 +647,7 @@ describe('POST /api/contracts/:id/sign', () => {
 });
 
 describe('POST /api/contracts/:id/sign — system message', () => {
-  it('posts CONTRACT_ACTIVATED once, from the activating signature only [MG6] [CT8]', async () => {
+  it('posts CONTRACT_ACTIVATED once, from the activating signature only', async () => {
     const { client, freelancer, contract, conversation } = await makeContractScenario();
 
     await authed(client).post(`/api/contracts/${contract.id}/sign`);
@@ -662,7 +662,7 @@ describe('POST /api/contracts/:id/sign — system message', () => {
     expect(stored.lastMessageAt?.getTime()).toBe(message.createdAt.getTime());
   });
 
-  it('posts exactly one CONTRACT_ACTIVATED when both parties sign concurrently [MG6] [CT9]', async () => {
+  it('posts exactly one CONTRACT_ACTIVATED when both parties sign concurrently', async () => {
     for (let iteration = 0; iteration < 5; iteration += 1) {
       const { client, freelancer, contract, conversation } = await makeContractScenario();
 
@@ -675,7 +675,7 @@ describe('POST /api/contracts/:id/sign — system message', () => {
     }
   });
 
-  it('posts nothing when the signature is refused [MG6] [CT7]', async () => {
+  it('posts nothing when the signature is refused', async () => {
     const { client, contract, conversation, milestone } = await makeContractScenario();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { amount: 1 } });
 
@@ -685,7 +685,7 @@ describe('POST /api/contracts/:id/sign — system message', () => {
     expect(await systemEvents(conversation.id)).toEqual([]);
   });
 
-  it('still activates a contract that has no conversation, posting nothing and never failing [MG7]', async () => {
+  it('still activates a contract that has no conversation, posting nothing and never failing', async () => {
     const { client, freelancer, contract, conversation } = await makeContractScenario();
     await prisma.conversationParticipant.deleteMany({ where: { conversationId: conversation.id } });
     await prisma.conversation.delete({ where: { id: conversation.id } });
@@ -703,7 +703,7 @@ describe('POST /api/contracts/:id/sign — system message', () => {
 describe('PATCH /api/contracts/:id', () => {
   const GONE = 'Contracts are completed automatically when every milestone is approved';
 
-  it('is 410 for the client of an ACTIVE, fully paid contract, and writes nothing [CT11] [C3]', async () => {
+  it('is 410 for the client of an ACTIVE, fully paid contract, and writes nothing', async () => {
     const { client, contract, milestone, project } = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
       milestone: { status: 'FUNDED' },
@@ -723,7 +723,7 @@ describe('PATCH /api/contracts/:id', () => {
   it.each([
     ['an empty body', {}],
     ['an invalid status', { status: 'BOGUS' }],
-  ])('is 410 whatever the body — %s [CT11]', async (_label, payload) => {
+  ])('is 410 whatever the body — %s', async (_label, payload) => {
     const { client, contract } = await makeContractScenario();
 
     const res = await authed(client).patch(`/api/contracts/${contract.id}`).send(payload);
@@ -732,7 +732,7 @@ describe('PATCH /api/contracts/:id', () => {
     expectErrorEnvelope(res.body, GONE);
   });
 
-  it('is 410 for a contract that does not exist and for a third party [CT11]', async () => {
+  it('is 410 for a contract that does not exist and for a third party', async () => {
     const { contract } = await makeContractScenario();
     const outsider = await makeClient();
 
@@ -744,7 +744,7 @@ describe('PATCH /api/contracts/:id', () => {
     expect([missing.status, foreign.status]).toEqual([410, 410]);
   });
 
-  it('still requires a token: 401 without one [CT11]', async () => {
+  it('still requires a token: 401 without one', async () => {
     const { contract } = await makeContractScenario();
 
     const res = await api().patch(`/api/contracts/${contract.id}`).send({ status: 'COMPLETED' });
@@ -754,7 +754,7 @@ describe('PATCH /api/contracts/:id', () => {
 });
 
 describe('GET /api/contracts (list)', () => {
-  it("lists the caller's contracts on either side, newest first, with counterpart and summary [CT1] [CT3]", async () => {
+  it("lists the caller's contracts on either side, newest first, with counterpart and summary", async () => {
     const asClient = await makeContractScenario({ contract: { createdAt: new Date('2026-01-01T00:00:00Z') } });
     const freelancer = asClient.freelancer;
     const other = await makeContractScenario({ contract: { createdAt: new Date('2026-02-01T00:00:00Z') } });
@@ -784,7 +784,7 @@ describe('GET /api/contracts (list)', () => {
     });
   });
 
-  it('orders newest first and paginates [CT1] [CT2]', async () => {
+  it('orders newest first and paginates', async () => {
     const first = await makeContractScenario({ contract: { createdAt: new Date('2026-01-01T00:00:00Z') } });
     const client = first.client;
     const ids: string[] = [first.contract.id];
@@ -802,7 +802,7 @@ describe('GET /api/contracts (list)', () => {
     expect(page2.body.contracts.map((c: { id: string }) => c.id)).toEqual([ids[0]]);
   });
 
-  it('filters by status and caps limit at 50 [CT2]', async () => {
+  it('filters by status and caps limit at 50', async () => {
     const pending = await makeContractScenario();
     const active = await makeContractScenario({ contract: { status: 'ACTIVE' } });
     await prisma.contract.update({ where: { id: active.contract.id }, data: { clientId: pending.client.id } });
@@ -823,7 +823,7 @@ describe('GET /api/contracts (list)', () => {
     ['a repeated parameter', '?limit=1&limit=2'],
     ['a page above 1,000,000', '?page=1000001'],
     ['a page that would overflow skip', '?page=999999999999999999'],
-  ])('rejects %s with 400 [CT2]', async (_label, query) => {
+  ])('rejects %s with 400', async (_label, query) => {
     const { client } = await makeContractScenario();
 
     const res = await authed(client).get(`/api/contracts${query}`);
@@ -832,7 +832,7 @@ describe('GET /api/contracts (list)', () => {
     expectErrorEnvelope(res.body);
   });
 
-  it('accepts page 1,000,000 (the bound) with an empty page of results [CT2]', async () => {
+  it('accepts page 1,000,000 (the bound) with an empty page of results', async () => {
     const { client } = await makeContractScenario();
 
     const res = await authed(client).get('/api/contracts?page=1000000&limit=50');
@@ -841,7 +841,7 @@ describe('GET /api/contracts (list)', () => {
     expect(res.body.contracts).toEqual([]);
   });
 
-  it('treats empty values as absent [CT2]', async () => {
+  it('treats empty values as absent', async () => {
     const { client } = await makeContractScenario();
 
     const res = await authed(client).get('/api/contracts?status=&page=&limit=');
@@ -850,7 +850,7 @@ describe('GET /api/contracts (list)', () => {
     expect(res.body.meta).toMatchObject({ page: 1, limit: 20 });
   });
 
-  it("leaves out contracts whose project is soft-deleted [CT1]", async () => {
+  it("leaves out contracts whose project is soft-deleted", async () => {
     const { client, project } = await makeContractScenario();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 
@@ -860,7 +860,7 @@ describe('GET /api/contracts (list)', () => {
     expect(res.body.meta.total).toBe(0);
   });
 
-  it('carries unreadMessageCount for the caller on each entry [MG19] [MG8]', async () => {
+  it('carries unreadMessageCount for the caller on each entry', async () => {
     const busy = await makeContractScenario({ contract: { createdAt: new Date('2026-01-01T00:00:00Z') } });
     const quiet = await makeContractScenario({
       contract: { clientId: busy.client.id, createdAt: new Date('2026-02-01T00:00:00Z') },
@@ -881,7 +881,7 @@ describe('GET /api/contracts (list)', () => {
     expect(asFreelancer.body.contracts[0]).toMatchObject({ id: busy.contract.id, unreadMessageCount: 1 });
   });
 
-  it('shows a soft-deleted counterpart as stored (Q11) [CT3]', async () => {
+  it('shows a soft-deleted counterpart as stored', async () => {
     const { client, freelancer } = await makeContractScenario();
     await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
 

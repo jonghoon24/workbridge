@@ -8,7 +8,7 @@ import { validate } from '../src/middlewares/validate';
 import { queryEnum, queryInt, queryString } from '../src/schemas/common';
 
 /**
- * zod validation for expansion routes — BEHAVIOR.md rule 12. Exercised on a small app so the
+ * zod validation for expansion routes. Exercised on a small app so the
  * conventions are pinned before any expansion route exists.
  */
 
@@ -83,7 +83,7 @@ describe('validate()', () => {
   });
 });
 
-describe('query conventions (rule 12)', () => {
+describe('query conventions', () => {
   it('treats an empty value as absent', async () => {
     const res = await post('?page=&cursor=&status=&q=');
 

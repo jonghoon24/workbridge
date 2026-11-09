@@ -5,7 +5,7 @@ import { makeClient } from './helpers/factories';
 import { fundableMilestone, withFailingPaymentInsert } from './helpers/faults';
 
 /**
- * Request ids and access logging — BEHAVIOR.md rule 9 (and rule 1's logging half, [C7]).
+ * Request ids and access logging, including the rule that only a 500 is logged at error level.
  */
 
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -105,7 +105,7 @@ describe('access log', () => {
     expect(lines[0]).not.toHaveProperty('userId');
   });
 
-  it('logs the client IP of rule 10 — the proxied browser address when the proxy secret matches', async () => {
+  it('logs the proxied browser address as the client IP when the proxy secret matches', async () => {
     process.env.PROXY_SHARED_SECRET = 'proxy-secret-for-tests';
     try {
       const { out } = await captureLogs('info', () => api().get('/health')
@@ -125,14 +125,14 @@ describe('access log', () => {
     expect(out.find((line) => line.msg === 'request')).toMatchObject({ status: 200, userId: client.id });
   });
 
-  it('logs a 4xx at info only [C7]', async () => {
+  it('logs a 4xx at info only', async () => {
     const { out, err } = await captureLogs('info', () => api().get('/api/projects/missing-project-id'));
 
     expect(err).toEqual([]);
     expect(out.find((line) => line.msg === 'request')).toMatchObject({ level: 'info', status: 404 });
   });
 
-  it('a 500 is access-logged at info and error-logged exactly once by errorHandler [C7]', async () => {
+  it('a 500 is access-logged at info and error-logged exactly once by errorHandler', async () => {
     const { client, milestone } = await fundableMilestone();
 
     // The suite's standing 500 vector (`helpers/faults.ts`): a payment insert failing at the database.
@@ -162,7 +162,7 @@ describe('access log', () => {
 });
 
 describe('CORS', () => {
-  it('answers a disallowed Origin without CORS headers — not a 500, no error log [C7]', async () => {
+  it('answers a disallowed Origin without CORS headers — not a 500, no error log', async () => {
     const { result: res, err } = await captureLogs('info', () =>
       api().get('/health').set('Origin', 'https://evil.example'));
 

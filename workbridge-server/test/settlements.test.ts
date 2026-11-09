@@ -13,11 +13,12 @@ import { DAY_MS, HOUR_MS, nextKstWeekday } from '../src/lib/time';
 import { runPayout, runWeeklyBatch, weeklyBatchDedupeKey } from '../src/services/settlements.service';
 
 /**
- * Weekly settlements and payouts — BEHAVIOR.md S1–S17, M3–M5, M19–M22, J6, J7. Time is driven
- * with `runDueJobs({ now })` at fixed instants.
+ * Weekly settlements and payouts — the batch and payout jobs, fee arithmetic, the KST weekly
+ * calendar and the read endpoints. Product rules: `docs/domain/milestones-payments.md`. Time is
+ * driven with `runDueJobs({ now })` at fixed instants.
  */
 
-// The worked calendar example of BEHAVIOR.md M19/M20.
+// A worked calendar example: one KST week, its Monday 03:00 batch and Wednesday 10:00 payout.
 const PERIOD_START = new Date('2026-10-18T15:00:00.000Z'); // Mon 2026-10-19 00:00 KST
 const PERIOD_END = new Date('2026-10-25T15:00:00.000Z'); // Mon 2026-10-26 00:00 KST
 const BATCH_AT = new Date('2026-10-25T18:00:00.000Z'); // Mon 2026-10-26 03:00 KST
@@ -29,7 +30,7 @@ afterEach(() => {
   process.env.JOB_PAYOUT_ENABLED = 'true';
 });
 
-/** An approved milestone of `freelancer` and its settlement item, as an approval would leave it (S3). */
+/** An approved milestone of `freelancer` and its settlement item, as an approval would leave it. */
 async function approvedItem(freelancer: User | null, approvedAt: Date, gross = 1_000_000) {
   const scenario = await makeContractScenario({
     contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true, ...(freelancer ? { freelancerId: freelancer.id } : {}) },
@@ -82,8 +83,8 @@ function failingProvider(times = Infinity): PayoutProvider {
 // Weekly batch
 // ---------------------------------------------------------------------------------------------
 
-describe('settlement.weeklyBatch (S4–S6, J6)', () => {
-  it("settles the slot's week per freelancer: SCHEDULED, item sums, payout Wednesday 10:00 KST [S4] [M5] [M19]", async () => {
+describe('settlement.weeklyBatch', () => {
+  it("settles the slot's week per freelancer: SCHEDULED, item sums, payout Wednesday 10:00 KST", async () => {
     const freelancer = await makeFreelancer();
     await approvedItem(freelancer, TUESDAY, 15_005);
     await approvedItem(freelancer, new Date(PERIOD_END.getTime() - 1), 15_005);
@@ -120,7 +121,7 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
     expect(payout.runAt.toISOString()).toBe(PAYOUT_AT.toISOString());
   });
 
-  it('leaves out an item approved exactly at periodEnd, and catches up older unsettled items [M20]', async () => {
+  it('leaves out an item approved exactly at periodEnd, and catches up older unsettled items', async () => {
     const freelancer = await makeFreelancer();
     const old = await approvedItem(freelancer, new Date('2026-09-01T00:00:00.000Z'));
     const boundary = await approvedItem(freelancer, PERIOD_END);
@@ -132,7 +133,7 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
     expect((await prisma.settlementItem.findUniqueOrThrow({ where: { id: boundary.item.id } })).settlementId).toBeNull();
   });
 
-  it('creates one settlement per freelancer and none for a freelancer without items [S4]', async () => {
+  it('creates one settlement per freelancer and none for a freelancer without items', async () => {
     const a = await makeFreelancer();
     const b = await makeFreelancer();
     await makeFreelancer();
@@ -144,7 +145,7 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
     expect((await prisma.settlement.findMany()).map((s) => s.freelancerId).sort()).toEqual([a.id, b.id].sort());
   });
 
-  it('a retried batch settles its own week, never the one its new runAt falls in [S4] [J6]', async () => {
+  it('a retried batch settles its own week, never the one its new runAt falls in', async () => {
     const freelancer = await makeFreelancer();
     await approvedItem(freelancer, TUESDAY);
     const nextWeek = await approvedItem(freelancer, new Date(PERIOD_END.getTime() + DAY_MS));
@@ -165,7 +166,7 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
     expect((await prisma.settlement.findFirstOrThrow()).status).toBe('ON_HOLD');
   });
 
-  it('is idempotent: a re-run adds new items to a SCHEDULED settlement without a second notice [S5]', async () => {
+  it('is idempotent: a re-run adds new items to a SCHEDULED settlement without a second notice', async () => {
     const freelancer = await makeFreelancer();
     await approvedItem(freelancer, TUESDAY, 1_000_000);
     await runWeeklyBatch(PERIOD_START, BATCH_AT);
@@ -181,7 +182,7 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
     expect(await prisma.job.count({ where: { type: 'settlement.payout' } })).toBe(1);
   });
 
-  it('leaves new items unsettled when that week’s settlement has moved on [S5]', async () => {
+  it('leaves new items unsettled when that week’s settlement has moved on', async () => {
     const freelancer = await makeFreelancer();
     const first = await scheduled(freelancer);
     await prisma.settlement.update({ where: { id: first.id }, data: { status: 'PAID' } });
@@ -193,7 +194,7 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
     expect((await prisma.settlement.findUniqueOrThrow({ where: { id: first.id } })).itemCount).toBe(1);
   });
 
-  it("isolates one freelancer's failure and retries the job; the retry settles the rest [S6]", async () => {
+  it("isolates one freelancer's failure and retries the job; the retry settles the rest", async () => {
     const ok = await makeFreelancer();
     const broken = await makeFreelancer();
     await approvedItem(ok, TUESDAY);
@@ -218,7 +219,7 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
     expect(await prisma.notification.count({ where: { type: 'SETTLEMENT_SCHEDULED', userId: ok.id } })).toBe(1);
   });
 
-  it('settles a soft-deleted freelancer without notifying them [S6] [J6]', async () => {
+  it('settles a soft-deleted freelancer without notifying them', async () => {
     const freelancer = await makeFreelancer();
     await approvedItem(freelancer, TUESDAY);
     await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
@@ -229,7 +230,7 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
     expect(await prisma.notification.count()).toBe(0);
   });
 
-  it('ignores project soft-deletion [S2]', async () => {
+  it('ignores project soft-deletion', async () => {
     const freelancer = await makeFreelancer();
     const { project } = await approvedItem(freelancer, TUESDAY);
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
@@ -244,9 +245,9 @@ describe('settlement.weeklyBatch (S4–S6, J6)', () => {
 // Payout
 // ---------------------------------------------------------------------------------------------
 
-describe('settlement.payout behind JOB_PAYOUT_ENABLED (J10)', () => {
+describe('settlement.payout behind JOB_PAYOUT_ENABLED', () => {
   it.each([['unset', undefined], ['false', 'false'], ['anything but true', '1']])(
-    'with the flag %s, a due payout is held PENDING: not claimed, not counted, no transfer [J10]',
+    'with the flag %s, a due payout is held PENDING: not claimed, not counted, no transfer',
     async (_label, value) => {
       if (value === undefined) delete process.env.JOB_PAYOUT_ENABLED;
       else process.env.JOB_PAYOUT_ENABLED = value;
@@ -267,7 +268,7 @@ describe('settlement.payout behind JOB_PAYOUT_ENABLED (J10)', () => {
     },
   );
 
-  it('other due jobs still run while payouts are held [J10]', async () => {
+  it('other due jobs still run while payouts are held', async () => {
     process.env.JOB_PAYOUT_ENABLED = 'false';
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
@@ -281,7 +282,7 @@ describe('settlement.payout behind JOB_PAYOUT_ENABLED (J10)', () => {
     expect((await jobsOf('settlement.payout'))[0].status).toBe('PENDING');
   });
 
-  it('turning the flag on pays the held payout on the next pass [J10]', async () => {
+  it('turning the flag on pays the held payout on the next pass', async () => {
     process.env.JOB_PAYOUT_ENABLED = 'false';
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
@@ -300,8 +301,8 @@ describe('settlement.payout behind JOB_PAYOUT_ENABLED (J10)', () => {
   });
 });
 
-describe('settlement.payout (S7–S12, J7)', () => {
-  it('pays to the account on file: PROCESSING snapshot, then PAID with a reference [S9] [S10]', async () => {
+describe('settlement.payout', () => {
+  it('pays to the account on file: PROCESSING snapshot, then PAID with a reference', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer, { bankCode: '090', accountNumber: '3333012345678' });
     const settlement = await scheduled(freelancer);
@@ -323,7 +324,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect(notices).toMatchObject([{ userId: freelancer.id, href: `/settlements/${settlement.id}` }]);
   });
 
-  it('does nothing before the payout date [S7]', async () => {
+  it('does nothing before the payout date', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer);
@@ -333,7 +334,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).status).toBe('SCHEDULED');
   });
 
-  it('holds a settlement without a payout account: ON_HOLD, attempts unchanged, notified [S8]', async () => {
+  it('holds a settlement without a payout account: ON_HOLD, attempts unchanged, notified', async () => {
     const freelancer = await makeFreelancer();
     const settlement = await scheduled(freelancer);
 
@@ -347,7 +348,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect(notices).toMatchObject([{ userId: freelancer.id, href: '/settlements/account' }]);
   });
 
-  it('holds a soft-deleted freelancer even with an account, without notifying [S8] [J7]', async () => {
+  it('holds a soft-deleted freelancer even with an account, without notifying', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer);
@@ -359,7 +360,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect(await prisma.notification.count({ where: { type: { startsWith: 'SETTLEMENT_' } } })).toBe(1); // only SCHEDULED, before deletion
   });
 
-  it('retries a failed transfer every 24 h, three attempts in all, then fails for good [S11] [M22]', async () => {
+  it('retries a failed transfer every 24 h, three attempts in all, then fails for good', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer);
@@ -388,7 +389,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).payoutAttempts).toBe(3);
   });
 
-  it('a retry that succeeds pays the settlement [S11] [S10]', async () => {
+  it('a retry that succeeds pays the settlement', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer);
@@ -405,7 +406,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     });
   });
 
-  it('a retry finding the account deleted puts the settlement ON_HOLD [S8] [S1]', async () => {
+  it('a retry finding the account deleted puts the settlement ON_HOLD', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer);
@@ -421,7 +422,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     });
   });
 
-  it('a superseded job (its scheduledPayoutAt no longer matches) is a no-op [S7]', async () => {
+  it('a superseded job (its scheduledPayoutAt no longer matches) is a no-op', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer);
@@ -434,7 +435,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect(job.status).toBe('SUCCEEDED');
   });
 
-  it('a settlement stuck in PROCESSING is never retried automatically [S12]', async () => {
+  it('a settlement stuck in PROCESSING is never retried automatically', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer);
@@ -448,7 +449,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).status).toBe('PROCESSING');
   });
 
-  it('pays however small the settlement is: no minimum payout [M21]', async () => {
+  it('pays however small the settlement is: no minimum payout', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer, 9);
@@ -460,12 +461,12 @@ describe('settlement.payout (S7–S12, J7)', () => {
   });
 
   /**
-   * S17/PA7: the payout decision and an account deletion serialize on the freelancer's user row.
+   * The payout decision and an account deletion serialize on the freelancer's user row.
    * With a slow transfer, only these outcomes are possible: the deletion commits first and the
    * payout holds; or the payout reaches PROCESSING first, the deletion is refused (409) and the
    * transfer completes; or the whole payout finished before the deletion started.
    */
-  it('a payout racing an account deletion ends in a consistent state [S17] [PA7]', async () => {
+  it('a payout racing an account deletion ends in a consistent state', async () => {
     const outcomes = new Set<string>();
     for (let iteration = 0; iteration < 10; iteration += 1) {
       const freelancer = await makeFreelancer();
@@ -499,14 +500,14 @@ describe('settlement.payout (S7–S12, J7)', () => {
   });
 
   /**
-   * S17/PA7, deterministically: an account created while the payout decides must never leave the
+   * The same, deterministically: an account created while the payout decides must never leave the
    * settlement ON_HOLD. The test holds the settlement row so the payout stops after reading "no
    * account" and before writing ON_HOLD, then fires the PUT. With the user-row lock the PUT waits
-   * for the payout, sees ON_HOLD and reschedules it (PA4). Without it the PUT commits in the gap,
+   * for the payout, sees ON_HOLD and reschedules it. Without it the PUT commits in the gap,
    * finds nothing ON_HOLD to reschedule, and the payout then holds a settlement whose freelancer
    * has an account.
    */
-  it('an account created mid-decision is never left behind an ON_HOLD settlement [S17] [PA7]', async () => {
+  it('an account created mid-decision is never left behind an ON_HOLD settlement', async () => {
     const freelancer = await makeFreelancer();
     const settlement = await scheduled(freelancer);
     await Promise.all([1, 2, 3].map(() => authed(freelancer).get('/api/users/me/payout-account')));
@@ -555,7 +556,7 @@ describe('settlement.payout (S7–S12, J7)', () => {
     }
   });
 
-  it('transfers the netAmount of the settlement it moved to PROCESSING [S9]', async () => {
+  it('transfers the netAmount of the settlement it moved to PROCESSING', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const settlement = await scheduled(freelancer, 2_000_000);
@@ -573,9 +574,9 @@ describe('settlement.payout (S7–S12, J7)', () => {
     }));
   });
 
-  it('ON_HOLD → register an account → rescheduled → PAID, and still pays after the project is deleted [PA4] [S2]', async () => {
+  it('ON_HOLD → register an account → rescheduled → PAID, and still pays after the project is deleted', async () => {
     // A week in the past, so the payout that put it ON_HOLD ran before the real clock's "now" —
-    // the reschedule is always strictly after now (PA4), as it is in production.
+    // the reschedule is always strictly after now, as it is in production.
     const pastStart = new Date('2020-01-05T15:00:00.000Z'); // Mon 2020-01-06 00:00 KST
     const pastPayout = new Date('2020-01-15T01:00:00.000Z'); // Wed 2020-01-15 10:00 KST
     const freelancer = await makeFreelancer();
@@ -610,8 +611,8 @@ describe('settlement.payout (S7–S12, J7)', () => {
 // Reads
 // ---------------------------------------------------------------------------------------------
 
-describe('GET /api/settlements (S14)', () => {
-  it("lists the caller's settlements newest period first, with status filter and paging [S14] [S13]", async () => {
+describe('GET /api/settlements', () => {
+  it("lists the caller's settlements newest period first, with status filter and paging", async () => {
     const freelancer = await makeFreelancer();
     const older = await scheduled(freelancer);
     await prisma.settlement.update({ where: { id: older.id }, data: { status: 'PAID' } });
@@ -634,12 +635,12 @@ describe('GET /api/settlements (S14)', () => {
     expect(paged.body.settlements.map((s: { id: string }) => s.id)).toEqual([older.id]);
   });
 
-  it.each(['?status=DONE', '?page=0', '?limit=1.5', '?page=999999999999999999'])('400s on %s [S14]', async (query) => {
+  it.each(['?status=DONE', '?page=0', '?limit=1.5', '?page=999999999999999999'])('400s on %s', async (query) => {
     const freelancer = await makeFreelancer();
     expect((await authed(freelancer).get(`/api/settlements${query}`)).status).toBe(400);
   });
 
-  it('is FREELANCER-only [S14]', async () => {
+  it('is FREELANCER-only', async () => {
     const client = await makeClient();
     const res = await authed(client).get('/api/settlements');
     expect(res.status).toBe(403);
@@ -647,7 +648,7 @@ describe('GET /api/settlements (S14)', () => {
   });
 });
 
-describe('GET /api/settlements/summary (S15)', () => {
+describe('GET /api/settlements/summary', () => {
   it('is all zeros for a freelancer with nothing yet', async () => {
     const freelancer = await makeFreelancer();
     const before = new Date();
@@ -667,7 +668,7 @@ describe('GET /api/settlements/summary (S15)', () => {
     expect(res.body.nextBatchAt).toBe(nextKstWeekday(before, 1, 3).toISOString());
   });
 
-  it('puts every settlement in exactly one bucket [S15]', async () => {
+  it('puts every settlement in exactly one bucket', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     const make = async (status: 'SCHEDULED' | 'PROCESSING' | 'PAID' | 'FAILED' | 'ON_HOLD', net: number, weeks: number, attempts = 0) =>
@@ -709,8 +710,8 @@ describe('GET /api/settlements/summary (S15)', () => {
   });
 });
 
-describe('GET /api/settlements/:id (S16)', () => {
-  it('returns the settlement with its items in approval order [S16]', async () => {
+describe('GET /api/settlements/:id', () => {
+  it('returns the settlement with its items in approval order', async () => {
     const freelancer = await makeFreelancer();
     const late = await approvedItem(freelancer, new Date(TUESDAY.getTime() + DAY_MS), 2_000_000);
     const early = await approvedItem(freelancer, TUESDAY, 1_000_000);

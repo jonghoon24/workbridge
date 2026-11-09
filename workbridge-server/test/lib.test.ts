@@ -27,9 +27,8 @@ import { summarizeCareers } from '../src/services/careers.service';
  * `now` (except for the two tests that deliberately exercise the default parameter with
  * dates centuries away from any plausible clock).
  *
- * Oracle: `docs/BEHAVIOR.md` §4 (profile completeness), §7 (lazy lifecycle), §1 (error
- * envelope / `AppError`), and the `skills` normalization rules referenced by
- * `PATCH /api/users/me` and `GET /api/projects`.
+ * Covers profile completeness, the lazy project lifecycle, the error envelope (`AppError`),
+ * and the `skills` normalization rules used by `PATCH /api/users/me` and `GET /api/projects`.
  */
 
 // ---------------------------------------------------------------------------
@@ -41,7 +40,7 @@ import { summarizeCareers } from '../src/services/careers.service';
 type Profile = ProfileCompletionInput;
 type Overrides = Partial<Record<keyof Profile, unknown>>;
 
-/** A CLIENT profile that satisfies §4. Freelancer-only fields are left empty on purpose. */
+/** A complete CLIENT profile. Freelancer-only fields are left empty on purpose. */
 function clientProfile(overrides: Overrides = {}): Profile {
   return {
     role: 'CLIENT',
@@ -55,7 +54,7 @@ function clientProfile(overrides: Overrides = {}): Profile {
   } as Profile;
 }
 
-/** A FREELANCER profile that satisfies §4. Client-only fields are left empty on purpose. */
+/** A complete FREELANCER profile. Client-only fields are left empty on purpose. */
 function freelancerProfile(overrides: Overrides = {}): Profile {
   return {
     role: 'FREELANCER',
@@ -187,9 +186,9 @@ describe('normalizeSkillList', () => {
   });
 
   it('throws on a non-string array element (not specified at this layer)', () => {
-    // Documenting current behavior on an input the spec does not cover: `skill.trim()`
+    // Documenting current behavior on an input no product rule covers: `skill.trim()`
     // assumes strings, so a JSON body like `{ "skills": [1] }` throws a TypeError.
-    // Not asserted as *desirable* — §8 says malformed values should be 400 — but the
+    // Not asserted as *desirable* — malformed values should be a 400 — but the
     // guard belongs to the controller, which is another unit's surface.
     expect(() => normalizeSkillList([1, 2])).toThrow(TypeError);
   });
@@ -262,7 +261,7 @@ describe('expandSkillSearchTerms', () => {
 });
 
 // ---------------------------------------------------------------------------
-// profileCompletion.ts — isProfileComplete (BEHAVIOR.md §4)
+// profileCompletion.ts — isProfileComplete
 // ---------------------------------------------------------------------------
 
 describe('isProfileComplete', () => {
@@ -406,7 +405,7 @@ describe('isProfileComplete', () => {
 });
 
 // ---------------------------------------------------------------------------
-// projectLifecycle.ts — getProjectStatusForRecruitmentStart (BEHAVIOR.md §7)
+// projectLifecycle.ts — getProjectStatusForRecruitmentStart
 // ---------------------------------------------------------------------------
 
 describe('getProjectStatusForRecruitmentStart', () => {
@@ -451,7 +450,7 @@ describe('getProjectStatusForRecruitmentStart', () => {
   it('returns OPEN for an unparseable date (not specified at this layer)', () => {
     // Documenting current behavior: `new Date('nope') > now` is false because every
     // comparison with NaN is false, so garbage silently reads as "already recruiting".
-    // §8 wants malformed values rejected with 400, but that guard belongs to the controller.
+    // Malformed values should be rejected with 400, but that guard belongs to the controller.
     expect(getProjectStatusForRecruitmentStart('not-a-date', now)).toBe('OPEN');
   });
 
@@ -472,7 +471,7 @@ describe('getProjectStatusForRecruitmentStart', () => {
 });
 
 // ---------------------------------------------------------------------------
-// errors.ts — AppError (BEHAVIOR.md §1)
+// errors.ts — AppError
 // ---------------------------------------------------------------------------
 
 describe('AppError', () => {
@@ -528,28 +527,28 @@ describe('AppError', () => {
 });
 
 // ---------------------------------------------------------------------------
-// time.ts — calendar months (BEHAVIOR.md PF2)
+// time.ts — calendar months
 // ---------------------------------------------------------------------------
 
 describe('KST months', () => {
-  it('stores a month as its first instant in KST: 2025-03 → 2025-02-28T15:00:00.000Z [PF2]', () => {
+  it('stores a month as its first instant in KST: 2025-03 → 2025-02-28T15:00:00.000Z', () => {
     expect(kstMonthToDate('2025-03').toISOString()).toBe('2025-02-28T15:00:00.000Z');
     expect(kstMonthToDate('2025-01').toISOString()).toBe('2024-12-31T15:00:00.000Z');
   });
 
-  it('round-trips through kstMonthString [PF2]', () => {
+  it('round-trips through kstMonthString', () => {
     for (const month of ['2020-01', '2024-02', '2025-12']) {
       expect(kstMonthString(kstMonthToDate(month))).toBe(month);
     }
   });
 
-  it('reads the KST month of an instant, not the UTC one [PF2]', () => {
+  it('reads the KST month of an instant, not the UTC one', () => {
     // 2025-03-31T15:00Z is 2025-04-01 00:00 KST.
     expect(kstMonthString(new Date('2025-03-31T15:00:00.000Z'))).toBe('2025-04');
     expect(kstMonthString(new Date('2025-03-31T14:59:59.999Z'))).toBe('2025-03');
   });
 
-  it('accepts only YYYY-MM with years from 1900 and months 01–12 [PF2]', () => {
+  it('accepts only YYYY-MM with years from 1900 and months 01–12', () => {
     for (const ok of ['2025-01', '2025-12', '1999-09', '1900-01']) expect(isKstMonth(ok)).toBe(true);
     for (const bad of ['2025-00', '2025-13', '2025-1', '25-01', '2025-03-01', '2025/03', '', ' 2025-03', '0000-01', '1899-12']) {
       expect(isKstMonth(bad)).toBe(false);
@@ -557,13 +556,13 @@ describe('KST months', () => {
     expect(() => kstMonthToDate('2025-13')).toThrow(RangeError);
   });
 
-  it('indexes months so that differences count months [PF6]', () => {
+  it('indexes months so that differences count months', () => {
     expect(kstMonthIndex('2022-02') - kstMonthIndex('2020-01') + 1).toBe(26);
   });
 });
 
 // ---------------------------------------------------------------------------
-// careers.service.ts — summarizeCareers (BEHAVIOR.md PF6)
+// careers.service.ts — summarizeCareers
 // ---------------------------------------------------------------------------
 
 describe('summarizeCareers', () => {
@@ -573,28 +572,28 @@ describe('summarizeCareers', () => {
   });
   const NOW = new Date('2026-10-21T03:00:00.000Z'); // 2026-10 KST
 
-  it('merges overlapping ranges: 2020-01…2021-06 + 2021-03…2022-02 = 26 months, 2 years 2 months [PF6]', () => {
+  it('merges overlapping ranges: 2020-01…2021-06 + 2021-03…2022-02 = 26 months, 2 years 2 months', () => {
     expect(summarizeCareers([range('2020-01', '2021-06'), range('2021-03', '2022-02')], NOW))
       .toEqual({ totalMonths: 26, years: 2, months: 2 });
   });
 
-  it('counts a single month as 1 and nothing as 0 [PF6]', () => {
+  it('counts a single month as 1 and nothing as 0', () => {
     expect(summarizeCareers([range('2024-05', '2024-05')], NOW)).toEqual({ totalMonths: 1, years: 0, months: 1 });
     expect(summarizeCareers([], NOW)).toEqual({ totalMonths: 0, years: 0, months: 0 });
   });
 
-  it('merges adjacent ranges and keeps gaps out [PF6]', () => {
+  it('merges adjacent ranges and keeps gaps out', () => {
     expect(summarizeCareers([range('2020-01', '2020-06'), range('2020-07', '2020-12')], NOW).totalMonths).toBe(12);
     expect(summarizeCareers([range('2020-01', '2020-06'), range('2020-08', '2020-12')], NOW).totalMonths).toBe(11);
   });
 
-  it('counts a current position through the KST month of now, and a nested range once [PF6]', () => {
+  it('counts a current position through the KST month of now, and a nested range once', () => {
     expect(summarizeCareers([range('2026-01', null)], NOW).totalMonths).toBe(10);
     expect(summarizeCareers([range('2026-01', null), range('2026-03', '2026-04')], NOW).totalMonths).toBe(10);
     expect(summarizeCareers([range('2026-08', null), range('2026-09', null)], NOW).totalMonths).toBe(3);
   });
 
-  it('does not depend on the input order [PF6]', () => {
+  it('does not depend on the input order', () => {
     const ranges = [range('2023-01', '2023-03'), range('2020-01', '2020-02'), range('2022-12', '2023-01')];
     expect(summarizeCareers(ranges, NOW)).toEqual(summarizeCareers([...ranges].reverse(), NOW));
     expect(summarizeCareers(ranges, NOW).totalMonths).toBe(6);
@@ -602,7 +601,7 @@ describe('summarizeCareers', () => {
 });
 
 // ---------------------------------------------------------------------------
-// profileCompletion.ts — getProfileCompletion (BEHAVIOR.md PF21)
+// profileCompletion.ts — getProfileCompletion
 // ---------------------------------------------------------------------------
 
 describe('getProfileCompletion', () => {
@@ -616,7 +615,7 @@ describe('getProfileCompletion', () => {
     ...extra,
   });
 
-  it('weights each role\'s checklist to 100 [PF21]', () => {
+  it('weights each role\'s checklist to 100', () => {
     const freelancer = getProfileCompletion(scoreInput(freelancerProfile(), { bio: 'b', profileImage: 'p' }), ALL);
     const client = getProfileCompletion(scoreInput(clientProfile(), { bio: 'b', profileImage: 'p', website: 'w' }), NONE);
 
@@ -626,7 +625,7 @@ describe('getProfileCompletion', () => {
     expect(client.items.map((item) => item.key)).toEqual(['companyName', 'businessField', 'bio', 'profileImage', 'website']);
   });
 
-  it('keeps isComplete equal to isProfileComplete, independent of percent [PF21]', () => {
+  it('keeps isComplete equal to isProfileComplete, independent of percent', () => {
     const gateOnly = getProfileCompletion(scoreInput(freelancerProfile()), NONE);
     const allButRate = getProfileCompletion(scoreInput(freelancerProfile({ hourlyRate: null }), { bio: 'b', profileImage: 'p' }), ALL);
 
@@ -634,7 +633,7 @@ describe('getProfileCompletion', () => {
     expect(allButRate).toMatchObject({ isComplete: false, percent: 90 });
   });
 
-  it('marks portfolioThree only at three items [PF21]', () => {
+  it('marks portfolioThree only at three items', () => {
     const two = getProfileCompletion(scoreInput(freelancerProfile()), { ...NONE, portfolioItems: 2 });
     const done = Object.fromEntries(two.items.map((item) => [item.key, item.done]));
 
@@ -643,24 +642,24 @@ describe('getProfileCompletion', () => {
 });
 
 // ---------------------------------------------------------------------------
-// recommendations.ts — scoring (BEHAVIOR.md RC1, RC2, RC4, RC7)
+// recommendations.ts — scoring
 // ---------------------------------------------------------------------------
 
 describe('recommendation scoring', () => {
-  it('rounds to two decimals with Math.round(x × 100) / 100 [RC1]', () => {
+  it('rounds to two decimals with Math.round(x × 100) / 100', () => {
     expect(roundScore(69.16666)).toBe(69.17);
     expect(roundScore(66.95652)).toBe(66.96);
     expect(roundScore(12.345)).toBe(12.35);
     expect(roundScore(50)).toBe(50);
   });
 
-  it('matches normalized skills exactly, in the project\'s order [RC2]', () => {
+  it('matches normalized skills exactly, in the project\'s order', () => {
     expect(matchSkills(['SQL', 'React', 'AWS'], ['react', 'PostgreSQL', 'AWS S3'])).toEqual(['SQL', 'AWS']);
     expect(matchSkills(['MySQL', 'PostgreSQL'], ['SQL'])).toEqual(['SQL']);
     expect(matchSkills([], ['React'])).toEqual([]);
   });
 
-  it('scores the RC4 worked example at 69.17 [RC4]', () => {
+  it('scores a freelancer with 2 of 3 skills, the same category, 4 years and a 4.5 rating at 69.17', () => {
     const result = scoreFreelancer(
       { requiredSkills: ['React', 'Node.js', 'SQL'], category: '웹 개발' },
       {
@@ -675,7 +674,7 @@ describe('recommendation scoring', () => {
     expect(result).toEqual({ score: 69.17, matchedSkills: ['React', 'SQL'] });
   });
 
-  it('gives 9 rating points with no reviews, caps experience at 10 years, compares category exactly [RC4]', () => {
+  it('gives 9 rating points with no reviews, caps experience at 10 years, compares category exactly', () => {
     const base = { skills: [], portfolioSkills: [], experienceYears: 25, avgRating: null };
     const project = { requiredSkills: [], category: '웹 개발' };
 
@@ -683,7 +682,7 @@ describe('recommendation scoring', () => {
     expect(scoreFreelancer(project, { ...base, activityCategory: '웹 개발 ' }).score).toBe(9 + 10);
   });
 
-  it('scores the RC7 worked example at 66.96 [RC7]', () => {
+  it('scores a project sharing 1 of 2 skills and the category, 14 days old and due in 10 days, at 66.96', () => {
     const now = new Date('2026-10-21T00:00:00.000Z');
     const result = scoreProject(
       {
@@ -699,7 +698,7 @@ describe('recommendation scoring', () => {
     expect(result).toEqual({ score: 66.96, matchedSkills: ['React'] });
   });
 
-  it('decays freshness linearly from 10 at 7 days to 0 at 30 days [RC7]', () => {
+  it('decays freshness linearly from 10 at 7 days to 0 at 30 days', () => {
     const now = new Date('2026-10-21T00:00:00.000Z');
     const ago = (days: number) => new Date(now.getTime() - days * 86_400_000);
 
@@ -710,7 +709,7 @@ describe('recommendation scoring', () => {
     expect(freshnessPoints(ago(45), now)).toBe(0);
   });
 
-  it('gives deadline room only at 3 × 24 h or more [RC7]', () => {
+  it('gives deadline room only at 3 × 24 h or more', () => {
     const now = new Date('2026-10-21T00:00:00.000Z');
     const project = (ms: number) => ({ requiredSkills: [], category: 'x', createdAt: new Date(now.getTime() - 40 * 86_400_000), deadline: new Date(now.getTime() + ms) });
     const caller = { skills: ['React'], activityCategory: 'y' };
@@ -719,7 +718,7 @@ describe('recommendation scoring', () => {
     expect(scoreProject(project(3 * 86_400_000 - 1), caller, now).score).toBe(0);
   });
 
-  it('sorts deterministically: score, then reviewCount / deadline, then id [RC4] [RC7]', () => {
+  it('sorts deterministically: score, then reviewCount / deadline, then id', () => {
     const freelancers = [
       { id: 'b', score: 50, reviewCount: 0 },
       { id: 'a', score: 50, reviewCount: 0 },

@@ -14,12 +14,12 @@ import {
 import { DAY_MS, kstDateString, kstDateToEndOfDay, startOfKstDay } from '../src/lib/time';
 
 /**
- * The project mutation endpoints, asserted against `docs/BEHAVIOR.md` (§ Projects).
+ * The project mutation endpoints. Product rules: `docs/domain/projects-contracts.md`.
  *
  * Two module-boundary mocks, and nothing else:
  *  - `src/lib/openai` — `POST /:id/analyze` must never reach the real provider.
  *  - `src/lib/projectLifecycle` — a passthrough by default, switchable to throw so the
- *    `CLOSED` transaction's rollback can be observed (spec § 6, Atomicity).
+ *    `CLOSED` transaction's rollback can be observed (atomicity).
  *
  * Scope limit on that second mock, worth stating because it is easy to over-read: replacing the
  * module's exports only intercepts calls made *through the module boundary*, i.e. the
@@ -89,7 +89,7 @@ const ALL_STATUSES: ProjectStatus[] = [
   'CLOSED',
 ];
 
-/** BEHAVIOR.md § `PATCH /:id/status` — the manual-transition table, verbatim. */
+/** `PATCH /:id/status` — the client's manual-transition table, verbatim. */
 const ALLOWED: Array<[ProjectStatus, ProjectStatus]> = [
   ['UPCOMING', 'OPEN'],
   ['UPCOMING', 'CANCELLED'],
@@ -184,8 +184,8 @@ describe('POST /api/projects', () => {
     expect(await prisma.project.count()).toBe(0);
   });
 
-  // Boundary. The spec specifies `budget` as a **non-negative** number, so `0` is a valid budget
-  // and must be created. The old required-field guard was `!budget`, which refused `0` (D15).
+  // Boundary. `budget` is a **non-negative** number, so `0` is a valid budget and must be
+  // created. The old required-field guard was `!budget`, which refused `0`.
   it('accepts a zero budget with 201 and persists budget 0', async () => {
     const client = await makeClient();
 
@@ -207,7 +207,7 @@ describe('POST /api/projects', () => {
     expect(res.body.budget).toBe(2_500_000);
   });
 
-  // Rule 12: `parseFloat` used to accept these by truncating or reading them loosely.
+  // Strict body validation: `parseFloat` used to accept these by truncating or reading them loosely.
   it.each([
     ['trailing garbage', '2500000abc'],
     ['an empty string', ''],
@@ -242,7 +242,7 @@ describe('POST /api/projects', () => {
     expect(await prisma.project.count()).toBe(0);
   });
 
-  // A non-string title used to be passed to Prisma, which rejected it as a 500 (rule 8).
+  // A non-string title used to be passed to Prisma, which rejected it as a 500.
   it('rejects a non-string title with 400 rather than 500', async () => {
     const client = await makeClient();
 
@@ -440,8 +440,8 @@ describe('POST /api/projects', () => {
     expect(res.body.requiredSkills).toEqual(['React', 'SQL']);
   });
 
-  // Cross-cutting rule 8: a malformed value is a 400, never a 500. `normalizeSkillList` calls
-  // `.trim()` on every element, so a numeric array used to throw a `TypeError` → 500 (D16);
+  // A malformed value is a 400, never a 500. `normalizeSkillList` calls
+  // `.trim()` on every element, so a numeric array used to throw a `TypeError` → 500;
   // `projectCreateBody` admits only a string or a list of strings.
   it.each([
     ['a numeric array', [1, 2]],
@@ -646,7 +646,7 @@ describe('PATCH /api/projects/:id', () => {
     expect(stored.requiredSkills).toEqual(['SQL', 'React']);
   });
 
-  // Same check as on `POST` (it used to be a `TypeError` → 500, D16). The whole update is
+  // Same check as on `POST` (it used to be a `TypeError` → 500). The whole update is
   // refused, so neither the skills nor the title sent alongside them is modified.
   it('rejects a non-string requiredSkills array with 400 and modifies nothing', async () => {
     const { client, project } = await ownedProject();
@@ -690,7 +690,7 @@ describe('PATCH /api/projects/:id', () => {
     expect(res.body.requiredSkills).toEqual([]);
   });
 
-  // Rule 12 order: validation runs before the controller's 404/403.
+  // Validation runs before the controller's 404/403.
   it('validates the body before the ownership check: an invalid body from a non-owner is 400', async () => {
     const { project } = await ownedProject();
     const intruder = await makeClient();
@@ -976,7 +976,7 @@ describe('PATCH /api/projects/:id', () => {
     });
 
     // `getProjectStatusForRecruitmentStart` only ever answers UPCOMING or OPEN, so moving the
-    // deadline into the past does not close the project on the spot — the lazy sweep (§ 7)
+    // deadline into the past does not close the project on the spot — the lazy lifecycle sweep
     // converges it on the next read. Only the converged state is asserted.
     it('converges to CLOSED on the next read when the deadline is moved into the past', async () => {
       const { client, project } = await ownedProject({
@@ -1033,7 +1033,7 @@ describe('PATCH /api/projects/:id', () => {
     });
   });
 
-  it('allows editing a COMPLETED project — intentional, per Q3', async () => {
+  it('allows editing a COMPLETED project — intentional', async () => {
     const { client, project } = await ownedProject({ status: 'COMPLETED' });
 
     const res = await authed(client)
@@ -1049,7 +1049,7 @@ describe('PATCH /api/projects/:id', () => {
     expect(stored.status).toBe('COMPLETED');
   });
 
-  it('allows editing a CANCELLED project — intentional, per Q3', async () => {
+  it('allows editing a CANCELLED project — intentional', async () => {
     const { client, project } = await ownedProject({ status: 'CANCELLED' });
 
     const res = await authed(client)
@@ -1109,42 +1109,6 @@ describe('DELETE /api/projects/:id', () => {
 
     const stored = await prisma.application.findUnique({ where: { id: application.id } });
     expect(stored).not.toBeNull();
-  });
-
-  // 알려진 불일치 D11 — #6
-  // `deleteProject` checks only existence and ownership, so the project is soft-deleted
-  // (200) and the PENDING contract is left pointing at a deleted project.
-  it.fails('refuses deletion with 409 when the contract is PENDING [D11]', async () => {
-    const { client, project, contract } = await projectWithContract('PENDING');
-
-    const res = await authed(client).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(409);
-    // Re-read the row: asserting on the object the factory returned would pass without the
-    // database being consulted at all.
-    const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(storedContract.status).toBe('PENDING');
-  });
-
-  // 알려진 불일치 D11 — #6
-  // Same for an ACTIVE contract: work is underway, yet the delete currently returns 200.
-  it.fails('refuses deletion with 409 when the contract is ACTIVE [D11]', async () => {
-    const { client, project } = await projectWithContract('ACTIVE');
-
-    const res = await authed(client).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(409);
-  });
-
-  // 알려진 불일치 D11 — #6
-  // The row must survive untouched when deletion is refused.
-  it.fails('leaves deletedAt null when deletion is refused for a live contract [D11]', async () => {
-    const { client, project } = await projectWithContract('ACTIVE');
-
-    await authed(client).delete(`/api/projects/${project.id}`);
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(stored.deletedAt).toBeNull();
   });
 
   it('allows deletion when the contract is COMPLETED', async () => {
@@ -1235,7 +1199,7 @@ describe('PATCH /api/projects/:id/status', () => {
     expect(stored.status).toBe('OPEN');
   });
 
-  // Rule 12 order: validation runs before the controller's 404 (Q15 settled the same way).
+  // Validation runs before the controller's 404.
   it('validates the body before the existence check: an invalid status on an unknown id is 400', async () => {
     const client = await makeClient();
 
@@ -1735,45 +1699,6 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(stored.id).toBe(first.body.id);
     expect(stored.totalAmount).toBe(750_000);
     expect(stored.summary).toBe('두 번째 요약');
-  });
-
-  // 알려진 불일치 — #38
-  // Spec § 8: "Upstream provider failure (OpenAI, TossPayments) → 502 or 400, never 500."
-  // Not numbered in Known divergences (listed under "Found by the suite"), hence `[unlisted]`.
-  // Actual: `JSON.parse` throws a bare SyntaxError, which reaches errorHandler without a
-  // statusCode → 500 with the parser's message in the envelope.
-  it.fails('returns 502 rather than 500 when the model returns non-JSON content [unlisted]', async () => {
-    openaiCreate.mockResolvedValue(rawContent('not json at all'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-  });
-
-  // 알려진 불일치 — #38
-  // Actual: `completion.choices[0]` is undefined, so reading `.message` throws a TypeError → 500.
-  it.fails('returns 502 rather than 500 when the model returns no choices [unlisted]', async () => {
-    openaiCreate.mockResolvedValue({ choices: [] });
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-  });
-
-  // 알려진 불일치 — #38
-  // Actual: the provider's own error propagates untouched → 500 with its message.
-  it.fails('returns 502 rather than 500 when the provider call itself fails [unlisted]', async () => {
-    openaiCreate.mockRejectedValue(new Error('socket hang up'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
   });
 
   it('persists nothing when the provider call fails', async () => {

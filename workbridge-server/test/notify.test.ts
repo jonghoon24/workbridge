@@ -6,13 +6,13 @@ import { jobsOf } from './helpers/jobs';
 import { notify, notifyMany, notifyRecipients } from '../src/lib/notifications/notify';
 
 /**
- * `notify()` / `notifyMany()` / `notifyRecipients()` — the signatures BEHAVIOR.md NC9 pins, inside
+ * `notify()` / `notifyMany()` / `notifyRecipients()` — their signatures and behavior inside
  * the caller's transaction. Channel decisions are covered in notification-policy.test.ts, the
  * email side in email.test.ts.
  */
 
 describe('notify / notifyMany', () => {
-  it('creates an in-app notification and returns it [NC9]', async () => {
+  it('creates an in-app notification and returns it', async () => {
     const user = await makeFreelancer();
 
     const created = await notify(prisma, {
@@ -27,7 +27,7 @@ describe('notify / notifyMany', () => {
     expect(await prisma.notification.count()).toBe(1);
   });
 
-  it('returns null when in-app is off for the recipient, and writes no in-app row [NC9] [NC3]', async () => {
+  it('returns null when in-app is off for the recipient, and writes no in-app row', async () => {
     const user = await makeFreelancer();
     await makeNotificationPreference(user.id, 'APPLICATION_REJECTED', { inApp: false });
 
@@ -37,7 +37,7 @@ describe('notify / notifyMany', () => {
     expect(await prisma.notification.count()).toBe(0);
   });
 
-  it('defaults href to null and returns the number of in-app rows written [NC9]', async () => {
+  it('defaults href to null and returns the number of in-app rows written', async () => {
     const a = await makeFreelancer();
     const b = await makeClient();
     const c = await makeFreelancer();
@@ -54,7 +54,7 @@ describe('notify / notifyMany', () => {
     expect(await notifyMany(prisma, [])).toBe(0);
   });
 
-  it('links each email delivery to its own in-app row [NC9] [NC11]', async () => {
+  it('links each email delivery to its own in-app row', async () => {
     const a = await makeFreelancer();
     const b = await makeFreelancer();
     const now = new Date('2026-05-01T00:00:00.000Z');
@@ -73,7 +73,7 @@ describe('notify / notifyMany', () => {
     expect((await jobsOf('notification.email')).map((j) => j.runAt.getTime())).toEqual([now.getTime(), now.getTime()]);
   });
 
-  it('notifyRecipients skips soft-deleted recipients entirely and passes `now` through [NC9] [NC10]', async () => {
+  it('notifyRecipients skips soft-deleted recipients entirely and passes `now` through', async () => {
     const active = await makeFreelancer();
     const deleted = await makeFreelancer({ deletedAt: new Date() });
     const now = new Date('2026-05-02T00:00:00.000Z');
@@ -86,7 +86,7 @@ describe('notify / notifyMany', () => {
     expect(delivery).toMatchObject({ userId: active.id, createdAt: now });
   });
 
-  it('rolls back with the caller\'s transaction: no row, no delivery, no job [NC9] [rule 6]', async () => {
+  it('rolls back with the caller\'s transaction: no row, no delivery, no job', async () => {
     const user = await makeFreelancer();
 
     await expect(prisma.$transaction(async (tx) => {

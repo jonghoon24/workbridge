@@ -12,8 +12,8 @@ import {
 } from './helpers/factories';
 
 /**
- * `GET /api/projects` — the listing endpoint. Spec: docs/BEHAVIOR.md § Projects › `GET /`
- * plus § Cross-cutting rules 5 (soft delete) and 7 (lazy lifecycle).
+ * `GET /api/projects` — the listing endpoint, including soft delete and the lazy lifecycle
+ * sweep.
  *
  * Two things make this endpoint unusual and worth this much coverage:
  *   1. it has the widest branch surface in the codebase (7 filters × 3 sorts × pagination), and
@@ -151,7 +151,7 @@ describe('GET /api/projects', () => {
       },
     );
 
-    // Rule 12: an empty query value is absent (Q13 settled).
+    // An empty query value is treated as absent.
     it('treats an empty status value as absent, defaulting to OPEN', async () => {
       await threeStates();
 
@@ -236,7 +236,7 @@ describe('GET /api/projects', () => {
       expect(res.status).toBe(400);
     });
 
-    // Rule 12: an empty query value is absent (Q13 settled).
+    // An empty query value is treated as absent.
     it('treats an empty sort value as absent, defaulting to latest', async () => {
       await sortFixtures();
 
@@ -358,12 +358,12 @@ describe('GET /api/projects', () => {
       ['limit=0', '?limit=0', 'limit: must be at least 1'],
       ['limit=-5', '?limit=-5', 'limit: must be at least 1'],
       ['limit=abc', '?limit=abc', 'limit: must be an integer'],
-      // Rule 12: a fractional value or trailing garbage is not an integer (`parseInt` used to
+      // A fractional value or trailing garbage is not an integer (`parseInt` used to
       // truncate them, #37).
       ['a fractional page', '?page=1.5', 'page: must be an integer'],
       ['a fractional limit', '?limit=2.7', 'limit: must be an integer'],
       ['a trailing-garbage page like 3abc', '?page=3abc', 'page: must be an integer'],
-      // Bounded like CT2, so `skip` cannot overflow into a Prisma 500.
+      // Bounded like the contract list, so `skip` cannot overflow into a Prisma 500.
       ['a page above 1,000,000', '?page=1000001', 'page: must be at most 1000000'],
     ])('rejects %s with 400', async (_label, query, message) => {
       const res = await api().get(`/api/projects${query}`);
@@ -372,7 +372,7 @@ describe('GET /api/projects', () => {
       expect(res.body).toEqual({ error: { message } });
     });
 
-    // Rule 12: an empty query value is absent (Q13 settled).
+    // An empty query value is treated as absent.
     it('treats empty page and limit values as absent, using the defaults', async () => {
       await makeManyProjects(clientId, 12);
 
@@ -572,7 +572,7 @@ describe('GET /api/projects', () => {
       ['non-numeric maxBudget', '?maxBudget=abc', 'maxBudget: must be a number'],
       ['negative minBudget', '?minBudget=-1', 'minBudget: must be at least 0'],
       ['negative maxBudget', '?maxBudget=-1', 'maxBudget: must be at least 0'],
-      // Rule 12: trailing garbage is not a number (`parseFloat` used to truncate it).
+      // Trailing garbage is not a number (`parseFloat` used to truncate it).
       ['trailing-garbage minBudget', '?minBudget=3abc', 'minBudget: must be a number'],
       ['an exponent maxBudget', '?maxBudget=1e6', 'maxBudget: must be a number'],
     ])('rejects %s with 400', async (_label, query, message) => {
@@ -627,7 +627,7 @@ describe('GET /api/projects', () => {
   // -------------------------------------------------------- malformed skills ----
 
   /**
-   * D16: `normalizeSkillList` calls `.trim()` on every element of an array, so a non-string
+   * `normalizeSkillList` calls `.trim()` on every element of an array, so a non-string
    * element used to throw `TypeError: skill.trim is not a function` → 500. Express's default `qs`
    * parser can produce a nested array or an object from a query string, so this endpoint was
    * affected too. `projectListQuery` now admits only a string or a list of strings → 400.
@@ -661,7 +661,7 @@ describe('GET /api/projects', () => {
     });
 
     // qs turns `skills[a]=React` into `{ a: 'React' }`. It used to be stringified to
-    // '[object Object]' and match nothing; a malformed value is a 400 (rule 8).
+    // '[object Object]' and match nothing; a malformed value is a 400.
     it('rejects a skills parameter that parses as an object rather than a list with 400', async () => {
       await makeProject(clientId, { title: 'Normal', requiredSkills: ['React'] });
 
@@ -672,7 +672,7 @@ describe('GET /api/projects', () => {
     });
 
     // `skills[0][0]=React` parses to `[['React']]`. It used to reach `.trim()` in
-    // `normalizeSkillList` → `TypeError` → 500 (D16 on the read path).
+    // `normalizeSkillList` → `TypeError` → 500.
     it('rejects a nested skills array parameter with 400 rather than 500', async () => {
       await makeProject(clientId, { title: 'Normal', requiredSkills: ['React'] });
 
@@ -697,7 +697,7 @@ describe('GET /api/projects', () => {
   // ----------------------------------------------------------- soft delete ----
 
   describe('soft delete', () => {
-    // soft-delete.test.ts owns listing absence; only filtered searches and Q11 live here.
+    // soft-delete.test.ts owns listing absence; only filtered searches and joined owners live here.
 
     it('excludes soft-deleted projects from filtered searches too', async () => {
       await makeProject(clientId, {
@@ -723,12 +723,12 @@ describe('GET /api/projects', () => {
       }
     });
 
-    // Q11: does the soft-delete rule reach *joined* owners? Rule 5 is written about the record
-    // being read, and neither this listing nor `GET /:id` filters the joined client, so a project
-    // whose client is gone stays public — name, company and avatar included. Pinning today's
-    // behavior; if Q11 is decided the other way this test flips to expecting the project (or at
-    // least the client snippet) to disappear.
-    it('still lists a project whose client has been soft-deleted, client snippet included (Q11)', async () => {
+    // Open product question: does the soft-delete rule reach *joined* owners? The rule is written
+    // about the record being read, and neither this listing nor `GET /:id` filters the joined
+    // client, so a project whose client is gone stays public — name, company and avatar included.
+    // Pinning today's behavior; if the question is decided the other way this test flips to
+    // expecting the project (or at least the client snippet) to disappear.
+    it('still lists a project whose client has been soft-deleted, client snippet included', async () => {
       const client = await prisma.user.findUniqueOrThrow({ where: { id: clientId } });
       const project = await makeProject(clientId, { title: 'Orphaned' });
       await prisma.user.update({ where: { id: clientId }, data: { deletedAt: new Date() } });
@@ -746,7 +746,7 @@ describe('GET /api/projects', () => {
       });
     });
 
-    it('still serves GET /:id for a project whose client has been soft-deleted (Q11)', async () => {
+    it('still serves GET /:id for a project whose client has been soft-deleted', async () => {
       const client = await prisma.user.findUniqueOrThrow({ where: { id: clientId } });
       const project = await makeProject(clientId, { title: 'Orphaned' });
       await prisma.user.update({ where: { id: clientId }, data: { deletedAt: new Date() } });
@@ -850,8 +850,8 @@ describe('GET /api/projects', () => {
   // ------------------------------------------------- repeated query params ----
 
   /**
-   * Rule 12: a repeated parameter is a 400, even when one of the values is valid (Q12 settled —
-   * the listing used to fall back to the default). `skills` is the exception: it is a list.
+   * A repeated parameter is a 400, even when one of the values is valid (the listing used to
+   * fall back to the default). `skills` is the exception: it is a list.
    */
   describe('repeated query parameters', () => {
     it.each([
@@ -874,7 +874,7 @@ describe('GET /api/projects', () => {
   // ------------------------------------------------- lifecycle side effect ----
 
   /**
-   * BEHAVIOR.md § 7: the sweep runs on this read path, so `GET /api/projects` **writes rows**.
+   * The lazy lifecycle sweep runs on this read path, so `GET /api/projects` **writes rows**.
    * Nothing else in the codebase documents this, which makes these the highest-value tests here.
    */
   describe('lazy lifecycle sweep (this endpoint writes rows)', () => {
@@ -990,8 +990,8 @@ describe('GET /api/projects', () => {
     });
 
     it('LIMITATION: the sweep only rejects applications on projects it closes in that pass, so one already CLOSED keeps its PENDING applications', async () => {
-      // Rule 7's third bullet ("rejects still-PENDING applications on projects that are now
-      // CLOSED") reads as if it covered every CLOSED project, but `closeExpiredOpenProjects`
+      // The sweep's rule "reject still-PENDING applications on projects that are now CLOSED"
+      // reads as if it covered every CLOSED project, but `closeExpiredOpenProjects`
       // scopes `rejectPendingApplicationsForClosedProjects` to the ids it just closed, so a
       // project closed in an earlier pass keeps whatever applications it had.
       //

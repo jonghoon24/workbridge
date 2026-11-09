@@ -23,7 +23,7 @@ import { postSystemMessage } from '../src/services/messaging.service';
 import { DAY_MS, MINUTE_MS } from '../src/lib/time';
 
 /**
- * Messages — BEHAVIOR.md MG4, MG7, MG9, MG14, MG15, MG17. Unread counts, the read watermark and
+ * Messages — listing, sending, deleting, who may post, and ordering. Unread counts, the read watermark and
  * the digest job are in message-read.test.ts; conversation objects in conversations.test.ts.
  */
 
@@ -79,7 +79,7 @@ async function bulkHistory(scenario: Scenario, count: number) {
 // ---------------------------------------------------------------------------------------------
 
 describe('GET /api/conversations/:id/messages', () => {
-  it('returns the newest page in ascending order with hasMore [MG14] [MG4]', async () => {
+  it('returns the newest page in ascending order with hasMore', async () => {
     const scenario = await makeContractScenario();
     const messages = await history(scenario, 5);
 
@@ -108,7 +108,7 @@ describe('GET /api/conversations/:id/messages', () => {
     expect(res.body.messages[1]).toMatchObject({ body: 'm3', readByCounterpart: null }); // the freelancer's
   });
 
-  it('pages backwards with before, and says when the start is reached [MG14]', async () => {
+  it('pages backwards with before, and says when the start is reached', async () => {
     const scenario = await makeContractScenario();
     const messages = await history(scenario, 5);
 
@@ -124,7 +124,7 @@ describe('GET /api/conversations/:id/messages', () => {
     expect(more.body.hasMore).toBe(true);
   });
 
-  it('polls forwards with after; hasMore means "ask again at once" [MG14] [MG20]', async () => {
+  it('polls forwards with after; hasMore means "ask again at once"', async () => {
     const scenario = await makeContractScenario();
     const messages = await history(scenario, 5);
 
@@ -139,7 +139,7 @@ describe('GET /api/conversations/:id/messages', () => {
     expect(none.body).toEqual({ messages: [], hasMore: false });
   });
 
-  it('orders messages with the same createdAt by id, and cursors respect that tie-break [MG14]', async () => {
+  it('orders messages with the same createdAt by id, and cursors respect that tie-break', async () => {
     const scenario = await makeContractScenario();
     const at = new Date(Date.now() - 60_000);
     for (let i = 0; i < 4; i += 1) await makeMessage(scenario.conversation.id, scenario.client.id, { createdAt: at });
@@ -154,7 +154,7 @@ describe('GET /api/conversations/:id/messages', () => {
     expect(ids(before)).toEqual(sorted.slice(0, 2));
   });
 
-  it('includes system messages and tombstones; a deleted message is a valid cursor [MG14] [MG4]', async () => {
+  it('includes system messages and tombstones; a deleted message is a valid cursor', async () => {
     const scenario = await makeContractScenario();
     const system = await makeMessage(scenario.conversation.id, null, { createdAt: new Date(Date.now() - 3000) });
     const deleted = await makeMessage(scenario.conversation.id, scenario.freelancer.id, {
@@ -176,7 +176,7 @@ describe('GET /api/conversations/:id/messages', () => {
     expect(ids(after)).toEqual([last.id]);
   });
 
-  it('defaults to 30 and caps limit at 100 [MG14] [MG1]', async () => {
+  it('defaults to 30 and caps limit at 100', async () => {
     const scenario = await makeContractScenario();
     await bulkHistory(scenario, 101);
 
@@ -197,7 +197,7 @@ describe('GET /api/conversations/:id/messages', () => {
     ['limit=2.5', 'limit: must be an integer'],
     ['limit=1&limit=2', 'limit: must be a single value'],
     ['before=a&before=b', 'before: must be a single value'],
-  ])('400s for %s, before looking the conversation up [MG14]', async (query, message) => {
+  ])('400s for %s, before looking the conversation up', async (query, message) => {
     const { client } = await makeContractScenario();
 
     const res = await list(client, 'missing-conversation-id', query);
@@ -206,7 +206,7 @@ describe('GET /api/conversations/:id/messages', () => {
     expect(res.body).toEqual({ error: { message } });
   });
 
-  it('400s for a cursor that is not a message of this conversation, after 404/403 [MG14]', async () => {
+  it('400s for a cursor that is not a message of this conversation, after 404/403', async () => {
     const scenario = await makeContractScenario();
     const other = await makeContractScenario();
     const foreign = await makeMessage(other.conversation.id, other.client.id);
@@ -221,7 +221,7 @@ describe('GET /api/conversations/:id/messages', () => {
     expect(notMine.status).toBe(403);
   });
 
-  it('never marks anything read [MG14] [MG20]', async () => {
+  it('never marks anything read', async () => {
     const scenario = await makeContractScenario();
     await history(scenario, 3);
 
@@ -238,7 +238,7 @@ describe('GET /api/conversations/:id/messages', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('POST /api/conversations/:id/messages', () => {
-  it('posts a trimmed text message: 201, lastMessageAt, digest for the other side, no notification [MG15] [MG7] [MG20]', async () => {
+  it('posts a trimmed text message: 201, lastMessageAt, digest for the other side, no notification', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const before = Date.now();
 
@@ -268,12 +268,12 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(jobs.map((j) => [j.type, j.payload, j.dedupeKey, j.runAt.getTime()])).toEqual([
       ['message.unreadDigest', { conversationId: conversation.id, recipientId: freelancer.id }, null, createdAt + 10 * MINUTE_MS],
     ]);
-    // Sending does not move the sender's own watermark (MG15).
+    // Sending does not move the sender's own watermark.
     const participants = await prisma.conversationParticipant.findMany();
     expect(participants.every((p) => p.lastReadAt === null)).toBe(true);
   });
 
-  it('stores files under messages/<conversationId>/ and restores Korean names [MG15] [MG1] [MG4]', async () => {
+  it('stores files under messages/<conversationId>/ and restores Korean names', async () => {
     const { freelancer, conversation } = await makeContractScenario();
 
     const res = await send(freelancer, conversation.id)
@@ -296,7 +296,7 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(await prisma.messageAttachment.count()).toBe(2);
   });
 
-  it('accepts files with no body, stored as an empty body [MG15] [MG1]', async () => {
+  it('accepts files with no body, stored as an empty body', async () => {
     const { client, conversation } = await makeContractScenario();
 
     const res = await send(client, conversation.id)
@@ -306,7 +306,7 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(res.body.message).toMatchObject({ body: '', attachments: [{ fileName: '메모.txt' }] });
   });
 
-  it('accepts exactly 5000 characters after trimming [MG1]', async () => {
+  it('accepts exactly 5000 characters after trimming', async () => {
     const { client, conversation } = await makeContractScenario();
 
     const res = await send(client, conversation.id).send({ body: `  ${'가'.repeat(5000)}  ` });
@@ -321,7 +321,7 @@ describe('POST /api/conversations/:id/messages', () => {
     ['only whitespace', { body: ' \n\t ' }, 'body: Message or attachment is required'],
     ['no body at all', {}, 'body: Message or attachment is required'],
     ['a non-string body', { body: 42 }, 'body: Expected string, received number'],
-  ])('400s for %s, before looking the conversation up [MG15]', async (_label, payload, message) => {
+  ])('400s for %s, before looking the conversation up', async (_label, payload, message) => {
     const { client } = await makeContractScenario();
 
     const res = await send(client, 'missing-conversation-id').send(payload);
@@ -331,7 +331,7 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(await prisma.message.count()).toBe(0);
   });
 
-  it('applies rule 12\'s upload policy before validation: 413 oversized, 400 type and count [MG15]', async () => {
+  it('applies the attachment upload policy before validation: 413 oversized, 400 type and count', async () => {
     const { client, conversation } = await makeContractScenario();
     const big = Buffer.alloc(10 * 1024 * 1024 + 1, 1);
 
@@ -350,7 +350,7 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(storageUpload).not.toHaveBeenCalled();
   });
 
-  it('a storage failure is a 502 and writes nothing — no message, no job [MG15]', async () => {
+  it('a storage failure is a 502 and writes nothing — no message, no job', async () => {
     const { client, conversation } = await makeContractScenario();
     storageUpload.mockResolvedValue({ data: null, error: new Error('bucket down') });
 
@@ -364,7 +364,7 @@ describe('POST /api/conversations/:id/messages', () => {
     expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).lastMessageAt).toBeNull();
   });
 
-  it('is atomic: a failing digest enqueue leaves no message and no attachment row [MG15] (rule 6)', async () => {
+  it('is atomic: a failing digest enqueue leaves no message and no attachment row', async () => {
     const { client, conversation } = await makeContractScenario();
     await prisma.$executeRawUnsafe(`ALTER TABLE "Job" ADD CONSTRAINT "tmp_no_jobs" CHECK (false) NOT VALID`);
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -383,12 +383,12 @@ describe('POST /api/conversations/:id/messages', () => {
     }
   });
 
-  describe('who may post (MG9)', () => {
+  describe('who may post', () => {
     it.each([
       ['PENDING', {}],
       ['ACTIVE', {}],
       ['COMPLETED one hour before closing', { completedAt: new Date(Date.now() - 30 * DAY_MS + 3_600_000) }],
-    ] as const)('allows a %s contract [MG9]', async (label, extra) => {
+    ] as const)('allows a %s contract', async (label, extra) => {
       const status = label.split(' ')[0] as 'PENDING' | 'ACTIVE' | 'COMPLETED';
       const { client, freelancer, conversation } = await makeContractScenario({ contract: { status, ...extra } });
 
@@ -396,7 +396,7 @@ describe('POST /api/conversations/:id/messages', () => {
       expect((await send(freelancer, conversation.id).send({ body: 'b' })).status).toBe(201);
     });
 
-    it('409s once the post-completion window has closed, for either party [MG9] [MG1]', async () => {
+    it('409s once the post-completion window has closed, for either party', async () => {
       const { client, freelancer, conversation } = await makeContractScenario({
         contract: { status: 'COMPLETED', completedAt: new Date(Date.now() - 30 * DAY_MS - 1000) },
       });
@@ -413,7 +413,7 @@ describe('POST /api/conversations/:id/messages', () => {
       expect(storageUpload).not.toHaveBeenCalled();
     });
 
-    it.each(['PENDING', 'ACTIVE'] as const)('409s to a soft-deleted counterpart on a %s contract [MG9] [MG10]', async (status) => {
+    it.each(['PENDING', 'ACTIVE'] as const)('409s to a soft-deleted counterpart on a %s contract', async (status) => {
       const { client, freelancer, conversation } = await makeContractScenario({ contract: { status } });
       await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
 
@@ -424,7 +424,7 @@ describe('POST /api/conversations/:id/messages', () => {
       expect(await prisma.job.count()).toBe(0);
     });
 
-    it('reports the closed conversation first when both rows match [MG9]', async () => {
+    it('reports the closed conversation first when both rows match', async () => {
       const { client, freelancer, conversation } = await makeContractScenario({
         contract: { status: 'COMPLETED', completedAt: new Date(Date.now() - 40 * DAY_MS) },
       });
@@ -435,7 +435,7 @@ describe('POST /api/conversations/:id/messages', () => {
       expect(res.body).toEqual({ error: { message: 'This conversation is closed' } });
     });
 
-    it('a closed conversation still reads, marks read and deletes own messages within the window [MG9]', async () => {
+    it('a closed conversation still reads, marks read and deletes own messages within the window', async () => {
       const { client, freelancer, conversation } = await makeContractScenario({
         contract: { status: 'COMPLETED', completedAt: new Date(Date.now() - 31 * DAY_MS) },
       });
@@ -447,7 +447,7 @@ describe('POST /api/conversations/:id/messages', () => {
       expect((await remove(client, conversation.id, mine.id)).status).toBe(200);
     });
 
-    it('system messages are posted whatever MG9 says [MG6] [MG9]', async () => {
+    it('system messages are posted even after the conversation closes to people', async () => {
       const { contract, conversation } = await makeContractScenario({
         contract: { status: 'COMPLETED', completedAt: new Date(Date.now() - 40 * DAY_MS) },
       });
@@ -459,8 +459,8 @@ describe('POST /api/conversations/:id/messages', () => {
     });
   });
 
-  describe('ordering (MG7)', () => {
-    it('concurrent sends get strictly increasing createdAt, and lastMessageAt is the newest [MG7]', async () => {
+  describe('ordering', () => {
+    it('concurrent sends get strictly increasing createdAt, and lastMessageAt is the newest', async () => {
       const { client, freelancer, conversation } = await makeContractScenario();
       await Promise.all([1, 2, 3].map(() => list(client, conversation.id)));
 
@@ -478,13 +478,13 @@ describe('POST /api/conversations/:id/messages', () => {
       // A poller holding the first message as its cursor sees every later one exactly once.
       const polled = await list(client, conversation.id, `after=${stored[0].id}`);
       expect(ids(polled)).toEqual(stored.slice(1).map((m) => m.id));
-      // One pending digest per recipient, not one per message (J8's enqueue rule).
+      // One pending digest per recipient, not one per message (the digest's enqueue rule).
       const digests = await prisma.job.findMany({ where: { type: 'message.unreadDigest' } });
       expect(digests.map((j) => (j.payload as { recipientId: string }).recipientId).sort())
         .toEqual([client.id, freelancer.id].sort());
     });
 
-    it('never goes back in time: createdAt is at least lastMessageAt + 1 ms [MG7]', async () => {
+    it('never goes back in time: createdAt is at least lastMessageAt + 1 ms', async () => {
       const { client, conversation } = await makeContractScenario();
       const ahead = new Date(Date.now() + 60 * MINUTE_MS);
       await prisma.conversation.update({ where: { id: conversation.id }, data: { lastMessageAt: ahead } });
@@ -503,7 +503,7 @@ describe('POST /api/conversations/:id/messages', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('DELETE /api/conversations/:id/messages/:messageId', () => {
-  it('soft-deletes the sender\'s message within 5 minutes and returns the tombstone [MG17] [MG4]', async () => {
+  it('soft-deletes the sender\'s message within 5 minutes and returns the tombstone', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const message = await makeMessage(conversation.id, client.id, {
       body: '잘못 보냄',
@@ -530,7 +530,7 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
     expect(seen.body.messages[0]).toMatchObject({ id: message.id, body: '', deleted: true, attachments: [] });
   });
 
-  it('409s at and after 5 minutes [MG17] [MG1]', async () => {
+  it('409s at and after 5 minutes', async () => {
     const { client, conversation } = await makeContractScenario();
     const old = await makeMessage(conversation.id, client.id, { createdAt: new Date(Date.now() - 5 * MINUTE_MS - 1) });
 
@@ -541,7 +541,7 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
     expect((await prisma.message.findUniqueOrThrow({ where: { id: old.id } })).deletedAt).toBeNull();
   });
 
-  it('is idempotent: an already deleted message is 200, even after the window [MG17]', async () => {
+  it('is idempotent: an already deleted message is 200, even after the window', async () => {
     const { client, conversation } = await makeContractScenario();
     const deletedAt = new Date(Date.now() - 60 * MINUTE_MS);
     const message = await makeMessage(conversation.id, client.id, { createdAt: new Date(Date.now() - 61 * MINUTE_MS), deletedAt });
@@ -553,7 +553,7 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
     expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt?.getTime()).toBe(deletedAt.getTime());
   });
 
-  it('403s for a system message [MG17]', async () => {
+  it('403s for a system message', async () => {
     const { client, conversation } = await makeContractScenario();
     const system = await makeMessage(conversation.id, null);
 
@@ -563,7 +563,7 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
     expect(res.body).toEqual({ error: { message: 'Not authorized' } });
   });
 
-  it('two concurrent deletes both answer 200 with one deletion [MG17]', async () => {
+  it('two concurrent deletes both answer 200 with one deletion', async () => {
     const { client, conversation } = await makeContractScenario();
     const message = await makeMessage(conversation.id, client.id);
 

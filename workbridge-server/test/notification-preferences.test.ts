@@ -7,7 +7,7 @@ import { makeClient, makeFreelancer, makeNotificationPreference } from './helper
 import { notify } from '../src/lib/notifications/notify';
 
 /**
- * `GET` / `PUT /api/notifications/preferences` (NC4–NC8). The 401 matrix lives in
+ * `GET` / `PUT /api/notifications/preferences`. The 401 matrix lives in
  * authorization.test.ts and the soft-deleted caller in soft-delete.test.ts.
  */
 
@@ -29,8 +29,8 @@ const entry = (res: { body: { preferences: { type: string }[] } }, type: string)
 const storedRows = (userId: string) =>
   prisma.notificationPreference.findMany({ where: { userId }, orderBy: { type: 'asc' }, select: { type: true, inApp: true, email: true } });
 
-describe('GET /api/notifications/preferences [NC5]', () => {
-  it('a CLIENT gets its 8 types in NC2 order, with the defaults [NC5] [NC2]', async () => {
+describe('GET /api/notifications/preferences', () => {
+  it('a CLIENT gets its 8 types in notification-catalog order, with the defaults', async () => {
     const client = await makeClient();
 
     const res = await get(client);
@@ -48,7 +48,7 @@ describe('GET /api/notifications/preferences [NC5]', () => {
     });
   });
 
-  it('a FREELANCER gets its 17 types in NC2 order [NC5]', async () => {
+  it('a FREELANCER gets its 17 types in notification-catalog order', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await get(freelancer);
@@ -61,7 +61,7 @@ describe('GET /api/notifications/preferences [NC5]', () => {
     expect(entry(res, 'SETTLEMENT_SCHEDULED')).toMatchObject({ inApp: true, email: false, inAppLocked: false, emailLocked: false });
   });
 
-  it('the digest is a locked-off in-app channel: inApp false, inAppLocked true [NC5] [NC2]', async () => {
+  it('the digest is a locked-off in-app channel: inApp false, inAppLocked true', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await get(freelancer);
@@ -76,7 +76,7 @@ describe('GET /api/notifications/preferences [NC5]', () => {
     });
   });
 
-  it('reflects stored choices, ignores stored values for locked channels, and hides other-role rows [NC5] [NC3] [NC4]', async () => {
+  it('reflects stored choices, ignores stored values for locked channels, and hides other-role rows', async () => {
     const freelancer = await makeFreelancer();
     await makeNotificationPreference(freelancer.id, 'MILESTONE_DUE_SOON', { inApp: false, email: false });
     await makeNotificationPreference(freelancer.id, 'SETTLEMENT_FAILED', { email: false });
@@ -90,7 +90,7 @@ describe('GET /api/notifications/preferences [NC5]', () => {
     expect(res.body.preferences).toHaveLength(17);
   });
 
-  it('lists by the stored role, not the token\'s [NC5]', async () => {
+  it('lists by the stored role, not the token\'s', async () => {
     const user = await makeFreelancer();
     await prisma.user.update({ where: { id: user.id }, data: { role: 'CLIENT' } });
 
@@ -99,7 +99,7 @@ describe('GET /api/notifications/preferences [NC5]', () => {
     expect(res.body.preferences.map((p: { type: string }) => p.type)).toEqual(CLIENT_TYPES);
   });
 
-  it('writes nothing [NC5]', async () => {
+  it('writes nothing', async () => {
     const freelancer = await makeFreelancer();
 
     await get(freelancer);
@@ -108,7 +108,7 @@ describe('GET /api/notifications/preferences [NC5]', () => {
   });
 });
 
-describe('PUT /api/notifications/preferences — validation [NC6]', () => {
+describe('PUT /api/notifications/preferences — validation', () => {
   const longArray = Array.from({ length: 21 }, () => ({ type: 'MILESTONE_DUE_SOON', email: false }));
 
   it.each([
@@ -117,7 +117,7 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
     ['empty', { preferences: [] }],
     ['longer than 20', { preferences: longArray }],
     ['a body that is an array', [{ type: 'MILESTONE_DUE_SOON', email: false }]],
-  ])('preferences %s → 400 `preferences: Expected 1 to 20 entries` [NC6]', async (_label, body) => {
+  ])('preferences %s → 400 `preferences: Expected 1 to 20 entries`', async (_label, body) => {
     const user = await makeFreelancer();
 
     const res = await put(user, body);
@@ -140,7 +140,7 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
     ['the digest\'s in-app turned on', [{ type: 'MESSAGE_UNREAD_DIGEST', inApp: true }], 'preferences.0.inApp: MESSAGE_UNREAD_DIGEST has no in-app notifications'],
     ['a locked in-app turned off', [{ type: 'MILESTONE_FUNDED', inApp: false }], 'preferences.0.inApp: MILESTONE_FUNDED in-app notifications cannot be disabled'],
     ['a locked email turned off', [{ type: 'SETTLEMENT_ON_HOLD', email: false }], 'preferences.0.email: SETTLEMENT_ON_HOLD email notifications cannot be disabled'],
-  ])('%s → 400 with NC6\'s message [NC6]', async (_label, preferences, message) => {
+  ])('%s → 400 with the exact path-prefixed message', async (_label, preferences, message) => {
     const user = await makeFreelancer();
 
     const res = await put(user, { preferences });
@@ -149,7 +149,7 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
     expect(res.body).toEqual({ error: { message } });
   });
 
-  it('checks type → inApp → email within an entry [NC6]', async () => {
+  it('checks type → inApp → email within an entry', async () => {
     const user = await makeFreelancer();
 
     const res = await put(user, { preferences: [{ email: 'x', inApp: 'y', type: 'NOPE' }] });
@@ -159,7 +159,7 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
     expect(res2.body.error.message).toBe('preferences.0.inApp: Expected a boolean');
   });
 
-  it('reports a shape failure anywhere before any entry-rule failure [NC6]', async () => {
+  it('reports a shape failure anywhere before any entry-rule failure', async () => {
     const user = await makeFreelancer();
 
     const res = await put(user, { preferences: [{ type: 'MILESTONE_FUNDED', inApp: false }, { type: 'NOPE' }] });
@@ -167,7 +167,7 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
     expect(res.body.error.message).toBe('preferences.1.type: Unknown notification type');
   });
 
-  it('reports entry rules in array order, the first failure only [NC6]', async () => {
+  it('reports entry rules in array order, the first failure only', async () => {
     const user = await makeFreelancer();
 
     const res = await put(user, {
@@ -181,7 +181,7 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
     expect(res.body.error.message).toBe('preferences.1.email: SETTLEMENT_FAILED email notifications cannot be disabled');
   });
 
-  it('applies the entry rules in NC6 order within one entry [NC6]', async () => {
+  it('reports the first failing rule when one entry breaks several (duplicate before locked channel)', async () => {
     const user = await makeFreelancer();
 
     const dup = await put(user, { preferences: [{ type: 'MILESTONE_FUNDED', email: false }, { type: 'MILESTONE_FUNDED', inApp: false }] });
@@ -191,7 +191,7 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
     expect(both.body.error.message).toBe('preferences.0.inApp: SETTLEMENT_FAILED in-app notifications cannot be disabled');
   });
 
-  it('ignores other keys [NC6]', async () => {
+  it('ignores other keys', async () => {
     const user = await makeFreelancer();
 
     const res = await put(user, { preferences: [{ type: 'MILESTONE_DUE_SOON', email: false, label: 'x' }], extra: 1 });
@@ -199,7 +199,7 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
     expect(res.status).toBe(200);
   });
 
-  it('a failing request writes nothing at all, even its valid entries [NC6]', async () => {
+  it('a failing request writes nothing at all, even its valid entries', async () => {
     const user = await makeFreelancer();
 
     const res = await put(user, {
@@ -211,8 +211,8 @@ describe('PUT /api/notifications/preferences — validation [NC6]', () => {
   });
 });
 
-describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]', () => {
-  it('turns one email channel off and responds with NC5\'s body after the write [NC6] [NC8]', async () => {
+describe('PUT /api/notifications/preferences — writes', () => {
+  it('turns one email channel off and responds with the same body GET returns after the write', async () => {
     const user = await makeFreelancer();
 
     const res = await put(user, { preferences: [{ type: 'MILESTONE_DUE_SOON', email: false }] });
@@ -224,7 +224,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(await storedRows(user.id)).toEqual([{ type: 'MILESTONE_DUE_SOON', inApp: null, email: false }]);
   });
 
-  it('is partial: an unlisted type and an omitted channel keep their setting [NC6]', async () => {
+  it('is partial: a type left out of the body and an omitted channel keep their setting', async () => {
     const user = await makeFreelancer();
     await makeNotificationPreference(user.id, 'MILESTONE_DUE_SOON', { inApp: false, email: false });
     await makeNotificationPreference(user.id, 'MILESTONE_OVERDUE', { email: false });
@@ -237,7 +237,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     ]);
   });
 
-  it('stores a value equal to the default as null and deletes a row left all-null [NC4]', async () => {
+  it('stores a value equal to the default as null and deletes a row left all-null', async () => {
     const user = await makeFreelancer();
     await makeNotificationPreference(user.id, 'APPLICATION_REJECTED', { inApp: false, email: true });
 
@@ -248,7 +248,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(await storedRows(user.id)).toEqual([]);
   });
 
-  it('a locked channel set to its own value passes and stores nothing [NC6] [NC4]', async () => {
+  it('a locked channel set to its own value passes and stores nothing', async () => {
     const user = await makeFreelancer();
 
     const res = await put(user, {
@@ -263,7 +263,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(await prisma.notificationPreference.count()).toBe(0);
   });
 
-  it('a locked channel\'s stored value is cleared by a write to that type [NC4]', async () => {
+  it('a locked channel\'s stored value is cleared by a write to that type', async () => {
     const user = await makeFreelancer();
     await makeNotificationPreference(user.id, 'MILESTONE_FUNDED', { inApp: false });
 
@@ -272,7 +272,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(await storedRows(user.id)).toEqual([{ type: 'MILESTONE_FUNDED', inApp: null, email: false }]);
   });
 
-  it('GET\'s array sent back unchanged round-trips with 200 and no rows [NC6] [NC8]', async () => {
+  it('GET\'s array sent back unchanged round-trips with 200 and no rows', async () => {
     for (const user of [await makeClient(), await makeFreelancer()]) {
       const before = await get(user);
 
@@ -284,7 +284,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(await prisma.notificationPreference.count()).toBe(0);
   });
 
-  it('a type the caller\'s role does not receive is accepted and stored, but not listed [NC4] [NC6]', async () => {
+  it('a type the caller\'s role does not receive is accepted and stored, but not listed', async () => {
     const client = await makeClient();
 
     const res = await put(client, { preferences: [{ type: 'SETTLEMENT_SCHEDULED', email: true }] });
@@ -294,7 +294,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(await storedRows(client.id)).toEqual([{ type: 'SETTLEMENT_SCHEDULED', inApp: null, email: true }]);
   });
 
-  it('sending the same body twice leaves the same rows and returns the same response [NC8]', async () => {
+  it('sending the same body twice leaves the same rows and returns the same response', async () => {
     const user = await makeFreelancer();
     const body = { preferences: [{ type: 'MILESTONE_OVERDUE', inApp: false, email: false }, { type: 'SETTLEMENT_SCHEDULED', email: true }] };
 
@@ -307,7 +307,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(rowsAfterSecond).toEqual(rowsAfterFirst);
   });
 
-  it('only touches the caller\'s rows [NC7]', async () => {
+  it('only touches the caller\'s rows', async () => {
     const user = await makeFreelancer();
     const other = await makeFreelancer();
     await makeNotificationPreference(other.id, 'MILESTONE_DUE_SOON', { email: false });
@@ -317,7 +317,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(await storedRows(other.id)).toEqual([{ type: 'MILESTONE_DUE_SOON', inApp: null, email: false }]);
   });
 
-  it('concurrent PUTs of one user serialize on the User row: no 500, one row per type [NC7]', async () => {
+  it('concurrent PUTs of one user serialize on the User row: no 500, one row per type', async () => {
     const user = await makeFreelancer();
     const bodies = [
       { preferences: [{ type: 'MILESTONE_DUE_SOON', email: false }, { type: 'MILESTONE_OVERDUE', email: false }] },
@@ -336,7 +336,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     }
   });
 
-  it('a saved preference is what notify() applies next [NC3] [NC9]', async () => {
+  it('a saved preference is what notify() applies next', async () => {
     const user = await makeFreelancer();
     await put(user, { preferences: [{ type: 'MILESTONE_DUE_SOON', inApp: false, email: false }] });
 
@@ -344,7 +344,7 @@ describe('PUT /api/notifications/preferences — writes [NC4] [NC6] [NC7] [NC8]'
     expect(await prisma.emailDelivery.count()).toBe(0);
   });
 
-  it('preference rows outlive a soft deletion and apply again after a restore [NC10]', async () => {
+  it('preference rows outlive a soft deletion and apply again after a restore', async () => {
     const user = await makeFreelancer();
     await put(user, { preferences: [{ type: 'MILESTONE_DUE_SOON', email: false }] });
     await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } });

@@ -7,7 +7,7 @@ import { prisma } from './db';
 
 /**
  * Runs every job due at `now`, exactly as a runner would. Tests drive time by passing `now`
- * rather than using fake timers, which do not mix well with Prisma (BEHAVIOR.md rule 11).
+ * rather than using fake timers, which do not mix well with Prisma.
  */
 export function runJobs(now: Date = new Date()): Promise<RunDueJobsResult> {
   return runDueJobs({ now });

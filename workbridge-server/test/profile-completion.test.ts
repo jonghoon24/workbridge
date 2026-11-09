@@ -11,7 +11,10 @@ import {
   makeUser,
 } from './helpers/factories';
 
-/** `GET /api/users/me/profile-completion` — BEHAVIOR.md PF21 (and rule 4, which it must not change). */
+/**
+ * `GET /api/users/me/profile-completion`. The percentage is display-only: it must not change the
+ * profile-completeness gate that guards posting and applying.
+ */
 
 const get = (user: Parameters<typeof authed>[0]) => authed(user).get('/api/users/me/profile-completion');
 
@@ -36,7 +39,7 @@ const CLIENT_KEYS = [
   ['website', 20],
 ] as const;
 
-/** A freelancer with every PF21 item done. */
+/** A freelancer with every completion item done. */
 async function makeEverythingFreelancer(overrides: Parameters<typeof makeFreelancer>[0] = {}) {
   const freelancer = await makeFreelancer({ bio: '소개', profileImage: 'https://img.example.com/a.png', ...overrides });
   for (let i = 0; i < 3; i += 1) await makePortfolioItem(freelancer.id);
@@ -46,7 +49,7 @@ async function makeEverythingFreelancer(overrides: Parameters<typeof makeFreelan
 }
 
 describe('GET /api/users/me/profile-completion', () => {
-  it('lists the FREELANCER checklist in order as { key, weight, done }, summing to 100 [PF21]', async () => {
+  it('lists the FREELANCER checklist in order as { key, weight, done }, summing to 100', async () => {
     const freelancer = await makeEverythingFreelancer();
 
     const res = await get(freelancer);
@@ -59,7 +62,7 @@ describe('GET /api/users/me/profile-completion', () => {
     });
   });
 
-  it('lists the CLIENT checklist in order [PF21]', async () => {
+  it('lists the CLIENT checklist in order', async () => {
     const client = await makeClient({ bio: null, profileImage: null, website: 'https://codeit.kr' });
 
     const res = await get(client);
@@ -71,7 +74,7 @@ describe('GET /api/users/me/profile-completion', () => {
     });
   });
 
-  it('a freelancer missing only hourlyRate is at 90% and not complete [PF21]', async () => {
+  it('a freelancer missing only hourlyRate is at 90% and not complete', async () => {
     const freelancer = await makeEverythingFreelancer({ hourlyRate: null });
 
     const res = await get(freelancer);
@@ -80,7 +83,7 @@ describe('GET /api/users/me/profile-completion', () => {
     expect(res.body.percent).toBe(90);
   });
 
-  it('a freelancer with only the four gate fields is complete at 45% — the gate is unchanged [PF21] [rule 4]', async () => {
+  it('a freelancer with only the four gate fields is complete at 45% — the gate is unchanged', async () => {
     const freelancer = await makeFreelancer();
     const project = await makeProject((await makeClient()).id);
 
@@ -93,7 +96,7 @@ describe('GET /api/users/me/profile-completion', () => {
     expect(apply.status).toBe(201);
   });
 
-  it('counts portfolio at 1 and 3 items, careers at 1, and a payout account [PF21]', async () => {
+  it('counts portfolio at 1 and 3 items, careers at 1, and a payout account', async () => {
     const freelancer = await makeFreelancer();
     const percent = async () => (await get(freelancer)).body.percent as number;
 
@@ -110,7 +113,7 @@ describe('GET /api/users/me/profile-completion', () => {
     expect(await percent()).toBe(80);
   });
 
-  it('treats whitespace-only text as not done, and 0 years of experience as done [PF21]', async () => {
+  it('treats whitespace-only text as not done, and 0 years of experience as done', async () => {
     const freelancer = await makeFreelancer({ bio: '   ', profileImage: '', experienceYears: 0, activityCategory: '  ' });
 
     const res = await get(freelancer);
@@ -120,7 +123,7 @@ describe('GET /api/users/me/profile-completion', () => {
     expect(res.body.isComplete).toBe(false);
   });
 
-  it('a user with nothing filled in is at 0% [PF21]', async () => {
+  it('a user with nothing filled in is at 0%', async () => {
     const client = await makeUser({ role: 'CLIENT' });
 
     const res = await get(client);
@@ -128,7 +131,7 @@ describe('GET /api/users/me/profile-completion', () => {
     expect(res.body).toMatchObject({ isComplete: false, percent: 0 });
   });
 
-  it('scores the stored role, not the token\'s [PF21]', async () => {
+  it('scores the stored role, not the token\'s', async () => {
     const client = await makeClient();
     const forged = tokenFor({ id: client.id, email: client.email, role: 'FREELANCER' });
 

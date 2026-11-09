@@ -6,7 +6,7 @@ import { prisma } from './helpers/db';
 import { makeFreelancer, makePayoutAccount } from './helpers/factories';
 import { nextKstWeekday } from '../src/lib/time';
 
-/** The payout account — BEHAVIOR.md PA1–PA7, M23, Q22. */
+/** The payout account — reading, registering and deleting it, and rescheduling held payouts. */
 
 const PERIOD = {
   periodStart: new Date('2020-01-05T15:00:00.000Z'),
@@ -36,7 +36,7 @@ function settlementFor(user: User, status: 'SCHEDULED' | 'PROCESSING' | 'ON_HOLD
 const put = (user: User, body: Record<string, unknown>) => authed(user).put('/api/users/me/payout-account').send(body);
 
 describe('GET /api/users/me/payout-account', () => {
-  it('is { payoutAccount: null } before one is registered [PA2]', async () => {
+  it('is { payoutAccount: null } before one is registered', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).get('/api/users/me/payout-account');
@@ -45,7 +45,7 @@ describe('GET /api/users/me/payout-account', () => {
     expect(res.body).toEqual({ payoutAccount: null });
   });
 
-  it('shows the account masked, never the full number [PA1] [PA2] [M23]', async () => {
+  it('shows the account masked, never the full number', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer, { bankCode: '092', accountNumber: '100012345678' });
 
@@ -64,7 +64,7 @@ describe('GET /api/users/me/payout-account', () => {
 });
 
 describe('PUT /api/users/me/payout-account', () => {
-  it('registers an account: digits only stored, masked response [PA3] [PA4] [M23] [Q22]', async () => {
+  it('registers an account: digits only stored, masked response', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await put(freelancer, { bankCode: '004', accountNumber: ' 110-123 456-789 ', holderName: freelancer.name });
@@ -79,7 +79,7 @@ describe('PUT /api/users/me/payout-account', () => {
     expect(stored.accountNumber).toBe('110123456789');
   });
 
-  it('replaces an existing account in place [PA3]', async () => {
+  it('replaces an existing account in place', async () => {
     const freelancer = await makeFreelancer();
     const before = await makePayoutAccount(freelancer);
 
@@ -91,7 +91,7 @@ describe('PUT /api/users/me/payout-account', () => {
     expect(accounts[0]).toMatchObject({ id: before.id, bankCode: '088', accountNumber: '1234567890' });
   });
 
-  it('matches the holder ignoring whitespace and letter case [M23]', async () => {
+  it('matches the holder ignoring whitespace and letter case', async () => {
     const freelancer = await makeFreelancer({ name: 'Jane Doe' });
 
     expect((await put(freelancer, { bankCode: '004', accountNumber: '1234567890', holderName: '  jane  DOE ' })).status).toBe(200);
@@ -104,7 +104,7 @@ describe('PUT /api/users/me/payout-account', () => {
     ['15 digits', { bankCode: '004', accountNumber: '123456789012345' }, 'accountNumber: Account number must be 10 to 14 digits'],
     ['letters', { bankCode: '004', accountNumber: '12345abcde' }, 'accountNumber: Account number must be 10 to 14 digits'],
     ['a blank holder', { bankCode: '004', accountNumber: '1234567890', holderName: '  ' }, 'holderName: Account holder is required'],
-  ])('400s on %s [PA3]', async (_label, body, message) => {
+  ])('400s on %s', async (_label, body, message) => {
     const freelancer = await makeFreelancer();
 
     const res = await put(freelancer, { holderName: freelancer.name, ...body });
@@ -114,14 +114,14 @@ describe('PUT /api/users/me/payout-account', () => {
     expect(await prisma.payoutAccount.count()).toBe(0);
   });
 
-  it('accepts exactly 10 and 14 digits [M23]', async () => {
+  it('accepts exactly 10 and 14 digits', async () => {
     const a = await makeFreelancer();
     const b = await makeFreelancer();
     expect((await put(a, { bankCode: '004', accountNumber: '1234567890', holderName: a.name })).status).toBe(200);
     expect((await put(b, { bankCode: '004', accountNumber: '12345678901234', holderName: b.name })).status).toBe(200);
   });
 
-  it("400s when the holder is not the member's name [PA3] [M23]", async () => {
+  it("400s when the holder is not the member's name", async () => {
     const freelancer = await makeFreelancer({ name: '박지윤' });
 
     const res = await put(freelancer, { bankCode: '004', accountNumber: '1234567890', holderName: '박지원' });
@@ -130,7 +130,7 @@ describe('PUT /api/users/me/payout-account', () => {
     expect(res.body).toEqual({ error: { message: 'Account holder must match your name' } });
   });
 
-  it('409s while a payout is PROCESSING, and changes nothing [PA3] [PA7]', async () => {
+  it('409s while a payout is PROCESSING, and changes nothing', async () => {
     const freelancer = await makeFreelancer();
     const before = await makePayoutAccount(freelancer);
     await settlementFor(freelancer, 'PROCESSING');
@@ -145,7 +145,7 @@ describe('PUT /api/users/me/payout-account', () => {
     });
   });
 
-  it('reschedules every ON_HOLD settlement to the next Wednesday 10:00 KST and enqueues its payout [PA4]', async () => {
+  it('reschedules every ON_HOLD settlement to the next Wednesday 10:00 KST and enqueues its payout', async () => {
     const freelancer = await makeFreelancer();
     const heldA = await settlementFor(freelancer, 'ON_HOLD', 0, { failureReason: 'old', payoutAttempts: 1 });
     const heldB = await settlementFor(freelancer, 'ON_HOLD', 1);
@@ -174,8 +174,8 @@ describe('PUT /api/users/me/payout-account', () => {
   });
 });
 
-describe('PA4 reschedule never reuses the held payout\'s key', () => {
-  it('moves a hold whose date is the coming Wednesday to the Wednesday after, with a live job [PA4]', async () => {
+describe('registering an account reschedules a held payout without reusing its job key', () => {
+  it('moves a hold whose date is the coming Wednesday to the Wednesday after, with a live job', async () => {
     const freelancer = await makeFreelancer();
     // As a runner whose clock is ahead would leave it: held on the coming Wednesday, its
     // payout job already SUCCEEDED under that key.
@@ -206,7 +206,7 @@ describe('PA4 reschedule never reuses the held payout\'s key', () => {
 });
 
 describe('DELETE /api/users/me/payout-account', () => {
-  it('removes the account [PA5]', async () => {
+  it('removes the account', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
 
@@ -217,12 +217,12 @@ describe('DELETE /api/users/me/payout-account', () => {
     expect(await prisma.payoutAccount.count()).toBe(0);
   });
 
-  it('is idempotent when there is none [PA5]', async () => {
+  it('is idempotent when there is none', async () => {
     const freelancer = await makeFreelancer();
     expect((await authed(freelancer).delete('/api/users/me/payout-account')).status).toBe(200);
   });
 
-  it('409s while a payout is PROCESSING [PA5] [PA7]', async () => {
+  it('409s while a payout is PROCESSING', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     await settlementFor(freelancer, 'PROCESSING');
@@ -233,7 +233,7 @@ describe('DELETE /api/users/me/payout-account', () => {
     expect(await prisma.payoutAccount.count()).toBe(1);
   });
 
-  it('is allowed with a SCHEDULED settlement, which then uses whatever exists at payout time [PA6]', async () => {
+  it('is allowed with a SCHEDULED settlement, which then uses whatever exists at payout time', async () => {
     const freelancer = await makeFreelancer();
     await makePayoutAccount(freelancer);
     await settlementFor(freelancer, 'SCHEDULED');
