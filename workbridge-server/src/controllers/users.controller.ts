@@ -1,13 +1,13 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { Prisma } from '@prisma/client';
 import type { AuthedFileRequest, AuthedRequest } from '../types/index';
+import type { ProfileUpdateInput } from '../schemas/users';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import {
   closeExpiredOpenProjects,
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle';
-import { normalizeSkillList } from '../lib/skills';
 import { uploadToSupabase } from '../middlewares/upload';
 import { listCareers } from '../services/careers.service';
 import { listPortfolioItems } from '../services/portfolio.service';
@@ -50,18 +50,9 @@ export async function getMe(req: AuthedRequest, res: Response, next: NextFunctio
 
 export async function updateMe(req: AuthedFileRequest, res: Response, next: NextFunction) {
   try {
-    const {
-      name,
-      bio,
-      companyName,
-      businessField,
-      website,
-      skills,
-      activityCategory,
-      experienceYears,
-      hourlyRate,
-      portfolioUrl,
-    } = req.body;
+    // Parsed by the caller's role's schema (`profileUpdateBodyByRole`): only that role's fields
+    // are present, already typed, and absent fields stay absent.
+    const fields = req.body as ProfileUpdateInput;
 
     let profileImage: string | undefined;
     if (req.file) {
@@ -69,22 +60,8 @@ export async function updateMe(req: AuthedFileRequest, res: Response, next: Next
       profileImage = await uploadToSupabase(req.file.buffer, req.file.mimetype, filename);
     }
 
-    const updateData: Prisma.UserUpdateInput = {};
-    if (name !== undefined) updateData.name = name;
-    if (bio !== undefined) updateData.bio = bio;
+    const updateData: Prisma.UserUpdateInput = { ...fields };
     if (profileImage) updateData.profileImage = profileImage;
-
-    if (req.user.role === 'CLIENT') {
-      if (companyName !== undefined) updateData.companyName = companyName;
-      if (businessField !== undefined) updateData.businessField = businessField;
-      if (website !== undefined) updateData.website = website;
-    } else if (req.user.role === 'FREELANCER') {
-      if (skills !== undefined) updateData.skills = normalizeSkillList(skills);
-      if (activityCategory !== undefined) updateData.activityCategory = activityCategory;
-      if (experienceYears !== undefined) updateData.experienceYears = parseInt(experienceYears);
-      if (hourlyRate !== undefined) updateData.hourlyRate = parseFloat(hourlyRate);
-      if (portfolioUrl !== undefined) updateData.portfolioUrl = portfolioUrl;
-    }
 
     const user = await prisma.user.update({
       where: { id: req.user.id },

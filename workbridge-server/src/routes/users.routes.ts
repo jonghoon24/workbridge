@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import {
   getMe,
   updateMe,
@@ -18,11 +19,18 @@ import { requireActiveUser } from '../middlewares/activeUser';
 import { upload } from '../middlewares/upload';
 import { validate } from '../middlewares/validate';
 import { payoutAccountBody } from '../schemas/settlements';
+import { profileUpdateBodyByRole } from '../schemas/users';
 
 const router = Router();
 
+/** `PATCH /me` validates only the caller's role's fields; the other role's are stripped (Q2). */
+function validateProfileUpdate(req: Request, res: Response, next: NextFunction) {
+  return validate({ body: profileUpdateBodyByRole[req.user.role] })(req, res, next);
+}
+
 router.get('/me', authenticate, getMe);
-router.patch('/me', authenticate, upload.single('profileImage'), updateMe);
+// The upload runs before validation (multer fills `req.body`); its errors come first (D6).
+router.patch('/me', authenticate, upload.single('profileImage'), validateProfileUpdate, updateMe);
 router.get('/me/applications', authenticate, getMyApplications);
 router.get('/me/bookmarks', authenticate, getMyBookmarks);
 router.get('/me/projects', authenticate, getMyProjects);
