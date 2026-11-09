@@ -2140,13 +2140,13 @@ because they need triage first — several may be the same root cause, and a few
 
 | Behavior | Where |
 |---|---|
-| `POST /:id/bookmark` losing the upsert's find-then-insert race → 500 with a Prisma leak. `prisma.upsert` on a compound unique is a find-then-`INSERT`, not `INSERT … ON CONFLICT`, so an insert blocked on an uncommitted duplicate wakes to P2002. Violates both "idempotent (upsert)" and rule 8 — and confirms **D14**'s leak is not specific to the payment path | `bookmarks.test.ts` "is idempotent under concurrency: an insert that loses the race must not 500" |
-| Non-string `expectedDuration` on apply → 500 | `applications.test.ts` "400s on a non-string expectedDuration rather than 500" |
-| The `Project deadline has passed` branch in `apply` is **dead code** — the lazy sweep closes the project first, so it is unreachable | `applications.test.ts` "reports 'Project deadline has passed' for an expired OPEN project" |
-| Three `analyze` paths → 500 instead of 502: non-JSON content, a response with no `choices`, and the provider throwing | `projects-write.test.ts` "returns 502 rather than 500 when …" (non-JSON content, no choices, the provider call itself fails) |
-| `GET /api/projects` accepts a fractional `page`/`limit` and a trailing-garbage `page` (`parseInt` truncates) rather than 400 | `projects-list.test.ts` "rejects a fractional page / fractional limit / trailing-garbage page like 3abc with 400" |
-| `GET /api/notifications` same for fractional and trailing-garbage `limit` | `notifications.test.ts` "rejects a fractional limit / trailing-garbage limit with 400" |
-| `SKILL_ALIASES` is a bare object literal, so a skill named `constructor`/`toString` resolves through `Object.prototype` | `lib.test.ts` "passes a skill named like an Object.prototype member through unchanged", "returns only strings for a skill named like an Object.prototype member" |
+| `POST /:id/bookmark` losing the upsert's find-then-insert race → 500 with a Prisma leak. `prisma.upsert` on a compound unique is a find-then-`INSERT`, not `INSERT … ON CONFLICT`, so an insert blocked on an uncommitted duplicate wakes to P2002. Violates both "idempotent (upsert)" and rule 8 — and confirms **D14**'s leak is not specific to the payment path (#39) | `bookmarks.test.ts` "is idempotent under concurrency: an insert that loses the race must not 500" |
+| Non-string `expectedDuration` on apply → 500 (#37) | `applications.test.ts` "400s on a non-string expectedDuration rather than 500" |
+| The `Project deadline has passed` branch in `apply` is **dead code** — the lazy sweep closes the project first, so it is unreachable (#39) | `applications.test.ts` "reports 'Project deadline has passed' for an expired OPEN project" |
+| Three `analyze` paths → 500 instead of 502: non-JSON content, a response with no `choices`, and the provider throwing (#38) | `projects-write.test.ts` "returns 502 rather than 500 when …" (non-JSON content, no choices, the provider call itself fails) |
+| `GET /api/projects` accepts a fractional `page`/`limit` and a trailing-garbage `page` (`parseInt` truncates) rather than 400 (#37) | `projects-list.test.ts` "rejects a fractional page / fractional limit / trailing-garbage page like 3abc with 400" |
+| `GET /api/notifications` same for fractional and trailing-garbage `limit` (#37) | `notifications.test.ts` "rejects a fractional limit / trailing-garbage limit with 400" |
+| `SKILL_ALIASES` is a bare object literal, so a skill named `constructor`/`toString` resolves through `Object.prototype` (#37) | `lib.test.ts` "passes a skill named like an Object.prototype member through unchanged", "returns only strings for a skill named like an Object.prototype member" |
 | A `requiredSkills` array containing SQL `NULL` (reachable only by raw SQL) makes `GET /api/projects` 500 with Prisma `P2032` — **one bad row takes down the whole public listing** | not tested (unreachable via the API) |
 
 ## Open questions
