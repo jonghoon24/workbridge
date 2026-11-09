@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "openapi": "tsx scripts/generate-openapi.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "bash scripts/test-db.sh",
