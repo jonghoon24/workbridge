@@ -538,7 +538,7 @@ describe('GET /api/projects/:id', () => {
     await prisma.pricingAnalysis.create({
       data: {
         projectId: project.id,
-        features: [{ name: '로그인', estimatedCost: 500_000 }],
+        features: [{ name: '로그인', description: '이메일 로그인', estimatedCost: 500_000, rationale: '근거', duration: '3일' }],
         totalAmount: 500_000,
         summary: '요약',
         marketReference: '참고',
