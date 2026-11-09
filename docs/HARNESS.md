@@ -1,14 +1,15 @@
 # 하네스 구성
 
 이 리포지토리에서 Claude Code가 일할 때 쓰는 하네스를 정리한다. 요소마다 파일, **이 코드베이스의 어떤 규칙이나
-사고 때문에 있는지**, 한계를 적는다. 규칙의 근거는 `docs/BEHAVIOR.md`(명세, D번호는 "Known divergences" 표)와 코드다.
+사고 때문에 있는지**, 한계를 적는다. 규칙의 근거는 `docs/domain/`(제품 규칙), OpenAPI 문서, GitHub 이슈(알려진 버그와 결정), 코드다.
 
 ## 1. 지침 파일 — `CLAUDE.md`
 
 모든 세션과 CI 리뷰어가 매번 읽는다. 그래서 안내판 역할만 한다: 제품 한 문단, 패키지 두 개, 커맨드, 어떤 문서를
-언제 읽을지, 언어·커밋 컨벤션 두 줄, 그리고 바로 사고가 나는 "함정" 10개(`import 'dotenv/config'`가 첫 import, 라우터 마운트 순서,
-`GET /api/projects`가 행을 씀, 공개 핸들러의 `req.user`, `Promise<void>` 금지 등). 상세 구조는
-`docs/ARCHITECTURE.md`로, 경로별 지시는 rules로 보냈다. 80줄 이하로 유지한다.
+언제 읽을지, 테스트가 무엇을 단언하는지 한 문단, 언어·커밋 컨벤션 두 줄, 그리고 바로 사고가 나는 "함정" 11개
+(`import 'dotenv/config'`가 첫 import, 라우터 마운트 순서, `GET /api/projects`가 행을 씀, 공개 핸들러의 `req.user`,
+응답이 OpenAPI 스키마와 맞아야 함, `Promise<void>` 금지 등). 상세 구조는 `docs/ARCHITECTURE.md`로, 경로별 지시는
+rules로 보냈다. 80줄 안팎으로 유지한다.
 
 ## 2. 경로별 rules — `.claude/rules/*.md`
 
@@ -16,12 +17,12 @@
 
 | 파일 | 불러오는 경로 | 왜 있는가 |
 |---|---|---|
-| `server-layers.md` | `workbridge-server/src/**/*.ts` | 기존/확장 레이어 혼재는 의도된 것(규칙 12). 기존 컨트롤러에 zod·서비스·`requireActiveUser`를 붙이면 D12 핀(`soft-delete.test.ts` `mutations`)이 예기치 않게 통과해 스위트가 깨진다. 트랜잭션 안 P2002 금지(D4 수정 방식), `lockUserRow` 첫 문장 |
-| `money-time.md` | 서비스, 작업, 스키마, `lib/money.ts`·`time.ts`, 결제·마일스톤·정산 컨트롤러 | M3/M5/M7 금액 규칙은 `lib/money.ts`에만. CI·Vercel은 UTC라 호스트 시간대 함수는 기기마다 답이 다르다 |
+| `server-layers.md` | `workbridge-server/src/**/*.ts` | 기존/확장 레이어 혼재는 의도된 것이고 이전은 #40에서 따로 한다. 새 라우트의 가드 체인과 OpenAPI 등록(`npm run openapi`), 트랜잭션 안 P2002 금지(Postgres가 트랜잭션을 이미 중단했다), `lockUserRow` 첫 문장 |
+| `money-time.md` | 서비스, 작업, 스키마, `lib/money.ts`·`time.ts`, 결제·마일스톤·정산 컨트롤러 | 수수료·부가세·반올림은 `lib/money.ts`에만(인라인 계산은 1원 어긋남). CI·Vercel은 UTC라 호스트 시간대 함수는 기기마다 답이 다르다 |
 | `jobs.md` | `src/jobs/**`, 서비스, `internal.controller.ts` | 트랜잭션 아웃박스, `create`+P2002 catch가 트랜잭션 전체를 중단시키는 문제, 운영은 15분 크론, 지급·메일 플래그 |
-| `notifications-logging.md` | `workbridge-server/src/**/*.ts` | 알림은 `notify()`만(NC9). 스위트가 "500은 한 번만 error 로그"를 단언한다(규칙 1, 9). 요청 body·query·헤더를 통째로 로그에 넣지 않는다(계좌번호·토큰이 운영 로그에 남는다) |
-| `tests.md` | `workbridge-server/test/**`, `vitest.config.ts`, `docs/BEHAVIOR.md` | 실제 Postgres, 팩토리, 가짜 타이머 금지, `it.fails` 핀은 수정과 함께만 뒤집기, 공통 관심사는 중앙 매트릭스에서 한 번 |
-| `prisma.md` | `workbridge-server/prisma/**`, `docs/DATABASE.md` | 적용된 마이그레이션 불변, `seed.js`는 CommonJS, `deletedAt: null`(D1, D19, D21) |
+| `notifications-logging.md` | `workbridge-server/src/**/*.ts` | 알림은 `notify()`만(채널 정책과 수신자 설정이 거기서 적용된다). 스위트가 "500은 한 번만 error 로그"를 단언한다. 요청 body·query·헤더를 통째로 로그에 넣지 않는다(계좌번호·토큰이 운영 로그에 남는다) |
+| `tests.md` | `workbridge-server/test/**`, `vitest.config.ts`, `docs/domain/**` | 테스트는 현재 코드가 아니라 의도를 단언하고 알려진 버그는 이슈로만 추적, 모든 응답의 OpenAPI 적합성 검사(새 상태 코드·필드는 문서부터), 실제 Postgres, 팩토리, 가짜 타이머 금지, 공통 관심사는 중앙 매트릭스에서 한 번 |
+| `prisma.md` | `workbridge-server/prisma/**`, `docs/DATABASE.md` | 적용된 마이그레이션 불변, `seed.js`는 CommonJS, `deletedAt: null`(이 필터 누락이 #14, #16의 원인) |
 | `client.md` | `workbridge-client/**` | JSX 유지, `lib/api.js`만, `middleware.js`는 쿠키 존재만 봄, 문구를 바꾸면 E2E도 함께 |
 | `deploy.md` | `vercel.json`, `index.ts`, `env.ts`, `package.json`, 워크플로, `DEPLOYMENT.md`, `ENV.md` | `vercel.json`의 진입점 두 곳, `dist/` 없음(Prisma 생성은 `postinstall`), Preview/Production이 서로 다른 Supabase 프로젝트, 원격 마이그레이션은 `migrate.yml`만 |
 
@@ -64,24 +65,25 @@
 
 | 스킬 | 왜 있는가 |
 |---|---|
-| `run-workbridge` | 로컬 Postgres, `.env` 두 개, 마이그레이션, 시드, dev 서버 두 개를 띄우는 절차가 길다. API 스모크(`drive.sh`), 스크린샷, E2E 순서로 확인하고, 화면 하나는 `npx playwright cli`로 직접 조작한다. 로그인 제한(규칙 10) 때문에 `RATE_LIMIT_ENABLED=false`, Supabase는 `localhost` 스텁 |
-| `fix-divergence` | `docs/BEHAVIOR.md`에 남은 불일치(D번호)를 하나씩 고치는 반복 작업. 핀 찾기 → 뒤집어 실패 확인 → 기존 스타일대로 수정 → Resolved로 이동 → `docs/API.md` |
-| `add-endpoint` | 확장 라우트 하나에 손댈 곳이 아홉 군데다. 명세 → zod → 서비스 → 얇은 컨트롤러 → 가드 → `PROTECTED_ROUTES`·`guardedMutations` → 테스트 → 문서 |
-| `db-migration` | 스키마 변경 뒤에 빠뜨리기 쉬운 후속 작업이 많다(`db:generate`, `TABLES`, `seed.js`, `DATABASE.md`) |
-| `pre-pr-review` | `/code-review`와 `REVIEW.md` 번호 항목으로 diff를 보고, 국소적인 것만 고치고, 핀 뒤집기·기존 컨트롤러 개조·마이그레이션 수정은 사람에게 넘긴다. `allowed-tools`로 쓸 수 있는 커맨드를 묶었다 |
+| `run-workbridge` | 로컬 Postgres, `.env` 두 개, 마이그레이션, 시드, dev 서버 두 개를 띄우는 절차가 길다. API 스모크(`drive.sh`), 스크린샷, E2E 순서로 확인하고, 화면 하나는 `npx playwright cli`로 직접 조작한다. 로컬 로그인이 모두 루프백 한 주소로 세어져 로그인 제한에 걸리므로 `RATE_LIMIT_ENABLED=false`, Supabase는 `localhost` 스텁 |
+| `add-endpoint` | 확장 라우트 하나에 손댈 곳이 열 군데다. 도메인 규칙 → zod → 서비스 → 얇은 컨트롤러 → 가드 → OpenAPI 등록·`npm run openapi` → `PROTECTED_ROUTES`·`guardedMutations` → 테스트 → 문서 |
+| `db-migration` | 스키마 변경 뒤에 빠뜨리기 쉬운 후속 작업이 많다(`db:generate`, `TABLES`, `seed.js`, `DATABASE.md`, 응답에 나가는 필드면 OpenAPI 응답 스키마) |
+| `pre-pr-review` | `/code-review`와 `REVIEW.md` 번호 항목으로 diff를 보고, 국소적인 것만 고치고, 기존 테스트 단언 완화·기존 컨트롤러 개조·마이그레이션 수정은 사람에게 넘긴다. `allowed-tools`로 쓸 수 있는 커맨드를 묶었다 |
 
 **한계.** 스킬은 설명이 요청과 맞을 때만 불린다. 스킬 전체를 끝까지 실행하는 자동 테스트는 없다.
 
 ## 6. 리뷰 기준 — `REVIEW.md`
 
-로컬 `pre-pr-review`와 CI 리뷰어가 같은 번호 항목을 읽는다. 항목마다 규칙 한 줄, 이 코드베이스의 근거
-(D1·D4·D12·D13·D19·D21·D22, M3/M5, NC9, PA7/S17/PF8 등), diff에서 확인하는 방법이 있다.
+로컬 `pre-pr-review`와 CI 리뷰어가 같은 번호 항목을 읽는다. 항목마다 규칙 한 줄, 이 코드베이스의 근거(실제로 난
+버그와 그 이슈 번호 — 탈퇴한 사용자의 쓰기 #7, 동시 결제 생성의 500 #8·#17, 삭제된 프로젝트의 필터 누락 #14·#16 —
+도메인 문서와 `docs/DATABASE.md`의 절), diff에서 확인하는 방법이 있다. 항목 번호는 바꾸지 않는다(`REVIEW #n`으로
+참조된다).
 
 ## 7. GitHub 워크플로 — `.github/workflows/`
 
 | 파일 | 트리거 | 왜 있는가 |
 |---|---|---|
-| `ci.yml` | PR, `main` 푸시 | 서버 typecheck·`prisma validate`·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint(`--max-warnings=0`)·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
+| `ci.yml` | PR, `main` 푸시 | 서버 typecheck·`prisma validate`·`openapi.json` 최신 검사·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint(`--max-warnings=0`)·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
 | `e2e.yml` | PR, `main` 푸시 | Playwright E2E. 클라이언트에 단위 테스트가 없어서 핵심 흐름은 브라우저로만 확인된다 |
 | `claude-code-review.yml` | PR opened·synchronize·ready_for_review·reopened(드래프트 제외) | Claude가 `REVIEW.md`·`CLAUDE.md`와 바뀐 경로의 rules, PR 본문을 읽고 diff를 리뷰한다. 지적은 인라인 코멘트로 달고 `REVIEW.md` 위반에는 `REVIEW #n`을 붙인다. 푸시마다 다시 돌지만 자신이 이미 단 지적(`gh api …/pulls/<n>/comments`)은 다시 달지 않고, 실행마다 요약 코멘트 하나(새 지적 수와 REVIEW 항목별 건수, 이전 지적의 해결·남음)를 남긴다. 말투는 합니다체, `--max-turns 20`. 승인·변경 요청·코드 수정·푸시는 하지 않는다 — 머지 결정은 사람 몫이다 |
 | `claude.yml` | 이슈·PR 코멘트, PR 리뷰·리뷰 코멘트의 `@claude` 멘션, 이슈 opened·assigned(제목이나 본문에 `@claude`) | 멘션에 답하거나, 작업을 맡아 새 브랜치에 커밋·푸시하고 PR 템플릿을 채운 **드래프트 PR**을 연다(이미 열린 PR에서는 그 브랜치에 푸시만). 저장소의 `CLAUDE.md`·rules·스킬을 그대로 읽는다. 의존성 설치·Prisma 생성 단계가 있어 허용 커맨드 typecheck·lint가 실제로 돈다. 그 밖의 허용은 읽기 전용 git, `gh pr view`·`gh pr diff`·`gh pr create`, `gh issue view`. DB가 없어 vitest는 허용하지 않는다(테스트는 PR의 `ci.yml`). 트리거한 사람에게 쓰기 권한이 있어야 돈다 |

@@ -19,6 +19,7 @@ npm test                             # 그 실제 Postgres로 vitest (~90초). �
 npx vitest run test/<file>.test.ts   # 파일 하나
 npx prisma migrate dev --name <name> # 새 마이그레이션. 그다음 npm run db:generate
 npm run db:seed                      # 시드 데이터 (docs/SEED_DATA.md)
+npm run openapi                      # openapi.json 재생성. 커밋한다(CI가 최신인지 검사)
 ```
 
 클라이언트(`workbridge-client/`):
@@ -35,21 +36,21 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 | 필요할 때 | 문서 |
 |---|---|
 | 레이어, 요청 흐름, 작업 큐, 클라이언트 구조, 환경 | `docs/ARCHITECTURE.md` |
-| API가 **어떻게 동작해야 하는지** | `docs/BEHAVIOR.md` (영문) |
-| 엔드포인트 목록 / DB 모델과 불변식 | `docs/API.md` / `docs/DATABASE.md` |
+| 엔드포인트, 요청·응답, 상태 코드와 오류 메시지 | `GET /api/docs`(로컬 서버) / `workbridge-server/openapi.json` |
+| 제품 규칙과 이유(정책 수치, 상태 전이) / DB 모델, 불변식, 잠금 | `docs/domain/` / `docs/DATABASE.md` |
 | 환경변수 / 배포와 운영 환경의 한계 | `docs/ENV.md` / `docs/DEPLOYMENT.md` |
 | 시드 계정과 화면별 시나리오 | `docs/SEED_DATA.md` |
 | 이 하네스(지침, 권한, 훅, 스킬) / 리뷰 기준 | `docs/HARNESS.md` / `REVIEW.md` |
 
-**`docs/BEHAVIOR.md`가 명세이자 테스트 오라클이다.** 코드가 명세와 다른 곳은 "Known divergences"에
-불일치 번호(D3, D5, …)로 올라 있고 `it.fails`로 고정돼 있다. 지금 동작이 곧 명세는 아니다.
+**테스트는 지금 코드가 아니라 의도한 동작을 단언한다.** 근거는 `docs/domain/`, OpenAPI, 이슈다. 알려진 버그는
+GitHub 이슈로 추적하고(도메인 문서의 `현재 다름: #N`), 고치는 PR에 회귀 테스트를 넣는다.
 
 경로별 상세 지침은 `.claude/rules/`에 있고, 해당 경로의 파일을 다룰 때 자동으로 컨텍스트에 들어온다.
 
 ## 구조 요약
 
-- 서버: `src/index.ts`가 `/api/*` 라우터를 마운트하고 `export default app`(Vercel). 기존 도메인은
-  `routes → controllers → lib`, 확장 도메인은 `services/`와 zod `schemas/`를 더 쓴다. 혼재는 의도된 것이다.
+- 서버: `src/index.ts`가 `/api/*` 라우터를 마운트하고 `export default app`(Vercel). 요청 검증은 모든 라우트가
+  zod `schemas/` + `validate()`. 기존 도메인은 `routes → controllers → lib`, 확장 도메인은 `services/`를 더 쓴다(이전은 #40).
 - 에러는 `throw new AppError(message, status)` → `next(err)` → `errorHandler`가 `{ error: { message } }`.
 - 데이터: `User → Project → Application → Contract → Milestone/Payment → Review`.
   `User`와 `Project`는 소프트 삭제(`deletedAt`) — 어디서나 `deletedAt: null`로 거른다.
@@ -69,8 +70,10 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
   새 `/api/users/me/<x>` 라우트는 `profile.routes.ts`에 넣고, 순서는 절대 바꾸지 않는다.
 - `GET /api/projects`와 `GET /api/projects/:id`는 **행을 쓴다**(지연 수명주기 스윕이 마감된
   프로젝트를 닫는다). 읽기 전용이 아니다.
-- `req.user`는 non-optional로 타입이 잡혀 있지만 `src/types/index.ts`에 적힌 공개 핸들러 12개에서는
-  `undefined`다(`X-Internal-Token`으로 지키는 `runJobs` 포함). 거기서는 읽지 않는다.
+- `req.user`는 non-optional로 타입이 잡혀 있지만 `src/types/index.ts`에 적힌 공개 핸들러 14개에서는
+  `undefined`다(`X-Internal-Token`으로 지키는 `runJobs`, API 문서 화면 포함). 거기서는 읽지 않는다.
+- 테스트가 **모든 응답**을 OpenAPI 응답 스키마로 strict 검사한다. 라우트·상태 코드·응답 필드를 바꾸면
+  `src/openapi/paths`·`responses`를 함께 고치고 `npm run openapi`. 문서에 없는 상태 코드나 필드는 테스트 실패다.
 - 핸들러에 `Promise<void>`를 붙이지 않는다. 함수 중간에 `return res.json(...)`하는 곳이 많다.
 - 여러 행을 바꾸는 상태 변경은 `prisma.$transaction` 하나로 하고, 알림과 작업도 그 안에서 쓴다.
 - 적용된 마이그레이션은 고치지 않는다(훅이 막는다). 스키마를 바꾸고 `prisma migrate dev`.

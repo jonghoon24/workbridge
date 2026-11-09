@@ -4,16 +4,18 @@
 
 ## 관련 이슈
 
+<!-- 버그 수정이면 그 이슈를 닫는다. -->
 Closes #
 
 ## 확인한 것
 
 - [ ] `npm run typecheck` (workbridge-server)
 - [ ] `npm test` (workbridge-server)
-- [ ] (불일치를 고친 경우) 그 D번호의 `it.fails`를 `it`으로 바꾸고 `docs/BEHAVIOR.md`에서 Resolved로 옮겼다
+- [ ] (버그 수정) 고치기 전 코드에서 실패하는 회귀 테스트를 추가했다. 기존 테스트의 단언은 약하게 바꾸지 않았다
 - [ ] `npm run build` (workbridge-client, 클라이언트를 건드린 경우)
 - [ ] E2E / 화면 확인 (클라이언트 흐름을 건드린 경우, 스크린샷 첨부)
-- [ ] 문서 — `docs/BEHAVIOR.md`(규칙 변경), `docs/API.md`, `docs/ENV.md`
+- [ ] (API 변경) `src/openapi/`의 경로·응답 스키마를 고치고 `npm run openapi`로 만든 `openapi.json`을 포함했다
+- [ ] 문서 — `docs/domain/`(제품 규칙 변경), `docs/DATABASE.md`(스키마), `docs/ENV.md`(환경변수)
 - [ ] 스키마 변경 시 마이그레이션 포함
 
 ## 리뷰어가 볼 곳
