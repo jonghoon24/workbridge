@@ -1,8 +1,8 @@
 import { queryInt } from './common';
 
 /**
- * Expansion list routes (CT2): `page` 1–1,000,000 (default 1); `limit` ≥ 1 (default 20), capped
- * at 50. The page bound keeps `skip = (page − 1) × limit` far inside what Prisma accepts — an
+ * Paginated list routes (CT2; `GET /api/notifications` uses `limit` alone): `page` 1–1,000,000
+ * (default 1); `limit` ≥ 1 (default 20), capped at 50. The page bound keeps `skip = (page − 1) × limit` far inside what Prisma accepts — an
  * unbounded page overflowed int64 and surfaced as a 500 leaking Prisma internals.
  */
 export const MAX_PAGE_SIZE = 50;

@@ -2,21 +2,12 @@ import type { NextFunction, Response } from 'express';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import type { AuthedRequest } from '../types/index';
-
-function parseLimit(value: string | undefined): number {
-  const parsed = Number.parseInt(value || '20', 10);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new AppError('limit must be a positive integer', 400);
-  }
-  return Math.min(parsed, 50);
-}
+import type { NotificationListQuery } from '../schemas/notifications';
 
 export async function getNotifications(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // `req.query.limit` is widened by qs to `string | string[] | ParsedQs | ParsedQs[]`.
-    // Asserted rather than narrowed so the value reaching `Number.parseInt` is unchanged
-    // (a repeated `?limit=1&limit=2` still stringifies exactly as it does today).
-    const limit = parseLimit(req.query.limit as string | undefined);
+    // Parsed by `notificationListQuery`: 1–50, default 20.
+    const { limit } = res.locals.query as NotificationListQuery;
 
     const [notifications, unreadCount] = await Promise.all([
       prisma.notification.findMany({
