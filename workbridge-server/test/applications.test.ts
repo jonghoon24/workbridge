@@ -56,13 +56,13 @@ afterEach(() => {
 
 describe('POST /api/projects/:id/applications', () => {
   /** Typed so `body` stays an object for `Object.keys` below rather than a union with `field`. */
-  const missingFieldCases: [field: string, body: Record<string, unknown>][] = [
-    ['coverLetter', { expectedRate: 3_300_000, expectedDuration: '6주' }],
-    ['expectedRate', { coverLetter: 'hello', expectedDuration: '6주' }],
-    ['expectedDuration', { coverLetter: 'hello', expectedRate: 3_300_000 }],
+  const missingFieldCases: [field: string, body: Record<string, unknown>, message: string][] = [
+    ['coverLetter', { expectedRate: 3_300_000, expectedDuration: '6주' }, 'Cover letter is required'],
+    ['expectedRate', { coverLetter: 'hello', expectedDuration: '6주' }, 'Expected rate is required'],
+    ['expectedDuration', { coverLetter: 'hello', expectedRate: 3_300_000 }, 'Expected duration is required'],
   ];
 
-  describe.each(missingFieldCases)('missing %s', (field, body) => {
+  describe.each(missingFieldCases)('missing %s', (field, body, message) => {
     it('400s and persists nothing', async () => {
       // The case really does omit the field it is named after — otherwise a future edit could
       // leave this asserting the 400 of some *other* missing field.
@@ -78,7 +78,7 @@ describe('POST /api/projects/:id/applications', () => {
         .send(body);
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe(`${field}: Required`);
+      expect(res.body.error.message).toBe(`${field}: ${message}`);
       expect(await prisma.application.count()).toBe(0);
       expect(await prisma.notification.count()).toBe(0);
     });
@@ -98,7 +98,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ ...validApplyBody, expectedRate: 0 });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('expectedRate: must be a positive number');
+    expect(res.body.error.message).toBe('expectedRate: Expected rate must be a positive whole number of won');
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -114,6 +114,9 @@ describe('POST /api/projects/:id/applications', () => {
     ['exponent', '1e6'],
     ['boolean', true],
     ['null', null],
+    // Money-time rule: amounts are whole won.
+    ['fractional', 2_500_000.5],
+    ['fractional string', '1000.5'],
   ])('400s on a %s expectedRate, from the positivity check', async (_label, expectedRate) => {
     const client = await makeClient();
     const project = await makeProject(client.id);
@@ -125,14 +128,14 @@ describe('POST /api/projects/:id/applications', () => {
 
     expect(res.status).toBe(400);
     expectErrorEnvelope(res.body);
-    expect(res.body.error.message).toBe('expectedRate: must be a positive number');
+    expect(res.body.error.message).toBe('expectedRate: Expected rate must be a positive whole number of won');
     expect(await prisma.application.count()).toBe(0);
   });
 
   it.each([
     ['0.4', 0.4],
     ['the string "0.99"', '0.99'],
-  ])('400s on a positive expectedRate below 1 (%s) [C2] [M7]', async (_label, expectedRate) => {
+  ])('400s on a positive expectedRate below 1 (%s), which is not a whole number of won [C2] [M7]', async (_label, expectedRate) => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -142,7 +145,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ ...validApplyBody, expectedRate });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'expectedRate: must be at least 1' } });
+    expect(res.body).toEqual({ error: { message: 'expectedRate: Expected rate must be a positive whole number of won' } });
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -184,7 +187,7 @@ describe('POST /api/projects/:id/applications', () => {
     const res = await applyWithNonStringDuration();
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'expectedDuration: Expected string, received number' } });
+    expect(res.body).toEqual({ error: { message: 'expectedDuration: Expected duration must be a string' } });
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -198,9 +201,9 @@ describe('POST /api/projects/:id/applications', () => {
   });
 
   it.each([
-    ['coverLetter', { coverLetter: 42 }, 'coverLetter: Expected string, received number'],
-    ['coverLetter', { coverLetter: '   ' }, 'coverLetter: Required'],
-    ['expectedDuration', { expectedDuration: '' }, 'expectedDuration: Required'],
+    ['coverLetter', { coverLetter: 42 }, 'coverLetter: Cover letter must be a string'],
+    ['coverLetter', { coverLetter: '   ' }, 'coverLetter: Cover letter is required'],
+    ['expectedDuration', { expectedDuration: '' }, 'expectedDuration: Expected duration is required'],
   ])('400s on a malformed %s (%j)', async (_field, override, message) => {
     const client = await makeClient();
     const project = await makeProject(client.id);
@@ -366,7 +369,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ coverLetter: 'no rate, no duration' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('expectedRate: Required');
+    expect(res.body.error.message).toBe('expectedRate: Expected rate is required');
 
     const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(after.status).toBe('OPEN');
@@ -382,7 +385,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ ...validApplyBody, expectedRate: -1 });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('expectedRate: must be a positive number');
+    expect(res.body.error.message).toBe('expectedRate: Expected rate must be a positive whole number of won');
   });
 
   it.each([
@@ -465,18 +468,18 @@ describe('POST /api/projects/:id/applications', () => {
     expect(notifications[0].message).toContain(project.title);
   });
 
-  it('accepts a numeric string expectedRate and stores it as a number', async () => {
+  it('accepts an integer string expectedRate and stores it as a number', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer)
       .post(`/api/projects/${project.id}/applications`)
-      .send({ ...validApplyBody, expectedRate: '2500000.5' });
+      .send({ ...validApplyBody, expectedRate: '2500000' });
 
     expect(res.status).toBe(201);
     const persisted = await prisma.application.findUniqueOrThrow({ where: { id: res.body.id } });
-    expect(persisted.expectedRate).toBe(2_500_000.5);
+    expect(persisted.expectedRate).toBe(2_500_000);
   });
 
   it('lets two different freelancers apply to the same project', async () => {
@@ -759,7 +762,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('status: must be one of ACCEPTED, REJECTED');
+    expect(res.body.error.message).toBe('status: Status must be one of ACCEPTED, REJECTED');
     const unchanged = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
     expect(unchanged.status).toBe('PENDING');
     expect(await prisma.contract.count()).toBe(0);
@@ -771,7 +774,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'status: Required' } });
+    expect(res.body).toEqual({ error: { message: 'status: Status is required' } });
   });
 
   // Rule 12 order, which also settles Q15: validation before existence.
@@ -781,7 +784,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     const res = await authed(s.client).patch(url(MISSING_ID, s.chosen.id)).send({ status: 'BOGUS' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('status: must be one of ACCEPTED, REJECTED');
+    expect(res.body.error.message).toBe('status: Status must be one of ACCEPTED, REJECTED');
   });
 
   it('404s for a project that does not exist', async () => {

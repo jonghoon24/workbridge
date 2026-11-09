@@ -202,7 +202,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'milestoneId: Required' } });
+    expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -212,7 +212,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'milestoneId: Required' } });
+    expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -497,9 +497,9 @@ describe('POST /api/payments', () => {
   // deterministic vector). It is a 400 now; D14 itself — `errorHandler` rendering a Prisma
   // message verbatim — is still pinned by the collision test below.
   it.each([
-    ['a number', 12345, 'milestoneId: Expected string, received number'],
-    ['an empty string', '', 'milestoneId: Required'],
-    ['an object', { id: 'x' }, 'milestoneId: Expected string, received object'],
+    ['a number', 12345, 'milestoneId: Milestone ID must be a string'],
+    ['an empty string', '', 'milestoneId: Milestone ID is required'],
+    ['an object', { id: 'x' }, 'milestoneId: Milestone ID must be a string'],
   ])('rejects %s as milestoneId with 400, exposing no internals [PY1]', async (_label, milestoneId, message) => {
     const { client } = await activeScenario();
 
@@ -570,16 +570,16 @@ describe('POST /api/payments/confirm', () => {
   });
 
   it.each([
-    ['paymentKey', { orderId: 'o', amount: 1000 }],
-    ['orderId', { paymentKey: 'pk', amount: 1000 }],
-    ['amount', { paymentKey: 'pk', orderId: 'o' }],
-  ])('rejects a missing %s with 400 and never calls the provider', async (field, payload) => {
+    ['paymentKey', { orderId: 'o', amount: 1000 }, 'Payment key is required'],
+    ['orderId', { paymentKey: 'pk', amount: 1000 }, 'Order ID is required'],
+    ['amount', { paymentKey: 'pk', orderId: 'o' }, 'Amount is required'],
+  ])('rejects a missing %s with 400 and never calls the provider', async (field, payload, message) => {
     const { client, payment } = await pendingPayment();
 
     const res = await authed(client).post('/api/payments/confirm').send(payload);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: `${field}: Required` } });
+    expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -596,7 +596,7 @@ describe('POST /api/payments/confirm', () => {
     const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, 0));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'amount: must be a positive number' } });
+    expect(res.body).toEqual({ error: { message: 'amount: Amount must be a positive whole number of won' } });
     expect(tossPost).not.toHaveBeenCalled();
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe('PENDING');
@@ -613,6 +613,9 @@ describe('POST /api/payments/confirm', () => {
     ['a whitespace-only string', '   '],
     ['a trailing-garbage string', '4000000abc'],
     ['a boolean', true],
+    // Money-time rule: amounts are whole won.
+    ['a fraction', 4_000_000.5],
+    ['a fractional string', '1000.5'],
   ])('rejects %s amount with 400', async (_label, amount) => {
     const { client, payment } = await pendingPayment();
 
@@ -621,7 +624,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, amount as number | string));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'amount: must be a positive number' } });
+    expect(res.body).toEqual({ error: { message: 'amount: Amount must be a positive whole number of won' } });
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -1217,7 +1220,7 @@ describe('POST /api/payments/dev-complete', () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'milestoneId: Required' } });
+      expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
       expect(await prisma.payment.count()).toBe(0);
     });
 
@@ -1229,7 +1232,7 @@ describe('POST /api/payments/dev-complete', () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'milestoneId: Expected string, received number' } });
+      expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID must be a string' } });
       expect(await prisma.payment.count()).toBe(0);
     });
 

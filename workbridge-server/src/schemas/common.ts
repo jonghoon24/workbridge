@@ -75,12 +75,11 @@ export function queryEnum<const T extends readonly [string, ...string[]]>(values
 }
 
 // ---------------------------------------------------------------------------------------------
-// Added when the pre-existing routes moved to zod. Same message style as above: lowercase, and
-// `validate()` prefixes the field path.
+// Added when the pre-existing routes moved to zod. Query helpers keep the style above (lowercase,
+// `validate()` prefixes the field path).
 // ---------------------------------------------------------------------------------------------
 
 const DECIMAL = /^-?\d+(\.\d+)?$/;
-const NUMBER_MESSAGE = 'must be a number';
 
 export interface QueryNumberOptions {
   min?: number;
@@ -97,7 +96,7 @@ export function queryNumber({ min }: QueryNumberOptions = {}) {
     if (raw === undefined) return undefined;
 
     if (!DECIMAL.test(raw)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: NUMBER_MESSAGE });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'must be a number' });
       return z.NEVER;
     }
 
@@ -111,29 +110,51 @@ export function queryNumber({ min }: QueryNumberOptions = {}) {
 }
 
 /**
- * A JSON body number that also accepts a plain decimal string (`2500000`, `'2500000.5'`) — form
- * inputs and the TossPayments redirect deliver amounts as strings. Anything else, including an
- * empty or whitespace-only string, `'Infinity'` and `'3abc'`, is `message`; an absent field is
- * `Required`. Range checks are the caller's (`.superRefine`), so each field keeps its own wording.
+ * Body fields below take a `label` and produce sentence messages (`Budget is required`), the style
+ * of the expansion bodies (`schemas/milestones.ts`). `validate()` prefixes the field path.
  */
-export function bodyNumber(message: string = NUMBER_MESSAGE) {
+
+const WHOLE_WON = /^-?\d+$/;
+
+/**
+ * A whole number of won (money-time rule, rule 12) of at least `min`: a JSON integer or a plain
+ * integer string (`'2500000'` — form inputs and the TossPayments redirect deliver strings).
+ * Anything else — a fraction (`1000.5`), `'3abc'`, `'1e6'`, `'Infinity'`, whitespace, a boolean,
+ * `null`, an unsafe integer, or a value below `min` — is one message:
+ * `<Label> must be a positive whole number of won` (`non-negative` when `min` is 0). Absent →
+ * `<Label> is required`.
+ */
+export function bodyWholeWon(label: string, { min }: { min: 0 | 1 }) {
+  const message = `${label} must be a ${min === 0 ? 'non-negative' : 'positive'} whole number of won`;
   return z
-    .union([z.number(), z.string().trim().regex(DECIMAL, message)], {
-      errorMap: (_issue, ctx) => ({ message: ctx.data === undefined ? 'Required' : message }),
+    .union([z.number(), z.string().trim().regex(WHOLE_WON, message)], {
+      errorMap: (_issue, ctx) => ({ message: ctx.data === undefined ? `${label} is required` : message }),
     })
-    .transform(Number);
+    // `+ 0` turns `'-0'` into 0.
+    .transform((value) => Number(value) + 0)
+    .superRefine((value, ctx) => {
+      if (!Number.isSafeInteger(value) || value < min) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      }
+    });
 }
 
-/** A required body field that must be one of `values`; absent → `Required`. */
-export function bodyEnum<const T extends readonly [string, ...string[]]>(values: T) {
+/** A required body field that must be one of `values`: `<Label> must be one of A, B`. */
+export function bodyEnum<const T extends readonly [string, ...string[]]>(label: string, values: T) {
   return z.enum(values as unknown as [T[number], ...T[number][]], {
     errorMap: (_issue, ctx) => ({
-      message: ctx.data === undefined ? 'Required' : `must be one of ${values.join(', ')}`,
+      message: ctx.data === undefined ? `${label} is required` : `${label} must be one of ${values.join(', ')}`,
     }),
   });
 }
 
-/** A required body string: trimmed, and empty or whitespace-only counts as missing (`Required`). */
-export function requiredString() {
-  return z.string().trim().min(1, 'Required');
+/**
+ * A required body string: trimmed, and empty or whitespace-only counts as missing
+ * (`<Label> is required`); a non-string is `<Label> must be a string`.
+ */
+export function requiredString(label: string) {
+  return z
+    .string({ required_error: `${label} is required`, invalid_type_error: `${label} must be a string` })
+    .trim()
+    .min(1, `${label} is required`);
 }

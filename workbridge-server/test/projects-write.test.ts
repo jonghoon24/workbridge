@@ -119,9 +119,15 @@ describe('POST /api/projects', () => {
     deadline: daysFromNow(30).toISOString(),
   });
 
-  it.each(['title', 'description', 'category', 'budget', 'deadline'])(
+  it.each([
+    ['title', 'Project title is required'],
+    ['description', 'Project description is required'],
+    ['category', 'Category is required'],
+    ['budget', 'Budget is required'],
+    ['deadline', 'Deadline is required'],
+  ])(
     'rejects a body missing %s with 400',
-    async (field) => {
+    async (field, message) => {
       const client = await makeClient();
       const body: Record<string, unknown> = validBody();
       delete body[field];
@@ -129,7 +135,7 @@ describe('POST /api/projects', () => {
       const res = await authed(client).post('/api/projects').send(body);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: `${field}: Required` } });
+      expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
       expect(await prisma.project.count()).toBe(0);
     },
   );
@@ -142,7 +148,7 @@ describe('POST /api/projects', () => {
       .send({ ...validBody(), deadline: 'not-a-date' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('deadline: must be a valid date');
+    expect(res.body.error.message).toBe('deadline: Deadline must be a valid date');
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -154,7 +160,7 @@ describe('POST /api/projects', () => {
       .send({ ...validBody(), recruitmentStartDate: 'yesterday-ish' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('recruitmentStartDate: must be a valid date');
+    expect(res.body.error.message).toBe('recruitmentStartDate: Recruitment start date must be a valid date');
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -164,7 +170,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: -1 });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('budget: must be a non-negative number');
+    expect(res.body.error.message).toBe('budget: Budget must be a non-negative whole number of won');
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -174,7 +180,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 'abc' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('budget: must be a non-negative number');
+    expect(res.body.error.message).toBe('budget: Budget must be a non-negative whole number of won');
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -209,23 +215,30 @@ describe('POST /api/projects', () => {
     ['Infinity', 'Infinity'],
     ['a boolean', true],
     ['null', null],
+    // Money-time rule: amounts are whole won.
+    ['a fraction', 2_500_000.5],
+    ['a fractional string', '1000.5'],
   ])('rejects %s as budget with 400', async (_label, budget) => {
     const client = await makeClient();
 
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'budget: must be a non-negative number' } });
+    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a non-negative whole number of won' } });
     expect(await prisma.project.count()).toBe(0);
   });
 
-  it.each(['title', 'description', 'category'])('rejects a whitespace-only %s with 400', async (field) => {
+  it.each([
+    ['title', 'Project title is required'],
+    ['description', 'Project description is required'],
+    ['category', 'Category is required'],
+  ])('rejects a whitespace-only %s with 400', async (field, message) => {
     const client = await makeClient();
 
     const res = await authed(client).post('/api/projects').send({ ...validBody(), [field]: '   ' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: `${field}: Required` } });
+    expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -236,7 +249,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), title: 123 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'title: Expected string, received number' } });
+    expect(res.body).toEqual({ error: { message: 'title: Project title must be a string' } });
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -257,7 +270,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), deadline: 1_900_000_000_000 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'deadline: must be a valid date' } });
+    expect(res.body).toEqual({ error: { message: 'deadline: Deadline must be a valid date' } });
   });
 
   it.each([
@@ -397,7 +410,7 @@ describe('POST /api/projects', () => {
       const res = await authed(client).post('/api/projects').send({ ...validBody(), deadline: '2030-02-30' });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'deadline: must be a valid date' } });
+      expect(res.body).toEqual({ error: { message: 'deadline: Deadline must be a valid date' } });
       expect(await prisma.project.count()).toBe(0);
     });
   });
@@ -443,7 +456,7 @@ describe('POST /api/projects', () => {
       .send({ ...validBody(), requiredSkills });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'requiredSkills: must be a string or a list of strings' } });
+    expect(res.body).toEqual({ error: { message: 'requiredSkills: Required skills must be a string or a list of strings' } });
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -643,7 +656,7 @@ describe('PATCH /api/projects/:id', () => {
       .send({ title: '함께 보낸 제목', requiredSkills: [1, 2] });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'requiredSkills: must be a string or a list of strings' } });
+    expect(res.body).toEqual({ error: { message: 'requiredSkills: Required skills must be a string or a list of strings' } });
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.requiredSkills).toEqual(project.requiredSkills);
@@ -652,11 +665,11 @@ describe('PATCH /api/projects/:id', () => {
 
   // `title !== undefined` used to store an empty title, and a `null` one reached Prisma as a 500.
   it.each([
-    ['an empty title', { title: '' }, 'title: Required'],
-    ['a whitespace-only description', { description: '  ' }, 'description: Required'],
-    ['a null category', { category: null }, 'category: Expected string, received null'],
-    ['a null deadline', { deadline: null }, 'deadline: must be a valid date'],
-    ['an empty recruitmentStartDate', { recruitmentStartDate: '' }, 'recruitmentStartDate: must be a valid date'],
+    ['an empty title', { title: '' }, 'title: Project title is required'],
+    ['a whitespace-only description', { description: '  ' }, 'description: Project description is required'],
+    ['a null category', { category: null }, 'category: Category must be a string'],
+    ['a null deadline', { deadline: null }, 'deadline: Deadline must be a valid date'],
+    ['an empty recruitmentStartDate', { recruitmentStartDate: '' }, 'recruitmentStartDate: Recruitment start date must be a valid date'],
   ])('rejects %s with 400 and modifies nothing', async (_label, body, message) => {
     const { client, project } = await ownedProject();
 
@@ -685,7 +698,7 @@ describe('PATCH /api/projects/:id', () => {
     const res = await authed(intruder).patch(`/api/projects/${project.id}`).send({ budget: -1 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'budget: must be a non-negative number' } });
+    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a non-negative whole number of won' } });
   });
 
   it('leaves omitted fields untouched', async () => {
@@ -860,7 +873,7 @@ describe('PATCH /api/projects/:id', () => {
         .send({ deadline: 'someday' });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('deadline: must be a valid date');
+      expect(res.body.error.message).toBe('deadline: Deadline must be a valid date');
     });
 
     it('rejects a negative budget with 400', async () => {
@@ -869,7 +882,7 @@ describe('PATCH /api/projects/:id', () => {
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: -5 });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('budget: must be a non-negative number');
+      expect(res.body.error.message).toBe('budget: Budget must be a non-negative whole number of won');
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.budget).toBe(project.budget);
@@ -881,7 +894,7 @@ describe('PATCH /api/projects/:id', () => {
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 'abc' });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('budget: must be a non-negative number');
+      expect(res.body.error.message).toBe('budget: Budget must be a non-negative whole number of won');
     });
 
     // The `PATCH` counterpart of the zero-budget case on `POST`: `0` is a valid budget.
@@ -1200,7 +1213,7 @@ describe('PATCH /api/projects/:id/status', () => {
     const res = await authed(client).patch(`/api/projects/${project.id}/status`).send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('status: Required');
+    expect(res.body.error.message).toBe('status: Project status is required');
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.status).toBe('OPEN');
@@ -1215,7 +1228,7 @@ describe('PATCH /api/projects/:id/status', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error.message).toBe(
-      'status: must be one of UPCOMING, OPEN, IN_PROGRESS, COMPLETED, CANCELLED, CLOSED',
+      'status: Project status must be one of UPCOMING, OPEN, IN_PROGRESS, COMPLETED, CANCELLED, CLOSED',
     );
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
@@ -1231,7 +1244,7 @@ describe('PATCH /api/projects/:id/status', () => {
       .send({ status: 'closed' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toMatch(/^status: must be one of /);
+    expect(res.body.error.message).toMatch(/^status: Project status must be one of /);
   });
 
   it.each(ALLOWED)('allows %s -> %s', async (from, to) => {

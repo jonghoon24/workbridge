@@ -1,24 +1,23 @@
 import { z } from 'zod';
 
-import { bodyNumber, requiredString } from './common';
+import { bodyWholeWon, requiredString } from './common';
 
 /**
  * Request bodies of the payment routes (BEHAVIOR.md PY1, PY5, PY10). A `contractId` (or any other
- * extra field) is stripped, so a body with only `contractId` is `milestoneId: Required` (PY1).
+ * extra field) is stripped, so a body with only `contractId` is `Milestone ID is required` (PY1).
  */
 
 /** `POST /api/payments` and `POST /api/payments/dev-complete`. */
 export const milestonePaymentBody = z.object({
-  milestoneId: requiredString(),
+  milestoneId: requiredString('Milestone ID'),
 });
 
-const AMOUNT_MESSAGE = 'must be a positive number';
-
-/** `POST /api/payments/confirm`. Whether `amount` matches the stored amount is the controller's. */
+/**
+ * `POST /api/payments/confirm`. `amount` is a whole number of won of at least 1; whether it
+ * matches the stored amount is the controller's check.
+ */
 export const paymentConfirmBody = z.object({
-  paymentKey: requiredString(),
-  orderId: requiredString(),
-  amount: bodyNumber(AMOUNT_MESSAGE).superRefine((value, ctx) => {
-    if (value <= 0) ctx.addIssue({ code: z.ZodIssueCode.custom, message: AMOUNT_MESSAGE });
-  }),
+  paymentKey: requiredString('Payment key'),
+  orderId: requiredString('Order ID'),
+  amount: bodyWholeWon('Amount', { min: 1 }),
 });
