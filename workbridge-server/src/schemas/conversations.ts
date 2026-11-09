@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 import { queryInt, queryString } from './common';
 import { pageQuery } from './pagination';
@@ -20,9 +20,11 @@ export const conversationListQuery = z.object({ ...pageQuery });
 /** `GET /api/conversations/:id/messages` (MG14). */
 export const messageListQuery = z
   .object({
-    before: queryString(),
-    after: queryString(),
-    limit: queryInt({ min: 1, fallback: DEFAULT_MESSAGE_PAGE }).transform((limit) => Math.min(limit, MAX_MESSAGE_PAGE)),
+    before: queryString().openapi({ description: '이 메시지 ID보다 오래된 메시지' }),
+    after: queryString().openapi({ description: '이 메시지 ID보다 새로운 메시지. `before`와 함께 쓸 수 없다.' }),
+    limit: queryInt({ min: 1, fallback: DEFAULT_MESSAGE_PAGE })
+      .transform((limit) => Math.min(limit, MAX_MESSAGE_PAGE))
+      .openapi({ description: `${MAX_MESSAGE_PAGE}보다 크면 ${MAX_MESSAGE_PAGE}로 줄인다.` }),
   })
   .superRefine((query, ctx) => {
     if (query.before !== undefined && query.after !== undefined) {

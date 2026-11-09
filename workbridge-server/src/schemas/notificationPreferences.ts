@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 import { NOTIFICATION_TYPES, isNotificationType, policyFor } from '../lib/notifications/policy';
 import type { NotificationType } from '../lib/notifications/types';
@@ -72,4 +72,26 @@ export const preferencesBody = z.unknown().transform((body, ctx): { preferences:
   }
 
   return { preferences: entries };
+}).openapi({
+  // The parser above is hand-written to keep NC6's order and messages, so it carries no shape of
+  // its own; this is the documented shape (metadata only).
+  type: 'object',
+  required: ['preferences'],
+  properties: {
+    preferences: {
+      type: 'array',
+      minItems: 1,
+      maxItems: MAX_ENTRIES,
+      items: {
+        type: 'object',
+        required: ['type'],
+        properties: {
+          type: { type: 'string', enum: [...NOTIFICATION_TYPES] },
+          inApp: { type: 'boolean', description: '생략하면 지금 설정을 유지한다.' },
+          email: { type: 'boolean', description: '생략하면 지금 설정을 유지한다.' },
+        },
+      },
+      description: '`inApp`과 `email` 중 하나는 있어야 한다. 같은 `type`을 두 번 쓸 수 없고, 잠긴 채널은 기본값으로만 보낼 수 있다.',
+    },
+  },
 });

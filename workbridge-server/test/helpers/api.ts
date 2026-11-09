@@ -6,6 +6,7 @@ import type { User } from '@prisma/client';
 
 import app from '../../src/index';
 import { generateAccessToken } from '../../src/lib/jwt';
+import { conformsToOpenApi } from './openapi';
 
 export { app };
 
@@ -34,8 +35,30 @@ function listening(): Server {
   return server;
 }
 
+type Method = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'options';
+
+/**
+ * The request builders. Every request they make is checked against the OpenAPI document when its
+ * response arrives (`./openapi.ts`): an undocumented status or a body that differs from the
+ * documented schema fails the test that made it.
+ */
+function builders(headers: Record<string, string>) {
+  const build = (method: Method) => (url: string) =>
+    request(listening())[method](url).set(headers).expect(conformsToOpenApi);
+
+  return {
+    get: build('get'),
+    post: build('post'),
+    put: build('put'),
+    patch: build('patch'),
+    delete: build('delete'),
+    /** CORS preflights; no route documents `OPTIONS`, so these are never checked. */
+    options: build('options'),
+  };
+}
+
 /** Unauthenticated request builder: `api().get('/api/projects')`. */
-export const api = () => request(listening());
+export const api = () => builders({});
 
 export type Principal = Pick<User, 'id' | 'email' | 'role'>;
 
@@ -47,21 +70,9 @@ export function tokenFor(user: Principal): string {
   return generateAccessToken({ id: user.id, email: user.email, role: user.role });
 }
 
-type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
-
 /** Authenticated request builder: `authed(client).post('/api/projects').send({ … })`. */
 export function authed(user: Principal) {
-  const token = tokenFor(user);
-  const build = (method: Method) => (url: string) =>
-    request(listening())[method](url).set('Authorization', `Bearer ${token}`);
-
-  return {
-    get: build('get'),
-    post: build('post'),
-    put: build('put'),
-    patch: build('patch'),
-    delete: build('delete'),
-  };
+  return builders({ Authorization: `Bearer ${tokenFor(user)}` });
 }
 
 /** A syntactically valid token signed with the wrong secret — must be rejected as 401. */

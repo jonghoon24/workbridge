@@ -1,5 +1,5 @@
 import type { Role } from '@prisma/client';
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 import { normalizeSkillList } from '../lib/skills';
 

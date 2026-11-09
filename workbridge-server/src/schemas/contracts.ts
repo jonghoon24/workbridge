@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 import { queryEnum } from './common';
 import { pageQuery } from './pagination';

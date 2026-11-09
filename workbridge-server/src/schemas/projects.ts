@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 import type { ProjectStatus } from '@prisma/client';
 
 import { normalizeSkillList } from '../lib/skills';
@@ -53,6 +53,9 @@ function projectDate(label: string, dateOnlyAs: 'startOfDay' | 'endOfDay') {
       return z.NEVER;
     }
     return parsed;
+  }).openapi({
+    description: '`YYYY-MM-DD`(KST 날짜) 또는 ISO 8601 시각.',
+    example: '2026-12-31',
   });
 }
 
@@ -77,13 +80,17 @@ export const projectListQuery = z
     sort: queryEnum(['latest', 'deadline', 'budget'] as const, 'latest'),
     status: queryEnum(['ALL', 'UPCOMING', 'OPEN', 'CLOSED'] as const, 'OPEN'),
     page: queryInt({ min: 1, max: MAX_PAGE, fallback: 1 }),
-    limit: queryInt({ min: 1, fallback: PROJECT_LIST_DEFAULT_LIMIT }).transform((limit) => Math.min(limit, MAX_PAGE_SIZE)),
+    limit: queryInt({ min: 1, fallback: PROJECT_LIST_DEFAULT_LIMIT })
+      .transform((limit) => Math.min(limit, MAX_PAGE_SIZE))
+      .openapi({ description: `${MAX_PAGE_SIZE}보다 크면 ${MAX_PAGE_SIZE}로 줄인다.` }),
     minBudget: queryNumber({ min: 0 }),
     maxBudget: queryNumber({ min: 0 }),
-    search: queryString(),
-    category: queryString(),
+    search: queryString().openapi({ description: '제목·설명에 들어 있는 글자(대소문자 무시)' }),
+    category: queryString().openapi({ description: '카테고리(정확히 일치)' }),
     // `?skills=React,Vue`, `?skills=React&skills=Vue` and `?skills[]=React` are all lists.
-    skills: skillsInput('must be a string or a list of strings').optional(),
+    skills: skillsInput('must be a string or a list of strings')
+      .optional()
+      .openapi({ description: '하나라도 요구하는 프로젝트. `skills=React,Vue`, `skills=React&skills=Vue` 모두 된다.' }),
   })
   .superRefine((query, ctx) => {
     if (query.minBudget !== undefined && query.maxBudget !== undefined && query.minBudget > query.maxBudget) {
@@ -108,10 +115,12 @@ export const projectCreateBody = z.object({
   description: requiredString('Project description'),
   category: requiredString('Category'),
   budget,
-  recruitmentStartDate: z.preprocess(
-    (value) => (value === '' || value === null ? undefined : value),
-    projectDate('Recruitment start date', 'startOfDay').optional(),
-  ),
+  recruitmentStartDate: z
+    .preprocess(
+      (value) => (value === '' || value === null ? undefined : value),
+      projectDate('Recruitment start date', 'startOfDay').optional(),
+    )
+    .openapi({ description: '생략하거나 빈 값이면 지금. `YYYY-MM-DD`(KST 날짜) 또는 ISO 8601 시각.' }),
   deadline: projectDate('Deadline', 'endOfDay'),
   requiredSkills: skillsInput(SKILLS_BODY_MESSAGE).nullish().transform((value) => normalizeSkillList(value ?? [])),
 });

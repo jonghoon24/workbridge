@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 import { normalizeSkillList } from '../lib/skills';
 import { isKstMonth, kstMonthString } from '../lib/time';
@@ -101,7 +101,8 @@ const optionalMonth = z
     } else if (value > kstMonthString(new Date())) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: MONTH_MESSAGES.future });
     }
-  });
+  })
+  .openapi({ description: '`YYYY-MM`(KST 월). 이번 달 이후는 안 된다. `null`이나 빈 문자열은 지운다.', example: '2025-03' });
 
 const requiredMonth = z
   .string({ required_error: MONTH_MESSAGES.format })
@@ -112,7 +113,8 @@ const requiredMonth = z
     } else if (value > kstMonthString(new Date())) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: MONTH_MESSAGES.future });
     }
-  });
+  })
+  .openapi({ description: '`YYYY-MM`(KST 월). 이번 달 이후는 안 된다.', example: '2023-01' });
 
 /**
  * PF9 `skills`: repeated multipart fields (an array), one comma-separated value, or a JSON array of
@@ -128,6 +130,11 @@ const skillList = z
     } else if (skills.some((skill) => skill.length > PORTFOLIO_LIMITS.skill)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Each skill must be at most ${PORTFOLIO_LIMITS.skill} characters` });
     }
+  })
+  .openapi({
+    type: ['array', 'string', 'null'],
+    items: { type: 'string', maxLength: PORTFOLIO_LIMITS.skill },
+    description: `기술 목록(최대 ${PORTFOLIO_LIMITS.skills}개). 문자열 배열, 쉼표로 구분한 문자열, multipart에서는 같은 필드 반복.`,
   });
 
 /** `true`/`false` as a boolean or, in multipart, as a string. */
@@ -246,7 +253,8 @@ export const RECOMMENDATION_MAX_LIMIT = 20;
 /** RC1: `limit` ≥ 1, default 10, a larger value capped at 20. There is no `page`. */
 export const recommendationQuery = z.object({
   limit: queryInt({ min: 1, fallback: RECOMMENDATION_DEFAULT_LIMIT })
-    .transform((limit) => Math.min(limit, RECOMMENDATION_MAX_LIMIT)),
+    .transform((limit) => Math.min(limit, RECOMMENDATION_MAX_LIMIT))
+    .openapi({ description: `${RECOMMENDATION_MAX_LIMIT}보다 크면 ${RECOMMENDATION_MAX_LIMIT}로 줄인다.` }),
 });
 
 export type RecommendationQuery = z.infer<typeof recommendationQuery>;

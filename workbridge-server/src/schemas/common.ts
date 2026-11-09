@@ -1,9 +1,14 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 /**
  * Query-string building blocks for every route's query schema (BEHAVIOR.md rule 12): an empty
  * value is absent, a repeated parameter is a 400, and integers must be plain integers (`1.5` and
  * `2abc` are 400s).
+ *
+ * Each helper parses `z.unknown()` by hand, which leaves no type for the OpenAPI document to read,
+ * so each one also states its documented type, range and default with `.openapi()` on that inner
+ * `z.unknown()` (metadata only — parsing is unchanged). A `.transform()` chained on a helper keeps
+ * the metadata.
  */
 
 const SINGLE_VALUE = 'must be a single value';
@@ -29,7 +34,8 @@ export function queryInt(options: QueryIntOptions & { fallback: number }): z.Zod
 export function queryInt(
   { min, max, fallback }: QueryIntOptions & { fallback?: number } = {},
 ): z.ZodType<number | undefined, z.ZodTypeDef, unknown> {
-  return z.unknown().transform((value, ctx): number | undefined => {
+  const documented = z.unknown().openapi({ type: 'integer', minimum: min, maximum: max, default: fallback });
+  return documented.transform((value, ctx): number | undefined => {
     const raw = scalar(value, ctx);
     if (raw === z.NEVER) return z.NEVER;
     if (raw === undefined) return fallback;
@@ -54,7 +60,7 @@ export function queryInt(
 
 /** An optional string query parameter; `undefined` when absent or empty, 400 when repeated. */
 export function queryString() {
-  return z.unknown().transform((value, ctx) => {
+  return z.unknown().openapi({ type: 'string' }).transform((value, ctx) => {
     const raw = scalar(value, ctx);
     return raw === z.NEVER ? z.NEVER : raw;
   });
@@ -62,7 +68,8 @@ export function queryString() {
 
 /** One of `values`; `fallback` (or `undefined`) when absent or empty. */
 export function queryEnum<const T extends readonly [string, ...string[]]>(values: T, fallback?: T[number]) {
-  return z.unknown().transform((value, ctx): T[number] | undefined => {
+  const documented = z.unknown().openapi({ type: 'string', enum: [...values], default: fallback });
+  return documented.transform((value, ctx): T[number] | undefined => {
     const raw = scalar(value, ctx);
     if (raw === z.NEVER) return z.NEVER;
     if (raw === undefined) return fallback;
@@ -90,7 +97,8 @@ export interface QueryNumberOptions {
  * Trailing garbage (`3abc`), exponents and a repeated parameter → 400.
  */
 export function queryNumber({ min }: QueryNumberOptions = {}) {
-  return z.unknown().transform((value, ctx): number | undefined => {
+  const documented = z.unknown().openapi({ type: 'number', minimum: min });
+  return documented.transform((value, ctx): number | undefined => {
     const raw = scalar(value, ctx);
     if (raw === z.NEVER) return z.NEVER;
     if (raw === undefined) return undefined;
@@ -136,6 +144,11 @@ export function bodyWholeWon(label: string, { min }: { min: 0 | 1 }) {
       if (!Number.isSafeInteger(value) || value < min) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message });
       }
+    })
+    .openapi({
+      type: 'integer',
+      minimum: min,
+      description: '원 단위 정수. 정수 문자열(`"2500000"`)도 받는다.',
     });
 }
 

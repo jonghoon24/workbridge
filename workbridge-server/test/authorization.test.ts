@@ -684,8 +684,11 @@ const PUBLIC_ROUTES: PublicSpec[] = [
 
 const ROLE_GATED_ROUTES = PROTECTED_ROUTES.filter((route) => route.role !== null);
 
-/** Mounted outside `src/routes/` and outside both tables: the load balancer's liveness probe. */
-const UNTABLED_ROUTES = ['GET /health'];
+/**
+ * Outside both tables: the load balancer's liveness probe (mounted outside `src/routes/`) and the
+ * API reference (`docs.routes.ts`, public, off in production — `test/openapi.test.ts`).
+ */
+const UNTABLED_ROUTES = ['GET /health', 'GET /api/openapi.json', 'GET /api/docs'];
 
 interface RouterLayer {
   name: string;
