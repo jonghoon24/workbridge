@@ -28,7 +28,7 @@ WorkBridge가 **왜 이렇게 동작하는지**를 도메인별로 적는다. �
 | 마일스톤 | `Milestone` | 계약 금액을 나눈 작업 단위. 결제·제출·승인·정산이 모두 마일스톤 단위다 |
 | 안전결제 | `Payment` + 마일스톤 `FUNDED` | 의뢰인이 마일스톤 대금을 먼저 결제하고, 플랫폼이 보관하다가 승인되면 프리랜서에게 정산한다 |
 | 결제 대기·작업 중·검수 대기·수정 요청·승인 완료 | 마일스톤 `PENDING`·`FUNDED`·`SUBMITTED`·`REVISION_REQUESTED`·`APPROVED` | 마일스톤 상태 |
-| 산출물 제출, 검수 | `MilestoneSubmission` | 프리랜서가 회차(`round`)마다 올리는 결과물과 의뢰인의 판단 |
+| 결과물 제출, 검수 | `MilestoneSubmission` | 프리랜서가 회차(`round`)마다 올리는 결과물과 의뢰인의 판단 |
 | 자동 승인 | `approvalType: AUTO` | 검수 기한 안에 판단이 없으면 시스템이 승인한다 |
 | 정산 항목 | `SettlementItem` | 승인된 마일스톤 하나의 금액·수수료·부가세·지급액 원장 |
 | 정산, 지급 예정·지급 보류·지급 완료·지급 실패 | `Settlement`, `SCHEDULED`·`ON_HOLD`·`PAID`·`FAILED` | 프리랜서 한 명의 한 주 정산 항목 묶음과 그 지급 상태 |

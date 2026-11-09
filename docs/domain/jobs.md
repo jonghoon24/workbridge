@@ -19,8 +19,8 @@
 | --- | --- | --- | --- |
 | `project.lifecycleSweep` | 반복 | 10분 경계(:00, :10, …) | 프로젝트 지연 스윕과 같은 일([projects-contracts.md](projects-contracts.md#지연-스윕-읽기가-행을-쓴다)) |
 | `maintenance.cleanup` | 반복 | 매일 04:00 KST | 14일 넘은 성공·취소 작업과 끝난 요청 제한 카운터를 지운다. 실패 작업은 조사용으로 남긴다(`JOB_RETENTION_DAYS`) |
-| `milestone.autoApprove` | 산출물 제출 | 자동 승인 시각(제출 + 7일) | 마일스톤이 아직 그 회차로 검수 대기면 자동 승인 |
-| `milestone.autoApproveReminder` | 산출물 제출(예고 시각이 미래일 때) | 자동 승인 48시간 전 | 의뢰인에게 자동 승인 예고 |
+| `milestone.autoApprove` | 결과물 제출 | 자동 승인 시각(제출 + 7일) | 마일스톤이 아직 그 회차로 검수 대기면 자동 승인 |
+| `milestone.autoApproveReminder` | 결과물 제출(예고 시각이 미래일 때) | 자동 승인 48시간 전 | 의뢰인에게 자동 승인 예고 |
 | `milestone.dueSoon` | 결제 완료(시각이 미래일 때) | 기한 24시간 전 | 아직 작업 중이면 프리랜서에게 기한 임박 |
 | `milestone.overdue` | 결제 완료 | 기한 시각 | 아직 작업 중이면 양측에 기한 경과 |
 | `settlement.weeklyBatch` | 반복 | 매주 월요일 03:00 KST | 지난주(월~일, KST) 정산 만들기 |

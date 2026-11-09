@@ -61,7 +61,7 @@
 | `MILESTONE_PLAN_UPDATED` | 모든 계획 교체(서명이 있었는지와 상관없이, 알림과 다르다) |
 | `CONTRACT_ACTIVATED` | 계약을 시작시킨 서명 |
 | `MILESTONE_FUNDED` | 마일스톤을 실제로 결제 상태로 바꾼 결제 |
-| `MILESTONE_SUBMITTED`, `MILESTONE_REVISION_REQUESTED` | 제출, 반려 |
+| `MILESTONE_SUBMITTED`, `MILESTONE_REVISION_REQUESTED` | 제출, 수정 요청 |
 | `MILESTONE_APPROVED`, `MILESTONE_AUTO_APPROVED` | 수동 승인, 자동 승인 |
 | `CONTRACT_COMPLETED` | 계약 완료(그 승인의 메시지 다음) |
 
