@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { api, authed } from './helpers/api';
 import { makeClient } from './helpers/factories';
+import { fundableMilestone, withFailingPaymentInsert } from './helpers/faults';
 
 /**
  * Request ids and access logging — BEHAVIOR.md rule 9 (and rule 1's logging half, [C7]).
@@ -132,11 +133,11 @@ describe('access log', () => {
   });
 
   it('a 500 is access-logged at info and error-logged exactly once by errorHandler [C7]', async () => {
-    const client = await makeClient();
+    const { client, milestone } = await fundableMilestone();
 
-    // A non-string `milestoneId` makes Prisma reject the lookup — the suite's standing 500 vector.
-    const { result: res, out, err } = await captureLogs('info', () =>
-      authed(client).post('/api/payments').set('X-Request-Id', 'trace-500').send({ milestoneId: 12345 }));
+    // The suite's standing 500 vector (`helpers/faults.ts`): a payment insert failing at the database.
+    const { result: res, out, err } = await withFailingPaymentInsert(() => captureLogs('info', () =>
+      authed(client).post('/api/payments').set('X-Request-Id', 'trace-500').send({ milestoneId: milestone.id })));
 
     expect(res.status).toBe(500);
     expect(out.find((line) => line.msg === 'request')).toMatchObject({ level: 'info', status: 500, requestId: 'trace-500' });
