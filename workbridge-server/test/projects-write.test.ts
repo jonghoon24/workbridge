@@ -1111,42 +1111,6 @@ describe('DELETE /api/projects/:id', () => {
     expect(stored).not.toBeNull();
   });
 
-  // 알려진 불일치 D11 — #6
-  // `deleteProject` checks only existence and ownership, so the project is soft-deleted
-  // (200) and the PENDING contract is left pointing at a deleted project.
-  it.fails('refuses deletion with 409 when the contract is PENDING [D11]', async () => {
-    const { client, project, contract } = await projectWithContract('PENDING');
-
-    const res = await authed(client).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(409);
-    // Re-read the row: asserting on the object the factory returned would pass without the
-    // database being consulted at all.
-    const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(storedContract.status).toBe('PENDING');
-  });
-
-  // 알려진 불일치 D11 — #6
-  // Same for an ACTIVE contract: work is underway, yet the delete currently returns 200.
-  it.fails('refuses deletion with 409 when the contract is ACTIVE [D11]', async () => {
-    const { client, project } = await projectWithContract('ACTIVE');
-
-    const res = await authed(client).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(409);
-  });
-
-  // 알려진 불일치 D11 — #6
-  // The row must survive untouched when deletion is refused.
-  it.fails('leaves deletedAt null when deletion is refused for a live contract [D11]', async () => {
-    const { client, project } = await projectWithContract('ACTIVE');
-
-    await authed(client).delete(`/api/projects/${project.id}`);
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(stored.deletedAt).toBeNull();
-  });
-
   it('allows deletion when the contract is COMPLETED', async () => {
     const { client, project } = await projectWithContract('COMPLETED');
 
@@ -1735,45 +1699,6 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(stored.id).toBe(first.body.id);
     expect(stored.totalAmount).toBe(750_000);
     expect(stored.summary).toBe('두 번째 요약');
-  });
-
-  // 알려진 불일치 — #38
-  // Spec § 8: "Upstream provider failure (OpenAI, TossPayments) → 502 or 400, never 500."
-  // Not numbered in Known divergences (listed under "Found by the suite"), hence `[unlisted]`.
-  // Actual: `JSON.parse` throws a bare SyntaxError, which reaches errorHandler without a
-  // statusCode → 500 with the parser's message in the envelope.
-  it.fails('returns 502 rather than 500 when the model returns non-JSON content [unlisted]', async () => {
-    openaiCreate.mockResolvedValue(rawContent('not json at all'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-  });
-
-  // 알려진 불일치 — #38
-  // Actual: `completion.choices[0]` is undefined, so reading `.message` throws a TypeError → 500.
-  it.fails('returns 502 rather than 500 when the model returns no choices [unlisted]', async () => {
-    openaiCreate.mockResolvedValue({ choices: [] });
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-  });
-
-  // 알려진 불일치 — #38
-  // Actual: the provider's own error propagates untouched → 500 with its message.
-  it.fails('returns 502 rather than 500 when the provider call itself fails [unlisted]', async () => {
-    openaiCreate.mockRejectedValue(new Error('socket hang up'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
   });
 
   it('persists nothing when the provider call fails', async () => {

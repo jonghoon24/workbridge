@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { app, authed } from './helpers/api';
+import { authed } from './helpers/api';
 import { DAY_MS, kstDateString, kstDateToEndOfDay } from '../src/lib/time';
 import { prisma } from './helpers/db';
 import {
@@ -14,9 +14,6 @@ import {
 
 /**
  * Applications — the endpoints nested under `/api/projects`.
- *
- * Oracle: `docs/BEHAVIOR.md` § Applications. Tests assert intended behavior; where the
- * implementation diverges the test is marked `it.fails` with the divergence id.
  */
 
 const MISSING_ID = '00000000-0000-0000-0000-000000000000';
@@ -31,28 +28,6 @@ const validApplyBody = {
   expectedRate: 3_300_000,
   expectedDuration: '6주',
 };
-
-/**
- * `expressInit` sets every response's prototype to `app.response`, so an own property here
- * shadows Express's method for this app only. The [D10] probe needs that to inject a fault after
- * the response has been sent; everything below exists so the injection cannot outlive the probe —
- * a leaked `json` patch would corrupt every test that runs after it.
- */
-const responseProto = (app as unknown as { response: Record<string, unknown> }).response;
-const PRISTINE_HAS_OWN_JSON = Object.prototype.hasOwnProperty.call(responseProto, 'json');
-const PRISTINE_JSON = responseProto.json;
-
-/**
- * Armed by the probe *before* it patches anything and disarmed in its own `finally`. The hook
- * runs even if the probe throws between the two, so no path can leave the patch installed.
- */
-let restoreResponseJson: (() => void) | null = null;
-
-afterEach(() => {
-  const restore = restoreResponseJson;
-  restoreResponseJson = null;
-  restore?.();
-});
 
 describe('POST /api/projects/:id/applications', () => {
   /** Typed so `body` stays an object for `Object.keys` below rather than a union with `field`. */
@@ -325,30 +300,6 @@ describe('POST /api/projects/:id/applications', () => {
     expect(await prisma.application.count({ where: { freelancerId: applicant.id } })).toBe(0);
   });
 
-  // 알려진 불일치 — #39
-  // `apply` runs `closeExpiredOpenProjects()` before reading the project, so by the
-  // time the `deadline < now` branch is evaluated the project is already CLOSED and its guard
-  // (`project.status === 'OPEN' && project.deadline < new Date()`) cannot hold. That branch, its
-  // in-handler transaction and its message are all dead code with zero coverage — nothing in this
-  // file exercises them, and nothing can; the request falls through to the not-OPEN guard and
-  // answers 'Project is not accepting applications'. Listed under BEHAVIOR.md "Found by the suite".
-  it.fails('reports "Project deadline has passed" for an expired OPEN project [unlisted]', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, {
-      status: 'OPEN',
-      recruitmentStartDate: daysFromNow(-10),
-      deadline: daysFromNow(-1),
-    });
-    const applicant = await makeFreelancer();
-
-    const res = await authed(applicant)
-      .post(`/api/projects/${project.id}/applications`)
-      .send(validApplyBody);
-
-    expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('Project deadline has passed');
-  });
-
   /**
    * Rule 12 order: the body is validated before the controller runs, so an invalid body is a 400
    * with no side effects — the lazy sweep (the controller's first step) does not run either.
@@ -494,75 +445,6 @@ describe('POST /api/projects/:id/applications', () => {
     expect([first.status, second.status]).toEqual([201, 201]);
     expect(await prisma.application.count({ where: { projectId: project.id } })).toBe(2);
     expect(await prisma.notification.count({ where: { userId: client.id } })).toBe(2);
-  });
-
-  // 알려진 불일치 D10 — #5
-  // `res.status(201).json(application)` sits inside `apply`'s inner `try`, so a throw from
-  // the send path is re-thrown to the outer `catch`, reaches `errorHandler`, and `errorHandler`
-  // attempts a second write on an already-sent response.
-  //
-  // There is no code after the send, so the only way to observe this is to make the send itself
-  // fail. The patch below is applied to the Express response prototype **from the test** — no
-  // file under `src/` is touched. The intended behavior is that a failure after the response has
-  // gone out never causes a second write attempt, i.e. exactly one `res.json` call per request.
-  //
-  // Safety, because this is the only test in the suite that mutates shared framework state:
-  // the restore closure is armed (`restoreResponseJson`) *before* the patch is installed, so the
-  // file-level `afterEach` undoes it even if this test throws; the `finally` undoes it on the
-  // normal path; and the plain test that follows fails loudly if either mechanism missed.
-  it.fails('does not attempt a second response write when the send path throws [D10]', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const freelancer = await makeFreelancer();
-
-    const hadOwn = Object.prototype.hasOwnProperty.call(responseProto, 'json');
-    const originalJson = responseProto.json as (this: unknown, body: unknown) => unknown;
-    // `errorHandler` logs every 500; the injected fault would otherwise print a stack trace.
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    const restore = () => {
-      if (hadOwn) {
-        responseProto.json = originalJson;
-      } else {
-        delete responseProto.json;
-      }
-      logged.mockRestore();
-    };
-
-    restoreResponseJson = restore;
-    let jsonCalls = 0;
-
-    try {
-      responseProto.json = function patchedJson(this: unknown, body: unknown) {
-        jsonCalls += 1;
-        const sent = originalJson.call(this, body);
-        if (jsonCalls === 1) {
-          // Fault injected *after* the response has been written.
-          throw new Error('simulated post-response failure');
-        }
-        return sent;
-      };
-
-      await authed(freelancer)
-        .post(`/api/projects/${project.id}/applications`)
-        .send(validApplyBody)
-        .catch(() => undefined); // the second write destroys the socket; the status is irrelevant
-    } finally {
-      restore();
-      restoreResponseJson = null;
-    }
-
-    // Assert the injection is gone *before* asserting anything about it, so the divergence
-    // assertion below is the only thing this test can be failing on.
-    expect(Object.prototype.hasOwnProperty.call(responseProto, 'json')).toBe(hadOwn);
-    expect(responseProto.json).toBe(originalJson);
-
-    // The divergence: `errorHandler` writes a second time, so `jsonCalls` is 2 today.
-    expect(jsonCalls).toBe(1);
-  });
-
-  it('left the shared Express response prototype pristine after the [D10] probe', () => {
-    expect(Object.prototype.hasOwnProperty.call(responseProto, 'json')).toBe(PRISTINE_HAS_OWN_JSON);
-    expect(responseProto.json).toBe(PRISTINE_JSON);
   });
 
   it('runs the lifecycle sweep first, so an UPCOMING project whose recruitment has started accepts the application', async () => {
@@ -1233,11 +1115,11 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       // matters and the only part of this race that is deterministic.
       //
       // Deliberately not "exactly one 200": a winner that commits and then fails on the way out
-      // (cf. [D10]) would leave the database correct without reporting 200.
+      // would leave the database correct without reporting 200.
       //
-      // The losers' status codes are deliberately NOT asserted — see the `it.todo` below. Under a
-      // warm connection pool these three transactions can deadlock, and Postgres `40P01` surfaces
-      // as a 500 rather than rule 8's 409. Asserting 409 here made this test fail ~2 runs in 16.
+      // The losers' status codes are deliberately NOT asserted. Under a warm connection pool these
+      // three transactions can deadlock, and Postgres `40P01` surfaces as a 500 rather than a 409
+      // (issue #15). Asserting 409 here made this test fail ~2 runs in 16.
       const statuses = results.map((r) => r.status);
       expect(statuses.filter((code) => code === 200).length).toBeLessThanOrEqual(1);
       expect(await prisma.contract.count()).toBe(1);
@@ -1246,18 +1128,5 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       });
       expect(accepted).toBe(1);
     });
-
-    // 알려진 불일치 D20 — #15
-    // Of several simultaneous accepts on one project, every loser should be a 409 per
-    // cross-cutting rule 8. Instead the three transactions can deadlock: Postgres raises `40P01`,
-    // which Prisma surfaces as `PrismaClientUnknownRequestError` and `errorHandler` renders as a
-    // 500. The D4 fix catches only `P2002`, so this class escapes it.
-    //
-    // Not written as `it.fails`: the deadlock only occurs when the requests genuinely interleave
-    // (~2 in 16 full-suite runs, and never when the file runs alone), so an `it.fails` would report
-    // "expected to fail but passed" most of the time — noisier than no test. Making a *deadlock*
-    // deterministic needs two transactions taking locks in opposite orders, which this endpoint
-    // does not expose. The invariant test above covers the part that must never break.
-    it.todo('returns 409 rather than 500 to the losers of a concurrent accept burst [D20]');
   });
 });

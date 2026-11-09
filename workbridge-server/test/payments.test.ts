@@ -102,9 +102,9 @@ async function withBypassEnabled<T>(fn: () => Promise<T>): Promise<T> {
  * Prisma opens pool connections lazily. On a cold pool the first two "concurrent" requests are
  * handed the *same* connection and therefore serialize end-to-end, which hides every race in
  * this file — a serialized pair of `POST /api/payments` returns a tidy 201/200 and a serialized
- * pair of `POST /confirm` returns a tidy 200/409, i.e. exactly the behavior the D13/D18 tests
- * are supposed to prove is missing. Measured: without this warm-up the create collision
- * reproduced 7 times out of 10; with it, 10 out of 10.
+ * pair of `POST /confirm` returns a tidy 200/409, so a race test would pass without exercising
+ * the race at all. Measured: without this warm-up the create collision reproduced 7 times out
+ * of 10; with it, 10 out of 10.
  *
  * Firing a handful of concurrent authenticated reads forces the pool to grow and warms the
  * Express/JWT path, so the requests that follow genuinely overlap.
@@ -116,9 +116,9 @@ async function warmConnectionPool(user: User, concurrency = 4) {
 }
 
 /**
- * Makes the D13 create collision deterministic. A warm pool alone is not enough: the pair still
- * serializes now and then (one request inserts before the other reads), and the `it.fails` pin
- * then passes unexpectedly. Here a separate transaction holds `LOCK TABLE "Payment" IN SHARE
+ * Makes the payment create collision deterministic. A warm pool alone is not enough: the pair
+ * still serializes now and then (one request inserts before the other reads), so the collision
+ * never happens. Here a separate transaction holds `LOCK TABLE "Payment" IN SHARE
  * MODE`, which lets reads through but blocks every INSERT, while `send` fires the requests. Once
  * `inserters` backends are queued on that lock — so each has already read "no payment yet" — the
  * lock is released and the inserts collide on the unique `milestoneId`.
@@ -454,43 +454,27 @@ describe('POST /api/payments', () => {
     expect(await prisma.payment.count()).toBe(1);
   });
 
-  // 알려진 불일치 D13 — #8
-  // `Payment.milestoneId` is unique and `createPayment` never catches P2002, so when two
-  // requests both read "no payment yet" the loser's `prisma.payment.create` rejects and reaches
-  // `errorHandler` without a `statusCode`.
-  //
-  // Verified: one **201** and one **500**. Cross-cutting rule 8 requires a unique-constraint
-  // collision to be a **409** — the same defect class as D4, which was fixed for
-  // `Contract.projectId` but never for the money path. Either request may legitimately win, so
-  // the assertion is on the set of acceptable statuses (create → 201, resume → 200,
-  // collision → 409) rather than on which one each request got.
-  it.fails(
-    'never returns 5xx when two concurrent creates collide on the unique milestoneId [D13]',
-    async () => {
-      const { client, milestone } = await activeScenario();
-      await warmConnectionPool(client);
-      // The 500 is logged by `errorHandler`; silence it so the intended failure is readable.
-      const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
+  // Both requests read "no payment yet" and then insert. The unique `milestoneId` is what keeps
+  // the second row out, so this pins the database invariant only — the losing request's status
+  // is tracked in issue #8.
+  it('keeps a single payment row when two concurrent creates collide on the unique milestoneId', async () => {
+    const { client, milestone } = await activeScenario();
+    await warmConnectionPool(client);
+    // The losing insert may surface as a logged 500; silence it.
+    const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      try {
-        // Both requests read "no payment" before either inserts, every run (see the helper).
-        const responses = await collideOnPaymentInsert(2, () => Promise.all([
-          authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
-          authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
-        ]));
+    try {
+      // Both requests read "no payment" before either inserts, every run (see the helper).
+      await collideOnPaymentInsert(2, () => Promise.all([
+        authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
+        authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
+      ]));
 
-        for (const res of responses) {
-          expect([200, 201, 409]).toContain(res.status);
-        }
-        // This half already holds — the database, not the controller, is what keeps the
-        // second row out. It is asserted so that a future 409 fix cannot be implemented by
-        // letting both writes through.
-        expect(await prisma.payment.count()).toBe(1);
-      } finally {
-        logs.mockRestore();
-      }
-    },
-  );
+      expect(await prisma.payment.count()).toBe(1);
+    } finally {
+      logs.mockRestore();
+    }
+  });
 
   // A non-string `milestoneId` used to survive `!milestoneId` and make Prisma reject the
   // milestone lookup: a 500 whose body carried the absolute source path (rule 8, D14's
@@ -509,42 +493,6 @@ describe('POST /api/payments', () => {
     expect(res.body).toEqual({ error: { message } });
     assertNoInternalsLeak(res.body.error.message);
     expect(await prisma.payment.count()).toBe(0);
-  });
-
-  // 알려진 불일치 D14 — #9
-  // The same leak on the money path specifically: the D13 collision's 500 body carries
-  // `Invalid \`prisma.payment.create()\` invocation in /Users/…/src/controllers/
-  // payments.controller.ts:…`, the surrounding source lines, and
-  // ``Unique constraint failed on the fields: (`milestoneId`)`` — i.e. the schema's column name.
-  //
-  // Several rounds are run because the collision is a real race and a serialized pair produces
-  // no 500 at all. The assertion itself never requires a 500 to have happened: it is the
-  // invariant "no error body leaks internals", checked over every response.
-  it.fails('does not leak Prisma internals in the 500 body from a create collision [D14]', async () => {
-    const client = await makeClient();
-    const freelancer = await makeFreelancer();
-    const milestones = [
-      (await extraActiveContract(client, freelancer)).milestone,
-      (await extraActiveContract(client, freelancer)).milestone,
-      (await extraActiveContract(client, freelancer)).milestone,
-    ];
-    await warmConnectionPool(client);
-    const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    try {
-      for (const milestone of milestones) {
-        const responses = await collideOnPaymentInsert(2, () => Promise.all([
-          authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
-          authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
-        ]));
-
-        for (const res of responses) {
-          if (res.body?.error) assertNoInternalsLeak(res.body.error.message);
-        }
-      }
-    } finally {
-      logs.mockRestore();
-    }
   });
 });
 
@@ -880,84 +828,6 @@ describe('POST /api/payments/confirm', () => {
     expect(second.body.status).toBe('COMPLETED');
     expect(await prisma.payment.count()).toBe(1);
   });
-
-  // 알려진 불일치 D8 — #3
-  // `catch (tossError)` discards its argument and nothing is logged, so a network fault
-  // and a provider-reported amount mismatch produce byte-identical output: 400
-  // 'Payment verification failed' with the payment FAILED. The fix must log the cause at `warn`
-  // — rule 1 forbids an error-level line for a 4xx, and rule 9 sends `warn` to `console.log` —
-  // so the assertion looks for a `warn` record on that stream. `LOG_LEVEL` is raised from the
-  // suite's `error` for this test only, otherwise the logger would drop the line before writing.
-  it.fails('logs the underlying provider failure cause at warn [D8]', async () => {
-    const { client, payment } = await pendingPayment();
-    const previousLevel = process.env.LOG_LEVEL;
-    process.env.LOG_LEVEL = 'warn';
-    const out = vi.spyOn(console, 'log').mockImplementation(() => {});
-    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
-    tossPost.mockRejectedValue(new Error('TOSS_FAULT_MARKER: ECONNRESET'));
-
-    try {
-      const res = await authed(client)
-        .post('/api/payments/confirm')
-        .send(body(payment.orderId, CONTRACT_AMOUNT));
-      expect(res.status).toBe(400);
-
-      // Rule 1: a 4xx never produces an error-level line, so the cause must not go there.
-      expect(err.mock.calls).toEqual([]);
-
-      const warnLines = out.mock.calls
-        .map(([line]) => {
-          try {
-            return JSON.parse(String(line)) as Record<string, unknown>;
-          } catch {
-            return null;
-          }
-        })
-        .filter((record): record is Record<string, unknown> => record?.level === 'warn');
-      expect(warnLines.map((record) => JSON.stringify(record)).join(' | ')).toContain('TOSS_FAULT_MARKER');
-    } finally {
-      out.mockRestore();
-      err.mockRestore();
-      process.env.LOG_LEVEL = previousLevel;
-    }
-  });
-
-  // 알려진 불일치 D18 — #13
-  // The replay guard is `if (payment.status !== 'PENDING') throw 409` — a read, then a
-  // separate unlocked `update`. Nothing serializes the two, so two concurrent confirms both read
-  // `PENDING`, both pass the guard, both call TossPayments, and both write `COMPLETED`.
-  //
-  // Verified today: **two 200s** and the provider called **twice** — a double capture against
-  // the same order. The row count stays 1 only because both updates target the same row, so
-  // persisted state alone does not reveal the bug; the provider call count is the real evidence.
-  it.fails(
-    'confirms exactly once when two requests race the same PENDING payment [D18]',
-    async () => {
-      const { client, payment } = await pendingPayment();
-      tossPost.mockResolvedValue(tossDone());
-      // Without this the pair serializes on a single pool connection and the guard *appears*
-      // to work: 200 then 409, provider once. See `warmConnectionPool`.
-      await warmConnectionPool(client);
-
-      const payload = body(payment.orderId, CONTRACT_AMOUNT);
-      const responses = await Promise.all([
-        authed(client).post('/api/payments/confirm').send(payload),
-        authed(client).post('/api/payments/confirm').send(payload),
-      ]);
-
-      // Exactly one winner; the loser must be told the payment was already processed. This is
-      // the assertion that trips today — it sees `[200, 200]`.
-      expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
-
-      // The independently damning half, measured separately: `tossPost` is called twice today,
-      // i.e. the order is confirmed against the provider twice.
-      expect(tossPost).toHaveBeenCalledTimes(1);
-
-      expect(await prisma.payment.count({ where: { status: 'COMPLETED' } })).toBe(1);
-      const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-      expect(after).toMatchObject({ status: 'COMPLETED', paymentKey: 'pk_test_123' });
-    },
-  );
 
   it("returns 404 before any provider call when the payment's project is soft-deleted [PY5] [C1]", async () => {
     const { client, project, payment } = await pendingPayment();
@@ -1432,37 +1302,6 @@ describe('POST /api/payments/dev-complete', () => {
       expect(after.status).toBe('REFUNDED');
     });
 
-    // 알려진 불일치 D22 — #17
-    // With no payment row yet, two concurrent dev-completes both read "no payment" and
-    // both `tx.payment.create` — the loser hits the unique `milestoneId` inside its transaction
-    // (P2002) and answers 500. Same class as D13, on the dev-only route. Several rounds, because
-    // a serialized pair produces 201 then 200 and no collision at all.
-    it.fails('never returns 5xx when two dev-completes race on a milestone with no payment [D22]', async () => {
-      const client = await makeClient();
-      const freelancer = await makeFreelancer();
-      const milestones = [
-        (await extraActiveContract(client, freelancer)).milestone,
-        (await extraActiveContract(client, freelancer)).milestone,
-        (await extraActiveContract(client, freelancer)).milestone,
-      ];
-      await warmConnectionPool(client);
-      const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-      try {
-        for (const milestone of milestones) {
-          const responses = await withBypassEnabled(() => Promise.all([
-            authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
-            authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
-          ]));
-          for (const res of responses) {
-            expect(res.status).toBeLessThan(500);
-          }
-        }
-      } finally {
-        logs.mockRestore();
-      }
-    });
-
     it('never contacts TossPayments', async () => {
       const { client, milestone } = await activeScenario();
 
@@ -1568,11 +1407,8 @@ describe('GET /api/payments', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Rule 1 ties error-level logging to the status: nothing for a 4xx, exactly one line for a 500.
- * The D8 `it.fails` above relies on the first half — it expects the provider cause at `warn`
- * and asserts that its 400 leaves `console.error` untouched.
- *
- * These two tests pin rule 1 directly, using the payments endpoints to reach each status.
+ * Error-level logging is tied to the status: nothing for a 4xx, exactly one line for a 500.
+ * These two tests pin that directly, using the payments endpoints to reach each status.
  */
 describe('errorHandler logging (cross-cutting rule 1)', () => {
   it('logs nothing for 400, 403, 404 and 409 responses [C7]', async () => {

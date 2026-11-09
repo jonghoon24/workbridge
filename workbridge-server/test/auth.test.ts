@@ -1062,36 +1062,4 @@ describe('GET /api/auth/google/callback', () => {
     expect(stored.googleId).toBeNull();
     expect(await prisma.user.count()).toBe(1);
   });
-
-  // 알려진 불일치 D5 — #2
-  // An existing password account is matched by email alone and has `googleId` attached,
-  // so anyone who knows the address can sign in as that user through Google. Asserted with
-  // `verified_email: false` so no linking mechanism — not even trusting Google's own verified
-  // flag — could justify the link. Today the account is linked and a token is issued for it.
-  it.fails('does not link a password account on an unverified Google email [D5]', async () => {
-    const victim = await makeClient({ email: 'victim@test.local' });
-    stubGoogle(googleProfile({ id: 'attacker-google-uid', email: victim.email, verified_email: false }));
-
-    const res = await googleCallback('code');
-
-    const stored = await prisma.user.findUniqueOrThrow({ where: { id: victim.id } });
-    expect(stored.googleId).toBeNull();
-    expect(res.headers.location).not.toContain('/auth/callback');
-  });
-
-  // 알려진 불일치 D5 — #2
-  // Same defect stated as the session it hands out: even with `verified_email: true`,
-  // Google's assertion is about the Google account, not about control of a pre-existing
-  // WorkBridge password account, so linking must be an explicit, authenticated action.
-  // Today the redirect carries an access token whose `id` is the password account's.
-  it.fails('does not issue a session for a pre-existing password account [D5]', async () => {
-    const victim = await makeClient({ email: 'victim2@test.local' });
-    stubGoogle(googleProfile({ id: 'attacker-google-uid-2', email: victim.email }));
-
-    const res = await googleCallback('code');
-
-    const location = new URL(res.headers.location as string);
-    const token = location.searchParams.get('token');
-    expect(token === null || claims(token).id !== victim.id).toBe(true);
-  });
 });

@@ -27,8 +27,7 @@ import { bindRequestContext, requestId } from '../src/middlewares/requestId';
 import { uploadToSupabase } from '../src/middlewares/upload';
 
 /**
- * Upload policies for the expansion domains — BEHAVIOR.md rule 12. Unlike the profile-image
- * upload (알려진 불일치 D6), every rejection is a 413 or a 400, never a 500.
+ * Upload policies for the expansion domains: every rejection is a 413 or a 400, never a 500.
  */
 
 const MB = 1024 * 1024;
