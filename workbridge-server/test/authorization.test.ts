@@ -1899,20 +1899,14 @@ describe('error envelope', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Error envelope, continued — the routes that never reach `errorHandler` at all
+// Error envelope, continued — paths and methods no route matches
 // ---------------------------------------------------------------------------------------------
 
-describe('unmatched paths and methods bypass errorHandler', () => {
+describe('unmatched paths and methods answer the JSON 404 envelope', () => {
   /**
-   * There is no terminal 404 handler after `errorHandler` in `src/index.ts`, and `errorHandler`
-   * is an *error* middleware — it only runs for a request that reached a handler which called
-   * `next(err)`. A request matching no route falls off the end of the stack to Express's
-   * `finalhandler`, which answers 404 with an **HTML** document — not the
-   * `{ error: { message } }` envelope every other error response uses.
-   *
-   * Whether to add a terminal 404 handler or to scope the envelope rule to handled routes is an
-   * open product question, so these pin today's behavior rather than asserting it is right. If
-   * the answer is "add the handler", these are the tests to invert.
+   * The last middleware before `errorHandler` in `src/index.ts` answers every request no route
+   * matched with a 404 in the same `{ error: { message } }` envelope as every other error, instead
+   * of Express's default HTML page.
    */
   const UNMATCHED = [
     {
@@ -1920,33 +1914,33 @@ describe('unmatched paths and methods bypass errorHandler', () => {
       label: 'GET /api/users (mounted router, no index route)',
       method: 'get' as HttpMethod,
       path: '/api/users',
-      expectedText: 'Cannot GET /api/users',
     },
     {
       label: 'DELETE /api/users/me (path exists, method does not)',
       method: 'delete' as HttpMethod,
       path: '/api/users/me',
-      expectedText: 'Cannot DELETE /api/users/me',
     },
-    {
-      label: 'GET /api/nope (no router mounted)',
-      method: 'get' as HttpMethod,
-      path: '/api/nope',
-      expectedText: 'Cannot GET /api/nope',
-    },
+    { label: 'GET /api/nope (no router mounted)', method: 'get' as HttpMethod, path: '/api/nope' },
+    { label: 'POST /api/nope (with a body)', method: 'post' as HttpMethod, path: '/api/nope' },
+    { label: 'GET /nope (outside /api)', method: 'get' as HttpMethod, path: '/nope' },
   ];
 
-  it.each(UNMATCHED)('$label → 404 whose body is not the error envelope', async (route) => {
+  it.each(UNMATCHED)('$label → 404 Not found in the error envelope', async (route) => {
     const res = await api()[route.method](route.path).send();
 
-    expect(res.status).toBe(404);
-    // The envelope violation, stated positively so it is unambiguous what changes if the open
-    // question is decided the other way: HTML, no parsed JSON body, no `error` key anywhere.
-    expect(res.headers['content-type']).toMatch(/text\/html/);
-    expect(res.body).not.toEqual({ error: { message: expect.any(String) } });
-    expect(res.body).not.toHaveProperty('error');
-    expect(res.body).toEqual({});
-    expect(res.text).toContain(route.expectedText);
+    expectErrorEnvelope(res, 404);
+    expect(res.body).toEqual({ error: { message: 'Not found' } });
+  });
+
+  it('is not logged at error level', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      await api().get('/api/nope');
+
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it('an unmatched method is a 404 rather than a 405, and changes nothing', async () => {
@@ -1972,7 +1966,7 @@ describe('unmatched paths and methods bypass errorHandler', () => {
 
     for (const res of [anonymous, garbage, valid]) {
       expect(res.status).toBe(404);
-      expect(res.body).not.toHaveProperty('error');
+      expect(res.body).toEqual({ error: { message: 'Not found' } });
     }
   });
 });
