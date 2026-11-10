@@ -122,8 +122,8 @@ stateDiagram-v2
     COMPLETED --> [*]
 ```
 
-- 다른 전이는 없다. 계약을 손으로 완료하는 방법도, 취소·해지 상태도 없다(취소·환불 경로를 둘지는 정하지 않았다:
-  [#47]). 완료는 마지막 마일스톤 승인 트랜잭션
+- 다른 전이는 없다. 계약을 손으로 완료하는 방법도, 취소·해지 상태도 없다. 계약 취소와 환불은 앱 기능으로
+  두지 않고 운영팀이 처리한다([milestones-payments.md](milestones-payments.md)). 완료는 마지막 마일스톤 승인 트랜잭션
   안에서만 일어난다([milestones-payments.md](milestones-payments.md#승인과-계약-완료)).
 - 계약 금액은 저장된 그대로(소수일 수 있다) 두고, 마일스톤에 관한 모든 계산은 원 단위로 반올림한 값을 쓴다.
 - 계약의 종료일은 항상 마지막 마일스톤의 기한이다. 수락 때 정하고, 계획을 바꿀 때마다 다시 정한다.
@@ -189,4 +189,3 @@ stateDiagram-v2
 [#43]: https://github.com/jonghoon24/workbridge/issues/43
 [#44]: https://github.com/jonghoon24/workbridge/issues/44
 [#46]: https://github.com/jonghoon24/workbridge/issues/46
-[#47]: https://github.com/jonghoon24/workbridge/issues/47
