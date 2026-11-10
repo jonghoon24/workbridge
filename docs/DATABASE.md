@@ -131,6 +131,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 - **결제 순서**: 마일스톤은 `sequence` 순서대로만 결제된다.
 - **메시지**: `TEXT`는 발신자가 참여자이고 `systemEvent`가 null, `SYSTEM`은 발신자가 null이고 `systemEvent`가 있다. 대화방 안에서 `createdAt`은 커밋 순서대로 엄격히 증가한다(대화방 row를 잠근 뒤 `max(서버 시각, lastMessageAt + 1ms)`, `postMessage`). 커서 폴링과 읽음 워터마크가 이것에 기댄다.
 - **활성 계약 계획 잠금**: 계약이 `ACTIVE`가 되면 마일스톤 계획을 바꿀 수 없다.
+- **문자열 배열에 `NULL` 원소 없음**: `User.skills`, `Project.requiredSkills`, `MilestoneSubmission.links`, `PortfolioItem.skills`, `Review.tags`는 원소가 모두 문자열이다. DB의 CHECK 제약(`<테이블>_<컬럼>_no_null`, `array_position(<컬럼>, NULL) IS NULL`)이 강제한다. Prisma의 `String[]`은 원소가 모두 문자열이라고 가정해서, `NULL` 원소가 든 행 하나를 읽으면 그 쿼리 전체가 변환 오류(`P2032`)로 실패한다 — 프로젝트 하나 때문에 `GET /api/projects`가 500이 된다. API는 zod가 원소를 검사하므로 만들지 않고, 이 제약은 운영자의 수동 SQL, 백필, 시드를 막는다. Prisma 스키마는 CHECK를 표현하지 못하므로 마이그레이션 SQL에만 있다(`schema.prisma`의 해당 필드 주석 참고). 새 `String[]` 컬럼을 만들면 같은 제약을 함께 건다.
 
 ### `Message.sender`의 `onDelete: Restrict`
 
@@ -219,6 +220,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `20261021062933_expansion_messaging_profile` | 대화방·참여자·메시지·첨부, 포트폴리오, 경력 |
 | `20261021071341_expansion_notification_channels` | 알림 설정, 이메일 발송 기록 |
 | `20261108143952_add_list_and_foreign_key_indexes` | 인덱스만 추가: `Project` 4개, `Application[freelancerId]`, `Contract[clientId]`·`[freelancerId]`, `Payment[clientId]`, `Review[revieweeId]`("인덱스" 참고). 데이터 변경 없음 |
+| `20261110082231_array_columns_reject_null_elements` | 문자열 배열 컬럼 5개에 `NULL` 원소를 막는 CHECK 제약("관계와 불변식"). 제약을 걸기 전에 이미 있던 `NULL` 원소를 `array_remove`로 지운다(원소만 지우고 행과 나머지 원소는 그대로) |
 
 - **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. float를 그대로 반올림하면 1원 어긋나므로 numeric으로 바꿔 반올림한다(위 "금액이 `Float`인 부채"). 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
 - **정산 원장은 확장 이후 승인분부터다.** 확장 전에 완료된 계약의 마일스톤에는 `SettlementItem`이 없다(화면의 예상 정산액은 현재 요율로 계산해 보여준다).
