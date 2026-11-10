@@ -318,6 +318,121 @@ describe('GET /api/conversations', () => {
   });
 });
 
+describe('GET /api/conversations?q=', () => {
+  /** One freelancer's conversations with three clients; newest message first: renewal, wiki, erp. */
+  async function searchable() {
+    const freelancer = await makeFreelancer({ name: 'Alex Freelancer' });
+    const make = async (clientName: string, title: string, lastMessageAt: string) => {
+      const scenario = await makeContractScenario({ contract: { freelancerId: freelancer.id } });
+      await prisma.user.update({ where: { id: scenario.client.id }, data: { name: clientName } });
+      await prisma.project.update({ where: { id: scenario.project.id }, data: { title } });
+      await makeMessage(scenario.conversation.id, scenario.client.id, { createdAt: new Date(lastMessageAt) });
+      return scenario;
+    };
+    const renewal = await make('김하늘', 'Shop Renewal 쇼핑몰', '2026-03-03T00:00:00.000Z');
+    const wiki = await make('이수진', '사내 위키 검색', '2026-03-02T00:00:00.000Z');
+    const erp = await make('박쇼핑', 'ERP 연동 100%', '2026-03-01T00:00:00.000Z');
+    return { freelancer, renewal, wiki, erp };
+  }
+
+  const ids = (res: { body: { conversations: { id: string }[] } }) => res.body.conversations.map((c) => c.id);
+  const search = (user: Scenario['client'], q: string) =>
+    authed(user).get('/api/conversations').query({ q });
+
+  it('matches a part of the project title, ignoring case', async () => {
+    const { freelancer, renewal } = await searchable();
+
+    const res = await search(freelancer, 'renEWAL');
+
+    expect(res.status).toBe(200);
+    expect(ids(res)).toEqual([renewal.conversation.id]);
+    expect(res.body.meta).toEqual({ total: 1, page: 1, limit: 20, totalPages: 1 });
+  });
+
+  it("matches a part of the counterpart's name", async () => {
+    const { freelancer, wiki } = await searchable();
+
+    const res = await search(freelancer, '수진');
+
+    expect(ids(res)).toEqual([wiki.conversation.id]);
+  });
+
+  it('matches either field, keeping the list order and paging over the matches only', async () => {
+    const { freelancer, renewal, erp } = await searchable();
+
+    const all = await search(freelancer, '쇼핑');
+    const page2 = await authed(freelancer).get('/api/conversations').query({ q: '쇼핑', limit: 1, page: 2 });
+
+    expect(ids(all)).toEqual([renewal.conversation.id, erp.conversation.id]);
+    expect(all.body.meta.total).toBe(2);
+    expect(ids(page2)).toEqual([erp.conversation.id]);
+    expect(page2.body.meta).toEqual({ total: 2, page: 2, limit: 1, totalPages: 2 });
+  });
+
+  it("never matches the caller's own name", async () => {
+    const { freelancer, renewal } = await searchable();
+    await prisma.user.update({ where: { id: renewal.client.id }, data: { name: '하늘 Alex' } });
+
+    const asFreelancer = await search(freelancer, 'Freelancer');
+    const asClient = await search(renewal.client, '하늘');
+
+    expect(asFreelancer.body.meta.total).toBe(0);
+    expect(asFreelancer.body.conversations).toEqual([]);
+    expect(asClient.body.meta.total).toBe(0);
+  });
+
+  it('trims the query, and a blank query lists everything', async () => {
+    const { freelancer, wiki } = await searchable();
+
+    const trimmed = await search(freelancer, '  위키 ');
+    const blank = await search(freelancer, '   ');
+
+    expect(ids(trimmed)).toEqual([wiki.conversation.id]);
+    expect(blank.body.meta.total).toBe(3);
+  });
+
+  it('treats % and _ as literal characters, not wildcards', async () => {
+    const { freelancer, erp } = await searchable();
+
+    const percent = await search(freelancer, '%');
+    const underscore = await search(freelancer, '_');
+
+    expect(ids(percent)).toEqual([erp.conversation.id]);
+    expect(underscore.body.meta.total).toBe(0);
+  });
+
+  it('still leaves out conversations whose project is soft-deleted', async () => {
+    const { freelancer, wiki } = await searchable();
+    await prisma.project.update({ where: { id: wiki.project.id }, data: { deletedAt: new Date() } });
+
+    const res = await search(freelancer, '위키');
+
+    expect(res.body.meta.total).toBe(0);
+  });
+
+  it('finds a soft-deleted counterpart by the name the list still shows', async () => {
+    const { freelancer, wiki } = await searchable();
+    await softDelete(wiki.client.id);
+
+    const res = await search(freelancer, '이수진');
+
+    expect(ids(res)).toEqual([wiki.conversation.id]);
+    expect(res.body.conversations[0]).toMatchObject({ counterpart: { name: '이수진' }, closedReason: 'COUNTERPART_INACTIVE' });
+  });
+
+  it.each([
+    ['repeated', 'q=a&q=b', 'q: must be a single value'],
+    ['101 characters', `q=${'가'.repeat(101)}`, 'q: must be at most 100 characters'],
+  ])('400s for a malformed search query: %s', async (_label, query, message) => {
+    const user = await makeFreelancer();
+
+    const res = await authed(user).get(`/api/conversations?${encodeURI(query)}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+  });
+});
+
 // ---------------------------------------------------------------------------------------------
 // GET /api/conversations/unread-count
 // ---------------------------------------------------------------------------------------------
