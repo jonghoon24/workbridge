@@ -20,7 +20,7 @@
 | `OPENAI_API_KEY` | OpenAI API 키. **모듈을 읽을 때 클라이언트를 만들므로 비어 있으면 서버가 뜨지 않는다**(테스트처럼 더미 값이면 된다) |
 | `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키 (test_sk_...) |
 | `ALLOW_PAYMENT_BYPASS` | 로컬·E2E에서 `true`로 설정하면 토스 결제창 없이 결제 완료 처리 가능. 실제 운영 서비스에서는 `false` 유지 |
-| `CLIENT_URL` | 프론트엔드 **출처 하나**(예: `https://app.example.com`, 끝의 `/`는 괜찮다). Google 로그인 리디렉션(`/auth/callback`, `/login?error=…`), 메일 본문 링크, CORS 허용 출처가 모두 이 값을 쓴다(`src/lib/clientUrl.ts`). 쉼표·공백 목록, 경로, 스킴 없는 값은 받지 않는다. 값이 없거나 이런 형태면 서버는 뜨지만 시작 때 `warn` 한 줄을 남기고 CORS에서 빠지며, 쓰는 곳에서 이유를 밝히고 실패한다: Google 로그인 시작·콜백은 `CLIENT_URL`을 적은 500(오류 로그 한 줄), 메일은 발송 기록이 `FAILED`(이유 기록, 발송 작업 없음)이고 `warn` 로그를 남긴다. 알림과 원인이 된 상태 변경은 그대로 저장된다 |
+| `CLIENT_URL` | 프론트엔드 **출처 하나**(예: `https://app.example.com`, 끝의 `/`는 괜찮다). Google 로그인 리디렉션(`/auth/callback`, `/login?error=…`), 메일 본문 링크, CORS 허용 출처가 모두 이 값을 쓴다(`src/lib/clientUrl.ts`). 쉼표·공백 목록, 경로, 스킴 없는 값은 받지 않는다. 값이 없거나 이런 형태면 서버는 뜨지만 시작 때 `warn` 한 줄을 남기고 CORS에서 빠지며, 쓰는 곳에서 이유를 밝히고 실패한다: Google 로그인 시작·콜백은 500(응답 본문은 일반 메시지, 이유는 `CLIENT_URL`을 적은 오류 로그 한 줄), 메일은 발송 기록이 `FAILED`(이유 기록, 발송 작업 없음)이고 `warn` 로그를 남긴다. 알림과 원인이 된 상태 변경은 그대로 저장된다 |
 | `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 추가 출처는 여기에만 둔다. 개발 환경에서는 `http://localhost:3000`이 항상 허용된다 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL. `OPENAI_API_KEY`처럼 모듈을 읽을 때 쓰이므로 서버를 띄우려면 필요하다(더미 값 가능) |
 | `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음) |

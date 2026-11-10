@@ -893,27 +893,31 @@ describe('Google login without a usable CLIENT_URL', () => {
     ['not a URL', 'localhost:3000'],
   ];
 
-  it.each(unusable)('the start route answers 500 naming CLIENT_URL, before sending anyone to Google, when it is %s', async (_label, value) => {
+  it.each(unusable)('the start route answers 500 and logs CLIENT_URL, before sending anyone to Google, when it is %s', async (_label, value) => {
     if (value === undefined) delete process.env.CLIENT_URL;
     else process.env.CLIENT_URL = value;
 
     const res = await api().get('/api/auth/google');
 
+    // The 500 body stays generic; the cause is in the error log for the operator.
     expect(res.status).toBe(500);
-    expect(res.body.error.message).toMatch(/CLIENT_URL/);
+    expect(res.body.error.message).toBe('Internal Server Error');
+    expect((consoleError as unknown as Mock).mock.calls.map(([line]) => String(line)).join('\n')).toMatch(/CLIENT_URL/);
     expect(res.headers.location).toBeUndefined();
     expect(oauthStateCookie(res)).toBeUndefined();
   });
 
-  it.each(unusable)('the callback answers 500 naming CLIENT_URL, without exchanging the code, when it is %s', async (_label, value) => {
+  it.each(unusable)('the callback answers 500 and logs CLIENT_URL, without exchanging the code, when it is %s', async (_label, value) => {
     if (value === undefined) delete process.env.CLIENT_URL;
     else process.env.CLIENT_URL = value;
     stubGoogle();
 
     const res = await googleCallback('code');
 
+    // The 500 body stays generic; the cause is in the error log for the operator.
     expect(res.status).toBe(500);
-    expect(res.body.error.message).toMatch(/CLIENT_URL/);
+    expect(res.body.error.message).toBe('Internal Server Error');
+    expect((consoleError as unknown as Mock).mock.calls.map(([line]) => String(line)).join('\n')).toMatch(/CLIENT_URL/);
     expect(res.headers.location).toBeUndefined();
     expect(axiosPost).not.toHaveBeenCalled();
     expect(refreshCookie(res)).toBeUndefined();
