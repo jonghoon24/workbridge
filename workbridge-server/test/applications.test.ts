@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { authed } from './helpers/api';
 import { DAY_MS, kstDateString, kstDateToEndOfDay } from '../src/lib/time';
-import { prisma } from './helpers/db';
+import { prisma, sideClient } from './helpers/db';
 import {
   daysFromNow,
   makeApplication,
@@ -626,6 +626,31 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
   const url = (projectId: string, appId: string) =>
     `/api/projects/${projectId}/applications/${appId}`;
 
+  type Answer = { status: number; body: unknown };
+
+  /** Sends a supertest request now (it is lazy until awaited) and settles with its response. */
+  function started(req: PromiseLike<Answer>) {
+    return new Promise<Answer>((resolve, reject) => {
+      req.then(resolve, reject);
+    });
+  }
+
+  /**
+   * Polls until `count` sessions of this database wait on a lock. Runs on the side client, never
+   * the app's pool: the app's blocked transactions may hold every connection there (`sideClient`).
+   */
+  async function waitForLockWaiters(side: ReturnType<typeof sideClient>, count: number) {
+    const giveUpAt = Date.now() + 5_000;
+    for (;;) {
+      const [{ waiting }] = await side.$queryRaw<{ waiting: number }[]>`
+        SELECT count(*)::int AS waiting FROM pg_stat_activity
+         WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+      if (waiting >= count) return;
+      if (Date.now() > giveUpAt) throw new Error(`expected ${count} lock waiters, saw ${waiting}`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+
   it.each([
     ['PENDING', 'PENDING'],
     ['a bogus value', 'BOGUS'],
@@ -1097,6 +1122,68 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       }
     });
 
+    /**
+     * The interleaving that used to deadlock, made deterministic. A test transaction holds the
+     * chosen application's row; the first accept queues behind it, then the second accept takes
+     * its own application and queues behind the same row. Released, the first accept would need
+     * the second's application to reject it while the second needs the first's — a cycle. With
+     * the project row locked first, the second accept simply waits its turn and conflicts.
+     */
+    it('answers the losing accept 409, not a deadlock 500, when two accepts interleave', async () => {
+      const s = await scenario();
+
+      // The holder and the poll run on their own pool — see `sideClient`.
+      const side = sideClient();
+      let first: Promise<Answer> | undefined;
+      let second: Promise<Answer> | undefined;
+      try {
+        await side.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "id" FROM "Application" WHERE "id" = ${s.chosen.id} FOR UPDATE`;
+
+          first = started(authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' }));
+          await waitForLockWaiters(side, 1);
+          second = started(authed(s.client).patch(url(s.project.id, s.otherA.id)).send({ status: 'ACCEPTED' }));
+          await waitForLockWaiters(side, 2);
+        }, { timeout: 10_000 });
+      } finally {
+        await side.$disconnect();
+      }
+
+      const [a, b] = await Promise.all([first!, second!]);
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      const loser = a.status === 409 ? a : b;
+      expect(loser.body).toEqual({ error: { message: 'A contract already exists for this project' } });
+      expect(await prisma.contract.count()).toBe(1);
+      expect(
+        await prisma.application.count({ where: { projectId: s.project.id, status: 'ACCEPTED' } }),
+      ).toBe(1);
+    }, 20_000);
+
+    it('404s an accept that was waiting on the project while the project was deleted', async () => {
+      const s = await scenario();
+
+      const side = sideClient();
+      let pending: Promise<Answer> | undefined;
+      try {
+        await side.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${s.project.id} FOR UPDATE`;
+
+          pending = started(authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' }));
+          await waitForLockWaiters(side, 1);
+          await tx.project.update({ where: { id: s.project.id }, data: { deletedAt: new Date() } });
+        }, { timeout: 10_000 });
+      } finally {
+        await side.$disconnect();
+      }
+
+      const res = await pending!;
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'Project not found' } });
+      expect(await prisma.contract.count()).toBe(0);
+      const chosen = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
+      expect(chosen.status).toBe('PENDING');
+    }, 20_000);
+
     it('never leaves a project with two contracts after a burst of accepts', async () => {
       const s = await scenario();
       const ids = [s.chosen.id, s.otherA.id, s.otherB.id];
@@ -1105,17 +1192,10 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
         ids.map((id) => authed(s.client).patch(url(s.project.id, id)).send({ status: 'ACCEPTED' })),
       );
 
-      // Only the **database invariants** are asserted here, because they are the guarantee that
-      // matters and the only part of this race that is deterministic.
-      //
-      // Deliberately not "exactly one 200": a winner that commits and then fails on the way out
-      // would leave the database correct without reporting 200.
-      //
-      // The losers' status codes are deliberately NOT asserted. Under a warm connection pool these
-      // three transactions can deadlock, and Postgres `40P01` surfaces as a 500 rather than a 409
-      // (issue #15). Asserting 409 here made this test fail ~2 runs in 16.
-      const statuses = results.map((r) => r.status);
-      expect(statuses.filter((code) => code === 200).length).toBeLessThanOrEqual(1);
+      // One accept wins; the others conflict. Accepts of one project are serialized on its row,
+      // so no ordering of the three transactions can deadlock into a 500.
+      const statuses = results.map((r) => r.status).sort();
+      expect(statuses).toEqual([200, 409, 409]);
       expect(await prisma.contract.count()).toBe(1);
       const accepted = await prisma.application.count({
         where: { projectId: s.project.id, status: 'ACCEPTED' },
