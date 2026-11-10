@@ -18,6 +18,7 @@ import type {
 } from '@prisma/client';
 
 import { prisma } from './db';
+import { encryptAccountNumber } from '../../src/lib/payoutAccountCrypto';
 
 export const TEST_PASSWORD = 'password123';
 
@@ -180,18 +181,22 @@ export function makeSubmission(
   });
 }
 
-/** A valid payout account for `user` (holder name = the user's name). */
+/**
+ * A valid payout account for `user` (holder name = the user's name). `accountNumber` is the plain
+ * number; it is stored encrypted, as the API stores it.
+ */
 export function makePayoutAccount(
   user: Pick<User, 'id' | 'name'>,
   overrides: Partial<Prisma.PayoutAccountUncheckedCreateInput> = {},
 ): Promise<PayoutAccount> {
+  const { accountNumber = '110123456789', ...rest } = overrides;
   return prisma.payoutAccount.create({
     data: {
       userId: user.id,
       bankCode: '004',
-      accountNumber: '110123456789',
       holderName: user.name,
-      ...overrides,
+      ...rest,
+      accountNumber: encryptAccountNumber(accountNumber, user.id),
     },
   });
 }

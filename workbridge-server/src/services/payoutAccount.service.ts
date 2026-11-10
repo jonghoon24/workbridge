@@ -4,10 +4,19 @@ import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { bankName, maskAccountNumber } from '../lib/banks';
 import { lockUserRow } from '../lib/locks';
+import { logger } from '../lib/logger';
+import {
+  decryptAccountNumber,
+  encryptAccountNumber,
+  isLegacyPlaintextAccountNumber,
+} from '../lib/payoutAccountCrypto';
 import type { PrismaTransactionClient } from '../types/index';
 import { rescheduleHeldSettlements } from './settlements.service';
 
-/** The payout account (docs/domain/milestones-payments.md "지급 계좌"). The number is stored in plaintext (#28). */
+/**
+ * The payout account (docs/domain/milestones-payments.md "지급 계좌"). The number is encrypted at
+ * rest (`lib/payoutAccountCrypto.ts`); only the masked form leaves this module.
+ */
 
 const LOCKED = 'Payout account cannot be changed while a payout is processing';
 
@@ -17,7 +26,7 @@ export function serializePayoutAccount(account: PayoutAccount | null) {
   return {
     bankCode: account.bankCode,
     bankName: bankName(account.bankCode),
-    accountNumberMasked: maskAccountNumber(account.accountNumber),
+    accountNumberMasked: maskAccountNumber(decryptAccountNumber(account.accountNumber, account.userId)),
     holderName: account.holderName,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
@@ -62,7 +71,11 @@ export async function putPayoutAccount(userId: string, input: PayoutAccountInput
   return prisma.$transaction(async (tx) => {
     await lockAndAssertNotProcessing(tx, userId);
     // A native upsert is safe here: the user-row lock serializes this user's writes.
-    const data = { bankCode: input.bankCode, accountNumber: input.accountNumber, holderName: input.holderName };
+    const data = {
+      bankCode: input.bankCode,
+      accountNumber: encryptAccountNumber(input.accountNumber, userId),
+      holderName: input.holderName,
+    };
     const account = await tx.payoutAccount.upsert({
       where: { userId },
       create: { userId, ...data },
@@ -80,4 +93,32 @@ export async function deletePayoutAccount(userId: string) {
     await tx.payoutAccount.deleteMany({ where: { userId } });
     return { payoutAccount: null };
   });
+}
+
+export interface EncryptBackfillResult {
+  scanned: number;
+  encrypted: number;
+}
+
+/**
+ * The one-off backfill for rows stored before encryption (`npm run payout:encrypt-accounts`). Each
+ * plaintext row is rewritten under the user-row lock, and only if it still holds the plaintext it
+ * read — a PUT that landed in between already encrypted it. Idempotent: encrypted rows are skipped.
+ */
+export async function encryptLegacyAccountNumbers(): Promise<EncryptBackfillResult> {
+  const accounts = await prisma.payoutAccount.findMany({ select: { userId: true, accountNumber: true } });
+  let encrypted = 0;
+  for (const { userId, accountNumber } of accounts) {
+    if (!isLegacyPlaintextAccountNumber(accountNumber)) continue;
+    const written = await prisma.$transaction(async (tx) => {
+      await lockUserRow(tx, userId);
+      return tx.payoutAccount.updateMany({
+        where: { userId, accountNumber },
+        data: { accountNumber: encryptAccountNumber(accountNumber, userId) },
+      });
+    });
+    encrypted += written.count;
+  }
+  logger.info('payout account numbers encrypted', { scanned: accounts.length, encrypted });
+  return { scanned: accounts.length, encrypted };
 }

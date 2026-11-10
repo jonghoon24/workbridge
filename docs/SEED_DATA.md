@@ -7,7 +7,7 @@ npm run db:seed
 npx prisma db seed
 ```
 
-두 명령은 Prisma가 `.env`를 읽어 준다. `node prisma/seed.js`로 직접 돌리면 dotenv를 읽지 않으므로 `DATABASE_URL`과 `DIRECT_URL`을 셸에 먼저 export한다. 시드는 모든 테이블을 비우고 다시 만든다(이미 시드한 DB에 몇 번을 돌려도 같은 결과). **모든 계정의 비밀번호는 `password123`입니다.**
+시드는 `workbridge-server/.env`를 dotenv로 읽는다(셸에 이미 있는 변수가 우선한다). `DATABASE_URL`·`DIRECT_URL`과 지급 계좌번호를 암호화할 `PAYOUT_ACCOUNT_ENCRYPTION_KEY`가 필요하다([ENV.md](ENV.md)). 키가 없으면 아무것도 지우기 전에 멈춘다. 시드는 모든 테이블을 비우고 다시 만든다(이미 시드한 DB에 몇 번을 돌려도 같은 결과). **모든 계정의 비밀번호는 `password123`입니다.**
 
 ## 날짜 기준
 
@@ -102,6 +102,7 @@ npx prisma db seed
 
 - 한도윤에게는 이번 주에 승인된 계약 A #3(1,900,000 → net 1,691,000)이 **미정산**으로 남아 있다. 다음 월요일 03:00 배치가 정산을 만든다.
 - 지급 계좌: 한도윤(KB국민), 박지윤(카카오뱅크), 송민재(신한). 정하은·윤서아는 없다. 응답에는 마스킹된 번호만 나온다.
+  계좌번호는 `PAYOUT_ACCOUNT_ENCRYPTION_KEY`로 암호화해 넣으므로 시드에 이 키가 필요하고, 서버도 같은 키여야 읽는다([ENV.md](ENV.md)).
 
 ## 대화방 (계약마다 1개, 메시지 79개 = 텍스트 28 + 시스템 51)
 

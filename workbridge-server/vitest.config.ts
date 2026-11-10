@@ -44,6 +44,9 @@ export default defineConfig({
       CLIENT_URL: 'http://localhost:3000',
       TOSS_SECRET_KEY: 'test_sk_dummy',
       ALLOW_PAYMENT_BYPASS: 'false',
+      // A fixed test-only key (base64 of the 32 ASCII bytes `test-payout-account-key-32bytes!`),
+      // never used outside the suite.
+      PAYOUT_ACCOUNT_ENCRYPTION_KEY: 'dGVzdC1wYXlvdXQtYWNjb3VudC1rZXktMzJieXRlcyE=',
 
       // Infrastructure. Only error-level lines (500s) reach the console, rate limits are
       // enforced (counters live in a truncated table, so every test starts at zero), and no

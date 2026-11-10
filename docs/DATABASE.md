@@ -47,7 +47,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | --- | --- | --- |
 | **SettlementItem** | 승인된 마일스톤 하나의 정산 원장 | `milestoneId` unique, `contractId`, `freelancerId`, `settlementId`(null = 미정산), `grossAmount`, `feeRateBps`(승인 시점 요율 스냅샷, 1000 = 10%), `feeAmount`, `feeVatAmount`, `netAmount`, `approvedAt`. 인덱스 `[freelancerId, settlementId]`, `[settlementId]` |
 | **Settlement** | 프리랜서별 주간 정산 | `periodStart`(월요일 00:00 KST), `periodEnd`(다음 월요일, 미포함), `scheduledPayoutAt`, `status`, `itemCount`, 금액 합계 4개, `payoutAttempts`(최대 3), 지급 시점 계좌 스냅샷 `bankName`/`accountNumberMasked`/`accountHolder`, `providerReference`, `failureReason`, `paidAt`. `(freelancerId, periodStart)` unique, 인덱스 `[status, scheduledPayoutAt]` |
-| **PayoutAccount** | 프리랜서 지급 계좌 | `userId` unique(1인 1계좌), `bankCode`(`lib/banks.ts` 목록), `accountNumber`(숫자만, **평문 저장**, 응답에서는 마스킹. 저장 시 암호화는 미정: [#28](https://github.com/jonghoon24/workbridge/issues/28)), `holderName` |
+| **PayoutAccount** | 프리랜서 지급 계좌 | `userId` unique(1인 1계좌), `bankCode`(`lib/banks.ts` 목록), `accountNumber`(숫자만, **암호화해 저장**, 응답에서는 마스킹. 아래 "지급 계좌번호 암호화"), `holderName` |
 
 ### 메시지
 
@@ -140,6 +140,25 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 ### 외래 키의 삭제 동작
 
 모든 필수 관계는 `ON DELETE RESTRICT`다. 예외는 선택 관계 두 개뿐이다: `SettlementItem.settlementId`와 `EmailDelivery.notificationId`(`SET NULL`). 그래서 시드처럼 데이터를 지울 때는 자식부터 지워야 한다(`prisma/seed.js`의 `deleteMany` 순서).
+
+### 지급 계좌번호 암호화
+
+`PayoutAccount.accountNumber`는 애플리케이션이 저장 직전에 암호화한다(`src/lib/payoutAccountCrypto.ts`, [#28](https://github.com/jonghoon24/workbridge/issues/28)).
+DB를 통째로 읽은 사람(백업, SQL 접근)도 키 없이는 계좌번호를 알 수 없게 하려는 것이다. 키는 DB 밖의 환경변수
+`PAYOUT_ACCOUNT_ENCRYPTION_KEY`다([ENV.md](ENV.md), 환경별 키와 교체는 [DEPLOYMENT.md](DEPLOYMENT.md#지급-계좌-암호화-키)).
+
+- 형식: `v1:<iv>:<tag>:<암호문>`(각 부분 base64url). AES-256-GCM, 쓸 때마다 새 12바이트 IV, 16바이트 인증 태그.
+  접두어 `v1`이 키를 가리킨다 — 키를 바꿀 때 새 버전을 더하고 옛 버전은 읽기용으로 남긴다.
+- 추가 인증 데이터(AAD)는 그 행의 `userId`다. 다른 사용자 행에 암호문을 옮겨 붙이면 복호화가 실패한다(다른 사람의 정산금이
+  그 계좌로 나가지 않는다). 잘못된 키, 변조된 값, 모르는 형식도 틀린 번호 대신 오류가 된다.
+- 복호화는 응답의 마스킹(`serializePayoutAccount`)과 지급 결정(사용자 행 잠금 안에서, 정산 스냅샷의 마스킹과 이체 요청)에서만 한다.
+  정산 행(`Settlement.accountNumberMasked`)에는 처음부터 마스킹한 값만 남는다.
+- **암호화 전에 저장된 행**은 숫자 그대로다(10~14자리). 서버는 이것도 그대로 읽고, 계좌를 다시 저장하면 암호화한다. 남은 평문
+  행은 한 번 돌리는 백필 `npm run payout:encrypt-accounts`(원격은 `.github/workflows/payout-encrypt.yml`)가 암호화한다.
+  SQL 마이그레이션으로는 키를 쓸 수 없어서 스크립트다. 행마다 사용자 행을 잠그고, 읽은 평문이 그대로일 때만 바꾸므로 서비스 중에
+  돌려도 되고 여러 번 돌려도 된다.
+- 시드(`prisma/seed.js`)는 `prisma/payoutAccountCrypto.js`(같은 형식의 CommonJS 사본)로 암호화해 넣는다. 두 구현이 같은지는
+  `test/payout-account-crypto.test.ts`가 시드 쪽 출력을 서버 코드로 복호화해 확인한다.
 
 ## 인덱스
 
