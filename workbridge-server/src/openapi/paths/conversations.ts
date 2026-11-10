@@ -35,10 +35,16 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     operationId: 'getMyConversations',
     tags,
     summary: '내 대화방 목록',
-    description: '마지막 메시지가 최근인 순(메시지가 없는 대화방은 뒤). 삭제된 프로젝트의 대화방은 빠진다.',
+    description:
+      '마지막 메시지가 최근인 순(메시지가 없는 대화방은 뒤). 삭제된 프로젝트의 대화방은 빠진다. '
+      + '`q`가 있으면 프로젝트 제목이나 상대방 이름에 그 글자가 들어 있는 대화방만 같은 순서로 담고, '
+      + '`meta`도 걸러진 결과를 센다. 내 이름은 검색하지 않는다. `%`와 `_`는 와일드카드가 아니라 글자 그대로다.',
     security: bearer,
     request: { query: conversationListQuery },
-    responses: { 200: ok(conversationList), ...errors(invalid(), ACTIVE_USER) },
+    responses: {
+      200: ok(conversationList),
+      ...errors(invalid('`q: must be at most 100 characters` — 검색어가 앞뒤 공백을 빼고 100자 넘음'), ACTIVE_USER),
+    },
   });
 
   registry.registerPath({

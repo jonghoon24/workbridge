@@ -88,6 +88,8 @@ describe('GET /api/milestones/:id', () => {
         project: { id: project.id, title: project.title },
       },
     });
+    // The Toss payment key goes to no one: both parties read this milestone.
+    expect(asClient.body.payment).not.toHaveProperty('paymentKey');
     expect(asClient.body.submissions.map((s: { round: number }) => s.round)).toEqual([2, 1]);
     expect(asClient.body.submissions[0].attachments).toMatchObject([{ fileName: '보고서.pdf', size: 3 }]);
     // Exactly these keys — no submissionId.

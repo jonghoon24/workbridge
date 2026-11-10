@@ -1,35 +1,7 @@
 'use client';
 
-import { formatFileSize } from '@/lib/format';
+import AttachmentList from '@/components/ui/AttachmentList';
 import { MESSAGE_LIMITS, formatMessageTime } from './messageUtils';
-import { PaperclipIcon } from '@/components/ui/Icons';
-import AttachmentLink from '@/components/ui/AttachmentLink';
-
-function AttachmentList({ conversationId, attachments, mine }) {
-  if (!attachments?.length) return null;
-  return (
-    <ul className="mt-1.5 space-y-1">
-      {attachments.map((attachment) => (
-        <li key={attachment.id}>
-          <AttachmentLink
-            attachment={attachment}
-            downloadPath={`/api/conversations/${conversationId}/attachments/${attachment.id}/download`}
-            errorClassName={mine ? 'text-primary-100' : 'text-red-600'}
-            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
-              mine
-                ? 'border-primary-400 bg-primary-500 text-white hover:bg-primary-400'
-                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <PaperclipIcon className="h-4 w-4 shrink-0" />
-            <span className="truncate font-medium">{attachment.fileName}</span>
-            <span className={`shrink-0 ${mine ? 'text-primary-100' : 'text-gray-400'}`}>{formatFileSize(attachment.size)}</span>
-          </AttachmentLink>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 // 시스템 메시지는 가운데 회색 띠로, 내 메시지는 오른쪽, 상대 메시지는 왼쪽에 그린다.
 // 삭제된 메시지(tombstone)는 내용 없이 "삭제된 메시지입니다"만 보인다.
@@ -66,7 +38,12 @@ export default function MessageBubble({ message, mine, readByCounterpart, now, d
           ) : (
             <>
               {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
-              <AttachmentList conversationId={message.conversationId} attachments={message.attachments} mine={mine} />
+              <AttachmentList
+                attachments={message.attachments}
+                downloadPath={(attachment) => `/api/conversations/${message.conversationId}/attachments/${attachment.id}/download`}
+                tone={mine ? 'inverted' : 'default'}
+                className={message.body ? 'mt-1.5' : ''}
+              />
             </>
           )}
         </div>

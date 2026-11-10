@@ -1,7 +1,7 @@
 'use client';
 
-import { formatDateTime, formatFileSize } from '@/lib/format';
-import AttachmentLink from '@/components/ui/AttachmentLink';
+import { formatDateTime } from '@/lib/format';
+import AttachmentList from '@/components/ui/AttachmentList';
 
 function DecisionLabel({ submission }) {
   if (!submission.decision) {
@@ -17,7 +17,7 @@ function DecisionLabel({ submission }) {
   return <span className="text-xs font-medium text-orange-700 bg-orange-50 rounded px-2 py-0.5">수정 요청</span>;
 }
 
-// 제출 이력(round 내림차순). 첨부는 비공개 저장소에 있어 누를 때 새 다운로드 URL을 받는다.
+// 제출 이력(round 내림차순). 첨부 url은 공개 버킷 주소다(DECISIONS: 첨부 파일).
 export default function SubmissionHistory({ submissions = [] }) {
   if (submissions.length === 0) {
     return <p className="text-sm text-gray-500">아직 제출한 결과물이 없습니다.</p>;
@@ -48,22 +48,11 @@ export default function SubmissionHistory({ submissions = [] }) {
             </ul>
           )}
 
-          {submission.attachments?.length > 0 && (
-            <ul className="mt-2 flex flex-wrap gap-2">
-              {submission.attachments.map((attachment) => (
-                <li key={attachment.id}>
-                  <AttachmentLink
-                    attachment={attachment}
-                    downloadPath={`/api/milestones/${submission.milestoneId}/attachments/${attachment.id}/download`}
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100"
-                  >
-                    <span className="max-w-[16rem] truncate">{attachment.fileName}</span>
-                    <span className="text-gray-400">{formatFileSize(attachment.size)}</span>
-                  </AttachmentLink>
-                </li>
-              ))}
-            </ul>
-          )}
+          <AttachmentList
+            attachments={submission.attachments}
+            downloadPath={(attachment) => `/api/milestones/${submission.milestoneId}/attachments/${attachment.id}/download`}
+            className="mt-2 max-w-md"
+          />
 
           {submission.decision === 'REJECTED' && submission.decisionReason && (
             <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3">

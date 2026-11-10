@@ -62,6 +62,8 @@ const MESSAGES = {
   'recruitmentStartDate cannot be after deadline': '모집 시작일은 마감일보다 늦을 수 없습니다.',
   'Cannot change budget or recruitment dates after applications have been submitted':
     '지원자가 있는 프로젝트는 예산과 모집 기간을 바꿀 수 없습니다.',
+  'Cannot delete a project with an unfinished contract':
+    '진행 중이거나 서명 대기 중인 계약이 있는 프로젝트는 삭제할 수 없습니다.',
   'AI analysis did not return a response': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
   'AI analysis did not return valid feature pricing': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
 

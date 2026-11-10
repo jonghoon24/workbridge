@@ -182,6 +182,31 @@ describe('GET /api/contracts/:id', () => {
     expect(res.body.milestones[1]).toMatchObject({ payment: null, latestSubmission: null });
   });
 
+  it("withholds the Toss paymentKey of a milestone's payment from either party", async () => {
+    const { client, freelancer, contract, milestone } = await makeContractScenario({
+      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
+      milestone: { status: 'FUNDED' },
+    });
+    const payment = await makePayment(milestone.id, client.id, { status: 'COMPLETED', paymentKey: 'pk_secret_key' });
+
+    for (const viewer of [client, freelancer]) {
+      const res = await authed(viewer).get(`/api/contracts/${contract.id}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.milestones[0].payment).toEqual({
+        id: payment.id,
+        contractId: contract.id,
+        milestoneId: milestone.id,
+        clientId: client.id,
+        amount: payment.amount,
+        status: 'COMPLETED',
+        orderId: payment.orderId,
+        createdAt: payment.createdAt.toISOString(),
+      });
+      expect(JSON.stringify(res.body)).not.toContain('pk_secret_key');
+    }
+  });
+
   it('reports the milestone summary, and empty reviews, for a fresh contract', async () => {
     const { client, contract } = await makeContractScenario();
 
@@ -253,29 +278,32 @@ describe('GET /api/contracts/:id', () => {
   });
 
   /**
-   * Whether contract responses should expose email addresses is an open product question, so
-   * this pins what happens today rather than asserting a decision:
-   * `contractInclude` selects `email` for both the client and the freelancer, so either party
-   * sees the other's address. Every other endpoint withholds it — the public profile below is the
-   * contrast. Deliberate (counterparties to a signed contract) or an oversight is the open
-   * question; this test exists so whoever decides it can find the behavior and the blast radius.
+   * Parties reach each other through in-app messages, so the contract detail carries neither
+   * party's email address — the same as the contract list and the public profile.
    */
-  it("returns both parties' email addresses to either party", async () => {
+  it("withholds both parties' email addresses from either party", async () => {
     const { client, freelancer, contract } = await makeContractScenario();
 
-    const clientView = await authed(client).get(`/api/contracts/${contract.id}`);
-    const freelancerView = await authed(freelancer).get(`/api/contracts/${contract.id}`);
+    for (const viewer of [client, freelancer]) {
+      const res = await authed(viewer).get(`/api/contracts/${contract.id}`);
 
-    expect(clientView.status).toBe(200);
-    expect(clientView.body.client.email).toBe(client.email);
-    expect(clientView.body.freelancer.email).toBe(freelancer.email);
+      expect(res.status).toBe(200);
+      expect(res.body.client).toEqual({
+        id: client.id,
+        name: client.name,
+        companyName: client.companyName,
+        profileImage: client.profileImage,
+      });
+      expect(res.body.freelancer).toEqual({
+        id: freelancer.id,
+        name: freelancer.name,
+        skills: freelancer.skills,
+        profileImage: freelancer.profileImage,
+      });
+    }
 
-    expect(freelancerView.status).toBe(200);
-    expect(freelancerView.body.client.email).toBe(client.email);
-    expect(freelancerView.body.freelancer.email).toBe(freelancer.email);
-
-    // Contrast — the public profile of the same freelancer withholds it (cross-cutting: only
-    // `GET /api/users/me` exposes the caller's own email).
+    // The public profile of the same freelancer withholds it too (only `GET /api/users/me`
+    // exposes the caller's own email).
     const publicProfile = await api().get(`/api/users/${freelancer.id}`);
     expect(publicProfile.status).toBe(200);
     expect(publicProfile.body).not.toHaveProperty('email');
@@ -543,19 +571,15 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(activated.status).toBe('ACTIVE');
   });
 
-  /**
-   * The same email exposure, continued: `POST /:id/sign` returns the same `contractInclude` as
-   * `GET /:id`, so it is not confined to one endpoint. Recorded here so a decision on it covers
-   * every response shape rather than only the one it was raised about.
-   */
-  it("exposes both parties' email addresses on the sign response too", async () => {
-    const { client, freelancer, contract } = await makeContractScenario();
+  /** The sign response has the contract detail's shape, so it withholds the addresses too. */
+  it("withholds both parties' email addresses from the sign response", async () => {
+    const { contract, freelancer } = await makeContractScenario();
 
     const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
 
     expect(res.status).toBe(200);
-    expect(res.body.client.email).toBe(client.email);
-    expect(res.body.freelancer.email).toBe(freelancer.email);
+    expect(res.body.client).not.toHaveProperty('email');
+    expect(res.body.freelancer).not.toHaveProperty('email');
   });
 
   it('refuses to sign a PENDING contract whose plan does not add up, recording no signature', async () => {

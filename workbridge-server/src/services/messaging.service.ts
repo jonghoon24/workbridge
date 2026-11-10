@@ -476,12 +476,34 @@ async function findConversationForRoute(conversationId: string, userId: string):
 export interface ConversationListQuery {
   page: number;
   limit: number;
+  /** Trimmed, non-empty search text (the schema turns a blank `q` into `undefined`). */
+  q?: string;
 }
 
-export async function listConversations(userId: string, query: ConversationListQuery, now: Date = new Date()) {
+/**
+ * The conversations whose project title or counterpart's name contains `q`, ignoring case.
+ * The counterpart is the contract party who is not `userId` — the caller's own name never matches.
+ * A soft-deleted counterpart still matches: the list shows their stored name.
+ */
+function searchCondition(userId: string, q: string): Prisma.ConversationWhereInput {
+  // Prisma passes `contains` to ILIKE unescaped: `%` and `_` would be wildcards. Escape them (and
+  // the escape character itself, Postgres' default `\`) so they match literally.
+  const literal = q.replace(/[\\%_]/g, '\\$&');
+  const contains = { contains: literal, mode: 'insensitive' } as const;
+  return {
+    OR: [
+      { contract: { project: { title: contains } } },
+      { contract: { clientId: { not: userId }, client: { name: contains } } },
+      { contract: { freelancerId: { not: userId }, freelancer: { name: contains } } },
+    ],
+  };
+}
+
+export async function listConversations(userId: string, query: ConversationListQuery, now: Date) {
   const where: Prisma.ConversationWhereInput = {
     participants: { some: { userId } },
     contract: { project: { deletedAt: null } },
+    ...(query.q ? { AND: [searchCondition(userId, query.q)] } : {}),
   };
   const [total, rows] = await Promise.all([
     prisma.conversation.count({ where }),

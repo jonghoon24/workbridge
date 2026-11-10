@@ -9,6 +9,7 @@ import CareerTimeline from '@/components/profile/CareerTimeline';
 import { formatCareerSummary } from '@/components/profile/profileFormat';
 import Tag from '@/components/ui/Tag';
 import PageLoader from '@/components/ui/PageLoader';
+import CopyLinkButton from '@/components/ui/CopyLinkButton';
 import EmptyState from '@/components/ui/EmptyState';
 import { BriefcaseIcon, BuildingIcon, GlobeIcon, UserIcon } from '@/components/ui/Icons';
 import { formatDate } from '@/lib/format';
@@ -40,12 +41,15 @@ export default function UserProfilePage() {
               <span className="text-primary-700 font-bold text-xl">{user.name?.[0]?.toUpperCase()}</span>
             )}
           </div>
-          <div className="flex-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-gray-900">{user.name}</h1>
-              <span className="px-2 py-0.5 bg-primary-50 text-primary-700 rounded-md text-xs font-medium">
-                {user.role === 'CLIENT' ? '의뢰인' : '프리랜서'}
-              </span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+                <h1 className="text-xl font-bold text-gray-900 break-all">{user.name}</h1>
+                <span className="px-2 py-0.5 bg-primary-50 text-primary-700 rounded-md text-xs font-medium">
+                  {user.role === 'CLIENT' ? '의뢰인' : '프리랜서'}
+                </span>
+              </div>
+              <CopyLinkButton path={`/users/${user.id}`} className="shrink-0" />
             </div>
             {user.avgRating !== null && (
               <div className="flex items-center gap-1 mt-1">

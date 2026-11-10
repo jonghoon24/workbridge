@@ -1615,7 +1615,7 @@
           "FAILED"
         ]
       },
-      "Payment": {
+      "MilestonePayment": {
         "type": [
           "object",
           "null"
@@ -1644,12 +1644,6 @@
           "status": {
             "$ref": "#/components/schemas/PaymentStatus"
           },
-          "paymentKey": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "orderId": {
             "type": "string"
           },
@@ -1665,7 +1659,6 @@
           "clientId",
           "amount",
           "status",
-          "paymentKey",
           "orderId",
           "createdAt"
         ]
@@ -1908,7 +1901,7 @@
             "format": "date-time"
           },
           "payment": {
-            "$ref": "#/components/schemas/Payment"
+            "$ref": "#/components/schemas/MilestonePayment"
           },
           "latestSubmission": {
             "$ref": "#/components/schemas/MilestoneSubmission"
@@ -2032,9 +2025,6 @@
               "name": {
                 "type": "string"
               },
-              "email": {
-                "type": "string"
-              },
               "companyName": {
                 "type": [
                   "string",
@@ -2051,7 +2041,6 @@
             "required": [
               "id",
               "name",
-              "email",
               "companyName",
               "profileImage"
             ]
@@ -2064,9 +2053,6 @@
                 "format": "uuid"
               },
               "name": {
-                "type": "string"
-              },
-              "email": {
                 "type": "string"
               },
               "skills": {
@@ -2085,7 +2071,6 @@
             "required": [
               "id",
               "name",
-              "email",
               "skills",
               "profileImage"
             ]
@@ -2180,6 +2165,58 @@
           "milestones",
           "reviews",
           "milestoneSummary"
+        ]
+      },
+      "Payment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contractId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "milestoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "clientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amount": {
+            "type": "integer",
+            "description": "원 단위 정수"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "paymentKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "contractId",
+          "milestoneId",
+          "clientId",
+          "amount",
+          "status",
+          "paymentKey",
+          "orderId",
+          "createdAt"
         ]
       },
       "SettlementStatus": {
@@ -3157,12 +3194,8 @@
           "Auth"
         ],
         "summary": "로그아웃",
-        "description": "`refreshToken` 쿠키를 지운다. 발급된 토큰을 무효로 만들지는 않는다.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "description": "`refreshToken` 쿠키를 지운다. 인증이 필요 없다 — Access Token이 만료된 뒤에도 로그아웃할 수 있어야 한다. 발급된 토큰을 무효로 만들지는 않는다.",
+        "security": [],
         "responses": {
           "200": {
             "description": "`Logged out successfully`",
@@ -3178,16 +3211,6 @@
                   "required": [
                     "message"
                   ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3360,7 +3383,7 @@
           "Auth"
         ],
         "summary": "구글 로그인 콜백",
-        "description": "언제나 리디렉션으로 끝나고 400을 내지 않는다. 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, 실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다.",
+        "description": "언제나 리디렉션으로 끝나고 400을 내지 않는다. 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, 실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다. 기존 계정과는 `googleId`로만 연결한다. 이 Google 계정과 연결되지 않은 계정이 같은 이메일을 쓰고 있으면 연결하지도 세션을 발급하지도 않고 `CLIENT_URL/login?error=email_account_exists`로 보낸다(Google이 이메일을 인증했어도 같다).",
         "security": [],
         "parameters": [
           {
@@ -3388,7 +3411,7 @@
         ],
         "responses": {
           "302": {
-            "description": "클라이언트로 이동(성공 또는 `error=oauth_failed`)",
+            "description": "클라이언트로 이동(성공, `error=oauth_failed` 또는 `error=email_account_exists`)",
             "headers": {
               "Location": {
                 "schema": {
@@ -5981,7 +6004,7 @@
           "Projects"
         ],
         "summary": "북마크 여부(프리랜서)",
-        "description": "없는 프로젝트도 `bookmarked: false`다.",
+        "description": "프로젝트가 없거나 삭제됐으면 404다.",
         "security": [
           {
             "bearerAuth": []
@@ -6030,6 +6053,16 @@
           },
           "403": {
             "description": "권한 없음\n\n- `Insufficient permissions` — FREELANCER 역할이 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
             "content": {
               "application/json": {
                 "schema": {
@@ -6124,7 +6157,7 @@
           "Projects"
         ],
         "summary": "북마크 해제(프리랜서)",
-        "description": "멱등이다. 북마크가 없어도 200.",
+        "description": "멱등이다. 프로젝트가 있으면 북마크가 없어도 200. 프로젝트가 없거나 삭제됐으면 404다.",
         "security": [
           {
             "bearerAuth": []
@@ -6176,6 +6209,16 @@
           },
           "403": {
             "description": "권한 없음\n\n- `Insufficient permissions` — FREELANCER 역할이 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
             "content": {
               "application/json": {
                 "schema": {
@@ -6369,7 +6412,7 @@
           "Projects"
         ],
         "summary": "프로젝트 삭제(소유 의뢰인)",
-        "description": "소프트 삭제다. 이후 목록·상세와 그 프로젝트의 계약·마일스톤·대화 경로에서 404가 된다.",
+        "description": "소프트 삭제다. 이후 목록·상세와 그 프로젝트의 계약·마일스톤·대화 경로에서 404가 된다. 완료되지 않은 계약(`PENDING`·`ACTIVE`)이 있으면 지울 수 없다. 완료된 계약만 있으면 지울 수 있다.",
         "security": [
           {
             "bearerAuth": []
@@ -6428,6 +6471,16 @@
           },
           "404": {
             "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "상태 충돌\n\n- `Cannot delete a project with an unfinished contract` — 계약이 `PENDING` 또는 `ACTIVE`",
             "content": {
               "application/json": {
                 "schema": {
@@ -6637,7 +6690,7 @@
             }
           },
           "502": {
-            "description": "외부 서비스 실패\n\n- `AI analysis did not return a response` — 모델이 빈 응답을 줌\n- `AI analysis did not return valid feature pricing` — 금액이 있는 기능이 하나도 없음",
+            "description": "외부 서비스 실패\n\n- `AI analysis provider request failed` — 공급자 호출 실패(네트워크 오류, 공급자 5xx 등). 공급자 메시지는 싣지 않는다\n- `AI analysis did not return a response` — 모델이 빈 응답을 줌(`choices`가 비었거나 내용이 없음)\n- `AI analysis did not return valid feature pricing` — JSON이 아닌 내용이거나 금액이 있는 기능이 하나도 없음",
             "content": {
               "application/json": {
                 "schema": {
@@ -7775,7 +7828,7 @@
           "Contracts"
         ],
         "summary": "계약 상세",
-        "description": "마일스톤, 리뷰, 마일스톤 요약을 함께 준다. 삭제된 프로젝트의 계약도 보인다(알려진 버그, 이슈 #16).",
+        "description": "마일스톤, 리뷰, 마일스톤 요약을 함께 준다. 프로젝트가 삭제된 계약은 404다.",
         "security": [
           {
             "bearerAuth": []
@@ -7825,7 +7878,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약",
+            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약, 또는 프로젝트가 삭제됨",
             "content": {
               "application/json": {
                 "schema": {
@@ -7952,7 +8005,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약",
+            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약, 또는 프로젝트가 삭제됨",
             "content": {
               "application/json": {
                 "schema": {
@@ -8075,7 +8128,7 @@
                       "format": "date-time"
                     },
                     "payment": {
-                      "$ref": "#/components/schemas/Payment"
+                      "$ref": "#/components/schemas/MilestonePayment"
                     },
                     "latestSubmission": {
                       "$ref": "#/components/schemas/MilestoneSubmission"
@@ -9318,14 +9371,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Payment"
-                    },
-                    {
-                      "type": "object"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Payment"
                 }
               }
             }
@@ -9421,14 +9467,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Payment"
-                    },
-                    {
-                      "type": "object"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Payment"
                 }
               }
             }
@@ -9438,14 +9477,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Payment"
-                    },
-                    {
-                      "type": "object"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Payment"
                 }
               }
             }
@@ -10598,7 +10630,7 @@
           "Conversations"
         ],
         "summary": "내 대화방 목록",
-        "description": "마지막 메시지가 최근인 순(메시지가 없는 대화방은 뒤). 삭제된 프로젝트의 대화방은 빠진다.",
+        "description": "마지막 메시지가 최근인 순(메시지가 없는 대화방은 뒤). 삭제된 프로젝트의 대화방은 빠진다. `q`가 있으면 프로젝트 제목이나 상대방 이름에 그 글자가 들어 있는 대화방만 같은 순서로 담고, `meta`도 걸러진 결과를 센다. 내 이름은 검색하지 않는다. `%`와 `_`는 와일드카드가 아니라 글자 그대로다.",
         "security": [
           {
             "bearerAuth": []
@@ -10625,6 +10657,15 @@
             },
             "required": false,
             "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "프로젝트 제목이나 상대방 이름에 들어 있는 글자(대소문자 무시, 앞뒤 공백 제거). 공백뿐이면 없는 것과 같다. 최대 100자."
+            },
+            "required": false,
+            "name": "q",
             "in": "query"
           }
         ],
@@ -10655,7 +10696,7 @@
             }
           },
           "400": {
-            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)",
+            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `q: must be at most 100 characters` — 검색어가 앞뒤 공백을 빼고 100자 넘음",
             "content": {
               "application/json": {
                 "schema": {

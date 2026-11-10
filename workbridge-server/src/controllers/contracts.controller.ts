@@ -12,9 +12,9 @@ import type { AuthedRequest } from '../types/index';
 
 export async function getContract(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // No soft-delete filter on the project here (#16).
-    const contract = await prisma.contract.findUnique({
-      where: { id: req.params.id },
+    // A contract whose project is soft-deleted is invisible.
+    const contract = await prisma.contract.findFirst({
+      where: { id: req.params.id, project: { deletedAt: null } },
       include: contractInclude,
     });
 
@@ -34,8 +34,8 @@ export async function getContract(req: AuthedRequest, res: Response, next: NextF
 
 export async function signContract(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const contract = await prisma.contract.findUnique({
-      where: { id: req.params.id },
+    const contract = await prisma.contract.findFirst({
+      where: { id: req.params.id, project: { deletedAt: null } },
       include: { milestones: { select: { status: true, amount: true } } },
     });
 
