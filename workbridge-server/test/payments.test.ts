@@ -454,23 +454,29 @@ describe('POST /api/payments', () => {
     expect(await prisma.payment.count()).toBe(1);
   });
 
-  // Both requests read "no payment yet" and then insert. The unique `milestoneId` is what keeps
-  // the second row out, so this pins the database invariant only — the losing request's status
-  // is tracked in issue #8.
-  it('keeps a single payment row when two concurrent creates collide on the unique milestoneId', async () => {
+  // Both requests read "no payment yet" and then insert. The unique `milestoneId` keeps the second
+  // row out; the losing request then answers as if it had arrived second — it resumes the
+  // winner's PENDING payment — instead of surfacing the constraint as a 500.
+  it('a concurrent create that loses the insert race resumes the winner: 201 and 200 with one orderId', async () => {
     const { client, milestone } = await activeScenario();
     await warmConnectionPool(client);
-    // The losing insert may surface as a logged 500; silence it.
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     try {
       // Both requests read "no payment" before either inserts, every run (see the helper).
-      await collideOnPaymentInsert(2, () => Promise.all([
+      const responses = await collideOnPaymentInsert(2, () => Promise.all([
         authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
         authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
       ]));
 
+      expect(responses.map((r) => r.status).sort()).toEqual([200, 201]);
+      const [first, second] = responses;
+      expect(first.body.orderId).toBe(second.body.orderId);
+      expect(first.body.paymentId).toBe(second.body.paymentId);
       expect(await prisma.payment.count()).toBe(1);
+      const stored = await prisma.payment.findUniqueOrThrow({ where: { milestoneId: milestone.id } });
+      expect(stored).toMatchObject({ status: 'PENDING', orderId: first.body.orderId });
+      expect(logs).not.toHaveBeenCalled();
     } finally {
       logs.mockRestore();
     }
@@ -1300,6 +1306,39 @@ describe('POST /api/payments/dev-complete', () => {
 
       const after = await prisma.payment.findUniqueOrThrow({ where: { id: refunded.id } });
       expect(after.status).toBe('REFUNDED');
+    });
+
+    // The pair both read "no payment yet" and both insert inside their funding transaction. The
+    // loser's transaction rolls back on the unique `milestoneId`, and it answers like the
+    // idempotent repeat it effectively is.
+    it("a concurrent call that loses the insert race returns the winner's payment: 201 and 200, funded once", async () => {
+      const { client, conversation, milestone } = await activeScenario();
+      await warmConnectionPool(client);
+      const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        const responses = await withBypassEnabled(() => collideOnPaymentInsert(2, () => Promise.all([
+          authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+          authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+        ])));
+
+        expect(responses.map((r) => r.status).sort()).toEqual([200, 201]);
+        const [first, second] = responses;
+        expect(first.body.id).toBe(second.body.id);
+        expect(await prisma.payment.count()).toBe(1);
+        const stored = await prisma.payment.findUniqueOrThrow({ where: { milestoneId: milestone.id } });
+        expect(stored.status).toBe('COMPLETED');
+        const after = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+        expect(after.status).toBe('FUNDED');
+        expect(await prisma.notification.count({ where: { type: 'MILESTONE_FUNDED' } })).toBe(1);
+        expect(await prisma.job.count({ where: { type: 'milestone.overdue' } })).toBe(1);
+        expect(await prisma.message.count({
+          where: { conversationId: conversation.id, kind: 'SYSTEM', systemEvent: 'MILESTONE_FUNDED' },
+        })).toBe(1);
+        expect(logs).not.toHaveBeenCalled();
+      } finally {
+        logs.mockRestore();
+      }
     });
 
     it('never contacts TossPayments', async () => {

@@ -21,7 +21,7 @@
    - 확인: 추가된 줄에서 `getDate(`·`getDay(`·`getHours(`·`getMonth(`·`getFullYear(`와 같은 이름의 `set*(`, `toLocaleDateString(`, 그리고 `src/services/`·`src/jobs/handlers/`의 `new Date()`를 grep한다. 핸들러는 `ctx.now`를 써야 한다.
 
 5. **여러 행을 바꾸는 변경은 하나의 `prisma.$transaction`이고, 그 안에서 P2002를 catch하지 않는다.**
-   - 왜: 인터랙티브 트랜잭션에서 실패한 문장은 Postgres가 트랜잭션 전체를 중단시켜서 catch해도 이미 망가져 있다. 중복은 `createMany({ skipDuplicates: true })`(`enqueueJob`의 방식)로 피하거나 트랜잭션 밖에서 catch해 409로 바꾼다(지원 수락 `updateApplication`의 방식). 동시 결제 생성(#8)과 동시 dev-complete(#17)가 유니크 충돌을 409로 바꾸지 못해 500이 나는 남은 사례다(#17은 트랜잭션 안에서 터진다).
+   - 왜: 인터랙티브 트랜잭션에서 실패한 문장은 Postgres가 트랜잭션 전체를 중단시켜서 catch해도 이미 망가져 있다. 중복은 `createMany({ skipDuplicates: true })`(`enqueueJob`의 방식)로 피하거나 트랜잭션 밖에서 catch해 409로 바꾼다(지원 수락 `updateApplication`의 방식). 진 쪽이 이긴 쪽 결과를 그대로 받아도 되면 밖에서 catch하고 한 번 다시 실행한다(결제 생성과 dev-complete의 `retryOnceOnPaymentConflict`, 이 처리가 없어 500이 나던 사례가 #8·#17이다).
    - 확인: `$transaction(async (tx)` 블록 안의 `catch`에서 `P2002`를 검사하는지, 다중 쓰기가 트랜잭션 밖에 흩어져 있지 않은지 본다.
 
 6. **지급 계좌·포트폴리오/경력·알림 설정을 쓰는 트랜잭션은 `lockUserRow(tx, userId)`를 첫 문장으로 둔다.**
