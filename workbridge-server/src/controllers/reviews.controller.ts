@@ -65,7 +65,9 @@ export async function createReview(req: AuthedRequest, res: Response, next: Next
 export async function getUserReviews(req: Request, res: Response, next: NextFunction) {
   try {
     const reviews = await prisma.review.findMany({
-      where: { revieweeId: req.params.id },
+      // A soft-deleted user's received reviews are hidden with their profile (an empty list, as for
+      // an unknown user). The reviews stay in the database.
+      where: { revieweeId: req.params.id, reviewee: { deletedAt: null } },
       include: {
         reviewer: { select: { id: true, name: true, profileImage: true } },
       },

@@ -21,8 +21,9 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
 
     await closeExpiredOpenProjects();
 
+    // A project whose client is soft-deleted takes no applications (and so sends that client nothing).
     const project = await prisma.project.findFirst({
-      where: { id: projectId, deletedAt: null },
+      where: { id: projectId, deletedAt: null, client: { deletedAt: null } },
     });
 
     if (!project) {
@@ -65,7 +66,7 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
         });
 
         // The wording stays inline here (not in the template table); `notify()` applies the channel
-        // policy and preferences. The client is notified even when soft-deleted (joined owners: #20).
+        // policy and preferences. The client is live: a deleted client's project 404s above.
         await notify(tx, {
           userId: project.clientId,
           type: 'APPLICATION_CREATED',

@@ -216,7 +216,7 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     operationId: 'getRecommendedProjects',
     tags: ['Recommendations'],
     summary: '나에게 맞는 프로젝트(프리랜서)',
-    description: '기술·카테고리로 점수를 매긴 모집 중인 프로젝트. 이미 지원한 프로젝트는 빠진다. 읽기 전용(수명주기 스윕 없음).',
+    description: '기술·카테고리로 점수를 매긴 모집 중인 프로젝트. 이미 지원한 프로젝트와 의뢰인이 삭제된 프로젝트는 빠진다. 읽기 전용(수명주기 스윕 없음).',
     security: bearer,
     request: { query: recommendationQuery },
     responses: {

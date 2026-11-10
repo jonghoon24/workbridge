@@ -39,7 +39,7 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
         AUTHENTICATED,
         role('FREELANCER'),
         COMPLETE_PROFILE,
-        { 404: ['`Project not found` — 없거나 삭제된 프로젝트'] },
+        { 404: ['`Project not found` — 없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트'] },
         { 409: ['`You have already applied to this project` — 이미 지원함'] },
       ),
     },

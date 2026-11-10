@@ -203,10 +203,9 @@ describe('POST /api/projects/:id/applications', () => {
     expect(res.body.error.message).toBe('Project not found');
   });
 
-  // Whether the soft-delete rule reaches *joined* owners is an open product question. On this
-  // path it does not: the project of a soft-deleted client is still open for applications, and
-  // the `APPLICATION_CREATED` notification is addressed to the deleted account. Pinned, not judged.
-  it('still accepts an application for a project whose client is soft-deleted', async () => {
+  // A project whose client is soft-deleted is hidden like a deleted project: no application,
+  // and so no `APPLICATION_CREATED` for the deleted account.
+  it('404s an application to a project whose client is soft-deleted and writes nothing', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
@@ -216,10 +215,10 @@ describe('POST /api/projects/:id/applications', () => {
       .post(`/api/projects/${project.id}/applications`)
       .send(validApplyBody);
 
-    expect(res.status).toBe(201);
-    const notifications = await prisma.notification.findMany();
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0].userId).toBe(client.id);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(await prisma.application.count()).toBe(0);
+    expect(await prisma.notification.count()).toBe(0);
   });
 
   // Role gating reads the role from the **token**, not the row. A freelancer demoted to
