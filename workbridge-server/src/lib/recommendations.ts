@@ -243,6 +243,7 @@ export async function recommendProjects(freelancerId: string, limit: number, now
       // No sweep (read-only): an OPEN project past its deadline is excluded here, not by its status.
       deadline: { gte: now },
       deletedAt: null,
+      client: { deletedAt: null },
       applications: { none: { freelancerId } },
       OR: [
         ...(searchTerms.length ? [{ requiredSkills: { hasSome: searchTerms } }] : []),

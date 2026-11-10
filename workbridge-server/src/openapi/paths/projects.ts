@@ -32,6 +32,8 @@ import {
 const tags = ['Projects'];
 
 const PROJECT_NOT_FOUND = notFound('Project not found', '없거나 삭제된 프로젝트');
+/** Public reads also hide a project whose client is soft-deleted. */
+const PUBLIC_PROJECT_NOT_FOUND = notFound('Project not found', '없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트');
 const projectId = pathParams({ id: '프로젝트 ID' });
 const SCHEDULE = '`recruitmentStartDate cannot be after deadline` — 모집 시작일이 마감일보다 늦음';
 
@@ -47,7 +49,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     operationId: 'getProjects',
     tags,
     summary: '프로젝트 목록',
-    description: `기본은 모집 중(\`OPEN\`)인 프로젝트의 최신순, 한 페이지 10개(최대 50). ${LAZY_SWEEP}`,
+    description: `기본은 모집 중(\`OPEN\`)인 프로젝트의 최신순, 한 페이지 10개(최대 50). 삭제된 프로젝트와 의뢰인이 삭제된 프로젝트는 빠진다. ${LAZY_SWEEP}`,
     security: publicRoute,
     request: { query: projectListQuery },
     responses: {
@@ -67,7 +69,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { body: jsonBody(projectCreateBody) },
     responses: {
       201: created(project),
-      ...errors(invalid(SCHEDULE), AUTHENTICATED, role('CLIENT'), COMPLETE_PROFILE),
+      ...errors(invalid(SCHEDULE), ACTIVE_USER, role('CLIENT'), COMPLETE_PROFILE),
     },
   });
 
@@ -94,7 +96,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       201: created(bookmarkState.extend({ bookmarked: z.literal(true) })),
-      ...errors(AUTHENTICATED, role('FREELANCER'), PROJECT_NOT_FOUND),
+      ...errors(ACTIVE_USER, role('FREELANCER'), PROJECT_NOT_FOUND),
     },
   });
 
@@ -109,7 +111,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       200: ok(bookmarkState.extend({ bookmarked: z.literal(false) })),
-      ...errors(AUTHENTICATED, role('FREELANCER'), PROJECT_NOT_FOUND),
+      ...errors(ACTIVE_USER, role('FREELANCER'), PROJECT_NOT_FOUND),
     },
   });
 
@@ -122,7 +124,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     description: `AI 단가 분석 결과가 있으면 함께 준다. ${LAZY_SWEEP}`,
     security: publicRoute,
     request: { params: projectId },
-    responses: { 200: ok(projectDetail), ...errors(PROJECT_NOT_FOUND) },
+    responses: { 200: ok(projectDetail), ...errors(PUBLIC_PROJECT_NOT_FOUND) },
   });
 
   registry.registerPath({
@@ -141,7 +143,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
           '`Cannot change budget or recruitment dates after applications have been submitted` — 지원이 있는데 예산·일정을 보냄',
           SCHEDULE,
         ),
-        AUTHENTICATED,
+        ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
         PROJECT_NOT_FOUND,
@@ -162,7 +164,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       200: ok(messageBody, '`Project deleted successfully`'),
-      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
+      ...errors(ACTIVE_USER, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
         409: ['`Cannot delete a project with an unfinished contract` — 계약이 `PENDING` 또는 `ACTIVE`'],
       }),
     },
@@ -183,7 +185,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
       200: ok(project, '바뀐 프로젝트'),
       ...errors(
         invalid('`Cannot transition from <현재> to <요청>` — 허용되지 않는 전이'),
-        AUTHENTICATED,
+        ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
         PROJECT_NOT_FOUND,
@@ -204,7 +206,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       200: ok(pricingAnalysis),
-      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
+      ...errors(ACTIVE_USER, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
         429: ['`Too many requests. Try again later.` — 분석 한도 초과'],
         502: [
           '`AI analysis provider request failed` — 공급자 호출 실패(네트워크 오류, 공급자 5xx 등). 공급자 메시지는 싣지 않는다',

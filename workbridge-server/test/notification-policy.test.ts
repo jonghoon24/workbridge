@@ -184,7 +184,7 @@ describe('the four pre-existing types go through notify()', () => {
     expect(await prisma.emailDelivery.count()).toBe(0);
   });
 
-  it('applying to a soft-deleted client still creates the in-app row but no email', async () => {
+  it('a soft-deleted client gets nothing: applying to their project is refused before any notification', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
@@ -192,8 +192,8 @@ describe('the four pre-existing types go through notify()', () => {
 
     const res = await authed(freelancer).post(`/api/projects/${project.id}/applications`).send(applyBody);
 
-    expect(res.status).toBe(201);
-    expect(await prisma.notification.count({ where: { userId: client.id } })).toBe(1);
+    expect(res.status).toBe(404);
+    expect(await prisma.notification.count()).toBe(0);
     expect(await prisma.emailDelivery.count()).toBe(0);
     expect(await prisma.job.count()).toBe(0);
   });

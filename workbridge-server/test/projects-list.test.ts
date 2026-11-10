@@ -439,6 +439,29 @@ describe('GET /api/projects', () => {
       expect(res.body.meta.total).toBe(0);
     });
 
+    it.each([
+      ['%', '%25'],
+      ['_', '_'],
+      ['a backslash', '%5C'],
+    ])('treats %s in the search as a literal character, not a wildcard', async (_label, encoded) => {
+      const res = await api().get(`/api/projects?search=${encoded}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.projects).toEqual([]);
+      expect(res.body.meta.total).toBe(0);
+    });
+
+    it('matches only titles that really contain % and _, not lookalikes', async () => {
+      await makeProject(clientId, { title: 'Cut costs by 50% on cloud_run', description: 'Ops' });
+      await makeProject(clientId, { title: 'Scale to 500 nodes on cloudXrun', description: 'Ops' });
+
+      const percent = await api().get('/api/projects?search=50%25');
+      const underscore = await api().get('/api/projects?search=cloud_run');
+
+      expect(titles(percent.body)).toEqual(['Cut costs by 50% on cloud_run']);
+      expect(titles(underscore.body)).toEqual(['Cut costs by 50% on cloud_run']);
+    });
+
     it('ignores an empty search value', async () => {
       const res = await api().get('/api/projects?search=');
 
@@ -723,49 +746,34 @@ describe('GET /api/projects', () => {
       }
     });
 
-    // Open product question: does the soft-delete rule reach *joined* owners? The rule is written
-    // about the record being read, and neither this listing nor `GET /:id` filters the joined
-    // client, so a project whose client is gone stays public — name, company and avatar included.
-    // Pinning today's behavior; if the question is decided the other way this test flips to
-    // expecting the project (or at least the client snippet) to disappear.
-    it('still lists a project whose client has been soft-deleted, client snippet included', async () => {
-      const client = await prisma.user.findUniqueOrThrow({ where: { id: clientId } });
-      const project = await makeProject(clientId, { title: 'Orphaned' });
+    // The soft-delete rule reaches the joined owner: a project whose client is deleted is hidden
+    // like a deleted project, so the client's name, company and avatar are not published either.
+    it('hides a project whose client has been soft-deleted, under every status filter', async () => {
+      const liveClient = await makeClient();
+      await makeProject(liveClient.id, { title: 'Live' });
+      await makeProject(clientId, { title: 'Orphaned' });
       await prisma.user.update({ where: { id: clientId }, data: { deletedAt: new Date() } });
 
       const list = await api().get('/api/projects');
-
       expect(list.status).toBe(200);
-      expect(titles(list.body)).toEqual(['Orphaned']);
+      expect(titles(list.body)).toEqual(['Live']);
       expect(list.body.meta.total).toBe(1);
-      expect(list.body.projects[0].client).toEqual({
-        id: clientId,
-        name: client.name,
-        companyName: client.companyName,
-        profileImage: client.profileImage,
-      });
+
+      const all = await api().get('/api/projects?status=ALL');
+      expect(titles(all.body)).toEqual(['Live']);
+      expect(all.body.meta.total).toBe(1);
     });
 
-    it('still serves GET /:id for a project whose client has been soft-deleted', async () => {
-      const client = await prisma.user.findUniqueOrThrow({ where: { id: clientId } });
+    it('404s GET /:id for a project whose client has been soft-deleted', async () => {
       const project = await makeProject(clientId, { title: 'Orphaned' });
       await prisma.user.update({ where: { id: clientId }, data: { deletedAt: new Date() } });
 
       const res = await api().get(`/api/projects/${project.id}`);
 
-      expect(res.status).toBe(200);
-      expect(res.body.id).toBe(project.id);
-      // `getProjectById` selects one more field than the listing does.
-      expect(res.body.client).toEqual({
-        id: clientId,
-        name: client.name,
-        companyName: client.companyName,
-        profileImage: client.profileImage,
-        businessField: client.businessField,
-      });
-      // Cross-check that the owner really is deleted, so this is not a vacuous pass.
-      expect((await prisma.user.findUniqueOrThrow({ where: { id: clientId } })).deletedAt)
-        .not.toBeNull();
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'Project not found' } });
+      // The project row itself is untouched — only hidden.
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).deletedAt).toBeNull();
     });
   });
 
