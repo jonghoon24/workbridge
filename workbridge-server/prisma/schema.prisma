@@ -279,6 +279,9 @@ model Payment {
   status      PaymentStatus @default(PENDING)
   paymentKey  String?
   orderId     String        @unique
+  // When a confirm claimed this PENDING payment to call TossPayments. Only one confirm holds the
+  // claim at a time; an abandoned claim expires (CONFIRM_CLAIM_LEASE_MS in payments.controller.ts).
+  confirmStartedAt DateTime?
   createdAt   DateTime      @default(now())
 
   @@index([contractId])

@@ -39,7 +39,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | **Milestone** | 계약을 나눈 작업 단위 | `sequence`(1부터), `amount`(원 단위 정수), `dueDate`(그 KST 날짜의 23:59:59.999), `status`, `fundedAt`, `submittedAt`(최근 제출), `autoApproveAt`(`SUBMITTED`일 때만), `approvedAt`, `approvalType`, `revisionCount`. `(contractId, sequence)` unique, 인덱스 `[status, autoApproveAt]` |
 | **MilestoneSubmission** | 산출물 제출 회차 | `round`(1부터), `message`, `links String[]`, `decision`(null = 검수 대기), `decisionReason`, `decidedAt`, `decidedById`(FK 아님, 자동 승인이면 null), `autoDecided`. `(milestoneId, round)` unique |
 | **MilestoneAttachment** | 제출 첨부 파일 | `url`(공개 URL), `fileName`(원래 이름, UTF-8), `mimeType`, `size` |
-| **Payment** | 마일스톤 결제 | `contractId`, `milestoneId` unique, `clientId`, `amount Float`(= 마일스톤 금액), `status`, `paymentKey`, `orderId` unique, 인덱스 `[contractId]`, `[clientId]` |
+| **Payment** | 마일스톤 결제 | `contractId`, `milestoneId` unique, `clientId`, `amount Float`(= 마일스톤 금액), `status`, `paymentKey`, `orderId` unique, `confirmStartedAt`(결제 승인 선점 시각, 아래 "동시성"), 인덱스 `[contractId]`, `[clientId]` |
 
 ### 정산
 
@@ -184,6 +184,11 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `Conversation` | 메시지·시스템 메시지 게시(항상 이벤트 트랜잭션의 마지막 쓰기) |
 | `ConversationParticipant` | 읽음 처리, 미확인 메시지 다이제스트 |
 
+**결제 승인은 잠금 대신 선점(조건부 쓰기)으로 직렬화한다.** 토스페이먼츠 호출을 트랜잭션 안에 두지 않으려고, 승인 요청은
+공급자를 부르기 전에 `status = PENDING`이고 `confirmStartedAt`이 비었거나 60초보다 오래된 결제에만 `confirmStartedAt = now`를
+쓴다. 쓰지 못한 요청은 409다. 60초 임대는 중간에 죽은 요청이 그 주문을 영원히 막지 않게 하려는 것이다. 실패한 결제를
+다시 만들면(`POST /api/payments`) 선점도 지운다.
+
 잠금 순서는 `Contract` → `Milestone` → 이벤트의 다른 쓰기 → `Conversation`이다. 대화방 시스템 메시지
 (`postSystemMessage`, `src/services/messaging.service.ts`)는 언제나 이벤트 트랜잭션의 **마지막 쓰기**라서
 (`MILESTONE_APPROVED` 다음 `CONTRACT_COMPLETED`처럼) `Conversation` 잠금을 가장 늦게 잡고, 대화방을 잠근 트랜잭션이
@@ -219,6 +224,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `20261021062933_expansion_messaging_profile` | 대화방·참여자·메시지·첨부, 포트폴리오, 경력 |
 | `20261021071341_expansion_notification_channels` | 알림 설정, 이메일 발송 기록 |
 | `20261108143952_add_list_and_foreign_key_indexes` | 인덱스만 추가: `Project` 4개, `Application[freelancerId]`, `Contract[clientId]`·`[freelancerId]`, `Payment[clientId]`, `Review[revieweeId]`("인덱스" 참고). 데이터 변경 없음 |
+| `20261110082927_add_payment_confirm_started_at` | `Payment.confirmStartedAt`(nullable) 추가. 기존 행은 null(선점 없음). 데이터 변경 없음 |
 
 - **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. float를 그대로 반올림하면 1원 어긋나므로 numeric으로 바꿔 반올림한다(위 "금액이 `Float`인 부채"). 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
 - **정산 원장은 확장 이후 승인분부터다.** 확장 전에 완료된 계약의 마일스톤에는 `SettlementItem`이 없다(화면의 예상 정산액은 현재 요율로 계산해 보여준다).

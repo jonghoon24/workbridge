@@ -91,7 +91,9 @@ stateDiagram-v2
 - 프로젝트가 삭제된 마일스톤은 공급자에게 연락하기 **전에** 거절한다. 삭제된 프로젝트에 돈을 받지 않는다.
 - 성공하면 한 트랜잭션에서 결제가 `COMPLETED`가 되고 마일스톤이 `FUNDED`가 된다. 이때 프리랜서에게
   `MILESTONE_FUNDED`, 대화방에 시스템 메시지, 그리고 기한 알림 작업 두 개(기한 24시간 전, 기한 시각)를 남긴다.
-- 확인은 **다시 쓸 수 없다.** 이미 처리된 결제는 다시 확인하지 않고, 동시에 두 번 확인해도 하나만 성공한다(현재 다름: [#13]).
+- 확인은 **다시 쓸 수 없다.** 이미 처리된 결제는 다시 확인하지 않고, 동시에 두 번 확인해도 하나만 공급자에게 가고
+  나머지는 충돌로 끝난다. 공급자를 부르기 전에 결제를 선점하는데, 선점한 요청이 끝내 응답하지 않으면 60초 뒤에 다시
+  확인할 수 있다.
   어떤 경우에도 결제는 `COMPLETED`, 마일스톤은 `FUNDED`, 알림과 작업은 한 번씩이다. 마일스톤이 이미 결제됐으면
   결제 처리 단계는 아무것도 하지 않는다(예외를 던지면 이긴 쪽 결제를 `FAILED`로 덮어쓰게 된다).
 - 확인에 실패하면 결제를 `FAILED`로 바꾼다. 이 쓰기도 결제가 아직 `PENDING`일 때만 한다. 경합에서 진 확인이 이긴
@@ -207,7 +209,6 @@ stateDiagram-v2
 
 [#3]: https://github.com/jonghoon24/workbridge/issues/3
 [#8]: https://github.com/jonghoon24/workbridge/issues/8
-[#13]: https://github.com/jonghoon24/workbridge/issues/13
 [#17]: https://github.com/jonghoon24/workbridge/issues/17
 [#22]: https://github.com/jonghoon24/workbridge/issues/22
 [#28]: https://github.com/jonghoon24/workbridge/issues/28

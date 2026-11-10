@@ -46,6 +46,9 @@ export const payment = z
     status: paymentStatusEnum,
     paymentKey: z.string().nullable(),
     orderId: z.string(),
+    confirmStartedAt: dateTime.nullable().openapi({
+      description: '결제 승인 요청이 토스페이먼츠 확인을 시작한 시각. 그동안 같은 결제의 다른 승인 요청은 409',
+    }),
     createdAt: dateTime,
   })
   .openapi('Payment');

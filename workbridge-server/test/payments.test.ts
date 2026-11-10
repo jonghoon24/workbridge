@@ -418,6 +418,22 @@ describe('POST /api/payments', () => {
     expect(after.orderId).not.toBe(failed.orderId);
   });
 
+  it("retrying a FAILED payment releases the failed attempt's confirm claim, so the new order can be confirmed", async () => {
+    const { client, milestone } = await activeScenario();
+    await makePayment(milestone.id, client.id, { status: 'FAILED', confirmStartedAt: new Date() });
+
+    const created = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
+    expect(created.status).toBe(200);
+    expect(await prisma.payment.findUniqueOrThrow({ where: { id: created.body.paymentId } }))
+      .toMatchObject({ status: 'PENDING', confirmStartedAt: null });
+
+    tossPost.mockResolvedValue(tossDone());
+    const confirmed = await authed(client)
+      .post('/api/payments/confirm')
+      .send({ paymentKey: 'pk_retry', orderId: created.body.orderId, amount: CONTRACT_AMOUNT });
+    expect(confirmed.status).toBe(200);
+  });
+
   it('returns 409 for a COMPLETED payment on a still-PENDING milestone (inconsistent state)', async () => {
     const { client, milestone } = await activeScenario();
     const completed = await makePayment(milestone.id, client.id, {
@@ -894,9 +910,63 @@ describe('POST /api/payments/confirm', () => {
   });
 
   /**
-   * Concurrent confirms, variant 1: the provider accepts both calls (the replay guard lets both
-   * through — issue #13). The second
-   * funding step finds the milestone FUNDED and is a no-op instead of throwing — which the
+   * The PENDING check is a conditional write (a claim), not a read: of two confirms that both read
+   * PENDING, only the one that claims the payment calls the provider. The provider is slow here so
+   * both requests are past the read before either finishes.
+   */
+  it('two concurrent confirms call the provider once: one 200, the other 409', async () => {
+    const { client, payment } = await pendingPayment();
+    tossPost.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return tossDone();
+    });
+    await warmConnectionPool(client);
+
+    const payload = body(payment.orderId, CONTRACT_AMOUNT);
+    const responses = await Promise.all([
+      authed(client).post('/api/payments/confirm').send(payload),
+      authed(client).post('/api/payments/confirm').send(payload),
+    ]);
+
+    expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
+    const loser = responses.find((r) => r.status === 409)!;
+    expect(loser.body).toEqual({ error: { message: 'Payment has already been processed' } });
+    expect(tossPost).toHaveBeenCalledTimes(1);
+    const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe('COMPLETED');
+  });
+
+  it('returns 409 without calling the provider while another confirm of the payment is in flight', async () => {
+    const { client, payment } = await pendingPayment();
+    await prisma.payment.update({ where: { id: payment.id }, data: { confirmStartedAt: new Date() } });
+
+    const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'Payment has already been processed' } });
+    expect(tossPost).not.toHaveBeenCalled();
+    const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe('PENDING');
+  });
+
+  it('lets a confirm through once an earlier attempt has held the claim past its lease', async () => {
+    const { client, payment } = await pendingPayment();
+    // An attempt that never reported back (the function was killed mid-call).
+    const abandoned = new Date(Date.now() - 10 * 60_000);
+    await prisma.payment.update({ where: { id: payment.id }, data: { confirmStartedAt: abandoned } });
+    tossPost.mockResolvedValue(tossDone());
+
+    const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
+
+    expect(res.status).toBe(200);
+    expect(tossPost).toHaveBeenCalledTimes(1);
+    const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+    expect(after.status).toBe('COMPLETED');
+  });
+
+  /**
+   * Concurrent confirms, variant 1: should both calls ever reach the provider and be accepted, the
+   * second funding step finds the milestone FUNDED and is a no-op instead of throwing — which the
    * catch-all would otherwise turn into a FAILED payment.
    */
   it('two concurrent confirms leave one COMPLETED payment, one FUNDED milestone, one notification', async () => {

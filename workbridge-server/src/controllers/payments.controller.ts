@@ -28,6 +28,15 @@ async function findMilestoneForPayment(milestoneId: string) {
   return milestone;
 }
 
+/**
+ * How long a confirm's claim on a PENDING payment (`confirmStartedAt`) blocks another confirm. A
+ * confirm normally finishes well within this; the lease only matters when one never reports back
+ * (the function was killed mid-call), so the client is not locked out of that order for good.
+ * Should a claim expire while its confirm is still running, the overlap is still safe: the provider
+ * refuses a second confirmation of one payment, and the FAILED write is conditional on PENDING.
+ */
+const CONFIRM_CLAIM_LEASE_MS = 60_000;
+
 /** Milestones are funded in order: any lower-sequence milestone still PENDING blocks funding this one. */
 async function hasUnfundedPredecessor(contractId: string, sequence: number): Promise<boolean> {
   const count = await prisma.milestone.count({
@@ -82,6 +91,8 @@ export async function createPayment(req: AuthedRequest, res: Response, next: Nex
           status: 'PENDING',
           paymentKey: null,
           orderId,
+          // The failed attempt's claim belongs to the old order; the new one starts unclaimed.
+          confirmStartedAt: null,
         },
       });
 
@@ -131,13 +142,30 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
       throw new AppError('Not authorized', 403);
     }
 
-    // Known bug #13: a read followed by an unlocked write; two concurrent confirms can both pass this.
     if (payment.status !== 'PENDING') {
       throw new AppError('Payment has already been processed', 409);
     }
 
     if (requestedAmount !== payment.amount) {
       throw new AppError('Payment amount does not match the contract amount', 400);
+    }
+
+    // The read above can be stale: two confirms may both see PENDING. Claiming the payment is a
+    // conditional write, so exactly one of them goes on to call the provider; the other is a 409.
+    const now = new Date();
+    const claimed = await prisma.payment.updateMany({
+      where: {
+        id: payment.id,
+        status: 'PENDING',
+        OR: [
+          { confirmStartedAt: null },
+          { confirmStartedAt: { lt: new Date(now.getTime() - CONFIRM_CLAIM_LEASE_MS) } },
+        ],
+      },
+      data: { confirmStartedAt: now },
+    });
+    if (claimed.count === 0) {
+      throw new AppError('Payment has already been processed', 409);
     }
 
     // Verify with Toss Payments
@@ -161,7 +189,6 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
 
       // The payment and the milestone's funding commit together. `markFunded` is a no-op,
       // never an error, when a concurrent confirm already funded the milestone.
-      const now = new Date();
       const updated = await prisma.$transaction(async (tx) => {
         const completed = await tx.payment.update({
           where: { orderId },
