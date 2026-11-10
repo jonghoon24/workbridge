@@ -41,6 +41,7 @@ npm run dev
 cd workbridge-server
 bash scripts/test-db.sh       # workbridge_test 생성·마이그레이션
 npm run typecheck
+npm run lint
 npm run openapi               # 라우트나 스키마를 바꿨으면 openapi.json을 다시 만들어 커밋
 npm test
 
@@ -55,7 +56,7 @@ npm run lint && npm run build
 
 - 서버 테스트는 현재 코드가 아니라 의도한 동작([docs/domain/](docs/domain/README.md)의 규칙과 OpenAPI 문서)을 단언합니다. 모든 응답은 OpenAPI 응답 스키마와도 대조하므로 문서에 없는 상태 코드나 필드가 나오면 실패합니다. 알려진 버그는 GitHub 이슈로 추적합니다. 테스트마다 모든 테이블을 비우므로 이름에 `test`가 들어간 DB에서만 돕니다.
 - E2E는 로그인, 프로젝트 등록, 지원, 수락·서명, 마일스톤 결제·제출·승인을 브라우저로 확인합니다([workbridge-client/e2e/README.md](workbridge-client/e2e/README.md)).
-- CI: `.github/workflows/ci.yml`(서버 typecheck·`prisma validate`·`openapi.json` 최신 여부·테스트, 클라이언트 lint·빌드)과 `e2e.yml`(Playwright)이 PR과 `main` 푸시마다 Postgres 서비스 컨테이너로 돕니다. PR마다 Claude가 `REVIEW.md` 기준으로 AI 리뷰를 남기고(`claude-code-review.yml`), 이슈·PR에서 `@claude`를 멘션해 작업을 맡길 수 있습니다(`claude.yml`). 이슈에서 맡긴 작업은 드래프트 PR로 돌아오고, Ready for review를 누르면 AI 리뷰가 시작됩니다.
+- CI: `.github/workflows/ci.yml`(서버 typecheck·lint·`prisma validate`·`openapi.json` 최신 여부·테스트, 클라이언트 lint·빌드)과 `e2e.yml`(Playwright)이 PR과 `main` 푸시마다 Postgres 서비스 컨테이너로 돕니다. PR마다 Claude가 `REVIEW.md` 기준으로 AI 리뷰를 남기고(`claude-code-review.yml`), 이슈·PR에서 `@claude`를 멘션해 작업을 맡길 수 있습니다(`claude.yml`). 이슈에서 맡긴 작업은 드래프트 PR로 돌아오고, Ready for review를 누르면 AI 리뷰가 시작됩니다.
 
 ## 배포
 

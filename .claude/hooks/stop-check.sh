@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Stop: Claude가 끝내기 전에 HEAD 이후 바뀐 곳의 가벼운 정적 검사를 돌린다.
 #   workbridge-server/**/*.ts 변경 → npm run typecheck (src/와 test/ 모두)
+#   workbridge-server/**/*.{ts,js,mjs} 변경 → npm run lint (CI와 같은 기준)
 #   workbridge-client/src/** 변경   → npm run lint -- --max-warnings=0 (CI와 같은 기준)
 # exit 2면 실패한 마지막 줄이 Claude에게 돌아가 작업을 이어 간다. 서버 테스트 스위트는 일부러
 # 돌리지 않는다(실제 Postgres, 약 90초) — docs/HARNESS.md 참고.
@@ -31,6 +32,14 @@ if grep -qE '^workbridge-server/.*\.ts$' <<<"$changed"; then
     out=$(cd workbridge-server && npm run --silent typecheck 2>&1) || fail "workbridge-server npm run typecheck" "$out"
   else
     echo "stop-check: workbridge-server/node_modules가 없어 typecheck를 건너뛰었다 (npm install 필요)" >&2
+  fi
+fi
+
+if grep -qE '^workbridge-server/.*\.(ts|js|mjs)$' <<<"$changed"; then
+  if [ -d workbridge-server/node_modules ]; then
+    out=$(cd workbridge-server && npm run --silent lint 2>&1) || fail "workbridge-server npm run lint" "$out"
+  else
+    echo "stop-check: workbridge-server/node_modules가 없어 lint를 건너뛰었다 (npm install 필요)" >&2
   fi
 fi
 

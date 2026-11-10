@@ -43,7 +43,7 @@ git log --oneline origin/main..HEAD
 diff가 건드린 곳의 정적 검사를 돌린다(Stop 훅도 같은 일을 한다):
 
 ```bash
-(cd workbridge-server && npm run typecheck)     # workbridge-server/**가 바뀌었으면
+(cd workbridge-server && npm run typecheck && npm run lint)     # workbridge-server/**가 바뀌었으면
 (cd workbridge-server && npm run openapi && git diff --exit-code openapi.json)   # 같은 경우. 차이가 나면 커밋할 것
 (cd workbridge-client && npm run lint && npm run build)   # workbridge-client/**가 바뀌었으면
 ```
