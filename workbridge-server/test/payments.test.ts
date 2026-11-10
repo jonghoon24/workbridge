@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 /**
- * This file is the only one that mutates `ALLOW_PAYMENT_BYPASS`, and `fileParallelism: false`
+ * This file (and one `soft-delete.test.ts` row) mutates `ALLOW_PAYMENT_BYPASS`, and `fileParallelism: false`
  * means sibling files can share the worker process — a leaked `'true'` would silently arm the
  * payment bypass for every test that follows. Every mutation below restores the previous value
  * in a `finally`; this asserts that it worked, so a future test that forgets fails here rather

@@ -2,7 +2,7 @@ import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { z } from '../../lib/zod';
 import { reviewBody } from '../../schemas/reviews';
-import { AUTHENTICATED, bearer, created, errors, invalid, jsonBody, ok, pathParams, publicRoute } from '../common';
+import { ACTIVE_USER, bearer, created, errors, invalid, jsonBody, ok, pathParams, publicRoute } from '../common';
 import { receivedReview, review } from '../responses/reviews';
 
 const tags = ['Reviews'];
@@ -24,7 +24,7 @@ export function registerReviewPaths(registry: OpenAPIRegistry): void {
           '`Reviews can only be written after project completion` — 계약이 완료되지 않음',
           '`Invalid reviewee` — 리뷰 대상이 계약 상대방이 아님',
         ),
-        AUTHENTICATED,
+        ACTIVE_USER,
         {
           403: ['`Not authorized` — 계약 당사자가 아님'],
           404: ['`Contract not found` — 없는 계약'],
@@ -40,7 +40,7 @@ export function registerReviewPaths(registry: OpenAPIRegistry): void {
     operationId: 'getUserReviews',
     tags,
     summary: '사용자가 받은 리뷰',
-    description: '최신순이고, 없는 사용자도 빈 배열이다.',
+    description: '최신순이고, 없거나 삭제된 사용자는 빈 배열이다(삭제된 사용자가 받은 리뷰는 숨긴다).',
     security: publicRoute,
     request: { params: pathParams({ id: '사용자 ID' }) },
     responses: { 200: ok(z.array(receivedReview)) },

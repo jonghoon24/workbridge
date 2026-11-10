@@ -82,7 +82,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     },
     responses: {
       200: ok(myProfile, '수정된 프로필'),
-      ...errors(invalid(), AUTHENTICATED, {
+      ...errors(invalid(), ACTIVE_USER, {
         403: ['`Insufficient permissions` — 토큰의 역할이 CLIENT·FREELANCER가 아님(검증할 스키마가 없음)'],
       }),
     },
@@ -184,7 +184,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     operationId: 'getUserReviewsByUser',
     tags,
     summary: '사용자가 받은 리뷰',
-    description: '`GET /api/reviews/users/{id}`와 같다. 최신순이고, 없는 사용자도 빈 배열이다.',
+    description: '`GET /api/reviews/users/{id}`와 같다. 최신순이고, 없거나 삭제된 사용자는 빈 배열이다.',
     security: publicRoute,
     request: { params: pathParams({ id: '사용자 ID' }) },
     responses: {
