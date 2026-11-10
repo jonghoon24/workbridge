@@ -613,10 +613,7 @@ async function deletedProjectFixture(): Promise<DeletedProjectFixture> {
   };
 }
 
-/**
- * Every route that resolves a project by id. `GET`/`DELETE /:id/bookmark` are deliberately
- * absent: they do not check the project at all (issue #14).
- */
+/** Every route that resolves a project by id. */
 const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) => PromiseLike<Sent> }[] = [
   {
     label: 'GET /api/projects/:id',
@@ -659,8 +656,16 @@ const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) =
         .send({ status: 'ACCEPTED' }),
   },
   {
+    label: 'GET /api/projects/:id/bookmark',
+    send: (fx) => authed(fx.otherFreelancer).get(`/api/projects/${fx.projectId}/bookmark`),
+  },
+  {
     label: 'POST /api/projects/:id/bookmark',
     send: (fx) => authed(fx.otherFreelancer).post(`/api/projects/${fx.projectId}/bookmark`),
+  },
+  {
+    label: 'DELETE /api/projects/:id/bookmark',
+    send: (fx) => authed(fx.otherFreelancer).delete(`/api/projects/${fx.projectId}/bookmark`),
   },
 ];
 
@@ -786,10 +791,40 @@ describe('a soft-deleted project', () => {
 
 /**
  * A contract whose project is gone must be invisible (docs/domain/README.md, soft delete).
- * Completion goes through the milestone routes, which filter the joined project's `deletedAt`.
- * `GET /api/contracts/:id` and `POST /api/contracts/:id/sign` do not yet — tracked in issue #16.
+ * Reading, signing and completing all filter the joined project's `deletedAt`.
  */
 describe('a contract whose project is soft-deleted', () => {
+  async function deletedProjectPendingContract() {
+    const scenario = await makeContractScenario();
+    await prisma.project.update({ where: { id: scenario.project.id }, data: { deletedAt: new Date() } });
+    return scenario;
+  }
+
+  it('GET /api/contracts/:id is 404 for either party', async () => {
+    const { client, freelancer, contract } = await deletedProjectPendingContract();
+
+    for (const party of [client, freelancer]) {
+      const res = await authed(party).get(`/api/contracts/${contract.id}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    }
+  });
+
+  it('cannot be signed: POST /api/contracts/:id/sign is 404 and records no signature', async () => {
+    const { client, freelancer, contract } = await deletedProjectPendingContract();
+    await prisma.contract.update({ where: { id: contract.id }, data: { clientSigned: true } });
+
+    const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(stored.freelancerSigned).toBe(false);
+    expect(stored.status).toBe('PENDING');
+    expect(await prisma.notification.count({ where: { userId: { in: [client.id, freelancer.id] } } })).toBe(0);
+  });
+
   it('cannot be completed: approving its last milestone is 404 and writes nothing', async () => {
     const { client, project, contract, milestone } = await activeContract();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });

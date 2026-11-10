@@ -72,8 +72,9 @@ stateDiagram-v2
 - 계약이 `ACTIVE`여야 결제할 수 있다(양측이 서명한 조건에만 돈을 낸다).
 - **순서대로만 결제한다.** 앞 순번 마일스톤이 아직 `PENDING`이면 뒤 마일스톤을 결제할 수 없다. 프리랜서는 결제된
   만큼만 일한다.
-- 이미 결제된 마일스톤은 다시 결제할 수 없다. 같은 마일스톤에 동시에 결제를 만들어도 하나만 생기고 나머지는 충돌로
-  끝난다(현재 다름: [#8]).
+- 이미 결제된 마일스톤은 다시 결제할 수 없다. 같은 마일스톤에 동시에 결제를 만들어도 하나만 생긴다. 늦은 요청은
+  뒤이어 온 요청처럼 답한다. 먼저 생긴 대기 중 결제를 같은 주문으로 이어받고(200), 그사이 마일스톤이 결제됐으면
+  충돌로 끝난다(409).
 
 ```mermaid
 stateDiagram-v2
@@ -103,7 +104,8 @@ stateDiagram-v2
 
 `ALLOW_PAYMENT_BYPASS`가 정확히 `true`일 때만, 토스페이먼츠 없이 결제를 완료하고 마일스톤을 결제 상태로 만든다.
 요청마다 플래그를 읽는다. **운영에서는 반드시 꺼 둔다.** 계약·순서·소유권 규칙은 실제 결제와 같고, 이미 완료된
-결제를 다시 부르면 그대로 성공한다(멱등). 동시 호출에도 결제는 하나만 생긴다(현재 다름: [#17]).
+결제를 다시 부르면 그대로 성공한다(멱등). 동시 호출에도 결제는 하나만 생기고, 늦은 호출은 멱등한 재호출처럼
+이긴 쪽 결제를 200으로 돌려준다.
 
 ## 제출과 검수
 
@@ -208,7 +210,5 @@ stateDiagram-v2
   뒤인** 다음 수요일 10:00 KST로 다시 잡힌다. 시도 횟수는 유지한다.
 
 [#3]: https://github.com/jonghoon24/workbridge/issues/3
-[#8]: https://github.com/jonghoon24/workbridge/issues/8
-[#17]: https://github.com/jonghoon24/workbridge/issues/17
 [#22]: https://github.com/jonghoon24/workbridge/issues/22
 [#28]: https://github.com/jonghoon24/workbridge/issues/28

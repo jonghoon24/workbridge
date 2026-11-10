@@ -6,7 +6,9 @@ import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
-import Button from '@/components/ui/Button';
+import Button, { buttonClasses } from '@/components/ui/Button';
+import CopyLinkButton from '@/components/ui/CopyLinkButton';
+import { ExternalLinkIcon } from '@/components/ui/Icons';
 import Input from '@/components/ui/Input';
 import CheckboxChips from '@/components/ui/CheckboxChips';
 import ProfileCompletionCard from '@/components/profile/ProfileCompletionCard';
@@ -201,7 +203,18 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900 mb-6">내 프로필</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <h1 className="text-2xl sm:text-[28px] font-bold text-gray-900">내 프로필</h1>
+        {profile?.id && (
+          <div className="flex items-center gap-2">
+            <CopyLinkButton path={`/users/${profile.id}`} />
+            <Link href={`/users/${profile.id}`} className={buttonClasses({ variant: 'secondary', size: 'sm' })}>
+              <ExternalLinkIcon className="h-4 w-4" />
+              공개 프로필 보기
+            </Link>
+          </div>
+        )}
+      </div>
 
       <div className="mb-6">
         <ProfileCompletionCard refreshKey={completionKey} />

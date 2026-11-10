@@ -19,7 +19,7 @@ import type { AuthedRequest } from '../types/index';
 /** `GET /api/conversations`. */
 export async function getMyConversations(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    res.json(await listConversations(req.user.id, res.locals.query as ConversationListQuery));
+    res.json(await listConversations(req.user.id, res.locals.query as ConversationListQuery, new Date()));
   } catch (err) {
     next(err);
   }
