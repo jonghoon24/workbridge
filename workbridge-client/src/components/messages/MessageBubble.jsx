@@ -3,18 +3,18 @@
 import { formatFileSize } from '@/lib/format';
 import { MESSAGE_LIMITS, formatMessageTime } from './messageUtils';
 import { PaperclipIcon } from '@/components/ui/Icons';
+import AttachmentLink from '@/components/ui/AttachmentLink';
 
-function AttachmentList({ attachments, mine }) {
+function AttachmentList({ conversationId, attachments, mine }) {
   if (!attachments?.length) return null;
   return (
     <ul className="mt-1.5 space-y-1">
       {attachments.map((attachment) => (
         <li key={attachment.id}>
-          <a
-            href={attachment.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            download={attachment.fileName}
+          <AttachmentLink
+            attachment={attachment}
+            downloadPath={`/api/conversations/${conversationId}/attachments/${attachment.id}/download`}
+            errorClassName={mine ? 'text-primary-100' : 'text-red-600'}
             className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
               mine
                 ? 'border-primary-400 bg-primary-500 text-white hover:bg-primary-400'
@@ -24,7 +24,7 @@ function AttachmentList({ attachments, mine }) {
             <PaperclipIcon className="h-4 w-4 shrink-0" />
             <span className="truncate font-medium">{attachment.fileName}</span>
             <span className={`shrink-0 ${mine ? 'text-primary-100' : 'text-gray-400'}`}>{formatFileSize(attachment.size)}</span>
-          </a>
+          </AttachmentLink>
         </li>
       ))}
     </ul>
@@ -66,7 +66,7 @@ export default function MessageBubble({ message, mine, readByCounterpart, now, d
           ) : (
             <>
               {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
-              <AttachmentList attachments={message.attachments} mine={mine} />
+              <AttachmentList conversationId={message.conversationId} attachments={message.attachments} mine={mine} />
             </>
           )}
         </div>

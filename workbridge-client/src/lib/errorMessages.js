@@ -246,6 +246,13 @@ const MESSAGES = {
   'request entity too large': STATUS_DEFAULTS[413],
   'Request body must be valid JSON': '요청을 읽지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.',
   'Request Entity Too Large': STATUS_DEFAULTS[413],
+  // 첨부(저장소 직접 업로드)
+  'At least one file is required': '첨부할 파일을 선택해 주세요.',
+  'Upload not found or expired': '파일 업로드가 만료되었습니다. 다시 보내면 파일을 새로 올립니다.',
+  'File has not been uploaded': '파일 업로드가 끝나지 않았습니다. 다시 시도해 주세요.',
+  'Upload ids must be unique': '같은 파일이 두 번 첨부되었습니다. 파일을 다시 선택해 주세요.',
+  'File storage is unavailable': '파일 저장소에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.',
+  'Attachment not found': '첨부 파일을 찾을 수 없습니다. 삭제된 메시지의 파일일 수 있습니다.',
 };
 
 // 값이 들어간 서버 문구. 두 번째 칸은 문자열이나 (정규식 매치) => 문자열.

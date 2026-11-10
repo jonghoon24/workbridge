@@ -2,17 +2,19 @@ import { Router } from 'express';
 
 import {
   getConversationById,
+  getMessageAttachment,
   getMessages,
   getMyConversations,
   getUnreadCount,
   postMessage,
+  postMessageUploads,
   readConversation,
   removeMessage,
 } from '../controllers/conversations.controller';
 import { authenticate } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
-import { attachmentUpload } from '../middlewares/attachmentUpload';
 import { validate } from '../middlewares/validate';
+import { uploadRequestBody } from '../schemas/attachments';
 import { conversationListQuery, messageBody, messageListQuery } from '../schemas/conversations';
 
 /**
@@ -32,8 +34,10 @@ router.get('/', ...guard, validate({ query: conversationListQuery }), getMyConve
 router.get('/unread-count', ...guard, getUnreadCount);
 router.get('/:id', ...guard, getConversationById);
 router.get('/:id/messages', ...guard, validate({ query: messageListQuery }), getMessages);
-// The upload runs before validation (multer fills `req.body`); its 413/400 come first.
-router.post('/:id/messages', ...guard, attachmentUpload, validate({ body: messageBody }), postMessage);
+// Files go straight to storage: this issues the signed upload URLs, the message names the uploads.
+router.post('/:id/uploads', ...guard, validate({ body: uploadRequestBody }), postMessageUploads);
+router.post('/:id/messages', ...guard, validate({ body: messageBody }), postMessage);
+router.get('/:id/attachments/:attachmentId/download', ...guard, getMessageAttachment);
 router.post('/:id/read', ...guard, readConversation);
 router.delete('/:id/messages/:messageId', ...guard, removeMessage);
 

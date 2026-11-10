@@ -1,23 +1,38 @@
 import { Router } from 'express';
 
-import { approve, createSubmission, getMilestone, reject } from '../controllers/milestones.controller';
+import {
+  approve,
+  createSubmission,
+  createSubmissionUploads,
+  getMilestone,
+  getSubmissionAttachment,
+  reject,
+} from '../controllers/milestones.controller';
 import { authenticate, requireRole } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
-import { attachmentUpload } from '../middlewares/attachmentUpload';
 import { validate } from '../middlewares/validate';
+import { uploadRequestBody } from '../schemas/attachments';
 import { rejectBody, submissionBody } from '../schemas/milestones';
 
 /** `/api/milestones` — every route mounts `authenticate` → `requireActiveUser`, then the role where one applies. */
 const router = Router();
 
 router.get('/:id', authenticate, requireActiveUser, getMilestone);
-// The upload runs after the role check and before validation (multer fills `req.body`).
+router.get('/:id/attachments/:attachmentId/download', authenticate, requireActiveUser, getSubmissionAttachment);
+// Files go straight to storage: this issues the signed upload URLs, the submission names the uploads.
+router.post(
+  '/:id/uploads',
+  authenticate,
+  requireActiveUser,
+  requireRole('FREELANCER'),
+  validate({ body: uploadRequestBody }),
+  createSubmissionUploads,
+);
 router.post(
   '/:id/submissions',
   authenticate,
   requireActiveUser,
   requireRole('FREELANCER'),
-  attachmentUpload,
   validate({ body: submissionBody }),
   createSubmission,
 );

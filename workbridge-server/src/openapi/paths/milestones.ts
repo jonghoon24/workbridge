@@ -1,12 +1,13 @@
 import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
-import { z } from '../../lib/zod';
+import { uploadRequestBody } from '../../schemas/attachments';
 import { rejectBody, submissionBody } from '../../schemas/milestones';
 import {
   ACTIVE_USER,
-  ATTACHMENT_UPLOAD,
+  ATTACHMENT_DOWNLOAD,
+  UPLOAD_CLAIM,
+  UPLOAD_POLICY,
   bearer,
-  binaryFile,
   created,
   errors,
   invalid,
@@ -16,7 +17,14 @@ import {
   pathParams,
   role,
 } from '../common';
-import { milestoneApproved, milestoneDetail, milestoneRejected, submissionCreated } from '../responses/contracts';
+import {
+  attachmentDownload,
+  milestoneApproved,
+  milestoneDetail,
+  milestoneRejected,
+  submissionCreated,
+  uploadsIssued,
+} from '../responses/contracts';
 
 const tags = ['Milestones'];
 
@@ -40,6 +48,30 @@ export function registerMilestonePaths(registry: OpenAPIRegistry): void {
     },
   });
 
+  const SUBMITTABLE = [
+    { 403: ['`Not authorized` — 계약의 프리랜서가 아님'] },
+    MILESTONE_NOT_FOUND,
+    { 409: ['`Milestone is not awaiting a submission` — 제출할 수 있는 상태가 아님'] },
+  ];
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/milestones/{id}/uploads',
+    operationId: 'createSubmissionUploads',
+    tags,
+    summary: '결과물 첨부 업로드 URL 받기(프리랜서)',
+    description:
+      '제출에 붙일 파일(최대 5개, 개당 10MB, 이미지·PDF·ZIP·텍스트·오피스 문서·HWP)마다 비공개 저장소의 서명 업로드 URL을 준다. '
+      + '브라우저가 각 URL에 파일을 `PUT`한 뒤, 돌려받은 `id`를 제출의 `uploadIds`로 보낸다. 파일 정책은 마일스톤을 찾기 전에 검사한다. '
+      + '업로드는 2시간 뒤 만료되고, 붙지 않은 파일은 정리 작업이 지운다.',
+    security: bearer,
+    request: { params: milestoneId, body: jsonBody(uploadRequestBody) },
+    responses: {
+      201: created(uploadsIssued),
+      ...errors(invalid(), UPLOAD_POLICY, ACTIVE_USER, role('FREELANCER'), ...SUBMITTABLE),
+    },
+  });
+
   registry.registerPath({
     method: 'post',
     path: '/api/milestones/{id}/submissions',
@@ -47,31 +79,32 @@ export function registerMilestonePaths(registry: OpenAPIRegistry): void {
     tags,
     summary: '결과물 제출(프리랜서)',
     description:
-      '결제 완료(`FUNDED`)나 수정 요청(`REVISION_REQUESTED`) 상태에서만. `multipart/form-data`로 메시지, 링크, '
-      + '`files`(최대 5개, 개당 10MB)를 보낸다. 제출하면 자동 승인 기한이 잡히고 의뢰인에게 알린다.',
+      '결제 완료(`FUNDED`)나 수정 요청(`REVISION_REQUESTED`) 상태에서만. 메시지, 링크, 첨부(`uploadIds`, 최대 5개)를 보낸다. '
+      + '첨부는 먼저 `POST /api/milestones/{id}/uploads`로 올린다. 제출하면 자동 승인 기한이 잡히고 의뢰인에게 알린다.',
     security: bearer,
-    request: {
-      params: milestoneId,
-      body: {
-        required: true,
-        content: {
-          'multipart/form-data': {
-            schema: z.intersection(submissionBody, z.object({ files: z.array(binaryFile).max(5).optional() })),
-          },
-          'application/json': { schema: submissionBody },
-        },
-      },
-    },
+    request: { params: milestoneId, body: jsonBody(submissionBody) },
     responses: {
       201: created(submissionCreated),
+      ...errors(invalid(), ACTIVE_USER, role('FREELANCER'), ...SUBMITTABLE, UPLOAD_CLAIM),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/milestones/{id}/attachments/{attachmentId}/download',
+    operationId: 'getSubmissionAttachment',
+    tags,
+    summary: '결과물 첨부 내려받기 URL',
+    description: '계약 당사자에게 원래 파일 이름으로 내려받는 60초짜리 서명 URL을 준다. 모든 제출 회차의 첨부가 대상이다.',
+    security: bearer,
+    request: { params: pathParams({ id: '마일스톤 ID', attachmentId: '첨부 ID' }) },
+    responses: {
+      200: ok(attachmentDownload),
       ...errors(
-        invalid(),
-        ATTACHMENT_UPLOAD,
         ACTIVE_USER,
-        role('FREELANCER'),
-        { 403: ['`Not authorized` — 계약의 프리랜서가 아님'] },
-        MILESTONE_NOT_FOUND,
-        { 409: ['`Milestone is not awaiting a submission` — 제출할 수 있는 상태가 아님'] },
+        { 403: ['`Not authorized` — 계약 당사자가 아님'] },
+        { 404: [...(MILESTONE_NOT_FOUND[404] ?? []), '`Attachment not found` — 이 마일스톤의 첨부가 아님'] },
+        ATTACHMENT_DOWNLOAD,
       ),
     },
   });

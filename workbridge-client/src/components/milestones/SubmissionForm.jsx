@@ -6,6 +6,8 @@ import Button from '@/components/ui/Button';
 import { formatFileSize } from '@/lib/format';
 import { ATTACHMENT_ACCEPT, MILESTONE_LIMITS } from '@/constants/milestones';
 import { toUserMessage } from '@/lib/errorMessages';
+import { forgetUploads, uploadAttachments } from '@/lib/attachments';
+import useLeaveWarning from '@/lib/useLeaveWarning';
 import FileButton from '@/components/ui/FileButton';
 
 function isHttpUrl(value) {
@@ -17,7 +19,8 @@ function isHttpUrl(value) {
   }
 }
 
-// 결과물 제출. multipart로 message, links(반복 필드), files를 보낸다.
+// 결과물 제출. 파일은 저장소로 먼저 올리고(lib/attachments.js, 진행률 표시) message, links와
+// 업로드 id(uploadIds)를 JSON으로 보낸다. 실패하면 입력과 파일을 그대로 두어 다시 제출할 수 있다.
 // 화면 검사는 마일스톤 한도를 미리 알려주는 용도이고, 파일 형식은 서버가 판단한다.
 export default function SubmissionForm({ milestoneId, isResubmission = false, onSubmitted }) {
   const [message, setMessage] = useState('');
@@ -25,7 +28,9 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
   const [files, setFiles] = useState([]);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
+  useLeaveWarning(progress !== null);
 
   function updateLink(index, value) {
     setLinks((prev) => prev.map((link, i) => (i === index ? value : link)));
@@ -79,28 +84,41 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
 
     setSubmitting(true);
     setError('');
+    const resource = `/api/milestones/${milestoneId}`;
     try {
-      const formData = new FormData();
-      formData.append('message', message.trim());
-      filledLinks.forEach((link) => formData.append('links', link));
-      files.forEach((file) => formData.append('files', file));
+      let uploadIds = [];
+      if (files.length > 0) {
+        setProgress(0);
+        uploadIds = await uploadAttachments(resource, files, setProgress);
+        setProgress(null);
+      }
 
-      const { data } = await api.post(`/api/milestones/${milestoneId}/submissions`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const { data } = await api.post(`${resource}/submissions`, {
+        message: message.trim(),
+        links: filledLinks,
+        uploadIds,
       });
 
+      forgetUploads(files);
       setMessage('');
       setLinks(['']);
       setFiles([]);
       onSubmitted?.(data);
     } catch (err) {
-      if (err.response?.status === 413) {
-        setError(toUserMessage(err, '파일이 너무 큽니다. 크기를 줄여 다시 올려 주세요.'));
+      if (err.displayMessage) {
+        setError(err.displayMessage);
       } else {
-        setError(toUserMessage(err, '결과물을 제출하지 못했습니다.'));
+        // 업로드가 만료됐거나 저장된 파일이 거부되면 다음 시도에서 새로 올린다.
+        if ([400, 413].includes(err.response?.status)) forgetUploads(files);
+        if (err.response?.status === 413) {
+          setError(toUserMessage(err, '파일이 너무 큽니다. 크기를 줄여 다시 올려 주세요.'));
+        } else {
+          setError(toUserMessage(err, '결과물을 제출하지 못했습니다.'));
+        }
       }
     } finally {
       setSubmitting(false);
+      setProgress(null);
     }
   }
 
@@ -182,7 +200,7 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
                     {formatFileSize(file.size)}
                   </span>
                 </span>
-                <button type="button" onClick={() => removeFile(index)} className="ml-3 text-xs text-gray-500 hover:text-red-600">
+                <button type="button" onClick={() => removeFile(index)} disabled={submitting} className="ml-3 text-xs text-gray-500 hover:text-red-600 disabled:opacity-50">
                   제거
                 </button>
               </li>
@@ -190,6 +208,17 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
           </ul>
         )}
       </div>
+
+      {progress !== null && (
+        <div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+            <div className="h-full bg-primary-600 transition-all" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="mt-1 text-xs text-gray-500" aria-live="polite">
+            파일 업로드 중 {progress}% · 업로드가 끝날 때까지 이 창을 닫지 마세요.
+          </p>
+        </div>
+      )}
 
       <div className="flex justify-end">
         <Button type="submit" loading={submitting}>

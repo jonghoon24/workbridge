@@ -26,7 +26,7 @@ export async function getContract(req: AuthedRequest, res: Response, next: NextF
       throw new AppError('Not authorized', 403);
     }
 
-    res.json(serializeContract(contract));
+    res.json(await serializeContract(contract));
   } catch (err) {
     next(err);
   }
@@ -99,7 +99,7 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
       });
     });
 
-    res.json(serializeContract(updated));
+    res.json(await serializeContract(updated));
   } catch (err) {
     next(err);
   }

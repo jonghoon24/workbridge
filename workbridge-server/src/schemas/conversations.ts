@@ -1,5 +1,6 @@
 import { z } from '../lib/zod';
 
+import { uploadIdsField } from './attachments';
 import { queryInt, queryString } from './common';
 import { pageQuery } from './pagination';
 
@@ -34,16 +35,22 @@ export const messageListQuery = z
 
 export type MessageListQuery = z.infer<typeof messageListQuery>;
 
-/**
- * `POST /api/conversations/:id/messages`, multipart or JSON. An absent `body` is `''`.
- * "Empty and no files" needs `req.files`, which a body schema cannot see — the controller checks
- * it right after this, still before any lookup.
- */
-export const messageBody = z.object({
-  body: z.preprocess(
-    (value) => value ?? '',
-    z.string().trim().max(MAX_MESSAGE_LENGTH, `Message must be at most ${MAX_MESSAGE_LENGTH} characters`),
-  ),
-});
+export const MESSAGE_REQUIRED = 'Message or attachment is required';
 
-export const MESSAGE_REQUIRED = 'body: Message or attachment is required';
+/**
+ * `POST /api/conversations/:id/messages`, JSON. An absent `body` is `''`; the files were uploaded
+ * beforehand and are named by `uploadIds`. Empty with no uploads is a 400 on `body`.
+ */
+export const messageBody = z
+  .object({
+    body: z.preprocess(
+      (value) => value ?? '',
+      z.string().trim().max(MAX_MESSAGE_LENGTH, `Message must be at most ${MAX_MESSAGE_LENGTH} characters`),
+    ),
+    uploadIds: uploadIdsField,
+  })
+  .superRefine((value, ctx) => {
+    if (value.body === '' && value.uploadIds.length === 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body'], message: MESSAGE_REQUIRED });
+    }
+  });

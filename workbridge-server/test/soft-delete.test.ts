@@ -160,6 +160,20 @@ const guardedMutations: Mutation[] = [
     },
   },
   {
+    label: 'POST /api/milestones/:id/uploads',
+    async setup() {
+      const { freelancer, milestone } = await activeContract();
+      await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'FUNDED' } });
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/milestones/${milestone.id}/uploads`).send({ files: [{ fileName: `${GHOST}.pdf`, mimeType: 'application/pdf', size: 10 }] }),
+        async assertUnchanged() {
+          expect(await prisma.attachmentUpload.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
     label: 'POST /api/milestones/:id/submissions',
     async setup() {
       const { freelancer, milestone } = await activeContract();
@@ -240,6 +254,19 @@ const guardedMutations: Mutation[] = [
     },
   },
   // Conversations and messages.
+  {
+    label: 'POST /api/conversations/:id/uploads',
+    async setup() {
+      const { freelancer, conversation } = await makeContractScenario();
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/conversations/${conversation.id}/uploads`).send({ files: [{ fileName: `${GHOST}.pdf`, mimeType: 'application/pdf', size: 10 }] }),
+        async assertUnchanged() {
+          expect(await prisma.attachmentUpload.count()).toBe(0);
+        },
+      };
+    },
+  },
   {
     label: 'POST /api/conversations/:id/messages',
     async setup() {

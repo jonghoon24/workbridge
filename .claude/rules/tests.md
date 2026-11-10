@@ -34,7 +34,8 @@ paths:
   - 소프트 삭제된 호출자: `test/soft-delete.test.ts`의 `guardedMutations`(`requireActiveUser`가 붙은 쓰기
     라우트). 기존 라우트는 아직 이 가드가 없어(#7) 넣으면 실패한다. #7을 고치는 PR에서 함께 넣는다.
 - 업로드: 업로드하는 테스트 파일마다 **맨 위에** `vi.mock('@supabase/supabase-js', …)`를 둔다
-  (`uploads.test.ts` 참고). `test/setup.ts`는 앱(`helpers/api`)을 import하지 않는다. import하면
+  (`uploads.test.ts` 참고). 첨부(비공개 버킷)는 메모리 저장소 `helpers/storageFake.ts`와
+  `helpers/attachments.ts`의 `uploadFiles()`(업로드 URL 발급 → 브라우저의 PUT 흉내)를 쓴다(`attachments.test.ts` 참고). `test/setup.ts`는 앱(`helpers/api`)을 import하지 않는다. import하면
   모든 `vi.mock`이 너무 늦게 등록된다.
 - 에러 로그: 500은 정확히 한 번 로그된다(`console.error` 스파이). `LOG_LEVEL: 'error'`를 유지한다.
 - 어떤 테스트도 실제 외부 서비스에 닿지 않는다(axios/OpenAI는 필요한 파일에서 모킹한다).

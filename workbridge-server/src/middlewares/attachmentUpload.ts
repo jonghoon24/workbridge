@@ -8,7 +8,9 @@ import { buildStorageKey, decodeOriginalName } from '../lib/storageKey';
 import { uploadToSupabase } from './upload';
 
 /**
- * Upload middlewares for message and milestone-submission attachments and portfolio images.
+ * Multipart upload middleware for portfolio images. Message and milestone-submission attachments
+ * no longer pass through the server: the browser uploads them straight to the private bucket
+ * (`lib/attachmentStorage.ts`, `services/attachments.service.ts`).
  * Unlike the profile-image `upload` in `./upload.ts` — whose filter throws a plain `Error`, so an
  * oversized or non-image profile image still surfaces as a 500 — every rejection here is an
  * `AppError`: oversized → 413, anything else → 400. The profile-image middleware has not been
@@ -83,31 +85,6 @@ export function createUpload(policy: UploadPolicy): RequestHandler {
   };
 }
 
-const ATTACHMENT_MIME_TYPES = new Set([
-  'application/pdf',
-  'application/zip',
-  'application/x-zip-compressed',
-  'text/plain',
-  'application/msword',
-  'application/vnd.ms-excel',
-  'application/vnd.ms-powerpoint',
-  'application/x-hwp',
-]);
-
-export function isAllowedAttachmentType(mimetype: string): boolean {
-  return mimetype.startsWith('image/')
-    || mimetype.startsWith('application/vnd.openxmlformats-officedocument.')
-    || ATTACHMENT_MIME_TYPES.has(mimetype);
-}
-
-/** Field `files`: up to 5 files, 10 MB each — images, documents, archives. Sets `req.files`. */
-export const attachmentUpload = createUpload({
-  fieldName: 'files',
-  maxFiles: 5,
-  maxBytes: 10 * MB,
-  allow: isAllowedAttachmentType,
-});
-
 /** Field `image`: one image, 5 MB. Sets `req.file`. */
 export const imageUpload = createUpload({
   fieldName: 'image',
@@ -126,7 +103,7 @@ export interface StoredFile {
 }
 
 /**
- * Uploads one parsed file under `folder` (e.g. `milestones/<id>`) with a `<uuid>.<ext>` key.
+ * Uploads one parsed file to the public bucket under `folder` (`portfolio`) with a `<uuid>.<ext>` key.
  * A storage failure is an upstream failure → 502, never a raw 500.
  */
 export async function storeUploadedFile(file: Express.Multer.File, folder: string): Promise<StoredFile> {

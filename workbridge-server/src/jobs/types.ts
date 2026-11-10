@@ -23,6 +23,8 @@ export interface JobPayloads {
   'message.unreadDigest': { conversationId: string; recipientId: string };
   // Notification channels. dedupeKey `notification.email:<deliveryId>`, enqueued by notify().
   'notification.email': { deliveryId: string };
+  // Attachments. Keys in the private attachment bucket; a key already gone is not an error.
+  'attachment.deleteObjects': { keys: string[] };
 }
 
 export type JobType = keyof JobPayloads;

@@ -1688,7 +1688,11 @@
             "format": "uuid"
           },
           "url": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "15분 동안 유효한 서명 다운로드 URL(비공개 버킷). 오래된 첨부는 공개 URL 그대로. 서명에 실패하면 `null` — 내려받을 때는 첨부 다운로드 경로로 새 URL을 받는다."
           },
           "fileName": {
             "type": "string"
@@ -8202,14 +8206,14 @@
         }
       }
     },
-    "/api/milestones/{id}/submissions": {
+    "/api/milestones/{id}/uploads": {
       "post": {
-        "operationId": "createSubmission",
+        "operationId": "createSubmissionUploads",
         "tags": [
           "Milestones"
         ],
-        "summary": "결과물 제출(프리랜서)",
-        "description": "결제 완료(`FUNDED`)나 수정 요청(`REVISION_REQUESTED`) 상태에서만. `multipart/form-data`로 메시지, 링크, `files`(최대 5개, 개당 10MB)를 보낸다. 제출하면 자동 승인 기한이 잡히고 의뢰인에게 알린다.",
+        "summary": "결과물 첨부 업로드 URL 받기(프리랜서)",
+        "description": "제출에 붙일 파일(최대 5개, 개당 10MB, 이미지·PDF·ZIP·텍스트·오피스 문서·HWP)마다 비공개 저장소의 서명 업로드 URL을 준다. 브라우저가 각 URL에 파일을 `PUT`한 뒤, 돌려받은 `id`를 제출의 `uploadIds`로 보낸다. 파일 정책은 마일스톤을 찾기 전에 검사한다. 업로드는 2시간 뒤 만료되고, 붙지 않은 파일은 정리 작업이 지운다.",
         "security": [
           {
             "bearerAuth": []
@@ -8230,68 +8234,46 @@
         "requestBody": {
           "required": true,
           "content": {
-            "multipart/form-data": {
-              "schema": {
-                "allOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "message": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 5000
-                      },
-                      "links": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "format": "uri"
-                        },
-                        "maxItems": 5,
-                        "description": "http(s) URL 최대 5개. multipart에서는 같은 필드를 반복하거나 하나만 보낸다."
-                      }
-                    },
-                    "required": [
-                      "message"
-                    ]
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "files": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "format": "binary"
-                        },
-                        "maxItems": 5
-                      }
-                    }
-                  }
-                ]
-              }
-            },
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
-                  "message": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 5000
-                  },
-                  "links": {
+                  "files": {
                     "type": "array",
                     "items": {
-                      "type": "string",
-                      "format": "uri"
+                      "type": "object",
+                      "properties": {
+                        "fileName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "description": "원래 파일 이름. 화면과 내려받을 때의 이름이고 저장소 키에는 쓰지 않는다."
+                        },
+                        "mimeType": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "description": "MIME 형식. 브라우저가 모르면 `application/octet-stream`(허용되지 않음).",
+                          "example": "application/pdf"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "바이트"
+                        }
+                      },
+                      "required": [
+                        "fileName",
+                        "mimeType",
+                        "size"
+                      ]
                     },
-                    "maxItems": 5,
-                    "description": "http(s) URL 최대 5개. multipart에서는 같은 필드를 반복하거나 하나만 보낸다."
+                    "minItems": 1,
+                    "maxItems": 5
                   }
                 },
                 "required": [
-                  "message"
+                  "files"
                 ]
               }
             }
@@ -8305,30 +8287,58 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "milestone": {
-                      "$ref": "#/components/schemas/Milestone"
-                    },
-                    "submission": {
-                      "allOf": [
-                        {
-                          "$ref": "#/components/schemas/MilestoneSubmission"
+                    "uploads": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "메시지·제출을 만들 때 `uploadIds`에 넣는다"
+                          },
+                          "fileName": {
+                            "type": "string"
+                          },
+                          "mimeType": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "바이트(브라우저가 알린 값)"
+                          },
+                          "uploadUrl": {
+                            "type": "string",
+                            "description": "서명 업로드 URL. 파일 본문을 `PUT`하고 `Content-Type`에 `mimeType`을 넣는다. 한 번만 쓸 수 있다."
+                          },
+                          "expiresAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "업로드 URL과 이 업로드가 만료되는 시각(2시간)"
+                          }
                         },
-                        {
-                          "type": "object"
-                        }
-                      ]
+                        "required": [
+                          "id",
+                          "fileName",
+                          "mimeType",
+                          "size",
+                          "uploadUrl",
+                          "expiresAt"
+                        ]
+                      },
+                      "description": "요청한 파일 순서"
                     }
                   },
                   "required": [
-                    "milestone",
-                    "submission"
+                    "uploads"
                   ]
                 }
               }
             }
           },
           "400": {
-            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `Too many files (max 5)` — 파일이 5개 넘음\n- `Unsupported file type: <MIME>` — 이미지·문서·압축 파일이 아님\n- `Unexpected file field: <필드>` — `files` 말고 다른 필드에 파일을 보냄\n- `Malformed multipart body` — multipart 본문이 깨짐",
+            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `files: At least one file is required` — 파일 목록이 없거나 비어 있음\n- `files: Too many files (max 5)` — 파일이 5개 넘음\n- `Unsupported file type: <MIME>` — 이미지·문서·압축 파일이 아님",
             "content": {
               "application/json": {
                 "schema": {
@@ -8388,7 +8398,281 @@
             }
           },
           "502": {
-            "description": "외부 서비스 실패\n\n- `File upload failed` — 저장소(Supabase Storage) 업로드 실패",
+            "description": "외부 서비스 실패\n\n- `File upload failed` — 저장소(Supabase Storage)가 업로드 URL을 만들지 못함",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/milestones/{id}/submissions": {
+      "post": {
+        "operationId": "createSubmission",
+        "tags": [
+          "Milestones"
+        ],
+        "summary": "결과물 제출(프리랜서)",
+        "description": "결제 완료(`FUNDED`)나 수정 요청(`REVISION_REQUESTED`) 상태에서만. 메시지, 링크, 첨부(`uploadIds`, 최대 5개)를 보낸다. 첨부는 먼저 `POST /api/milestones/{id}/uploads`로 올린다. 제출하면 자동 승인 기한이 잡히고 의뢰인에게 알린다.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "마일스톤 ID"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 5000
+                  },
+                  "links": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "maxItems": 5,
+                    "description": "http(s) URL 최대 5개. 문자열 하나는 한 개짜리 목록이다."
+                  },
+                  "uploadIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "maxItems": 5,
+                    "default": [],
+                    "description": "업로드 URL을 받을 때 돌려받은 ID, 최대 5개. 한 번만 붙일 수 있다."
+                  }
+                },
+                "required": [
+                  "message"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "milestone": {
+                      "$ref": "#/components/schemas/Milestone"
+                    },
+                    "submission": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/MilestoneSubmission"
+                        },
+                        {
+                          "type": "object"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "milestone",
+                    "submission"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `uploadIds: Too many files (max 5)` — 업로드가 5개 넘음\n- `uploadIds: Upload ids must be unique` — 같은 업로드를 두 번 보냄\n- `uploadIds: Upload not found or expired` — 내가 이 대상에 받은 업로드가 아니거나, 만료됐거나, 이미 붙음\n- `uploadIds: File has not been uploaded` — 업로드 URL로 파일을 올리지 않음\n- `Unsupported file type: <MIME>` — 저장된 파일의 형식이 허용되지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 없음\n\n- `Insufficient permissions` — FREELANCER 역할이 아님\n- `Not authorized` — 계약의 프리랜서가 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "찾을 수 없음\n\n- `Milestone not found` — 없는 마일스톤, 또는 프로젝트가 삭제됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "상태 충돌\n\n- `Milestone is not awaiting a submission` — 제출할 수 있는 상태가 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "파일이 너무 큼\n\n- `File too large (max 10MB)` — 저장된 파일이 10MB 넘음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "외부 서비스 실패\n\n- `File storage is unavailable` — 저장소(Supabase Storage)에서 파일을 확인하지 못함",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/milestones/{id}/attachments/{attachmentId}/download": {
+      "get": {
+        "operationId": "getSubmissionAttachment",
+        "tags": [
+          "Milestones"
+        ],
+        "summary": "결과물 첨부 내려받기 URL",
+        "description": "계약 당사자에게 원래 파일 이름으로 내려받는 60초짜리 서명 URL을 준다. 모든 제출 회차의 첨부가 대상이다.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "마일스톤 ID"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "첨부 ID"
+            },
+            "required": true,
+            "name": "attachmentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "원래 파일 이름으로 내려받는 서명 URL(60초). 오래된 첨부는 공개 URL"
+                    },
+                    "expiresAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "description": "만료 시각. 오래된 공개 URL이면 `null`"
+                    }
+                  },
+                  "required": [
+                    "url",
+                    "expiresAt"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 없음\n\n- `Not authorized` — 계약 당사자가 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "찾을 수 없음\n\n- `Milestone not found` — 없는 마일스톤, 또는 프로젝트가 삭제됨\n- `Attachment not found` — 이 마일스톤의 첨부가 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "외부 서비스 실패\n\n- `File storage is unavailable` — 저장소(Supabase Storage)가 다운로드 URL을 만들지 못함",
             "content": {
               "application/json": {
                 "schema": {
@@ -10651,7 +10935,7 @@
           "Conversations"
         ],
         "summary": "메시지 보내기",
-        "description": "본문(최대 5,000자)이나 첨부(`files`, 최대 5개, 개당 10MB) 중 하나는 있어야 한다. 첨부는 `multipart/form-data`로 보낸다. 상대방이 10분 안에 읽지 않으면 요약 메일을 예약한다.",
+        "description": "본문(최대 5,000자)이나 첨부(`uploadIds`, 최대 5개) 중 하나는 있어야 한다. 첨부는 먼저 `POST /api/conversations/{id}/uploads`로 올린다. 서버가 업로드마다 내가 이 대화방에 받은 것인지, 파일이 실제로 올라왔는지, 저장된 크기와 형식이 정책에 맞는지 확인한다. 상대방이 10분 안에 읽지 않으면 요약 메일을 예약한다.",
         "security": [
           {
             "bearerAuth": []
@@ -10682,39 +10966,18 @@
                       "null"
                     ],
                     "maxLength": 5000
+                  },
+                  "uploadIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "maxItems": 5,
+                    "default": [],
+                    "description": "업로드 URL을 받을 때 돌려받은 ID, 최대 5개. 한 번만 붙일 수 있다."
                   }
                 }
-              }
-            },
-            "multipart/form-data": {
-              "schema": {
-                "allOf": [
-                  {
-                    "type": "object",
-                    "properties": {
-                      "body": {
-                        "type": [
-                          "string",
-                          "null"
-                        ],
-                        "maxLength": 5000
-                      }
-                    }
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "files": {
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "format": "binary"
-                        },
-                        "maxItems": 5
-                      }
-                    }
-                  }
-                ]
               }
             }
           }
@@ -10746,7 +11009,211 @@
             }
           },
           "400": {
-            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `body: Message or attachment is required` — 본문도 첨부도 없음\n- `Too many files (max 5)` — 파일이 5개 넘음\n- `Unsupported file type: <MIME>` — 이미지·문서·압축 파일이 아님\n- `Unexpected file field: <필드>` — `files` 말고 다른 필드에 파일을 보냄\n- `Malformed multipart body` — multipart 본문이 깨짐",
+            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `body: Message or attachment is required` — 본문도 첨부도 없음\n- `uploadIds: Too many files (max 5)` — 업로드가 5개 넘음\n- `uploadIds: Upload ids must be unique` — 같은 업로드를 두 번 보냄\n- `uploadIds: Upload not found or expired` — 내가 이 대상에 받은 업로드가 아니거나, 만료됐거나, 이미 붙음\n- `uploadIds: File has not been uploaded` — 업로드 URL로 파일을 올리지 않음\n- `Unsupported file type: <MIME>` — 저장된 파일의 형식이 허용되지 않음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 없음\n\n- `Not authorized` — 대화방 참여자가 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "찾을 수 없음\n\n- `Conversation not found` — 없는 대화방, 또는 프로젝트가 삭제됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "상태 충돌\n\n- `This conversation is closed` — 계약 완료 후 30일이 지남\n- `The other participant is no longer active` — 상대방이 탈퇴함",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "파일이 너무 큼\n\n- `File too large (max 10MB)` — 저장된 파일이 10MB 넘음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "외부 서비스 실패\n\n- `File storage is unavailable` — 저장소(Supabase Storage)에서 파일을 확인하지 못함",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/uploads": {
+      "post": {
+        "operationId": "postMessageUploads",
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "첨부 업로드 URL 받기",
+        "description": "메시지에 붙일 파일(최대 5개, 개당 10MB, 이미지·PDF·ZIP·텍스트·오피스 문서·HWP)마다 비공개 저장소의 서명 업로드 URL을 준다. 브라우저가 각 URL에 파일을 `PUT`한 뒤, 돌려받은 `id`를 메시지의 `uploadIds`로 보낸다. 파일 정책은 대화방을 찾기 전에 검사한다. 업로드는 2시간 뒤 만료되고, 붙지 않은 파일은 정리 작업이 지운다.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "대화방 ID"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "fileName": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "description": "원래 파일 이름. 화면과 내려받을 때의 이름이고 저장소 키에는 쓰지 않는다."
+                        },
+                        "mimeType": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 255,
+                          "description": "MIME 형식. 브라우저가 모르면 `application/octet-stream`(허용되지 않음).",
+                          "example": "application/pdf"
+                        },
+                        "size": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "바이트"
+                        }
+                      },
+                      "required": [
+                        "fileName",
+                        "mimeType",
+                        "size"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 5
+                  }
+                },
+                "required": [
+                  "files"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "uploads": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "메시지·제출을 만들 때 `uploadIds`에 넣는다"
+                          },
+                          "fileName": {
+                            "type": "string"
+                          },
+                          "mimeType": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "바이트(브라우저가 알린 값)"
+                          },
+                          "uploadUrl": {
+                            "type": "string",
+                            "description": "서명 업로드 URL. 파일 본문을 `PUT`하고 `Content-Type`에 `mimeType`을 넣는다. 한 번만 쓸 수 있다."
+                          },
+                          "expiresAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "업로드 URL과 이 업로드가 만료되는 시각(2시간)"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "fileName",
+                          "mimeType",
+                          "size",
+                          "uploadUrl",
+                          "expiresAt"
+                        ]
+                      },
+                      "description": "요청한 파일 순서"
+                    }
+                  },
+                  "required": [
+                    "uploads"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `files: At least one file is required` — 파일 목록이 없거나 비어 있음\n- `files: Too many files (max 5)` — 파일이 5개 넘음\n- `Unsupported file type: <MIME>` — 이미지·문서·압축 파일이 아님",
             "content": {
               "application/json": {
                 "schema": {
@@ -10806,7 +11273,7 @@
             }
           },
           "502": {
-            "description": "외부 서비스 실패\n\n- `File upload failed` — 저장소(Supabase Storage) 업로드 실패",
+            "description": "외부 서비스 실패\n\n- `File upload failed` — 저장소(Supabase Storage)가 업로드 URL을 만들지 못함",
             "content": {
               "application/json": {
                 "schema": {
@@ -10911,7 +11378,7 @@
           "Conversations"
         ],
         "summary": "메시지 삭제",
-        "description": "보낸 사람이 보낸 지 5분 안에만. 본문과 첨부를 지운 흔적(`deleted: true`)이 남는다. 이미 지운 메시지는 다시 200.",
+        "description": "보낸 사람이 보낸 지 5분 안에만. 본문과 첨부를 지운 흔적(`deleted: true`)이 남고, 첨부 파일은 작업이 저장소에서 지운다. 이미 지운 메시지는 다시 200.",
         "security": [
           {
             "bearerAuth": []
@@ -10997,6 +11464,113 @@
           },
           "409": {
             "description": "상태 충돌\n\n- `Messages can only be deleted within 5 minutes` — 5분이 지남",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{id}/attachments/{attachmentId}/download": {
+      "get": {
+        "operationId": "getMessageAttachment",
+        "tags": [
+          "Conversations"
+        ],
+        "summary": "메시지 첨부 내려받기 URL",
+        "description": "참여자에게 원래 파일 이름으로 내려받는 60초짜리 서명 URL을 준다. 지운 메시지의 첨부는 없는 것과 같다.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "대화방 ID"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "첨부 ID"
+            },
+            "required": true,
+            "name": "attachmentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string",
+                      "description": "원래 파일 이름으로 내려받는 서명 URL(60초). 오래된 첨부는 공개 URL"
+                    },
+                    "expiresAt": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "description": "만료 시각. 오래된 공개 URL이면 `null`"
+                    }
+                  },
+                  "required": [
+                    "url",
+                    "expiresAt"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "권한 없음\n\n- `Not authorized` — 대화방 참여자가 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "찾을 수 없음\n\n- `Conversation not found` — 없는 대화방, 또는 프로젝트가 삭제됨\n- `Attachment not found` — 이 대화방의 첨부가 아니거나 메시지가 삭제됨",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "외부 서비스 실패\n\n- `File storage is unavailable` — 저장소(Supabase Storage)가 다운로드 URL을 만들지 못함",
             "content": {
               "application/json": {
                 "schema": {

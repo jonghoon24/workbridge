@@ -23,7 +23,8 @@
 | `CLIENT_URL` | 프론트엔드 URL. CORS 허용 출처이자 OAuth 리디렉션 대상이다. CORS와 메일 링크는 쉼표 목록을 받지만, **OAuth 리디렉션은 값을 그대로 이어 붙인다**(`${CLIENT_URL}/auth/callback…`). 그래서 쉼표 목록이면 OAuth 리디렉션이 깨진다 — 여러 출처가 필요하면 `CLIENT_URL`은 하나로 두고 나머지는 `CORS_ORIGINS`에 둔다. 메일 본문 링크의 기준 주소는 **첫 항목**에서 끝의 `/`를 뗀 값이다(비어 있으면 `http://localhost:3000`). 비어 있으면 OAuth 리디렉션이 `undefined/…`가 된다. 단일 출처로 정리하고 값이 없을 때 분명한 오류를 내는 일은 [#49](https://github.com/jonghoon24/workbridge/issues/49) |
 | `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 개발 환경에서는 `http://localhost:3000`이 항상 허용된다 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL. `OPENAI_API_KEY`처럼 모듈을 읽을 때 쓰이므로 서버를 띄우려면 필요하다(더미 값 가능) |
-| `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음) |
+| `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음). 비공개 첨부 버킷의 서명 URL 발급과 파일 확인·삭제에도 쓴다 |
+| `SUPABASE_ATTACHMENT_BUCKET` | 메시지·결과물 첨부를 두는 **비공개** Storage 버킷 이름(기본 `workbridge-attachments`). 처음 쓸 때 읽는다. 버킷을 기본 이름으로 만들면 넣지 않아도 된다. 프로필·포트폴리오 이미지는 공개 버킷 `workbridge`에 그대로 둔다(아래 "Supabase") |
 | `LOG_LEVEL` | 로그 레벨 `debug`/`info`/`warn`/`error`/`silent` (기본 `info`). JSON 한 줄씩 출력하며 `error`만 stderr로 간다. 테스트는 `error` |
 | `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(레이트 리밋 키)로 쓴다. 비우면 소켓 주소를 쓰고 `X-Forwarded-For`는 무시. Next.js 프록시는 받은 `X-Forwarded-For`를 그대로 넘기므로 `loopback`은 **Next 포트(:3000)에 신뢰하는 클라이언트만 닿을 때만 안전하다**. 그렇지 않으면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다. 로컬 로그인은 어차피 전부 루프백 한 주소로 세어진다 |
 | `PROXY_SHARED_SECRET` | Next.js 프록시와 함께 쓰는 비밀값. 클라이언트의 같은 이름 변수와 **같은 값**이어야 한다. 요청의 `X-Proxy-Secret`이 이 값과 같을 때만(상수 시간 비교) `X-Client-IP`를 클라이언트 IP로 믿는다(`src/lib/clientIp.ts`). 비우면 `X-Client-IP`를 언제나 무시하고, Vercel에서는 `X-Vercel-Forwarded-For`, 그 밖에는 `req.ip`(`TRUST_PROXY`)를 쓴다. 로컬은 비워 둔다. 값은 `python3 -c "import secrets;print(secrets.token_urlsafe(48))"`로 만든다 |
@@ -72,8 +73,15 @@
 ### Supabase
 
 1. 프로젝트 생성 후 Settings > API에서 URL과 Secret Key 복사
-2. Storage에서 `workbridge` 버킷 생성 (Public으로 설정)
-3. DATABASE_URL은 Settings > Database > Connection String에서 Transaction mode (포트 6543) 사용
+2. Storage에서 `workbridge` 버킷 생성 (Public으로 설정) — 프로필·포트폴리오 이미지
+3. Storage에서 `workbridge-attachments` 버킷 생성 — 메시지·결과물 첨부. **Public은 끈다.** 버킷 설정에서
+   File size limit `10 MB`, Allowed MIME types는 `image/*`, `application/pdf`, `application/zip`,
+   `application/x-zip-compressed`, `text/plain`, `application/msword`, `application/vnd.ms-excel`,
+   `application/vnd.ms-powerpoint`, `application/vnd.openxmlformats-officedocument.*`, `application/x-hwp`로 둔다
+   (서버도 같은 정책을 검사한다. 버킷 제한은 서명 URL로 올리는 단계의 두 번째 방어선이다). Storage 정책(RLS)은
+   추가하지 않는다: 서버만 Secret Key로 접근하고, 브라우저는 서버가 발급한 서명 URL로만 올리고 내려받는다.
+   다른 이름을 쓰면 `SUPABASE_ATTACHMENT_BUCKET`에 넣는다
+4. DATABASE_URL은 Settings > Database > Connection String에서 Transaction mode (포트 6543) 사용
 
 ### Google OAuth
 

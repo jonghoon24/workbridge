@@ -1,18 +1,21 @@
 import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
-import { z } from '../../lib/zod';
 import { conversationListQuery, messageBody, messageListQuery } from '../../schemas/conversations';
+import { uploadRequestBody } from '../../schemas/attachments';
 import {
   ACTIVE_USER,
-  ATTACHMENT_UPLOAD,
+  ATTACHMENT_DOWNLOAD,
+  UPLOAD_CLAIM,
+  UPLOAD_POLICY,
   bearer,
-  binaryFile,
   created,
   errors,
   invalid,
+  jsonBody,
   ok,
   pathParams,
 } from '../common';
+import { attachmentDownload, uploadsIssued } from '../responses/contracts';
 import { unreadCountBody } from '../responses/common';
 import { conversationBody, conversationList, messagePage, messageResult, readResult } from '../responses/conversations';
 
@@ -84,6 +87,31 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     },
   });
 
+  const CLOSED = {
+    409: [
+      '`This conversation is closed` — 계약 완료 후 30일이 지남',
+      '`The other participant is no longer active` — 상대방이 탈퇴함',
+    ],
+  };
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/conversations/{id}/uploads',
+    operationId: 'postMessageUploads',
+    tags,
+    summary: '첨부 업로드 URL 받기',
+    description:
+      '메시지에 붙일 파일(최대 5개, 개당 10MB, 이미지·PDF·ZIP·텍스트·오피스 문서·HWP)마다 비공개 저장소의 서명 업로드 URL을 준다. '
+      + '브라우저가 각 URL에 파일을 `PUT`한 뒤, 돌려받은 `id`를 메시지의 `uploadIds`로 보낸다. 파일 정책은 대화방을 찾기 전에 검사한다. '
+      + '업로드는 2시간 뒤 만료되고, 붙지 않은 파일은 정리 작업이 지운다.',
+    security: bearer,
+    request: { params: conversationId, body: jsonBody(uploadRequestBody) },
+    responses: {
+      201: created(uploadsIssued),
+      ...errors(invalid(), UPLOAD_POLICY, ACTIVE_USER, LOOKUP, CLOSED),
+    },
+  });
+
   registry.registerPath({
     method: 'post',
     path: '/api/conversations/{id}/messages',
@@ -91,28 +119,18 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     tags,
     summary: '메시지 보내기',
     description:
-      '본문(최대 5,000자)이나 첨부(`files`, 최대 5개, 개당 10MB) 중 하나는 있어야 한다. 첨부는 `multipart/form-data`로 보낸다. '
+      '본문(최대 5,000자)이나 첨부(`uploadIds`, 최대 5개) 중 하나는 있어야 한다. 첨부는 먼저 `POST /api/conversations/{id}/uploads`로 '
+      + '올린다. 서버가 업로드마다 내가 이 대화방에 받은 것인지, 파일이 실제로 올라왔는지, 저장된 크기와 형식이 정책에 맞는지 확인한다. '
       + '상대방이 10분 안에 읽지 않으면 요약 메일을 예약한다.',
     security: bearer,
-    request: {
-      params: conversationId,
-      body: {
-        required: true,
-        content: {
-          'application/json': { schema: messageBody },
-          'multipart/form-data': {
-            schema: z.intersection(messageBody, z.object({ files: z.array(binaryFile).max(5).optional() })),
-          },
-        },
-      },
-    },
+    request: { params: conversationId, body: jsonBody(messageBody) },
     responses: {
       201: created(messageResult),
       ...errors(
         invalid('`body: Message or attachment is required` — 본문도 첨부도 없음'),
-        ATTACHMENT_UPLOAD,
         ACTIVE_USER,
         LOOKUP,
+        UPLOAD_CLAIM,
         {
           409: [
             '`This conversation is closed` — 계약 완료 후 30일이 지남',
@@ -141,7 +159,9 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     operationId: 'removeMessage',
     tags,
     summary: '메시지 삭제',
-    description: '보낸 사람이 보낸 지 5분 안에만. 본문과 첨부를 지운 흔적(`deleted: true`)이 남는다. 이미 지운 메시지는 다시 200.',
+    description:
+      '보낸 사람이 보낸 지 5분 안에만. 본문과 첨부를 지운 흔적(`deleted: true`)이 남고, 첨부 파일은 작업이 저장소에서 지운다. '
+      + '이미 지운 메시지는 다시 200.',
     security: bearer,
     request: { params: pathParams({ id: '대화방 ID', messageId: '메시지 ID' }) },
     responses: {
@@ -151,6 +171,24 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
         404: [...LOOKUP[404], '`Message not found` — 이 대화방의 메시지가 아님'],
         409: ['`Messages can only be deleted within 5 minutes` — 5분이 지남'],
       }),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/conversations/{id}/attachments/{attachmentId}/download',
+    operationId: 'getMessageAttachment',
+    tags,
+    summary: '메시지 첨부 내려받기 URL',
+    description: '참여자에게 원래 파일 이름으로 내려받는 60초짜리 서명 URL을 준다. 지운 메시지의 첨부는 없는 것과 같다.',
+    security: bearer,
+    request: { params: pathParams({ id: '대화방 ID', attachmentId: '첨부 ID' }) },
+    responses: {
+      200: ok(attachmentDownload),
+      ...errors(ACTIVE_USER, {
+        403: LOOKUP[403],
+        404: [...LOOKUP[404], '`Attachment not found` — 이 대화방의 첨부가 아니거나 메시지가 삭제됨'],
+      }, ATTACHMENT_DOWNLOAD),
     },
   });
 }
