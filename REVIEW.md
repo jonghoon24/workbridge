@@ -21,7 +21,7 @@
    - 확인: 추가된 줄에서 `getDate(`·`getDay(`·`getHours(`·`getMonth(`·`getFullYear(`와 같은 이름의 `set*(`, `toLocaleDateString(`, 그리고 `src/services/`·`src/jobs/handlers/`의 `new Date()`를 grep한다. 핸들러는 `ctx.now`를 써야 한다.
 
 5. **여러 행을 바꾸는 변경은 하나의 `prisma.$transaction`이고, 그 안에서 P2002를 catch하지 않는다.**
-   - 왜: 인터랙티브 트랜잭션에서 실패한 문장은 Postgres가 트랜잭션 전체를 중단시켜서 catch해도 이미 망가져 있다. 중복은 `createMany({ skipDuplicates: true })`(`enqueueJob`의 방식)로 피하거나 트랜잭션 밖에서 catch해 409로 바꾼다(지원 수락 `updateApplication`의 방식). 동시 결제 생성(#8)과 동시 dev-complete(#17)가 유니크 충돌을 409로 바꾸지 못해 500이 나는 남은 사례다(#17은 트랜잭션 안에서 터진다).
+   - 왜: 인터랙티브 트랜잭션에서 실패한 문장은 Postgres가 트랜잭션 전체를 중단시켜서 catch해도 이미 망가져 있다. 중복은 `createMany({ skipDuplicates: true })`(`enqueueJob`의 방식)로 피하거나 트랜잭션 밖에서 catch해 409로 바꾼다(지원 수락 `updateApplication`의 방식). 진 쪽이 이긴 쪽 결과를 그대로 받아도 되면 밖에서 catch하고 한 번 다시 실행한다(결제 생성과 dev-complete의 `retryOnceOnPaymentConflict`, 이 처리가 없어 500이 나던 사례가 #8·#17이다).
    - 확인: `$transaction(async (tx)` 블록 안의 `catch`에서 `P2002`를 검사하는지, 다중 쓰기가 트랜잭션 밖에 흩어져 있지 않은지 본다.
 
 6. **지급 계좌·포트폴리오/경력·알림 설정을 쓰는 트랜잭션은 `lockUserRow(tx, userId)`를 첫 문장으로 둔다.**
@@ -33,7 +33,7 @@
    - 확인: 새 코드의 `notification.create(`, `job.create(`, 그리고 `tx` 대신 `prisma`를 넘긴 `notify(`/`enqueueJob(`을 grep한다.
 
 8. **`User`·`Project`를 읽거나 쓰는 모든 쿼리는 `deletedAt: null`로 거른다.**
-   - 왜: 소프트 삭제다(`docs/domain/README.md` "소프트 삭제"). 삭제된 사용자의 로그인(고쳐짐), 삭제된 프로젝트의 북마크 조회·해제(#14), 삭제된 프로젝트의 계약 조회·서명(#16)이 모두 이 필터 누락이다. 확장 리소스는 계약의 프로젝트를 따라 404가 된다.
+   - 왜: 소프트 삭제다(`docs/domain/README.md` "소프트 삭제"). 삭제된 사용자의 로그인(고쳐짐), 삭제된 프로젝트의 북마크 조회·해제(#14), 삭제된 프로젝트의 계약 조회·서명(#16, 고쳐짐)이 모두 이 필터 누락이다. 확장 리소스는 계약의 프로젝트를 따라 404가 된다.
    - 확인: 새 `findUnique`/`findFirst`/`findMany`/`update`가 `user`·`project`(또는 `contract.project`)에 닿을 때 필터가 있는지 본다. `findUnique`는 필터를 못 거니 `findFirst`로 바꿔야 한다.
 
 9. **공개 핸들러에서 `req.user`를 읽지 않는다.**

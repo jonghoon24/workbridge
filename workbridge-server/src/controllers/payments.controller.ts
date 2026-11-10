@@ -1,4 +1,6 @@
 import type { NextFunction, Response } from 'express';
+import { Prisma } from '@prisma/client';
+import type { Payment } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,81 +38,111 @@ async function hasUnfundedPredecessor(contractId: string, sequence: number): Pro
   return count > 0;
 }
 
+/**
+ * `Payment.milestoneId` is unique, so of two requests that both read "no payment yet" and insert,
+ * the loser fails with P2002 once the winner has committed. Nothing the loser wrote survives (its
+ * insert, or its whole transaction, failed), so it runs once more and answers as if it had arrived
+ * second: it now sees the winner's payment and takes the sequential path (resume, idempotent
+ * repeat, or 409). Caught here, outside any interactive transaction (REVIEW #5). The retry cannot
+ * collide again — it finds the winner's row, and payment rows are never deleted.
+ */
+async function retryOnceOnPaymentConflict<T>(attempt: () => Promise<T>): Promise<T> {
+  try {
+    return await attempt();
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return attempt();
+    }
+    throw err;
+  }
+}
+
+type PaymentOrder = { orderId: string; amount: number; paymentId: string };
+
 export async function createPayment(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     // Parsed by `milestonePaymentBody`; a `contractId` in the body is stripped.
     const { milestoneId } = req.body;
+    const clientId = req.user.id;
 
-    const milestone = await findMilestoneForPayment(milestoneId);
-    const { contract, payment } = milestone;
+    const { status, order } = await retryOnceOnPaymentConflict(() => openPaymentOrder(milestoneId, clientId));
+    res.status(status).json(order);
+  } catch (err) {
+    next(err);
+  }
+}
 
-    if (contract.clientId !== req.user.id) {
-      throw new AppError('Not authorized', 403);
-    }
+/** Creates, resumes or retries the milestone's payment for `createPayment`. */
+async function openPaymentOrder(
+  milestoneId: string,
+  clientId: string,
+): Promise<{ status: 200 | 201; order: PaymentOrder }> {
+  const milestone = await findMilestoneForPayment(milestoneId);
+  const { contract, payment } = milestone;
 
-    if (contract.status !== 'ACTIVE') {
-      throw new AppError('Contract must be active to proceed with payment', 400);
-    }
+  if (contract.clientId !== clientId) {
+    throw new AppError('Not authorized', 403);
+  }
 
-    if (await hasUnfundedPredecessor(contract.id, milestone.sequence)) {
-      throw new AppError('Earlier milestones must be funded first', 400);
-    }
+  if (contract.status !== 'ACTIVE') {
+    throw new AppError('Contract must be active to proceed with payment', 400);
+  }
 
-    if (milestone.status !== 'PENDING') {
-      throw new AppError('Milestone is already funded', 409);
-    }
+  if (await hasUnfundedPredecessor(contract.id, milestone.sequence)) {
+    throw new AppError('Earlier milestones must be funded first', 400);
+  }
 
-    if (payment?.status === 'COMPLETED') {
-      // Only reachable in an inconsistent state: milestone PENDING, payment COMPLETED.
-      throw new AppError('Payment already completed for this milestone', 409);
-    }
+  if (milestone.status !== 'PENDING') {
+    throw new AppError('Milestone is already funded', 409);
+  }
 
-    if (payment?.status === 'PENDING') {
-      return res.json({
-        orderId: payment.orderId,
-        amount: payment.amount,
-        paymentId: payment.id,
-      });
-    }
+  if (payment?.status === 'COMPLETED') {
+    // Only reachable in an inconsistent state: milestone PENDING, payment COMPLETED.
+    throw new AppError('Payment already completed for this milestone', 409);
+  }
 
-    if (payment?.status === 'FAILED') {
-      const orderId = uuidv4();
-      const updated = await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          amount: milestone.amount,
-          status: 'PENDING',
-          paymentKey: null,
-          orderId,
-        },
-      });
+  if (payment?.status === 'PENDING') {
+    return {
+      status: 200,
+      order: { orderId: payment.orderId, amount: payment.amount, paymentId: payment.id },
+    };
+  }
 
-      return res.json({ orderId, amount: updated.amount, paymentId: updated.id });
-    }
-
-    if (payment) {
-      // REFUNDED
-      throw new AppError('Payment cannot be created for this milestone', 409);
-    }
-
+  if (payment?.status === 'FAILED') {
     const orderId = uuidv4();
-
-    // Known bug #8: `Payment.milestoneId` is unique and a concurrent duplicate's P2002 is not caught.
-    const created = await prisma.payment.create({
+    const updated = await prisma.payment.update({
+      where: { id: payment.id },
       data: {
-        contractId: contract.id,
-        milestoneId: milestone.id,
-        clientId: req.user.id,
         amount: milestone.amount,
         status: 'PENDING',
+        paymentKey: null,
         orderId,
       },
     });
 
-    res.status(201).json({ orderId, amount: created.amount, paymentId: created.id });
-  } catch (err) {
-    next(err);
+    return { status: 200, order: { orderId, amount: updated.amount, paymentId: updated.id } };
   }
+
+  if (payment) {
+    // REFUNDED
+    throw new AppError('Payment cannot be created for this milestone', 409);
+  }
+
+  const orderId = uuidv4();
+
+  // A concurrent create of the same milestone fails here with P2002: `retryOnceOnPaymentConflict`.
+  const created = await prisma.payment.create({
+    data: {
+      contractId: contract.id,
+      milestoneId: milestone.id,
+      clientId,
+      amount: milestone.amount,
+      status: 'PENDING',
+      orderId,
+    },
+  });
+
+  return { status: 201, order: { orderId, amount: created.amount, paymentId: created.id } };
 }
 
 export async function confirmPayment(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -197,63 +229,78 @@ export async function completePaymentForDev(
     // `requirePaymentBypass` has already refused the request unless the bypass is on,
     // and `milestonePaymentBody` parsed the body.
     const { milestoneId } = req.body;
-
-    const milestone = await findMilestoneForPayment(milestoneId);
-    const { contract, payment } = milestone;
-
-    if (contract.clientId !== req.user.id) {
-      throw new AppError('Not authorized', 403);
-    }
-
-    if (contract.status !== 'ACTIVE') {
-      throw new AppError('Contract must be active to proceed with payment', 400);
-    }
-
-    if (await hasUnfundedPredecessor(contract.id, milestone.sequence)) {
-      throw new AppError('Earlier milestones must be funded first', 400);
-    }
-
-    if (milestone.status !== 'PENDING') {
-      if (payment?.status === 'COMPLETED') {
-        return res.json(payment);
-      }
-      throw new AppError('Milestone is already funded', 409);
-    }
-
-    if (payment?.status === 'REFUNDED') {
-      throw new AppError('Payment cannot be completed for a refunded milestone', 409);
-    }
-
-    const paymentData = {
-      amount: milestone.amount,
-      // `as const` keeps the literal from widening to `string`, which Prisma's
-      // `PaymentStatus` enum input would reject.
-      status: 'COMPLETED' as const,
-      paymentKey: `dev_bypass_${milestone.id}`,
-    };
-
-    // Complete in place (or create) and fund the milestone in one transaction.
+    const clientId = req.user.id;
     const now = new Date();
-    const result = await prisma.$transaction(async (tx) => {
-      const saved = payment
-        ? await tx.payment.update({ where: { id: payment.id }, data: paymentData })
-        : await tx.payment.create({
-          data: {
-            ...paymentData,
-            contractId: contract.id,
-            milestoneId: milestone.id,
-            clientId: req.user.id,
-            orderId: `dev-${uuidv4()}`,
-          },
-        });
-      await markFunded(tx, milestone.id, now);
-      return saved;
-    });
 
-    res.status(payment ? 200 : 201).json(result);
+    const { status, payment } = await retryOnceOnPaymentConflict(
+      () => completeMilestonePayment(milestoneId, clientId, now),
+    );
+    res.status(status).json(payment);
   } catch (err) {
     next(err);
   }
+}
+
+/** Completes (or creates) the milestone's payment and funds the milestone, for `completePaymentForDev`. */
+async function completeMilestonePayment(
+  milestoneId: string,
+  clientId: string,
+  now: Date,
+): Promise<{ status: 200 | 201; payment: Payment }> {
+  const milestone = await findMilestoneForPayment(milestoneId);
+  const { contract, payment } = milestone;
+
+  if (contract.clientId !== clientId) {
+    throw new AppError('Not authorized', 403);
+  }
+
+  if (contract.status !== 'ACTIVE') {
+    throw new AppError('Contract must be active to proceed with payment', 400);
+  }
+
+  if (await hasUnfundedPredecessor(contract.id, milestone.sequence)) {
+    throw new AppError('Earlier milestones must be funded first', 400);
+  }
+
+  if (milestone.status !== 'PENDING') {
+    if (payment?.status === 'COMPLETED') {
+      return { status: 200, payment };
+    }
+    throw new AppError('Milestone is already funded', 409);
+  }
+
+  if (payment?.status === 'REFUNDED') {
+    throw new AppError('Payment cannot be completed for a refunded milestone', 409);
+  }
+
+  const paymentData = {
+    amount: milestone.amount,
+    // `as const` keeps the literal from widening to `string`, which Prisma's
+    // `PaymentStatus` enum input would reject.
+    status: 'COMPLETED' as const,
+    paymentKey: `dev_bypass_${milestone.id}`,
+  };
+
+  // Complete in place (or create) and fund the milestone in one transaction. A concurrent call that
+  // also creates fails on the unique `milestoneId`, rolling this whole transaction back; the P2002
+  // is caught outside it, by `retryOnceOnPaymentConflict`.
+  const result = await prisma.$transaction(async (tx) => {
+    const saved = payment
+      ? await tx.payment.update({ where: { id: payment.id }, data: paymentData })
+      : await tx.payment.create({
+        data: {
+          ...paymentData,
+          contractId: contract.id,
+          milestoneId: milestone.id,
+          clientId,
+          orderId: `dev-${uuidv4()}`,
+        },
+      });
+    await markFunded(tx, milestone.id, now);
+    return saved;
+  });
+
+  return { status: payment ? 200 : 201, payment: result };
 }
 
 export async function getPayments(req: AuthedRequest, res: Response, next: NextFunction) {
