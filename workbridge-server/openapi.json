@@ -3153,12 +3153,8 @@
           "Auth"
         ],
         "summary": "로그아웃",
-        "description": "`refreshToken` 쿠키를 지운다. 발급된 토큰을 무효로 만들지는 않는다.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "description": "`refreshToken` 쿠키를 지운다. 인증이 필요 없다 — Access Token이 만료된 뒤에도 로그아웃할 수 있어야 한다. 발급된 토큰을 무효로 만들지는 않는다.",
+        "security": [],
         "responses": {
           "200": {
             "description": "`Logged out successfully`",
@@ -3174,16 +3170,6 @@
                   "required": [
                     "message"
                   ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

@@ -70,7 +70,7 @@ GitHub 이슈로 추적하고(도메인 문서의 `현재 다름: #N`), 고치�
   새 `/api/users/me/<x>` 라우트는 `profile.routes.ts`에 넣고, 순서는 절대 바꾸지 않는다.
 - `GET /api/projects`와 `GET /api/projects/:id`는 **행을 쓴다**(지연 수명주기 스윕이 마감된
   프로젝트를 닫는다). 읽기 전용이 아니다.
-- `req.user`는 non-optional로 타입이 잡혀 있지만 `src/types/index.ts`에 적힌 공개 핸들러 14개에서는
+- `req.user`는 non-optional로 타입이 잡혀 있지만 `src/types/index.ts`에 적힌 공개 핸들러 15개에서는
   `undefined`다(`X-Internal-Token`으로 지키는 `runJobs`, API 문서 화면 포함). 거기서는 읽지 않는다.
 - 테스트가 **모든 응답**을 OpenAPI 응답 스키마로 strict 검사한다. 라우트·상태 코드·응답 필드를 바꾸면
   `src/openapi/paths`·`responses`를 함께 고치고 `npm run openapi`. 문서에 없는 상태 코드나 필드는 테스트 실패다.
