@@ -198,6 +198,40 @@ describe('POST /api/projects/:id/bookmark', () => {
     // Whatever the statuses are, the unique constraint holds the state.
     expect(await countBookmarks()).toBe(1);
   });
+
+  /**
+   * A deterministic version of two overlapping `POST`s: the other request is an uncommitted insert
+   * of the same key, held open in a transaction. The request must block on it (a `Lock` wait in
+   * `pg_stat_activity`) and, once that insert commits, still answer 201 with one row.
+   */
+  it('answers 201 when an overlapping insert of the same bookmark commits first', async () => {
+    const { freelancer, project } = await freelancerWithProject();
+
+    let request: ReturnType<ReturnType<typeof authed>['post']> | undefined;
+    await prisma.$transaction(async (tx) => {
+      await tx.projectBookmark.create({ data: { projectId: project.id, userId: freelancer.id } });
+
+      request = authed(freelancer).post(bookmarkPath(project.id));
+      // supertest sends lazily; `then` starts it while this transaction still holds the row.
+      void request.then(() => undefined, () => undefined);
+
+      // Polled on another connection until the request is waiting on this transaction's insert.
+      const giveUpAt = Date.now() + 5_000;
+      for (;;) {
+        const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+          SELECT count(*)::int AS waiting FROM pg_stat_activity
+           WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+        if (waiting > 0) break;
+        if (Date.now() > giveUpAt) throw new Error('the request never blocked on the open insert');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }, { timeout: 10_000 });
+
+    const res = await request!;
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ bookmarked: true });
+    expect(await countBookmarks()).toBe(1);
+  });
 });
 
 describe('DELETE /api/projects/:id/bookmark', () => {

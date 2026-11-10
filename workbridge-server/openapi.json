@@ -6969,7 +6969,7 @@
             }
           },
           "400": {
-            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `Project deadline has passed` — 마감이 지남(이때 프로젝트를 마감한다)\n- `Project is not accepting applications` — 모집 중이 아님",
+            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `Project is not accepting applications` — 모집 중이 아님(마감이 지난 프로젝트는 스윕이 먼저 마감한다)",
             "content": {
               "application/json": {
                 "schema": {
