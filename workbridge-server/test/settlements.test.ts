@@ -574,6 +574,73 @@ describe('settlement.payout', () => {
     }));
   });
 
+  /**
+   * A re-run batch adding a late item to a SCHEDULED settlement, overlapping that settlement's
+   * payout decision. Both take the freelancer's user row before the settlement row, so they
+   * serialize instead of deadlocking: the test parks the batch on the late item (holding what it
+   * has locked), starts the payout so it queues behind the batch, then lets the batch finish. The
+   * payout must then transfer the new total. Taking the locks in opposite orders — the payout
+   * user → settlement, the batch settlement → user (its second UPDATE of the settlement row
+   * re-checks `freelancerId`) — aborts one of them with a deadlock.
+   */
+  it('a re-run batch and the payout decision on one settlement serialize without deadlocking', async () => {
+    const freelancer = await makeFreelancer();
+    await makePayoutAccount(freelancer);
+    const settlement = await scheduled(freelancer, 1_000_000);
+    const late = await approvedItem(freelancer, new Date(PERIOD_END.getTime() - HOUR_MS), 2_000_000);
+    const transfer = vi.fn(async () => ({ reference: 'r' }));
+    setPayoutProvider({ transfer });
+    // The holder and the poll run on their own pool — see `sideClient`.
+    const side = sideClient();
+    const waiting = async () => (await side.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'`)[0].n;
+    const until = async (done: () => Promise<boolean>) => {
+      for (const deadline = Date.now() + 5_000; Date.now() < deadline && !(await done());) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+
+    let release = () => {};
+    let holding!: () => void;
+    const held = new Promise<void>((resolve) => { holding = resolve; });
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const holder = side.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "SettlementItem" WHERE id = ${late.item.id} FOR UPDATE`;
+      holding();
+      await released;
+    }, { timeout: 15_000 });
+    const outcome = <T>(promise: Promise<T>) => promise.then(
+      (value) => ({ ok: true as const, value }),
+      (error: unknown) => ({ ok: false as const, error: String(error) }),
+    );
+    let batch: ReturnType<typeof outcome<Awaited<ReturnType<typeof runWeeklyBatch>>>> | undefined;
+    let payout: ReturnType<typeof outcome<Awaited<ReturnType<typeof runPayout>>>> | undefined;
+    try {
+      await held;
+      batch = outcome(runWeeklyBatch(PERIOD_START, BATCH_AT));
+      await until(async () => (await waiting()) >= 1); // the batch is parked on the late item
+      payout = outcome(runPayout(settlement.id, settlement.scheduledPayoutAt.toISOString(), PAYOUT_AT));
+      await until(async () => (await waiting()) >= 2); // the payout is queued behind the batch
+      expect(await waiting()).toBeGreaterThanOrEqual(2);
+      release();
+      await holder;
+
+      expect(await batch).toEqual({ ok: true, value: expect.objectContaining({ created: 0, failed: 0 }) });
+      expect(await payout).toEqual({ ok: true, value: 'paid' });
+      expect(transfer).toHaveBeenCalledTimes(1);
+      expect(transfer).toHaveBeenCalledWith(expect.objectContaining({ amount: 890_000 + 1_780_000 }));
+      const stored = await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } });
+      expect(stored).toMatchObject({ status: 'PAID', itemCount: 2, netAmount: 890_000 + 1_780_000 });
+    } finally {
+      release();
+      await holder.catch(() => {});
+      await batch;
+      await payout;
+      await side.$disconnect();
+    }
+  });
+
   it('ON_HOLD → register an account → rescheduled → PAID, and still pays after the project is deleted', async () => {
     // A week in the past, so the payout that put it ON_HOLD ran before the real clock's "now" —
     // the reschedule is always strictly after now, as it is in production.
