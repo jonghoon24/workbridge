@@ -3,6 +3,7 @@ import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 import { z } from '../../lib/zod';
 import { applicationCreateBody, applicationDecisionBody } from '../../schemas/applications';
 import {
+  ACTIVE_USER,
   AUTHENTICATED,
   bearer,
   COMPLETE_PROFILE,
@@ -33,7 +34,7 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
       201: created(application),
       ...errors(
         invalid('`Project is not accepting applications` — 모집 중이 아님(마감이 지난 프로젝트는 스윕이 먼저 마감한다)'),
-        AUTHENTICATED,
+        ACTIVE_USER,
         role('FREELANCER'),
         COMPLETE_PROFILE,
         { 404: ['`Project not found` — 없거나 삭제된 프로젝트'] },
@@ -75,7 +76,7 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
       200: ok(applicationDecision, '수락이면 `{ application, contract }`, 거절이면 지원'),
       ...errors(
         invalid(),
-        AUTHENTICATED,
+        ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
         {

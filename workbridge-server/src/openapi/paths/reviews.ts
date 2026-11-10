@@ -2,7 +2,7 @@ import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { z } from '../../lib/zod';
 import { reviewBody } from '../../schemas/reviews';
-import { AUTHENTICATED, bearer, created, errors, invalid, jsonBody, ok, pathParams, publicRoute } from '../common';
+import { ACTIVE_USER, bearer, created, errors, invalid, jsonBody, ok, pathParams, publicRoute } from '../common';
 import { receivedReview, review } from '../responses/reviews';
 
 const tags = ['Reviews'];
@@ -24,7 +24,7 @@ export function registerReviewPaths(registry: OpenAPIRegistry): void {
           '`Reviews can only be written after project completion` — 계약이 완료되지 않음',
           '`Invalid reviewee` — 리뷰 대상이 계약 상대방이 아님',
         ),
-        AUTHENTICATED,
+        ACTIVE_USER,
         {
           403: ['`Not authorized` — 계약 당사자가 아님'],
           404: ['`Contract not found` — 없는 계약'],

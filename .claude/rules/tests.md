@@ -32,7 +32,7 @@ paths:
 - **여러 엔드포인트에 걸친 관심사는 한 곳에서 한 번만 테스트한다 — 엔드포인트마다 다시 단언하지 않는다:**
   - 401/403/소유권: `test/authorization.test.ts`의 `PROTECTED_ROUTES` / `PUBLIC_ROUTES`.
   - 소프트 삭제된 호출자: `test/soft-delete.test.ts`의 `guardedMutations`(`requireActiveUser`가 붙은 쓰기
-    라우트). 기존 라우트는 아직 이 가드가 없어(#7) 넣으면 실패한다. #7을 고치는 PR에서 함께 넣는다.
+    라우트 전부 — 기존 도메인 포함).
 - 업로드: 업로드하는 테스트 파일마다 **맨 위에** `vi.mock('@supabase/supabase-js', …)`를 둔다
   (`uploads.test.ts` 참고). `test/setup.ts`는 앱(`helpers/api`)을 import하지 않는다. import하면
   모든 `vi.mock`이 너무 늦게 등록된다.
