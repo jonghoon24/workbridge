@@ -39,7 +39,7 @@ WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 제품 규칙�
   확인한다. 프로젝트 등록은 `requireCompleteProfile`(`src/middlewares/profile.ts`)도 거친다.
 - 로그인과 AI 분석에는 `rateLimit`(`src/middlewares/rateLimit.ts`, 카운터는 `RateLimitCounter` 테이블)이 붙는다.
   `POST /api/internal/jobs/run`은 JWT 대신 `requireInternalToken`(`X-Internal-Token`)으로 지킨다.
-- 공개 핸들러 14개에서는 `req.user`가 `undefined`다. 목록은 `src/types/index.ts`에 있다.
+- 공개 핸들러 15개에서는 `req.user`가 `undefined`다. 목록은 `src/types/index.ts`에 있다.
 
 **에러 처리.** 컨트롤러와 서비스는 `throw new AppError(message, status)`(`src/lib/errors.ts`)로 던지고 `next(err)`로 넘긴다.
 `errorHandler`가 `{ error: { message } }`로 응답하고, 500일 때만 `logger.error`로 남기며 `SENTRY_DSN`이 있으면

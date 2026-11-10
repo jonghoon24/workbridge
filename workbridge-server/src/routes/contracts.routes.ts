@@ -24,8 +24,7 @@ router.put(
 );
 router.get('/:id/conversation', authenticate, requireActiveUser, getConversationOfContract);
 
-// `authenticate` only: no `requireActiveUser` yet (#7), and no soft-delete filter on the
-// project (#16).
+// `authenticate` only: no `requireActiveUser` yet (#7).
 router.get('/:id', authenticate, getContract);
 router.patch('/:id', authenticate, completeContract);
 router.post('/:id/sign', authenticate, signContract);

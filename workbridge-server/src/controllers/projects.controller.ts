@@ -4,6 +4,7 @@ import type { Prisma, ProjectStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import openai from '../lib/openai';
 import { AppError } from '../lib/errors';
+import { logger } from '../lib/logger';
 import { notifyMany } from '../lib/notifications/notify';
 import {
   closeExpiredOpenProjects,
@@ -364,9 +365,25 @@ export async function deleteProject(req: AuthedRequest, res: Response, next: Nex
       throw new AppError('Not authorized', 403);
     }
 
-    await prisma.project.update({
-      where: { id: req.params.id },
-      data: { deletedAt: new Date() },
+    await prisma.$transaction(async (tx) => {
+      // Lock the project row so the contract check and the delete see the same state: an accept
+      // that commits a contract first makes this a 409 instead of orphaning a live contract.
+      await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${project.id} FOR UPDATE`;
+
+      // A pending or active contract belongs to the freelancer too; deleting the project would
+      // hide it from them (every contract path 404s on a deleted project). Completed is fine.
+      const unfinished = await tx.contract.findFirst({
+        where: { projectId: project.id, status: { in: ['PENDING', 'ACTIVE'] } },
+        select: { id: true },
+      });
+      if (unfinished) {
+        throw new AppError('Cannot delete a project with an unfinished contract', 409);
+      }
+
+      await tx.project.update({
+        where: { id: project.id },
+        data: { deletedAt: new Date() },
+      });
     });
 
     res.json({ message: 'Project deleted successfully' });
@@ -487,25 +504,40 @@ summary, marketReference, rationale은 '~합니다' 체의 완결된 문장으�
 }
 `;
 
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: '당신은 한국 프리랜서 시장 전문가입니다. 프로젝트 단가를 정확하게 분석합니다. JSON 형식으로만 응답하세요.' },
-        { role: 'user', content: prompt },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.3,
-    });
+    // A provider failure is an external-service error (502), not a bug (500): the cause goes to a
+    // `warn` line and the response carries a generic message, never the provider's own text.
+    let completion: Awaited<ReturnType<typeof openai.chat.completions.create>>;
+    try {
+      completion = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: '당신은 한국 프리랜서 시장 전문가입니다. 프로젝트 단가를 정확하게 분석합니다. JSON 형식으로만 응답하세요.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.3,
+      });
+    } catch (err) {
+      logger.warn('ai analysis provider request failed', { projectId: project.id, err });
+      throw new AppError('AI analysis provider request failed', 502);
+    }
 
-    const content = completion.choices[0].message.content;
+    const content = completion.choices?.[0]?.message?.content;
 
     if (!content) {
+      logger.warn('ai analysis returned no content', { projectId: project.id });
       throw new AppError('AI analysis did not return a response', 502);
     }
 
-    const analysisData = normalizePricingAnalysisData(
-      JSON.parse(content) as RawPricingAnalysis,
-    );
+    let parsed: RawPricingAnalysis;
+    try {
+      parsed = JSON.parse(content) as RawPricingAnalysis;
+    } catch (err) {
+      logger.warn('ai analysis returned invalid JSON', { projectId: project.id, err });
+      throw new AppError('AI analysis did not return valid feature pricing', 502);
+    }
+
+    const analysisData = normalizePricingAnalysisData(parsed);
     // `PricingAnalysis.features` is a Json column; the normalized rows are plain JSON.
     const features: Prisma.InputJsonValue = analysisData.features;
 

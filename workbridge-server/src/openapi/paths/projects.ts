@@ -155,12 +155,16 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     operationId: 'deleteProject',
     tags,
     summary: '프로젝트 삭제(소유 의뢰인)',
-    description: '소프트 삭제다. 이후 목록·상세와 그 프로젝트의 계약·마일스톤·대화 경로에서 404가 된다.',
+    description:
+      '소프트 삭제다. 이후 목록·상세와 그 프로젝트의 계약·마일스톤·대화 경로에서 404가 된다. '
+      + '완료되지 않은 계약(`PENDING`·`ACTIVE`)이 있으면 지울 수 없다. 완료된 계약만 있으면 지울 수 있다.',
     security: bearer,
     request: { params: projectId },
     responses: {
       200: ok(messageBody, '`Project deleted successfully`'),
-      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND),
+      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
+        409: ['`Cannot delete a project with an unfinished contract` — 계약이 `PENDING` 또는 `ACTIVE`'],
+      }),
     },
   });
 
@@ -203,8 +207,9 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
       ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
         429: ['`Too many requests. Try again later.` — 분석 한도 초과'],
         502: [
-          '`AI analysis did not return a response` — 모델이 빈 응답을 줌',
-          '`AI analysis did not return valid feature pricing` — 금액이 있는 기능이 하나도 없음',
+          '`AI analysis provider request failed` — 공급자 호출 실패(네트워크 오류, 공급자 5xx 등). 공급자 메시지는 싣지 않는다',
+          '`AI analysis did not return a response` — 모델이 빈 응답을 줌(`choices`가 비었거나 내용이 없음)',
+          '`AI analysis did not return valid feature pricing` — JSON이 아닌 내용이거나 금액이 있는 기능이 하나도 없음',
         ],
       }),
     },
