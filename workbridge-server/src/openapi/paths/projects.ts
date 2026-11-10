@@ -77,10 +77,10 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     operationId: 'getProjectBookmark',
     tags,
     summary: '북마크 여부(프리랜서)',
-    description: '없는 프로젝트도 `bookmarked: false`다.',
+    description: '프로젝트가 없거나 삭제됐으면 404다.',
     security: bearer,
     request: { params: projectId },
-    responses: { 200: ok(bookmarkState), ...errors(AUTHENTICATED, role('FREELANCER')) },
+    responses: { 200: ok(bookmarkState), ...errors(AUTHENTICATED, role('FREELANCER'), PROJECT_NOT_FOUND) },
   });
 
   registry.registerPath({
@@ -104,12 +104,12 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     operationId: 'deleteProjectBookmark',
     tags,
     summary: '북마크 해제(프리랜서)',
-    description: '멱등이다. 북마크가 없어도 200.',
+    description: '멱등이다. 프로젝트가 있으면 북마크가 없어도 200. 프로젝트가 없거나 삭제됐으면 404다.',
     security: bearer,
     request: { params: projectId },
     responses: {
       200: ok(bookmarkState.extend({ bookmarked: z.literal(false) })),
-      ...errors(ACTIVE_USER, role('FREELANCER')),
+      ...errors(ACTIVE_USER, role('FREELANCER'), PROJECT_NOT_FOUND),
     },
   });
 

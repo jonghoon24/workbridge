@@ -33,11 +33,11 @@
    - 확인: 새 코드의 `notification.create(`, `job.create(`, 그리고 `tx` 대신 `prisma`를 넘긴 `notify(`/`enqueueJob(`을 grep한다.
 
 8. **`User`·`Project`를 읽거나 쓰는 모든 쿼리는 `deletedAt: null`로 거른다.**
-   - 왜: 소프트 삭제다(`docs/domain/README.md` "소프트 삭제"). 삭제된 사용자의 로그인(고쳐짐), 삭제된 프로젝트의 북마크 조회·해제(#14), 삭제된 프로젝트의 계약 조회·서명(#16, 고쳐짐)이 모두 이 필터 누락이다. 확장 리소스는 계약의 프로젝트를 따라 404가 된다.
+   - 왜: 소프트 삭제다(`docs/domain/README.md` "소프트 삭제"). 삭제된 사용자의 로그인(고쳐짐), 삭제된 프로젝트의 북마크 조회·해제(고쳐짐: #14), 삭제된 프로젝트의 계약 조회·서명(고쳐짐: #16)이 모두 이 필터 누락이다. 확장 리소스는 계약의 프로젝트를 따라 404가 된다.
    - 확인: 새 `findUnique`/`findFirst`/`findMany`/`update`가 `user`·`project`(또는 `contract.project`)에 닿을 때 필터가 있는지 본다. `findUnique`는 필터를 못 거니 `findFirst`로 바꿔야 한다.
 
 9. **공개 핸들러에서 `req.user`를 읽지 않는다.**
-   - 왜: `Express.Request.user`는 non-optional로 선언돼 컴파일러가 경고하지 않지만, `src/types/index.ts`에 적힌 14개 공개 핸들러(`runJobs`, API 문서 화면 포함)에서는 런타임에 `undefined`다. `test/authorization.test.ts`가 유일한 안전장치다.
+   - 왜: `Express.Request.user`는 non-optional로 선언돼 컴파일러가 경고하지 않지만, `src/types/index.ts`에 적힌 15개 공개 핸들러(`runJobs`, API 문서 화면 포함)에서는 런타임에 `undefined`다. `test/authorization.test.ts`가 유일한 안전장치다.
    - 확인: `authenticate`가 없는 라우트에 연결된 핸들러의 diff에서 `req.user`를 grep한다. 새 공개 라우트는 `src/types/index.ts`의 목록과 `PUBLIC_ROUTES`에 추가됐는지 본다.
 
 10. **로그는 `lib/logger.ts`로 남기고 `console.*`를 쓰지 않는다. `error` 레벨은 `errorHandler`의 500과 작업 실패 전용이다. 요청 body·query·헤더를 통째로 로그에 남기지 않는다.**

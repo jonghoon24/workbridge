@@ -59,11 +59,12 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     operationId: 'logout',
     tags,
     summary: '로그아웃',
-    description: '`refreshToken` 쿠키를 지운다. 발급된 토큰을 무효로 만들지는 않는다.',
-    security: bearer,
+    description:
+      '`refreshToken` 쿠키를 지운다. 인증이 필요 없다 — Access Token이 만료된 뒤에도 로그아웃할 수 있어야 한다. '
+      + '발급된 토큰을 무효로 만들지는 않는다.',
+    security: publicRoute,
     responses: {
       200: ok(messageBody, '`Logged out successfully`'),
-      ...errors(AUTHENTICATED),
     },
   });
 
@@ -125,11 +126,13 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     summary: '구글 로그인 콜백',
     description:
       '언제나 리디렉션으로 끝나고 400을 내지 않는다. 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, '
-      + '실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다.',
+      + '실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다. '
+      + '기존 계정과는 `googleId`로만 연결한다. 이 Google 계정과 연결되지 않은 계정이 같은 이메일을 쓰고 있으면 연결하지도 세션을 '
+      + '발급하지도 않고 `CLIENT_URL/login?error=email_account_exists`로 보낸다(Google이 이메일을 인증했어도 같다).',
     security: publicRoute,
     request: { query: googleCallbackQuery },
     responses: {
-      302: redirect('클라이언트로 이동(성공 또는 `error=oauth_failed`)'),
+      302: redirect('클라이언트로 이동(성공, `error=oauth_failed` 또는 `error=email_account_exists`)'),
     },
   });
 }

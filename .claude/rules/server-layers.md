@@ -50,8 +50,8 @@ paths:
 
 ## req.user
 
-- non-optional로 타입이 잡혀 있지만(`src/types/index.ts`) 거기 적힌 공개 핸들러 14개에서는 `undefined`다
-  (`signup`, `login`, `refresh`, `googleAuth`, `googleCallback`, `getProjects`, `getProjectById`,
+- non-optional로 타입이 잡혀 있지만(`src/types/index.ts`) 거기 적힌 공개 핸들러 15개에서는 `undefined`다
+  (`signup`, `login`, `logout`, `refresh`, `googleAuth`, `googleCallback`, `getProjects`, `getProjectById`,
   `getUserById`, `getUserReviews`, `getUserPortfolio`, `getUserCareers`, `runJobs`,
   `getOpenApiDocument`, `getDocsPage`).
   컴파일러는 경고하지 않는다. 보완 장치는 `test/authorization.test.ts`다.
