@@ -14,7 +14,7 @@ vi.mock('axios', () => {
 
 import axios from 'axios';
 
-import { api, authed, tokenFor } from './helpers/api';
+import { api, authed, expiredToken, tokenFor } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeUser, TEST_PASSWORD } from './helpers/factories';
 import { generateRefreshToken } from '../src/lib/jwt';
@@ -499,6 +499,28 @@ describe('POST /api/auth/logout', () => {
     expect(cookie).toBeDefined();
     expect(cookie).toMatch(/refreshToken=;/);
     expect(cookie).toMatch(/Expires=Thu, 01 Jan 1970/);
+  });
+
+  it('clears the refreshToken cookie without any access token', async () => {
+    const user = await makeUser();
+    const refresh = generateRefreshToken({ id: user.id, email: user.email, role: user.role });
+
+    const res = await api().post('/api/auth/logout').set('Cookie', [`refreshToken=${refresh}`]);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'Logged out successfully' });
+    expect(refreshCookie(res)).toMatch(/refreshToken=;/);
+  });
+
+  it('clears the refreshToken cookie when the access token has expired', async () => {
+    const user = await makeUser();
+
+    const res = await api()
+      .post('/api/auth/logout')
+      .set('Authorization', `Bearer ${expiredToken(user)}`);
+
+    expect(res.status).toBe(200);
+    expect(refreshCookie(res)).toMatch(/Expires=Thu, 01 Jan 1970/);
   });
 
   it('leaves the already-issued access token valid — tokens are stateless by design', async () => {

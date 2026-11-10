@@ -59,11 +59,12 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     operationId: 'logout',
     tags,
     summary: '로그아웃',
-    description: '`refreshToken` 쿠키를 지운다. 발급된 토큰을 무효로 만들지는 않는다.',
-    security: bearer,
+    description:
+      '`refreshToken` 쿠키를 지운다. 인증이 필요 없다 — Access Token이 만료된 뒤에도 로그아웃할 수 있어야 한다. '
+      + '발급된 토큰을 무효로 만들지는 않는다.',
+    security: publicRoute,
     responses: {
       200: ok(messageBody, '`Logged out successfully`'),
-      ...errors(AUTHENTICATED),
     },
   });
 
