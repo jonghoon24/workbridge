@@ -23,7 +23,7 @@ WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 제품 규칙�
 | 도메인 | auth, users, projects, applications, contracts, payments, reviews, notifications | milestones, settlements, payout account, contract list, conversations, portfolio/careers, recommendations, notification preferences |
 | 흐름 | `routes → controllers → lib` | `routes → controllers → services → lib` |
 | 로직 | 컨트롤러 안 | `src/services/*.service.ts`, 일부는 `src/lib/`(추천은 `lib/recommendations.ts`) |
-| 소프트 삭제된 호출자 | 다시 확인하지 않는다([#7](https://github.com/jonghoon24/workbridge/issues/7)) | `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |
+| 소프트 삭제된 호출자 | 쓰기 라우트는 `requireActiveUser`가 401. 읽기 라우트는 다시 확인하지 않는다(`GET /api/users/me`만 404) | `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |
 
 요청 검증은 양쪽 모두 zod 스키마(`src/schemas/`)와 `validate()`(`src/middlewares/validate.ts`)가 맡는다(400
 `<path>: <문장>`). 확장 라우트가 기존 라우터 파일에 들어간 곳도 있다(지급 계좌 `users.routes.ts`, 계약 목록 `contracts.routes.ts`,

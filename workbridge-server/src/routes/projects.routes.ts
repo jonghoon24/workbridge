@@ -23,27 +23,36 @@ import { projectCreateBody, projectListQuery, projectStatusBody, projectUpdateBo
 
 const router = Router();
 
-// `authenticate` only: these routes do not mount `requireActiveUser` yet (#7).
-// Validation runs after the role and profile guards and before the controller's
-// 404/403 checks.
+// Every write mounts `requireActiveUser` after `authenticate`, so a soft-deleted caller's
+// unexpired token cannot write. Validation runs after the role and profile guards and before
+// the controller's 404/403 checks.
 router.get('/', validate({ query: projectListQuery }), getProjects);
 router.post(
   '/',
   authenticate,
+  requireActiveUser,
   requireRole('CLIENT'),
   requireCompleteProfile,
   validate({ body: projectCreateBody }),
   createProject,
 );
 router.get('/:id/bookmark', authenticate, requireRole('FREELANCER'), getProjectBookmark);
-router.post('/:id/bookmark', authenticate, requireRole('FREELANCER'), createProjectBookmark);
-router.delete('/:id/bookmark', authenticate, requireRole('FREELANCER'), deleteProjectBookmark);
+router.post('/:id/bookmark', authenticate, requireActiveUser, requireRole('FREELANCER'), createProjectBookmark);
+router.delete('/:id/bookmark', authenticate, requireActiveUser, requireRole('FREELANCER'), deleteProjectBookmark);
 router.get('/:id', getProjectById);
-router.patch('/:id', authenticate, requireRole('CLIENT'), validate({ body: projectUpdateBody }), updateProject);
-router.delete('/:id', authenticate, requireRole('CLIENT'), deleteProject);
+router.patch(
+  '/:id',
+  authenticate,
+  requireActiveUser,
+  requireRole('CLIENT'),
+  validate({ body: projectUpdateBody }),
+  updateProject,
+);
+router.delete('/:id', authenticate, requireActiveUser, requireRole('CLIENT'), deleteProject);
 router.patch(
   '/:id/status',
   authenticate,
+  requireActiveUser,
   requireRole('CLIENT'),
   validate({ body: projectStatusBody }),
   updateProjectStatus,
@@ -53,6 +62,7 @@ router.patch(
 router.post(
   '/:id/analyze',
   authenticate,
+  requireActiveUser,
   requireRole('CLIENT'),
   rateLimit(ANALYZE_HOURLY_RULE),
   rateLimit(ANALYZE_DAILY_RULE),

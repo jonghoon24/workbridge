@@ -5,7 +5,7 @@
 일반적인 버그·가독성 지적은 이 목록 밖에서도 하되, 아래 항목 위반은 반드시 짚는다.
 
 1. **새 라우트는 확장 방식으로 만든다: `authenticate → requireActiveUser → requireRole → validate → controller`, 로직은 `src/services/`.**
-   - 왜: 이 체인이 검사 순서(역할 403 → 업로드 413/400 → 검증 400 `<path>: <문장>` → 존재 404 → 소유권 403 → 상태 409)를 보장하고, 탈퇴한 사용자가 남은 토큰으로 쓰는 것을 막는다(기존 라우트에는 이 가드가 없다: #7). 새 라우트를 기존 방식(컨트롤러 안의 로직, `requireActiveUser` 없음)으로 쓰면 #40에서 옮길 대상만 늘어난다.
+   - 왜: 이 체인이 검사 순서(역할 403 → 업로드 413/400 → 검증 400 `<path>: <문장>` → 존재 404 → 소유권 403 → 상태 409)를 보장하고, 탈퇴한 사용자가 남은 토큰으로 쓰는 것을 막는다(기존 도메인의 쓰기 라우트에도 이 가드가 있다). 새 라우트를 기존 방식(컨트롤러 안의 로직, `requireActiveUser` 없음)으로 쓰면 #40에서 옮길 대상만 늘어난다.
    - 확인: `git diff origin/main...HEAD -- workbridge-server/src/routes`에서 새 `router.<method>(`마다 가드 순서와 `validate(`를 본다. `router.use(`로 가드를 거는 것도 위반이다 — 같은 접두사에 나중에 마운트된 라우터로 가야 할 요청까지 가드가 가로챈다.
 
 2. **기존 컨트롤러(auth, users, projects, applications, contracts, payments, reviews, notifications)를 서비스 레이어로 옮기는 일은 다른 변경에 섞지 않는다.**
@@ -53,7 +53,7 @@
     - 확인: diff에서 기존 `expect(`가 지워지거나 느슨해진 곳(기대 상태 코드나 메시지 변경, `toEqual` → `toMatchObject`, 검사하던 필드 삭제)마다 같은 PR에 의도가 바뀐 근거(도메인 문서나 OpenAPI의 변경, 이슈의 결정)가 있는지 본다. 버그 수정 PR이면 본문에 `Closes #N`이 있고, 고치기 전 코드에서 실패하는 테스트가 추가됐는지 본다. 새 `it.fails`·`it.skip`·`it.todo`는 위반이다.
 
 13. **새 쓰기 라우트는 권한·소프트 삭제 매트릭스에 등록한다.**
-    - 왜: 401/403/소유권은 `test/authorization.test.ts`의 `PROTECTED_ROUTES`, 소프트 삭제는 `test/soft-delete.test.ts`의 `guardedMutations`에서 중앙으로 검사한다. 빠지면 그 라우트는 이 검사를 전혀 받지 않는다. 기존 라우트는 아직 `requireActiveUser`가 없어(#7) `guardedMutations`에 넣으면 실패한다 — #7을 고치는 PR에서 함께 넣는다.
+    - 왜: 401/403/소유권은 `test/authorization.test.ts`의 `PROTECTED_ROUTES`, 소프트 삭제는 `test/soft-delete.test.ts`의 `guardedMutations`에서 중앙으로 검사한다. 빠지면 그 라우트는 이 검사를 전혀 받지 않는다. 기존 도메인의 쓰기 라우트도 모두 이 표에 있다.
     - 확인: 새 라우트마다 `PROTECTED_ROUTES`(표에 없으면 실제 라우터와 대조하는 테스트가 실패한다)와, 쓰기 라우트면 `guardedMutations` 행이 추가됐는지 본다. 엔드포인트별 파일에서 401/403을 다시 단언하는 것은 중복이다.
 
 14. **클라이언트는 `src/lib/api.js`로만 백엔드를 부르고, 사용자에게 보이는 문구를 바꾸면 E2E도 함께 고친다.**

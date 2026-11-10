@@ -82,7 +82,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     },
     responses: {
       200: ok(myProfile, '수정된 프로필'),
-      ...errors(invalid(), AUTHENTICATED, {
+      ...errors(invalid(), ACTIVE_USER, {
         403: ['`Insufficient permissions` — 토큰의 역할이 CLIENT·FREELANCER가 아님(검증할 스키마가 없음)'],
       }),
     },

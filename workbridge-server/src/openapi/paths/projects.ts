@@ -67,7 +67,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { body: jsonBody(projectCreateBody) },
     responses: {
       201: created(project),
-      ...errors(invalid(SCHEDULE), AUTHENTICATED, role('CLIENT'), COMPLETE_PROFILE),
+      ...errors(invalid(SCHEDULE), ACTIVE_USER, role('CLIENT'), COMPLETE_PROFILE),
     },
   });
 
@@ -94,7 +94,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       201: created(bookmarkState.extend({ bookmarked: z.literal(true) })),
-      ...errors(AUTHENTICATED, role('FREELANCER'), PROJECT_NOT_FOUND),
+      ...errors(ACTIVE_USER, role('FREELANCER'), PROJECT_NOT_FOUND),
     },
   });
 
@@ -109,7 +109,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       200: ok(bookmarkState.extend({ bookmarked: z.literal(false) })),
-      ...errors(AUTHENTICATED, role('FREELANCER')),
+      ...errors(ACTIVE_USER, role('FREELANCER')),
     },
   });
 
@@ -141,7 +141,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
           '`Cannot change budget or recruitment dates after applications have been submitted` — 지원이 있는데 예산·일정을 보냄',
           SCHEDULE,
         ),
-        AUTHENTICATED,
+        ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
         PROJECT_NOT_FOUND,
@@ -162,7 +162,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       200: ok(messageBody, '`Project deleted successfully`'),
-      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
+      ...errors(ACTIVE_USER, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
         409: ['`Cannot delete a project with an unfinished contract` — 계약이 `PENDING` 또는 `ACTIVE`'],
       }),
     },
@@ -183,7 +183,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
       200: ok(project, '바뀐 프로젝트'),
       ...errors(
         invalid('`Cannot transition from <현재> to <요청>` — 허용되지 않는 전이'),
-        AUTHENTICATED,
+        ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
         PROJECT_NOT_FOUND,
@@ -204,7 +204,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       200: ok(pricingAnalysis),
-      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
+      ...errors(ACTIVE_USER, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
         429: ['`Too many requests. Try again later.` — 분석 한도 초과'],
         502: [
           '`AI analysis provider request failed` — 공급자 호출 실패(네트워크 오류, 공급자 5xx 등). 공급자 메시지는 싣지 않는다',
