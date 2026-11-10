@@ -7771,7 +7771,7 @@
           "Contracts"
         ],
         "summary": "계약 상세",
-        "description": "마일스톤, 리뷰, 마일스톤 요약을 함께 준다. 삭제된 프로젝트의 계약도 보인다(알려진 버그, 이슈 #16).",
+        "description": "마일스톤, 리뷰, 마일스톤 요약을 함께 준다. 프로젝트가 삭제된 계약은 404다.",
         "security": [
           {
             "bearerAuth": []
@@ -7821,7 +7821,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약",
+            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약, 또는 프로젝트가 삭제됨",
             "content": {
               "application/json": {
                 "schema": {
@@ -7948,7 +7948,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약",
+            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약, 또는 프로젝트가 삭제됨",
             "content": {
               "application/json": {
                 "schema": {
