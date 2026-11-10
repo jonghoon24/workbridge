@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { authed } from './helpers/api';
 import { DAY_MS, kstDateString, kstDateToEndOfDay } from '../src/lib/time';
-import { prisma } from './helpers/db';
+import { prisma, sideClient } from './helpers/db';
 import {
   daysFromNow,
   makeApplication,
@@ -282,14 +282,10 @@ describe('POST /api/projects/:id/applications', () => {
       .send(validApplyBody);
 
     expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body);
+    expect(res.body).toEqual({ error: { message: 'Project is not accepting applications' } });
 
-    // What closed the project and rejected the sibling application is the lazy sweep —
-    // `closeExpiredOpenProjects()`, which `apply` awaits as its first statement, in the sweep's
-    // own `$transaction` — *not* `apply`'s in-handler `deadline < now` branch. That branch reads
-    // the project after the sweep has already flipped it to CLOSED, so `status === 'OPEN'` is
-    // false and the branch is unreachable; the request falls through to the not-OPEN guard.
-    // That dead branch and its 'Project deadline has passed' message are tracked in issue #39.
+    // The lazy sweep (`closeExpiredOpenProjects()`, `apply`'s first step) closed the project and
+    // rejected the sibling application before the status check saw it.
     const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(after.status).toBe('CLOSED');
     const rejected = await prisma.application.findUniqueOrThrow({ where: { id: pending.id } });
@@ -640,11 +636,14 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     });
   }
 
-  /** Polls, on a pool connection, until `count` sessions of this database wait on a lock. */
-  async function waitForLockWaiters(count: number) {
+  /**
+   * Polls until `count` sessions of this database wait on a lock. Runs on the side client, never
+   * the app's pool: the app's blocked transactions may hold every connection there (`sideClient`).
+   */
+  async function waitForLockWaiters(side: ReturnType<typeof sideClient>, count: number) {
     const giveUpAt = Date.now() + 5_000;
     for (;;) {
-      const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+      const [{ waiting }] = await side.$queryRaw<{ waiting: number }[]>`
         SELECT count(*)::int AS waiting FROM pg_stat_activity
          WHERE datname = current_database() AND wait_event_type = 'Lock'`;
       if (waiting >= count) return;
@@ -1134,16 +1133,22 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     it('answers the losing accept 409, not a deadlock 500, when two accepts interleave', async () => {
       const s = await scenario();
 
+      // The holder and the poll run on their own pool — see `sideClient`.
+      const side = sideClient();
       let first: Promise<Answer> | undefined;
       let second: Promise<Answer> | undefined;
-      await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "Application" WHERE "id" = ${s.chosen.id} FOR UPDATE`;
+      try {
+        await side.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "id" FROM "Application" WHERE "id" = ${s.chosen.id} FOR UPDATE`;
 
-        first = started(authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' }));
-        await waitForLockWaiters(1);
-        second = started(authed(s.client).patch(url(s.project.id, s.otherA.id)).send({ status: 'ACCEPTED' }));
-        await waitForLockWaiters(2);
-      }, { timeout: 15_000 });
+          first = started(authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' }));
+          await waitForLockWaiters(side, 1);
+          second = started(authed(s.client).patch(url(s.project.id, s.otherA.id)).send({ status: 'ACCEPTED' }));
+          await waitForLockWaiters(side, 2);
+        }, { timeout: 10_000 });
+      } finally {
+        await side.$disconnect();
+      }
 
       const [a, b] = await Promise.all([first!, second!]);
       expect([a.status, b.status].sort()).toEqual([200, 409]);
@@ -1153,19 +1158,24 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(
         await prisma.application.count({ where: { projectId: s.project.id, status: 'ACCEPTED' } }),
       ).toBe(1);
-    });
+    }, 20_000);
 
     it('404s an accept that was waiting on the project while the project was deleted', async () => {
       const s = await scenario();
 
+      const side = sideClient();
       let pending: Promise<Answer> | undefined;
-      await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${s.project.id} FOR UPDATE`;
+      try {
+        await side.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${s.project.id} FOR UPDATE`;
 
-        pending = started(authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' }));
-        await waitForLockWaiters(1);
-        await tx.project.update({ where: { id: s.project.id }, data: { deletedAt: new Date() } });
-      }, { timeout: 15_000 });
+          pending = started(authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' }));
+          await waitForLockWaiters(side, 1);
+          await tx.project.update({ where: { id: s.project.id }, data: { deletedAt: new Date() } });
+        }, { timeout: 10_000 });
+      } finally {
+        await side.$disconnect();
+      }
 
       const res = await pending!;
       expect(res.status).toBe(404);
@@ -1173,7 +1183,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(await prisma.contract.count()).toBe(0);
       const chosen = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
       expect(chosen.status).toBe('PENDING');
-    });
+    }, 20_000);
 
     it('never leaves a project with two contracts after a burst of accepts', async () => {
       const s = await scenario();

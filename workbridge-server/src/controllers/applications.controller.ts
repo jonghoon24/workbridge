@@ -19,6 +19,9 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
     const { coverLetter, expectedRate, expectedDuration } = req.body;
     const projectId = req.params.id;
 
+    // The sweep closes every project whose deadline has passed (and rejects its pending
+    // applications), so an `OPEN` project read after it is still before its deadline. A past
+    // deadline therefore surfaces as the not-OPEN 400 below — there is no separate deadline check.
     await closeExpiredOpenProjects();
 
     const project = await prisma.project.findFirst({
@@ -27,18 +30,6 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
 
     if (!project) {
       throw new AppError('Project not found', 404);
-    }
-
-    if (project.status === 'OPEN' && project.deadline < new Date()) {
-      await prisma.$transaction(async (tx) => {
-        await tx.project.update({
-          where: { id: projectId },
-          data: { status: 'CLOSED' },
-        });
-
-        await rejectPendingApplicationsForClosedProjects({ projectId }, tx);
-      });
-      throw new AppError('Project deadline has passed', 400);
     }
 
     if (project.status !== 'OPEN') {

@@ -181,7 +181,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | --- | --- |
 | `Contract` | 마일스톤 계획 교체, 승인(수동·자동 — 마지막 두 마일스톤 동시 승인 직렬화) |
 | `Project` | 프로젝트 삭제(완료되지 않은 계약 확인과 소프트 삭제를 한 잠금 안에서), 지원 수락(트랜잭션의 첫 문장 — 같은 프로젝트의 수락을 한 번에 하나로 직렬화) |
-| `User`(프리랜서 본인) | 지급 계좌 PUT/DELETE, 지급 결정, 포트폴리오 생성·삭제·순서 변경, 경력 생성, 알림 설정 PUT |
+| `User`(프리랜서 본인) | 지급 계좌 PUT/DELETE, 지급 결정, 주간 정산 배치(프리랜서마다), 포트폴리오 생성·삭제·순서 변경, 경력 생성, 알림 설정 PUT |
 | `Conversation` | 메시지·시스템 메시지 게시(항상 이벤트 트랜잭션의 마지막 쓰기) |
 | `ConversationParticipant` | 읽음 처리, 미확인 메시지 다이제스트 |
 
@@ -192,6 +192,12 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 시스템 메시지를 붙일 때도 마지막에 부른다. 지원 수락은 다른 무엇보다 먼저 `Project`를 잠근다. 그러지 않으면 같은
 프로젝트의 두 수락이 각자 자기 지원을 잠근 뒤 상대의 지원을 거절하려고 서로 기다려 교착한다(`40P01`). 예외로 결제 확인과 dev-complete는 `Payment`를 `Milestone`보다 먼저 쓴다.
 `ConversationParticipant`는 다른 잠금과 함께 잡지 않는다.
+
+정산은 `User` → `Settlement` 순서다. 지급 결정과 주간 정산 배치(`settleFreelancer`) 모두 프리랜서의 사용자 행을
+트랜잭션의 첫 문장으로 잠근 뒤 정산 행을 조건부 쓰기로 잡는다. 배치가 정산 행부터 잡으면 교착한다([#79](https://github.com/jonghoon24/workbridge/issues/79)에서 고침):
+배치가 같은 트랜잭션에서 정산 행을 두 번째로 `UPDATE`할 때 Postgres는 자기 트랜잭션이 만든 행 버전이라 FK 검사를
+생략하지 않고 `Settlement.freelancerId → User`에 `FOR KEY SHARE`를 요청하는데, 그 사용자 행을 쥔 지급 결정이 정산 행을
+기다리고 있기 때문이다. 같은 트랜잭션에서 한 행을 두 번 쓰면 FK가 가리키는 부모 행도 잠긴다는 점을 잠금 순서에 넣어 둔다.
 
 **계약 서명은 `FOR UPDATE` 없이 직렬화된다.** `prisma.contract.update`는 `UPDATE … RETURNING` 한 문장으로 컴파일되어
 그 행의 잠금을 잡는다. 두 당사자가 동시에 서명하면 두 번째 `UPDATE`가 첫 번째의 커밋을 기다린 뒤 커밋된 값 위에
