@@ -174,14 +174,14 @@ describe('POST /api/auth/signup', () => {
     expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
   });
 
-  // Trimmed, but not lowercased: email normalization is still open (#21).
-  it('stores the email trimmed but with its case kept', async () => {
+  it('stores the email trimmed and lowercased', async () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, email: '  NewUser@Test.local ' });
 
     expect(res.status).toBe(201);
-    expect(res.body.user.email).toBe('NewUser@Test.local');
+    expect(res.body.user.email).toBe('newuser@test.local');
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: res.body.user.id } });
-    expect(stored.email).toBe('NewUser@Test.local');
+    expect(stored.email).toBe('newuser@test.local');
+    expect(claims(res.body.accessToken).email).toBe('newuser@test.local');
   });
 
   it.each(['a', 'short12', '1234567'])('rejects a password shorter than 8 characters (%s) with 400', async (password) => {
@@ -219,6 +219,16 @@ describe('POST /api/auth/signup', () => {
     const res = await api()
       .post('/api/auth/signup')
       .send({ ...valid, email: existing.email });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'Email already in use' } });
+    expect(await prisma.user.count()).toBe(1);
+  });
+
+  it('rejects an email that differs from an existing one only by case with 409', async () => {
+    await makeUser({ email: 'taken@test.local' });
+
+    const res = await api().post('/api/auth/signup').send({ ...valid, email: 'Taken@TEST.local' });
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: { message: 'Email already in use' } });
@@ -369,6 +379,19 @@ describe('POST /api/auth/login', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.user.email).toBe('padded@test.local');
+  });
+
+  it('logs in with the email in a different case than it was typed at signup', async () => {
+    const signup = await api()
+      .post('/api/auth/signup')
+      .send({ email: 'Mixed.Case@Test.local', password: TEST_PASSWORD, name: 'Mixed', role: 'CLIENT' });
+    expect(signup.status).toBe(201);
+
+    const res = await api().post('/api/auth/login').send({ email: 'MIXED.case@test.LOCAL', password: TEST_PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user.id).toBe(signup.body.user.id);
+    expect(res.body.user.email).toBe('mixed.case@test.local');
   });
 
   it('rejects a blank email as missing', async () => {
@@ -1060,6 +1083,17 @@ describe('GET /api/auth/google/callback', () => {
     expect(claims(refreshCookieToken(res), REFRESH_SECRET).id).toBe(stored.id);
   });
 
+  it('stores a new Google user\'s email trimmed and lowercased', async () => {
+    stubGoogle(googleProfile({ email: ' Gmail.Person@Test.LOCAL ' }));
+
+    const res = await googleCallback('code');
+
+    const location = new URL(res.headers.location);
+    expect(location.pathname).toBe('/auth/callback');
+    const stored = await prisma.user.findFirstOrThrow({ where: { googleId: 'google-uid-1' } });
+    expect(stored.email).toBe('gmail.person@test.local');
+  });
+
   it('exchanges the code and fetches the profile with the returned access token', async () => {
     stubGoogle();
 
@@ -1109,6 +1143,18 @@ describe('GET /api/auth/google/callback', () => {
     expect(refreshCookie(res)).toBeUndefined();
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: victim.id } });
     expect(stored.googleId).toBeNull();
+    expect(await prisma.user.count()).toBe(1);
+  });
+
+  it('treats a Google email differing only by case from a password account as the same address', async () => {
+    const victim = await makeClient({ email: 'victim@test.local' });
+    stubGoogle(googleProfile({ id: 'attacker-google-uid', email: 'Victim@TEST.local' }));
+
+    const res = await googleCallback('code');
+
+    expect(res.headers.location).toBe(`${CLIENT_URL}/login?error=email_account_exists`);
+    expect(refreshCookie(res)).toBeUndefined();
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: victim.id } })).googleId).toBeNull();
     expect(await prisma.user.count()).toBe(1);
   });
 

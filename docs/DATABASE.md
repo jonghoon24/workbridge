@@ -24,7 +24,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
-| **User** | 의뢰인(`CLIENT`) 또는 프리랜서(`FREELANCER`) | `email` unique, `password`(OAuth 전용 계정은 null), `googleId` unique, `roleSelected`(OAuth 첫 로그인 역할 선택 여부), 의뢰인 필드 `companyName`/`businessField`/`website`, 프리랜서 필드 `skills String[]`/`activityCategory`/`experienceYears`/`hourlyRate Float`/`portfolioUrl`, `deletedAt`(소프트 삭제) |
+| **User** | 의뢰인(`CLIENT`) 또는 프리랜서(`FREELANCER`) | `email` unique(앞뒤 공백 없는 소문자로만 저장 — `normalizeEmail`), `password`(OAuth 전용 계정은 null), `googleId` unique, `roleSelected`(OAuth 첫 로그인 역할 선택 여부), 의뢰인 필드 `companyName`/`businessField`/`website`, 프리랜서 필드 `skills String[]`/`activityCategory`/`experienceYears`/`hourlyRate Float`/`portfolioUrl`, `deletedAt`(소프트 삭제) |
 | **Project** | 의뢰인이 올린 외주 프로젝트 | `budget Float`, `recruitmentStartDate`, `deadline`, `requiredSkills String[]`, `status`, `deletedAt`. 인덱스 `[status, createdAt]`, `[status, deadline]`, `[status, budget]`, `[clientId]`(아래 "인덱스") |
 | **ProjectBookmark** | 프리랜서의 북마크 | `(projectId, userId)` unique |
 | **Application** | 프리랜서의 지원 | `expectedRate Float`(계약 금액이 된다), `expectedDuration`, `status`, `(projectId, freelancerId)` unique, 인덱스 `[freelancerId]` |
@@ -257,6 +257,7 @@ DB를 통째로 읽은 사람(백업, SQL 접근)도 키 없이는 계좌번호�
 | `20261108143952_add_list_and_foreign_key_indexes` | 인덱스만 추가: `Project` 4개, `Application[freelancerId]`, `Contract[clientId]`·`[freelancerId]`, `Payment[clientId]`, `Review[revieweeId]`("인덱스" 참고). 데이터 변경 없음 |
 | `20261110082231_array_columns_reject_null_elements` | 문자열 배열 컬럼 5개에 `NULL` 원소를 막는 CHECK 제약("관계와 불변식"). 제약을 걸기 전에 이미 있던 `NULL` 원소를 `array_remove`로 지운다(원소만 지우고 행과 나머지 원소는 그대로) |
 | `20261110082927_add_payment_confirm_started_at` | `Payment.confirmStartedAt`(nullable) 추가. 기존 행은 null(선점 없음). 데이터 변경 없음 |
+| `20261110084919_normalize_user_email` | 데이터만: 모든 `User.email`(탈퇴 포함)을 앞뒤 공백 제거 + 소문자로 바꾼다. 정규화하면 같아지는 주소가 둘 이상이면 아무것도 바꾸지 않고 이유를 밝히며 실패한다(어느 계정을 남길지는 사람이 정한다). 스키마 변경 없음 |
 | `20261110090000_private_attachment_storage` | 첨부를 비공개 버킷으로: `MessageAttachment`·`MilestoneAttachment`에 `storageKey`(unique), `url`을 nullable로, 둘 중 하나는 있어야 하는 CHECK. `AttachmentUpload`와 `AttachmentUploadScope`. 데이터 변경 없음(예전 행은 공개 URL 그대로, 이전은 `scripts/migrate-legacy-attachments.ts`) |
 
 - **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. float를 그대로 반올림하면 1원 어긋나므로 numeric으로 바꿔 반올림한다(위 "금액이 `Float`인 부채"). 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
