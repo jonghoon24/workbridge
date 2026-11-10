@@ -27,7 +27,8 @@ router.post(
   validate({ body: loginBody }),
   login,
 );
-router.post('/logout', authenticate, logout);
+// Public: logging out only clears the refresh cookie, so it must work after the access token expired.
+router.post('/logout', logout);
 router.post('/refresh', refresh);
 router.post('/select-role', authenticate, validate({ body: selectRoleBody }), selectRole);
 router.get('/google', googleAuth);

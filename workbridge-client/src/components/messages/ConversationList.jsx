@@ -5,15 +5,51 @@ import Badge from '@/components/ui/Badge';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
 import UnreadBadge from './UnreadBadge';
 import { formatListTime, previewText } from './messageUtils';
-import { MessageIcon } from '@/components/ui/Icons';
+import { MessageIcon, SearchIcon } from '@/components/ui/Icons';
 
-// 대화방 목록. 정렬은 서버 순서(마지막 메시지 최신순) 그대로다.
-export default function ConversationList({ conversations, activeId, loading, error }) {
+// 검색어와 맞는 부분(대소문자 무시)을 강조한다. 서버의 검색 규칙(부분 일치)과 같다.
+function Highlight({ text, query }) {
+  if (!text || !query) return text || null;
+  const lower = text.toLowerCase();
+  const needle = query.toLowerCase();
+  const parts = [];
+  let from = 0;
+  let at = lower.indexOf(needle);
+  while (at !== -1) {
+    if (at > from) parts.push(text.slice(from, at));
+    parts.push(
+      <mark key={at} className="rounded-sm bg-yellow-100 px-0.5 text-inherit">{text.slice(at, at + needle.length)}</mark>,
+    );
+    from = at + needle.length;
+    at = lower.indexOf(needle, from);
+  }
+  if (from < text.length) parts.push(text.slice(from));
+  return parts;
+}
+
+// 대화방 목록. 정렬은 서버 순서(마지막 메시지 최신순) 그대로다. `searchQuery`는 지금 보이는 결과의 검색어다.
+export default function ConversationList({ conversations, activeId, loading, error, searchQuery = '', onClearSearch }) {
   if (loading) {
     return <div className="p-6 text-center text-sm text-gray-500">대화방을 불러오는 중...</div>;
   }
   if (error) {
     return <div className="m-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>;
+  }
+  if (conversations.length === 0 && searchQuery) {
+    return (
+      <div className="flex flex-col items-center px-6 py-12 text-center">
+        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-gray-100 text-gray-400">
+          <SearchIcon className="h-5 w-5" />
+        </div>
+        <p className="text-sm font-semibold text-gray-900 break-all">‘{searchQuery}’ 검색 결과가 없습니다.</p>
+        <p className="mt-1 text-xs leading-5 text-gray-500">프로젝트 제목이나 상대방 이름의 일부로 검색해 보세요.</p>
+        {onClearSearch && (
+          <button type="button" onClick={onClearSearch} className="mt-3 text-sm font-medium text-primary-600 hover:text-primary-700">
+            검색어 지우기
+          </button>
+        )}
+      </div>
+    );
   }
   if (conversations.length === 0) {
     return (
@@ -42,7 +78,9 @@ export default function ConversationList({ conversations, activeId, loading, err
             >
               <div className="flex items-center justify-between gap-2">
                 <span className={`truncate text-sm ${unread > 0 ? 'font-semibold text-gray-900' : 'font-medium text-gray-800'}`}>
-                  {conversation.counterpart?.name || '알 수 없는 사용자'}
+                  {conversation.counterpart?.name
+                    ? <Highlight text={conversation.counterpart.name} query={searchQuery} />
+                    : '알 수 없는 사용자'}
                   <span className="ml-1.5 text-xs font-normal text-gray-500">
                     {conversation.myRole === 'CLIENT' ? '프리랜서' : '의뢰인'}
                   </span>
@@ -52,7 +90,9 @@ export default function ConversationList({ conversations, activeId, loading, err
                 </span>
               </div>
               <div className="mt-0.5 flex items-center gap-2">
-                <span className="truncate text-xs text-gray-500">{conversation.project?.title}</span>
+                <span className="truncate text-xs text-gray-500">
+                  <Highlight text={conversation.project?.title} query={searchQuery} />
+                </span>
                 <Badge variant={conversation.contract?.status} className="shrink-0 !px-1.5 !py-0 text-[10px]">
                   {CONTRACT_STATUS_LABELS[conversation.contract?.status] || conversation.contract?.status}
                 </Badge>

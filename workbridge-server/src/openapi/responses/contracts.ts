@@ -151,14 +151,12 @@ export const contractDetail = z
     client: z.object({
       id,
       name: z.string(),
-      email: z.string(),
       companyName: z.string().nullable(),
       profileImage: z.string().nullable(),
     }),
     freelancer: z.object({
       id,
       name: z.string(),
-      email: z.string(),
       skills: z.array(z.string()),
       profileImage: z.string().nullable(),
     }),
