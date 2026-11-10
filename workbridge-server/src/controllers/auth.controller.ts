@@ -10,6 +10,7 @@ import { normalizeEmail } from '../lib/email';
 import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
 import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
+import { logger } from '../lib/logger';
 import { clientUrl } from '../lib/clientUrl';
 import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index';
 import type { GoogleCallbackQuery, LoginInput, SelectRoleInput, SignupInput } from '../schemas/auth';
@@ -176,7 +177,7 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
     });
 
     res.cookie(OAUTH_STATE_COOKIE, state, { ...oauthStateCookieOptions(), maxAge: OAUTH_STATE_MAX_AGE_MS });
-    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
   } catch (err) {
     next(err);
   }
@@ -212,7 +213,7 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
     }
 
     // Exchange code for tokens
-    const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
+    const tokenResponse = await axios.post<{ access_token: string }>('https://oauth2.googleapis.com/token', {
       code,
       client_id: env.GOOGLE_CLIENT_ID,
       client_secret: env.GOOGLE_CLIENT_SECRET,
@@ -223,9 +224,13 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
     const { access_token } = tokenResponse.data;
 
     // Get user info
-    const userInfoResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
+    // Google's userinfo response; `id` and `email` are checked below before anything uses them.
+    const userInfoResponse = await axios.get<{ id?: unknown; email?: unknown; name: string; picture?: string }>(
+      'https://www.googleapis.com/oauth2/v2/userinfo',
+      {
+        headers: { Authorization: `Bearer ${access_token}` },
+      },
+    );
 
     const { id: googleId, email: rawEmail, name, picture } = userInfoResponse.data;
     // Stored and compared in the same form as signup and login, so the same-email check below also
@@ -280,9 +285,9 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
       needsRoleSelection: String(needsRoleSelection),
     });
 
-    res.redirect(`${client}/auth/callback?${params}`);
+    res.redirect(`${client}/auth/callback?${params.toString()}`);
   } catch (err) {
-    console.error('Google OAuth error:', err);
+    logger.warn('google oauth failed', { err });
     res.redirect(`${client}/login?error=oauth_failed`);
   }
 }

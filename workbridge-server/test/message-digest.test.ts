@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { User } from '@prisma/client';
 
 import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
@@ -200,7 +199,7 @@ describe('unread digest — throttle path', () => {
     const b = await makeContractScenario({ contract: { freelancerId: a.freelancer.id } });
     // A recent digest for the same recipient in another conversation, and one for the other party.
     await makeEmailDelivery(a.freelancer, { type: 'MESSAGE_UNREAD_DIGEST', contextKey: `conversation:${b.conversation.id}`, createdAt: at(0) });
-    await makeEmailDelivery(a.client as User, { type: 'MESSAGE_UNREAD_DIGEST', contextKey: `conversation:${a.conversation.id}`, createdAt: at(0) });
+    await makeEmailDelivery(a.client, { type: 'MESSAGE_UNREAD_DIGEST', contextKey: `conversation:${a.conversation.id}`, createdAt: at(0) });
     // A non-digest email with the same context does not count either.
     await makeEmailDelivery(a.freelancer, { type: 'MILESTONE_FUNDED', contextKey: null, createdAt: at(0) });
     await makeMessage(a.conversation.id, a.client.id, { createdAt: at(1) });

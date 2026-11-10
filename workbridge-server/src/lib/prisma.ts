@@ -2,7 +2,6 @@ import { PrismaClient } from '@prisma/client';
 
 declare global {
   // Reused across dev hot reloads so we don't exhaust the connection pool.
-  // eslint-disable-next-line no-var
   var prisma: PrismaClient | undefined;
 }
 

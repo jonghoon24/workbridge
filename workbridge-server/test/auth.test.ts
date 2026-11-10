@@ -38,7 +38,7 @@ type WithHeaders = { headers: Record<string, unknown> };
 function setCookies(res: WithHeaders): string[] {
   const raw = res.headers['set-cookie'];
   if (!raw) return [];
-  return Array.isArray(raw) ? (raw as string[]) : [String(raw)];
+  return Array.isArray(raw) ? (raw as string[]) : [raw as string];
 }
 
 function refreshCookie(res: WithHeaders): string | undefined {
@@ -846,7 +846,7 @@ describe('GET /api/auth/google', () => {
     const res = await api().get('/api/auth/google');
 
     expect(res.status).toBe(302);
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.origin + location.pathname).toBe(
       'https://accounts.google.com/o/oauth2/v2/auth',
     );
@@ -864,7 +864,7 @@ describe('GET /api/auth/google', () => {
     const first = await api().get('/api/auth/google');
     const second = await api().get('/api/auth/google');
 
-    const state = new URL(first.headers.location as string).searchParams.get('state') as string;
+    const state = new URL(first.headers.location).searchParams.get('state') as string;
     expect(state.length).toBeGreaterThanOrEqual(32);
     const cookie = oauthStateCookie(first) as string;
     expect(cookie.split(';')[0]).toBe(`oauthState=${state}`);
@@ -872,7 +872,7 @@ describe('GET /api/auth/google', () => {
     expect(cookie).toMatch(/SameSite=Lax/i);
     expect(cookie).toMatch(/Path=\/api\/auth\/google/);
     expect(cookie).toMatch(/Max-Age=600/);
-    expect(new URL(second.headers.location as string).searchParams.get('state')).not.toBe(state);
+    expect(new URL(second.headers.location).searchParams.get('state')).not.toBe(state);
   });
 
   it('returns a 500 error response — not a crash — when Google env vars are missing', async () => {
@@ -1060,7 +1060,7 @@ describe('GET /api/auth/google/callback', () => {
     const res = await googleCallback('auth-code-123');
 
     expect(res.status).toBe(302);
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.origin + location.pathname).toBe(`${CLIENT_URL}/auth/callback`);
     expect(location.searchParams.get('needsRoleSelection')).toBe('true');
 
@@ -1088,7 +1088,7 @@ describe('GET /api/auth/google/callback', () => {
 
     const res = await googleCallback('code');
 
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.pathname).toBe('/auth/callback');
     const stored = await prisma.user.findFirstOrThrow({ where: { googleId: 'google-uid-1' } });
     expect(stored.email).toBe('gmail.person@test.local');
@@ -1119,7 +1119,7 @@ describe('GET /api/auth/google/callback', () => {
 
     const res = await googleCallback('code');
 
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.searchParams.get('needsRoleSelection')).toBe('false');
     expect(claims(location.searchParams.get('token') as string).id).toBe(existing.id);
     expect(await prisma.user.count()).toBe(1); // no second account
@@ -1187,7 +1187,7 @@ describe('GET /api/auth/google/callback', () => {
 
     const res = await googleCallback('code');
 
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.searchParams.get('needsRoleSelection')).toBe('true');
   });
 

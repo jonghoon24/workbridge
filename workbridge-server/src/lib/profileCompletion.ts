@@ -84,7 +84,7 @@ export const PROFILE_SCORE_RULES: Record<'CLIENT' | 'FREELANCER', readonly Score
  * `isProfileComplete` (the gate); `percent` is the weight of the done items. The two are independent.
  */
 export function getProfileCompletion(user: ProfileScoreInput, counts: ProfileCompletionCounts): ProfileCompletion {
-  const rules = PROFILE_SCORE_RULES[user.role as 'CLIENT' | 'FREELANCER'] ?? [];
+  const rules = PROFILE_SCORE_RULES[user.role] ?? [];
   const items = rules.map((rule) => ({ key: rule.key, weight: rule.weight, done: rule.done(user, counts) }));
 
   return {

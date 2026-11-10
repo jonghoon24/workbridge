@@ -54,7 +54,7 @@ rules로 보냈다. 80줄 안팎으로 유지한다.
 | PreToolUse `Edit\|Write\|MultiEdit` | `protect-migrations.sh` | 커밋된 마이그레이션은 preview·production에 적용되고 Prisma가 체크섬을 검사한다. 고치면 `migrate deploy`가 멈춘다. git에 없는 폴더(`--create-only` 직후 백필 단계)만 허용하고, 나머지는 exit 2로 막는다 |
 | PostToolUse `Edit\|Write\|MultiEdit` | `server-rules.sh` | `workbridge-server/src/**/*.ts`에 **방금 쓴 텍스트**에서 `console.`, 서비스·작업 핸들러의 `new Date()`, 호스트 시간대 getter/setter(`get`/`set` + `Date`·`Day`·`Hours`·`Month`·`FullYear`, `toLocaleDateString`)를 찾아 exit 2로 알린다. `toLocaleString`은 금액 포맷과 겹쳐 넣지 않았다. 파일 전체가 아니라 쓴 텍스트만 보는 것은 문서화된 기존 예외가 매번 다시 걸리지 않게 하려는 것이다 |
 | PostToolUse `Edit\|Write\|MultiEdit` | `regen-openapi.sh` | `workbridge-server/src/**/*.ts`를 고칠 때마다 `npm run openapi`로 `openapi.json`을 다시 만든다. 문서는 zod 스키마·OpenAPI 등록·라우트·Prisma enum에서 나와 어느 서버 파일이 바뀌어도 달라질 수 있다. 1초 안에 끝나고 DB가 필요 없다. 편집 도중이라 컴파일되지 않으면 조용히 넘어간다(typecheck와 CI가 잡는다). 사람이 직접 고친 경우는 `ci.yml`의 최신 검사가 잡는다 |
-| Stop | `stop-check.sh` | HEAD 이후 서버 `.ts`가 바뀌었으면 `npm run typecheck`, 클라이언트 `src/`가 바뀌었으면 `npm run lint -- --max-warnings=0`(CI와 같은 기준). 실패하면 마지막 30줄을 돌려주고 exit 2. `stop_hook_active`가 true면 바로 통과한다(무한 루프 방지) |
+| Stop | `stop-check.sh` | HEAD 이후 서버 `.ts`가 바뀌었으면 `npm run typecheck`, 서버 `.ts`·`.js`·`.mjs`가 바뀌었으면 서버 `npm run lint`, 클라이언트 `src/`가 바뀌었으면 `npm run lint -- --max-warnings=0`(CI와 같은 기준). 실패하면 마지막 30줄을 돌려주고 exit 2. `stop_hook_active`가 true면 바로 통과한다(무한 루프 방지) |
 
 **한계.** PostToolUse 훅은 편집이 일어난 뒤에 알린다. 막지 않고 고치게 한다. 텍스트 패턴이라 `req.user`나
 `deletedAt: null` 같은 의미 규칙은 잡지 못한다. 훅 스크립트는 `jq`가 필요하다.
@@ -84,7 +84,7 @@ rules로 보냈다. 80줄 안팎으로 유지한다.
 
 | 파일 | 트리거 | 왜 있는가 |
 |---|---|---|
-| `ci.yml` | PR, `main` 푸시 | 서버 typecheck·`prisma validate`·`openapi.json` 최신 검사·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint(`--max-warnings=0`)·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
+| `ci.yml` | PR, `main` 푸시 | 서버 typecheck·lint·`prisma validate`·`openapi.json` 최신 검사·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint(`--max-warnings=0`)·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
 | `e2e.yml` | PR, `main` 푸시 | Playwright E2E. 클라이언트에 단위 테스트가 없어서 핵심 흐름은 브라우저로만 확인된다 |
 | `claude-code-review.yml` | PR opened·synchronize·ready_for_review·reopened(드래프트 제외) | Claude가 `REVIEW.md`·`CLAUDE.md`와 바뀐 경로의 rules, PR 본문을 읽고 diff를 리뷰한다. 지적은 인라인 코멘트로 달고 `REVIEW.md` 위반에는 `REVIEW #n`을 붙인다. 푸시마다 다시 돌지만 자신이 이미 단 지적(`gh api …/pulls/<n>/comments`)은 다시 달지 않고, 실행마다 요약 코멘트 하나(새 지적 수와 REVIEW 항목별 건수, 이전 지적의 해결·남음)를 남긴다. 말투는 합니다체, `--max-turns 20`. 승인·변경 요청·코드 수정·푸시는 하지 않는다 — 머지 결정은 사람 몫이다 |
 | `claude.yml` | 이슈·PR 코멘트, PR 리뷰·리뷰 코멘트의 `@claude` 멘션, 이슈 opened·assigned(제목이나 본문에 `@claude`) | 멘션에 답하거나, 작업을 맡아 새 브랜치에 커밋·푸시하고 PR 템플릿을 채운 **드래프트 PR**을 연다(이미 열린 PR에서는 그 브랜치에 푸시만). 저장소의 `CLAUDE.md`·rules·스킬을 그대로 읽는다. 의존성 설치·Prisma 생성 단계가 있어 허용 커맨드 typecheck·lint와 `npm run openapi`가 실제로 돈다. 스키마나 `src/openapi/`를 바꿨으면 `openapi.json`을 다시 생성해 같은 커밋에 넣으라고 지시한다(`ci.yml`의 최신 검사를 통과하도록). 그 밖의 허용은 읽기 전용 git, `gh pr view`·`gh pr diff`·`gh pr create`, `gh issue view`. DB가 없어 vitest는 허용하지 않는다(테스트는 PR의 `ci.yml`). 트리거한 사람에게 쓰기 권한이 있어야 돈다 |

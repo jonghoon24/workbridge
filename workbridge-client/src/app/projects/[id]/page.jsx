@@ -144,11 +144,11 @@ export default function ProjectDetailPage() {
       setApplyError('지원서를 입력해 주세요.');
       return;
     }
-    // 제안 금액은 원 단위 정수다(서버도 소수를 400으로 거절한다). 숫자 입력칸은 '1.5'·'-1'·'1e6'을
+    // 희망 금액은 원 단위 정수다(서버도 소수를 400으로 거절한다). 숫자 입력칸은 '1.5'·'-1'·'1e6'을
     // 그대로 주고, 숫자가 아닌 입력은 ''을 준다 — 모두 여기서 걸린다.
     const rate = String(applyForm.expectedRate).trim();
     if (!/^\d+$/.test(rate) || Number(rate) < 1) {
-      setApplyError('제안 금액은 1원 이상의 원 단위 정수로 입력해 주세요.');
+      setApplyError('희망 금액은 1원 이상의 원 단위 정수로 입력해 주세요.');
       return;
     }
     if (!applyForm.expectedDuration.trim()) {
@@ -426,7 +426,7 @@ export default function ProjectDetailPage() {
             />
           </div>
           <Input
-            label="제안 금액 (원)"
+            label="희망 금액 (원)"
             type="number"
             min="1"
             step="1"

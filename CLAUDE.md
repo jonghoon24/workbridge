@@ -14,6 +14,7 @@ npm 패키지 두 개가 따로 있다(워크스페이스 툴 없음 — 커맨�
 ```bash
 npm run dev                          # tsx watch, http://localhost:4000
 npm run typecheck                    # src/와 test/에 tsc --noEmit
+npm run lint                         # typescript-eslint. 기존 `any`는 eslint-suppressions.json에 기록
 bash scripts/test-db.sh              # 로컬 workbridge_test 생성 + 마이그레이션 (URL 출력)
 npm test                             # 그 실제 Postgres로 vitest (~90초). 모든 테이블을 TRUNCATE
 npx vitest run test/<file>.test.ts   # 파일 하나
