@@ -23,7 +23,7 @@ router.patch('/read-all', authenticate, requireActiveUser, markAllNotificationsR
 router.patch('/:id/read', authenticate, requireActiveUser, markNotificationRead);
 
 // Notification preferences: open to either role, behind `requireActiveUser`. Guards per route
-// rather than `router.use`, so unmatched paths stay unmatched (#19).
+// rather than `router.use`, so unmatched paths stay unmatched and reach the final JSON 404.
 const guard = [authenticate, requireActiveUser];
 router.get('/preferences', ...guard, getMyNotificationPreferences);
 router.put('/preferences', ...guard, validate({ body: preferencesBody }), putMyNotificationPreferences);

@@ -111,9 +111,13 @@ export async function getProjects(_req: Request, res: Response, next: NextFuncti
     }
 
     if (search) {
+      // Prisma passes `contains` to ILIKE unescaped: `%` and `_` would be wildcards (`search=%`
+      // matched every project). Escape them, and the escape character itself (Postgres' default
+      // `\`), so the search matches literally.
+      const literal = search.replace(/[\\%_]/g, '\\$&');
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
+        { title: { contains: literal, mode: 'insensitive' } },
+        { description: { contains: literal, mode: 'insensitive' } },
       ];
     }
 
@@ -389,10 +393,15 @@ export async function deleteProject(req: AuthedRequest, res: Response, next: Nex
   }
 }
 
+/**
+ * The client's manual transitions only. `IN_PROGRESS` has none: signing moves a project there and
+ * approving the last milestone completes it, so a client cannot skip the milestones or cancel
+ * over a running contract.
+ */
 const validTransitions: ProjectStatusTransitions = {
   UPCOMING: ['OPEN', 'CANCELLED', 'CLOSED'],
   OPEN: ['CANCELLED', 'CLOSED'],
-  IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
+  IN_PROGRESS: [],
   COMPLETED: [],
   CANCELLED: [],
   CLOSED: [],

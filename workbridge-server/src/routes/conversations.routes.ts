@@ -21,7 +21,7 @@ import { conversationListQuery, messageBody, messageListQuery } from '../schemas
  * `GET /api/contracts/:id/conversation` lives on the contracts router instead.
  *
  * Guards are attached per route, never with `router.use`: an unmatched path must still fall
- * through to the HTML 404 (#19).
+ * through to the final JSON 404 rather than a guard's 401.
  */
 const router = Router();
 

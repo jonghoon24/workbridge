@@ -10,6 +10,7 @@ import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
 import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
 import { logger } from '../lib/logger';
+import { clientUrl } from '../lib/clientUrl';
 import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index';
 import type { GoogleCallbackQuery, LoginInput, SelectRoleInput, SignupInput } from '../schemas/auth';
 import jwt from 'jsonwebtoken';
@@ -158,6 +159,9 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
 // response. Do not remove it as dead weight.
 export async function googleAuth(req: Request, res: Response, next: NextFunction) {
   try {
+    // The callback can only send the browser back to `CLIENT_URL`; without it, fail here (500)
+    // rather than after the user has been through Google's consent screen.
+    clientUrl();
     // A fresh random `state` per attempt, kept in a cookie and echoed back by Google. The
     // callback accepts only a `state` equal to this browser's cookie, so a callback URL carrying
     // someone else's `code` cannot sign this browser in to their account.
@@ -178,7 +182,16 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
   }
 }
 
-export async function googleCallback(req: Request, res: Response, _next: NextFunction) {
+export async function googleCallback(req: Request, res: Response, next: NextFunction) {
+  // Every outcome below is a redirect to the frontend, so without its address there is nowhere to
+  // send the browser: a 500 that names `CLIENT_URL`, logged once by `errorHandler`.
+  let client: string;
+  try {
+    client = clientUrl();
+  } catch (err) {
+    return next(err);
+  }
+
   try {
     // Parsed by `googleCallbackQuery`: a missing, empty or malformed value reads as absent.
     const { code, state } = res.locals.query as GoogleCallbackQuery;
@@ -187,7 +200,7 @@ export async function googleCallback(req: Request, res: Response, _next: NextFun
     res.clearCookie(OAUTH_STATE_COOKIE, oauthStateCookieOptions());
 
     if (!code) {
-      return res.redirect(`${env.CLIENT_URL}/login?error=oauth_failed`);
+      return res.redirect(`${client}/login?error=oauth_failed`);
     }
 
     if (
@@ -195,7 +208,7 @@ export async function googleCallback(req: Request, res: Response, _next: NextFun
       || typeof expectedState !== 'string' || !expectedState
       || !safeEqual(state, expectedState)
     ) {
-      return res.redirect(`${env.CLIENT_URL}/login?error=oauth_failed`);
+      return res.redirect(`${client}/login?error=oauth_failed`);
     }
 
     // Exchange code for tokens
@@ -230,7 +243,7 @@ export async function googleCallback(req: Request, res: Response, _next: NextFun
     if (!user) {
       const sameEmail = await prisma.user.findFirst({ where: { email, deletedAt: null }, select: { id: true } });
       if (sameEmail) {
-        return res.redirect(`${env.CLIENT_URL}/login?error=email_account_exists`);
+        return res.redirect(`${client}/login?error=email_account_exists`);
       }
     }
 
@@ -264,10 +277,10 @@ export async function googleCallback(req: Request, res: Response, _next: NextFun
       needsRoleSelection: String(needsRoleSelection),
     });
 
-    res.redirect(`${env.CLIENT_URL}/auth/callback?${params.toString()}`);
+    res.redirect(`${client}/auth/callback?${params.toString()}`);
   } catch (err) {
     logger.warn('google oauth failed', { err });
-    res.redirect(`${env.CLIENT_URL}/login?error=oauth_failed`);
+    res.redirect(`${client}/login?error=oauth_failed`);
   }
 }
 

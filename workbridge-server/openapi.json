@@ -2198,6 +2198,14 @@
           "orderId": {
             "type": "string"
           },
+          "confirmStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "결제 승인 요청이 토스페이먼츠 확인을 시작한 시각. 그동안 같은 결제의 다른 승인 요청은 409"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -2212,6 +2220,7 @@
           "status",
           "paymentKey",
           "orderId",
+          "confirmStartedAt",
           "createdAt"
         ]
       },
@@ -2986,11 +2995,11 @@
             }
           },
           "404": {
-            "description": "`INTERNAL_JOB_TOKEN`이 설정되지 않음 — Express 기본 404 페이지(HTML)",
+            "description": "찾을 수 없음\n\n- `Not found` — `INTERNAL_JOB_TOKEN`이 설정되지 않음. 일치하는 경로가 없는 요청과 같은 응답이다",
             "content": {
-              "text/html": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3354,7 +3363,7 @@
           "Auth"
         ],
         "summary": "구글 로그인 시작",
-        "description": "구글 동의 화면으로 보낸다. 로그인 CSRF를 막는 `state`를 `oauthState` 쿠키(10분)에 둔다.",
+        "description": "구글 동의 화면으로 보낸다. 로그인 CSRF를 막는 `state`를 `oauthState` 쿠키(10분)에 둔다. 서버의 `CLIENT_URL`이 없거나 출처 하나가 아니면 동의 화면으로 보내지 않고 서버 오류로 답한다(설정 오류).",
         "security": [],
         "responses": {
           "302": {
@@ -3379,7 +3388,7 @@
           "Auth"
         ],
         "summary": "구글 로그인 콜백",
-        "description": "언제나 리디렉션으로 끝나고 400을 내지 않는다. 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, 실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다. 기존 계정과는 `googleId`로만 연결한다. 이 Google 계정과 연결되지 않은 계정이 같은 이메일을 쓰고 있으면 연결하지도 세션을 발급하지도 않고 `CLIENT_URL/login?error=email_account_exists`로 보낸다(Google이 이메일을 인증했어도 같다).",
+        "description": "400을 내지 않고 리디렉션으로 끝난다(서버의 `CLIENT_URL`이 없거나 출처 하나가 아닌 설정 오류만 서버 오류로 답한다). 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, 실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다. 기존 계정과는 `googleId`로만 연결한다. 이 Google 계정과 연결되지 않은 계정이 같은 이메일을 쓰고 있으면 연결하지도 세션을 발급하지도 않고 `CLIENT_URL/login?error=email_account_exists`로 보낸다(Google이 이메일을 인증했어도 같다).",
         "security": [],
         "parameters": [
           {
@@ -5749,7 +5758,8 @@
                 "ALL",
                 "UPCOMING",
                 "OPEN",
-                "CLOSED"
+                "CLOSED",
+                "IN_PROGRESS"
               ],
               "default": "OPEN"
             },
@@ -5800,7 +5810,7 @@
           {
             "schema": {
               "type": "string",
-              "description": "제목·설명에 들어 있는 글자(대소문자 무시)"
+              "description": "제목·설명에 들어 있는 글자(대소문자 무시, `%`·`_`도 글자 그대로)"
             },
             "required": false,
             "name": "search",
@@ -6495,7 +6505,7 @@
           "Projects"
         ],
         "summary": "프로젝트 상태 변경(소유 의뢰인)",
-        "description": "허용 전이: `UPCOMING`→`OPEN`·`CANCELLED`·`CLOSED`, `OPEN`→`CANCELLED`·`CLOSED`, `IN_PROGRESS`→`COMPLETED`·`CANCELLED`. `CLOSED`로 바꾸면 대기 중인 지원을 거절하고 지원자에게 알린다.",
+        "description": "허용 전이: `UPCOMING`→`OPEN`·`CANCELLED`·`CLOSED`, `OPEN`→`CANCELLED`·`CLOSED`. `IN_PROGRESS`(계약 서명으로 시작)와 `COMPLETED`(마지막 마일스톤 승인)는 시스템만 바꾼다. `CLOSED`로 바꾸면 대기 중인 지원을 거절하고 지원자에게 알린다.",
         "security": [
           {
             "bearerAuth": []
@@ -8876,6 +8886,14 @@
                       "orderId": {
                         "type": "string"
                       },
+                      "confirmStartedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "date-time",
+                        "description": "결제 승인 요청이 토스페이먼츠 확인을 시작한 시각. 그동안 같은 결제의 다른 승인 요청은 409"
+                      },
                       "createdAt": {
                         "type": "string",
                         "format": "date-time"
@@ -9016,6 +9034,7 @@
                       "status",
                       "paymentKey",
                       "orderId",
+                      "confirmStartedAt",
                       "createdAt",
                       "contract",
                       "milestone"
@@ -9133,7 +9152,7 @@
             }
           },
           "409": {
-            "description": "상태 충돌\n\n- `Payment has already been processed` — 대기 중인 결제가 아님",
+            "description": "상태 충돌\n\n- `Payment has already been processed` — 대기 중인 결제가 아니거나, 같은 결제의 다른 승인 요청이 진행 중",
             "content": {
               "application/json": {
                 "schema": {

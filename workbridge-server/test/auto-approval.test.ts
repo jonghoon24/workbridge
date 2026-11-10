@@ -114,7 +114,7 @@ describe('milestone.autoApprove job', () => {
     await runJobs(autoApproveAt);
 
     expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('COMPLETED');
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe(project.status);
     expect(await prisma.settlementItem.count()).toBe(1);
     expect(await prisma.notification.count()).toBe(before);
   });

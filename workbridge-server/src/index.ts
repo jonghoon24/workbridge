@@ -10,6 +10,7 @@ import cookieParser from 'cookie-parser';
 
 import { env } from './env';
 import { logger } from './lib/logger';
+import { corsOrigins } from './lib/clientUrl';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/users.routes';
 import profileRoutes from './routes/profile.routes';
@@ -25,6 +26,7 @@ import conversationRoutes from './routes/conversations.routes';
 import internalRoutes from './routes/internal.routes';
 import docsRoutes from './routes/docs.routes';
 import { errorHandler } from './middlewares/errorHandler';
+import { notFound } from './middlewares/notFound';
 import { accessLog } from './middlewares/accessLog';
 import { bindRequestContext, requestId } from './middlewares/requestId';
 import { startJobWorker } from './jobs/worker';
@@ -51,20 +53,15 @@ if (env.TRUST_PROXY) {
   app.set('trust proxy', parseTrustProxy(env.TRUST_PROXY));
 }
 
-const parseOrigins = (value: string | undefined): string[] => (value || '')
-  .split(',')
-  .map((origin) => origin.trim().replace(/\/$/, ''))
-  .filter(Boolean);
+// `CLIENT_URL` (one origin) plus `CORS_ORIGINS` (a list), read once at boot (`lib/clientUrl.ts`).
+// An unusable `CLIENT_URL` does not stop the server; it is left out of CORS and reported here, and
+// the Google login and email links fail with the same reason when they need it.
+const { origins: allowedOrigins, problem: clientUrlProblem } = corsOrigins();
 
-const allowedOrigins = new Set([
-  ...parseOrigins(env.CLIENT_URL),
-  ...parseOrigins(env.CORS_ORIGINS),
-  ...(!isProduction ? ['http://localhost:3000'] : []),
-]);
-
-const hasAllowedOrigins = allowedOrigins.size > 0;
-
-if (isProduction && !hasAllowedOrigins) {
+if (clientUrlProblem) {
+  logger.warn('CLIENT_URL is unusable: Google login and email links will fail', { error: clientUrlProblem });
+}
+if (isProduction && allowedOrigins.size === 0) {
   logger.warn('CLIENT_URL or CORS_ORIGINS must be set for browser CORS requests.');
 }
 
@@ -123,6 +120,8 @@ app.use('/api/internal', internalRoutes);
 // `GET /api/docs` and `GET /api/openapi.json`. Last, and touching no other router's paths.
 app.use('/api', docsRoutes);
 
+// After every router: whatever reaches here matched no route — a JSON 404, not Express's HTML page.
+app.use(notFound);
 app.use(errorHandler);
 
 // Also skipped under test: supertest spins up its own ephemeral server per request, so

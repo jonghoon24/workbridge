@@ -19,7 +19,8 @@
     "db:push": "prisma db push",
     "db:seed": "node prisma/seed.js",
     "jobs:run": "tsx src/jobs/cli.ts --once",
-    "jobs:worker": "tsx src/jobs/cli.ts"
+    "jobs:worker": "tsx src/jobs/cli.ts",
+    "payout:encrypt-accounts": "tsx src/scripts/encrypt-payout-accounts.ts"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
