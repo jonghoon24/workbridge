@@ -439,6 +439,29 @@ describe('GET /api/projects', () => {
       expect(res.body.meta.total).toBe(0);
     });
 
+    it.each([
+      ['%', '%25'],
+      ['_', '_'],
+      ['a backslash', '%5C'],
+    ])('treats %s in the search as a literal character, not a wildcard', async (_label, encoded) => {
+      const res = await api().get(`/api/projects?search=${encoded}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.projects).toEqual([]);
+      expect(res.body.meta.total).toBe(0);
+    });
+
+    it('matches only titles that really contain % and _, not lookalikes', async () => {
+      await makeProject(clientId, { title: 'Cut costs by 50% on cloud_run', description: 'Ops' });
+      await makeProject(clientId, { title: 'Scale to 500 nodes on cloudXrun', description: 'Ops' });
+
+      const percent = await api().get('/api/projects?search=50%25');
+      const underscore = await api().get('/api/projects?search=cloud_run');
+
+      expect(titles(percent.body)).toEqual(['Cut costs by 50% on cloud_run']);
+      expect(titles(underscore.body)).toEqual(['Cut costs by 50% on cloud_run']);
+    });
+
     it('ignores an empty search value', async () => {
       const res = await api().get('/api/projects?search=');
 
