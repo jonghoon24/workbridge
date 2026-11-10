@@ -9,7 +9,7 @@ import {
   startOfKstWindow,
 } from '../src/lib/time';
 
-/** KST helpers — BEHAVIOR.md rule 11 (fixed UTC+9, no DST). Pure functions. */
+/** KST helpers (fixed UTC+9, no DST). Pure functions. */
 
 const iso = (date: Date) => date.toISOString();
 

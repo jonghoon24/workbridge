@@ -146,7 +146,12 @@ describe('POST /api/reviews', () => {
     expect(rows[0]!.content).toBe('First review.');
   });
 
-  const requiredFields = ['contractId', 'revieweeId', 'rating', 'content'] as const;
+  const requiredFields = [
+    ['contractId', 'contractId: Contract ID is required'],
+    ['revieweeId', 'revieweeId: Reviewee ID is required'],
+    ['rating', 'rating: Rating is required'],
+    ['content', 'content: Content is required'],
+  ] as const;
 
   /**
    * Every field except the one under test is a real, valid value from a real COMPLETED contract,
@@ -154,7 +159,7 @@ describe('POST /api/reviews', () => {
    * today purely because validation runs before the contract lookup — the moment that order
    * changed they would 404 and still look like a correct rejection.
    */
-  it.each(requiredFields)('rejects a request missing %s with 400', async (field) => {
+  it.each(requiredFields)('rejects a request missing %s with 400', async (field, message) => {
     const { contract, client, freelancer } = await completedScenario();
     const body: Record<string, unknown> = {
       contractId: contract.id,
@@ -167,22 +172,77 @@ describe('POST /api/reviews', () => {
     const res = await authed(client).post('/api/reviews').send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'All fields are required' } });
+    expect(res.body).toEqual({ error: { message } });
     expect(await prisma.review.count()).toBe(0);
   });
 
-  it('rejects an empty body with 400', async () => {
+  it('rejects an empty body with 400, reporting the first field', async () => {
     const client = await makeClient();
 
     const res = await authed(client).post('/api/reviews').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'All fields are required' } });
+    expect(res.body).toEqual({ error: { message: 'contractId: Contract ID is required' } });
   });
 
-  it('treats rating 0 as a missing field, not an out-of-range one', async () => {
-    // Documented quirk: `!rating` is falsy for 0, so the required-field check fires first and
-    // the message is "All fields are required" rather than "Rating must be between 1 and 5".
+  // Validation runs before the contract lookup, so an unknown contract with a bad body
+  // is a 400, not a 404.
+  it('validates the body before looking the contract up', async () => {
+    const client = await makeClient();
+
+    const res = await authed(client).post('/api/reviews').send({
+      contractId: '00000000-0000-4000-8000-000000000000',
+      revieweeId: '00000000-0000-4000-8000-000000000001',
+      rating: 9,
+      content: 'Unknown contract.',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+  });
+
+  it.each([
+    ['a blank content', { content: '   ' }, 'content: Content is required'],
+    ['a numeric content', { content: 5 }, 'content: Content must be a string'],
+    ['an empty contractId', { contractId: '' }, 'contractId: Contract ID is required'],
+    ['an object contractId', { contractId: { not: '' } }, 'contractId: Contract ID must be a string'],
+    ['a numeric revieweeId', { revieweeId: 12345 }, 'revieweeId: Reviewee ID must be a string'],
+    // JSON only: a numeric string is not coerced (the client sends a number).
+    ['a numeric-string rating', { rating: '5' }, 'rating: Rating must be an integer between 1 and 5'],
+    ['a null rating', { rating: null }, 'rating: Rating must be an integer between 1 and 5'],
+  ])('rejects %s with 400 rather than 500', async (_label, patch, message) => {
+    const { contract, client, freelancer } = await completedScenario();
+
+    const res = await authed(client).post('/api/reviews').send({
+      contractId: contract.id,
+      revieweeId: freelancer.id,
+      rating: 5,
+      content: 'Otherwise valid.',
+      ...patch,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+    expect(await prisma.review.count()).toBe(0);
+  });
+
+  it('stores the content trimmed', async () => {
+    const { contract, client, freelancer } = await completedScenario();
+
+    const res = await authed(client).post('/api/reviews').send({
+      contractId: contract.id,
+      revieweeId: freelancer.id,
+      rating: 4,
+      content: '  좋았습니다.  ',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.content).toBe('좋았습니다.');
+  });
+
+  it('rejects rating 0 as out of range', async () => {
+    // Before the zod schema, `!rating` caught 0 as a *missing* field ("All fields are
+    // required"); it is now an out-of-range value like any other.
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({
@@ -193,7 +253,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'All fields are required' } });
+    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -208,7 +268,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Rating must be between 1 and 5' } });
+    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -226,10 +286,10 @@ describe('POST /api/reviews', () => {
     expect(res.body.rating).toBe(rating);
   });
 
-  // 알려진 불일치 D9 — #4
-  // `rating < 1 || rating > 5` runs before coercion: both comparisons are false for
-  // "abc", then `parseInt('abc')` is NaN and Prisma rejects it — so this 500s today.
-  it.fails('rejects a non-numeric rating with 400 [D9]', async () => {
+  // Fixed by the zod schema (#4). `rating < 1 || rating > 5` used to run before coercion:
+  // both comparisons are false for "abc", then `parseInt('abc')` was NaN and Prisma rejected it
+  // with a 500.
+  it('rejects a non-numeric rating with 400', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({
@@ -240,11 +300,12 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(await prisma.review.count()).toBe(0);
   });
 
-  // 알려진 불일치 D9 — #4
-  // Same root cause with a different payload shape: an object escapes both comparisons.
-  it.fails('rejects an object rating with 400 [D9]', async () => {
+  // Same root cause with a different payload shape — an object escaped both comparisons.
+  it('rejects an object rating with 400', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({
@@ -255,15 +316,13 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(await prisma.review.count()).toBe(0);
   });
 
-  // 알려진 불일치 D9 — #4
-  // Same defect as the two cases above — "rating validated before coercion" — with a third
-  // symptom. 3.7 passes `rating < 1 || rating > 5`, then `parseInt` truncates it to 3, so the
-  // review is accepted with a rating the caller never sent. The spec requires "an integer between
-  // 1 and 5", so silent truncation is a divergence, not undecided behavior; D9's *Intended* column
-  // happens to name only the non-numeric symptom, but the root cause is identical.
-  it.fails('rejects a fractional rating with 400 [D9]', async () => {
+  // The third symptom: 3.7 passed the range check and `parseInt` truncated it to 3, so the review
+  // was accepted with a rating the caller never sent. A rating is an integer 1–5.
+  it('rejects a fractional rating with 400', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({
@@ -274,6 +333,8 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(await prisma.review.count()).toBe(0);
   });
 
   it('returns 403 for an outsider even when the contract is not COMPLETED', async () => {
@@ -397,11 +458,10 @@ describe('POST /api/reviews', () => {
     expect(res.body.tags).toEqual([]);
   });
 
-  // 알려진 불일치 D17 — #12
-  // `Array.isArray(tags)` is true for `[1, 2]`, so the array is handed to Prisma unchanged
-  // and rejected against the `String[]` column — a 500 today. Cross-cutting rule 8 requires a
-  // malformed value to be a 400. (Non-array tags are handled correctly and are covered above.)
-  it.fails('rejects a tags array of non-strings with 400 [D17]', async () => {
+  // Fixed by the zod schema (#12). `Array.isArray(tags)` is true for `[1, 2]`, so the array
+  // used to reach Prisma unchanged and be rejected against the `String[]` column — a 500. A
+  // malformed value is a 400. (Non-array tags still default to `[]`, covered above.)
+  it('rejects a tags array of non-strings with 400', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({
@@ -413,11 +473,11 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'tags.0: Tags must be strings' } });
   });
 
-  // The half of D17 that already holds: whichever status it is, the write must not land. Asserted
-  // as a plain `it` so the invariant is enforced now and survives the fix.
-  it('creates no review when tags is an array of non-strings [D17]', async () => {
+  // The half that already held before the fix: the write must not land.
+  it('creates no review when tags is an array of non-strings', async () => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({

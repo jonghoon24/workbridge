@@ -15,7 +15,7 @@ import { LockIcon } from '@/components/ui/Icons';
 
 const MAX_ITEMS = 20;
 
-// 포트폴리오 관리(BEHAVIOR.md PF9–PF12, PF16). 목록은 공개 GET을 내 id로 읽는다(PF19).
+// 포트폴리오 관리. 목록은 공개 GET을 내 id로 읽는다.
 export default function PortfolioManagePage() {
   const [me, setMe] = useState(null);
   const [items, setItems] = useState([]);
@@ -33,7 +33,7 @@ export default function PortfolioManagePage() {
         const { data: list } = await api.get(`/api/users/${data.id}/portfolio`);
         setItems(list.items);
       })
-      .catch((err) => setError(describeProfileError(err, '포트폴리오를 불러오지 못했습니다')))
+      .catch((err) => setError(describeProfileError(err, '포트폴리오를 불러오지 못했습니다.')))
       .finally(() => setLoading(false));
   }, []);
 
@@ -55,7 +55,7 @@ export default function PortfolioManagePage() {
       const { data } = await api.put('/api/users/me/portfolio/order', { ids: next.map((item) => item.id) });
       setItems(data.items);
     } catch (err) {
-      setError(describeProfileError(err, '순서를 저장하지 못했습니다'));
+      setError(describeProfileError(err, '순서를 저장하지 못했습니다.'));
       await reload().catch(() => {});
     } finally {
       setBusy(false);
@@ -70,7 +70,7 @@ export default function PortfolioManagePage() {
       await api.delete(`/api/users/me/portfolio/${item.id}`);
       setItems((current) => current.filter((entry) => entry.id !== item.id));
     } catch (err) {
-      setError(describeProfileError(err, '포트폴리오를 삭제하지 못했습니다'));
+      setError(describeProfileError(err, '포트폴리오를 삭제하지 못했습니다.'));
       await reload().catch(() => {});
     } finally {
       setBusy(false);
@@ -79,7 +79,7 @@ export default function PortfolioManagePage() {
 
   async function handleSaved() {
     setModal({ open: false, item: null });
-    await reload().catch(() => setError('목록을 새로 불러오지 못했습니다'));
+    await reload().catch(() => setError('목록을 새로 불러오지 못했습니다.'));
   }
 
   if (loading) return <PageLoader />;

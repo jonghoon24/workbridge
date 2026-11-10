@@ -15,7 +15,7 @@ import {
 import { DAY_MS, HOUR_MS } from '../src/lib/time';
 
 /**
- * Conversations — BEHAVIOR.md MG2–MG13, MG18, MG19, and the system messages of the events not
+ * Conversations — listing, reading and posting rules, and the system messages of the events not
  * covered next to their own routes (plan replacement, automatic approval, the full lifecycle).
  * Messages and cursors are in messages.test.ts; unread state and the digest in
  * message-read.test.ts. The 401/403 matrix is in authorization.test.ts.
@@ -26,7 +26,7 @@ type Scenario = Awaited<ReturnType<typeof makeContractScenario>>;
 /** A conversation as `GET /:id` returns it. */
 const getConversation = (user: Scenario['client'], id: string) => authed(user).get(`/api/conversations/${id}`);
 
-/** Soft-deletes `userId` (rule 5). */
+/** Soft-deletes `userId`. */
 const softDelete = (userId: string) => prisma.user.update({ where: { id: userId }, data: { deletedAt: new Date() } });
 
 /** The conversation's system events, oldest first. */
@@ -43,7 +43,7 @@ async function systemEvents(conversationId: string) {
 // ---------------------------------------------------------------------------------------------
 
 describe('GET /api/conversations/:id', () => {
-  it('returns the conversation object for either participant, without any email [MG13] [MG5]', async () => {
+  it('returns the conversation object for either participant, without any email', async () => {
     const { client, freelancer, project, contract, conversation } = await makeContractScenario();
     await prisma.conversationParticipant.updateMany({
       where: { conversationId: conversation.id, userId: freelancer.id },
@@ -86,7 +86,7 @@ describe('GET /api/conversations/:id', () => {
     });
   });
 
-  it('counts unread text from the other participant only [MG5] [MG8]', async () => {
+  it('counts unread text from the other participant only', async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     await makeMessage(conversation.id, freelancer.id);
     await makeMessage(conversation.id, freelancer.id);
@@ -102,11 +102,11 @@ describe('GET /api/conversations/:id', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Who may post (MG9)
+// Who may post
 // ---------------------------------------------------------------------------------------------
 
 describe('canSend, closedReason and closesAt', () => {
-  it.each(['PENDING', 'ACTIVE'] as const)('a %s contract is open with no closesAt [MG9]', async (status) => {
+  it.each(['PENDING', 'ACTIVE'] as const)('a %s contract is open with no closesAt', async (status) => {
     const { client, conversation } = await makeContractScenario({ contract: { status } });
 
     const res = await getConversation(client, conversation.id);
@@ -114,7 +114,7 @@ describe('canSend, closedReason and closesAt', () => {
     expect(res.body.conversation).toMatchObject({ canSend: true, closedReason: null, closesAt: null });
   });
 
-  it('a COMPLETED contract stays open until completedAt + 30 × 24 h, exclusive [MG9] [MG1]', async () => {
+  it('a COMPLETED contract stays open until completedAt + 30 × 24 h, exclusive', async () => {
     const justInside = new Date(Date.now() - 30 * DAY_MS + HOUR_MS);
     const { client, conversation } = await makeContractScenario({
       contract: { status: 'COMPLETED', completedAt: justInside },
@@ -130,7 +130,7 @@ describe('canSend, closedReason and closesAt', () => {
     });
   });
 
-  it('closes once now reaches closesAt [MG9]', async () => {
+  it('closes once now reaches closesAt', async () => {
     const completedAt = new Date(Date.now() - 30 * DAY_MS - 1000);
     const { client, conversation } = await makeContractScenario({ contract: { status: 'COMPLETED', completedAt } });
 
@@ -143,7 +143,7 @@ describe('canSend, closedReason and closesAt', () => {
     });
   });
 
-  it('a soft-deleted counterpart closes posting, and stays visible as stored [MG9] [MG10] (Q11)', async () => {
+  it('a soft-deleted counterpart closes posting, and stays visible as stored', async () => {
     const { client, freelancer, conversation } = await makeContractScenario({ contract: { status: 'ACTIVE' } });
     await softDelete(freelancer.id);
 
@@ -158,7 +158,7 @@ describe('canSend, closedReason and closesAt', () => {
     });
   });
 
-  it('the first matching row decides: closed beats an inactive counterpart [MG9]', async () => {
+  it('the first matching row decides: closed beats an inactive counterpart', async () => {
     const completedAt = new Date(Date.now() - 31 * DAY_MS);
     const { client, freelancer, conversation } = await makeContractScenario({ contract: { status: 'COMPLETED', completedAt } });
     await softDelete(freelancer.id);
@@ -210,7 +210,7 @@ describe('GET /api/conversations', () => {
     return { freelancer, silentOld, busy, silentNew, recent };
   }
 
-  it('orders by lastMessageAt desc, conversations without messages last by createdAt desc [MG11]', async () => {
+  it('orders by lastMessageAt desc, conversations without messages last by createdAt desc', async () => {
     const { freelancer, silentOld, busy, silentNew, recent } = await three();
 
     const res = await authed(freelancer).get('/api/conversations');
@@ -225,7 +225,7 @@ describe('GET /api/conversations', () => {
     ]);
   });
 
-  it('each entry is a conversation object plus lastMessage, the newest message or null [MG11] [MG4]', async () => {
+  it('each entry is a conversation object plus lastMessage, the newest message or null', async () => {
     const { freelancer, busy, silentOld } = await three();
 
     const res = await authed(freelancer).get('/api/conversations');
@@ -255,7 +255,7 @@ describe('GET /api/conversations', () => {
     expect(JSON.stringify(res.body)).not.toContain('@');
   });
 
-  it("shows a deleted newest message as a tombstone in lastMessage [MG11] [MG4]", async () => {
+  it("shows a deleted newest message as a tombstone in lastMessage", async () => {
     const { client, freelancer, conversation } = await makeContractScenario();
     const message = await makeMessage(conversation.id, freelancer.id, {
       body: '지울 메시지',
@@ -274,7 +274,7 @@ describe('GET /api/conversations', () => {
     expect(res.body.conversations[0].unreadCount).toBe(0);
   });
 
-  it('paginates with page and limit exactly as CT2, capping limit at 50 [MG11] [MG1]', async () => {
+  it('paginates with page and limit (default 20), capping limit at 50', async () => {
     const { freelancer, busy, recent, silentNew } = await three();
 
     const page1 = await authed(freelancer).get('/api/conversations?limit=2');
@@ -296,7 +296,7 @@ describe('GET /api/conversations', () => {
     ['page=2abc', 'page: must be an integer'],
     ['limit=1&limit=2', 'limit: must be a single value'],
     ['page=1000001', 'page: must be at most 1000000'],
-  ])('400s for %s [MG11] (CT2)', async (query, message) => {
+  ])('400s for a malformed paging parameter: %s', async (query, message) => {
     const user = await makeFreelancer();
 
     const res = await authed(user).get(`/api/conversations?${query}`);
@@ -305,7 +305,7 @@ describe('GET /api/conversations', () => {
     expect(res.body).toEqual({ error: { message } });
   });
 
-  it('leaves out conversations whose project is soft-deleted [MG10] [MG11]', async () => {
+  it('leaves out conversations whose project is soft-deleted', async () => {
     const kept = await makeContractScenario();
     // The conversation's participants follow the contract's parties (makeConversation).
     const gone = await makeContractScenario({ contract: { freelancerId: kept.freelancer.id } });
@@ -323,7 +323,7 @@ describe('GET /api/conversations', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('GET /api/conversations/unread-count', () => {
-  it('sums MG8 over the caller\'s conversations [MG12]', async () => {
+  it('sums the per-conversation unread counts over the caller\'s conversations', async () => {
     const a = await makeContractScenario();
     const b = await makeContractScenario({ contract: { freelancerId: a.freelancer.id } });
     await makeMessage(a.conversation.id, a.client.id);
@@ -339,7 +339,7 @@ describe('GET /api/conversations/unread-count', () => {
     expect((await authed(a.client).get('/api/conversations/unread-count')).body).toEqual({ unreadCount: 0 });
   });
 
-  it('is 0 for a user with no conversation — the path is never read as an id [MG12]', async () => {
+  it('is 0 for a user with no conversation — the path is never read as an id', async () => {
     const user = await makeClient();
 
     const res = await authed(user).get('/api/conversations/unread-count');
@@ -348,7 +348,7 @@ describe('GET /api/conversations/unread-count', () => {
     expect(res.body).toEqual({ unreadCount: 0 });
   });
 
-  it('excludes conversations whose project is soft-deleted [MG10] [MG12]', async () => {
+  it('excludes conversations whose project is soft-deleted', async () => {
     const { client, freelancer, project, conversation } = await makeContractScenario();
     await makeMessage(conversation.id, freelancer.id);
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
@@ -360,7 +360,7 @@ describe('GET /api/conversations/unread-count', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Soft-deleted project (MG10)
+// Soft-deleted project
 // ---------------------------------------------------------------------------------------------
 
 describe('a conversation whose project is soft-deleted', () => {
@@ -370,7 +370,7 @@ describe('a conversation whose project is soft-deleted', () => {
     ['POST /api/conversations/:id/messages', 'post', '/messages'],
     ['POST /api/conversations/:id/read', 'post', '/read'],
     ['DELETE /api/conversations/:id/messages/:messageId', 'delete', '/messages/:messageId'],
-  ] as const)('%s → 404 Conversation not found [MG10] [MG13]', async (_label, method, suffix) => {
+  ] as const)('%s → 404 Conversation not found', async (_label, method, suffix) => {
     const { client, freelancer, project, conversation } = await makeContractScenario();
     const message = await makeMessage(conversation.id, client.id);
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
@@ -387,7 +387,7 @@ describe('a conversation whose project is soft-deleted', () => {
     expect(participants[0].lastReadAt).toBeNull();
   });
 
-  it('GET /api/contracts/:id/conversation → 404 Contract not found [MG10] [MG18]', async () => {
+  it('GET /api/contracts/:id/conversation → 404 Contract not found', async () => {
     const { client, project, contract } = await makeContractScenario();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 
@@ -403,7 +403,7 @@ describe('a conversation whose project is soft-deleted', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('GET /api/contracts/:id/conversation', () => {
-  it('returns { id, unreadCount } to either party [MG18]', async () => {
+  it('returns { id, unreadCount } to either party', async () => {
     const { client, freelancer, contract, conversation } = await makeContractScenario();
     await makeMessage(conversation.id, freelancer.id);
 
@@ -415,7 +415,7 @@ describe('GET /api/contracts/:id/conversation', () => {
     expect(asFreelancer.body).toEqual({ id: conversation.id, unreadCount: 0 });
   });
 
-  it('404s Conversation not found for a contract without one (data repair) [MG18]', async () => {
+  it('404s Conversation not found for a contract without one (data repair)', async () => {
     const { client, contract, conversation } = await makeContractScenario();
     await prisma.conversationParticipant.deleteMany({ where: { conversationId: conversation.id } });
     await prisma.conversation.delete({ where: { id: conversation.id } });
@@ -428,13 +428,13 @@ describe('GET /api/contracts/:id/conversation', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// System messages of plan replacement, automatic approval and the whole lifecycle (MG6, MG7)
+// System messages of plan replacement, automatic approval and the whole lifecycle
 // ---------------------------------------------------------------------------------------------
 
 describe('system messages', () => {
   const plan = [{ title: '전체', amount: 4_000_000, dueDate: '2099-01-01' }];
 
-  it('every plan replacement posts MILESTONE_PLAN_UPDATED, signature or not [MG6] [MS8]', async () => {
+  it('every plan replacement posts MILESTONE_PLAN_UPDATED, signature or not', async () => {
     const { client, contract, conversation } = await makeContractScenario();
 
     const unsigned = await authed(client).put(`/api/contracts/${contract.id}/milestones`).send({ milestones: plan });
@@ -447,7 +447,7 @@ describe('system messages', () => {
     expect(await prisma.notification.count({ where: { type: 'MILESTONE_PLAN_UPDATED' } })).toBe(1);
   });
 
-  it('a refused plan replacement posts nothing [MG6] [MS7]', async () => {
+  it('a refused plan replacement posts nothing', async () => {
     const { client, contract, conversation } = await makeContractScenario({ contract: { status: 'ACTIVE' } });
 
     const res = await authed(client).put(`/api/contracts/${contract.id}/milestones`).send({ milestones: plan });
@@ -471,7 +471,7 @@ describe('system messages', () => {
     return { ...scenario, autoApproveAt: stored.autoApproveAt! };
   }
 
-  it('automatic approval posts MILESTONE_AUTO_APPROVED then CONTRACT_COMPLETED, on the server clock [MG6] [MG7] [MS20]', async () => {
+  it('automatic approval posts MILESTONE_AUTO_APPROVED then CONTRACT_COMPLETED, on the server clock', async () => {
     const { conversation, autoApproveAt } = await submittedViaApi();
 
     const before = Date.now();
@@ -483,14 +483,14 @@ describe('system messages', () => {
       'MILESTONE_AUTO_APPROVED',
       'CONTRACT_COMPLETED',
     ]);
-    // MG7: the job ran with a `now` a week ahead, but messages sort by when they were written.
+    // The job ran with a `now` a week ahead, but messages sort by when they were written.
     const auto = await prisma.message.findFirstOrThrow({ where: { systemEvent: 'MILESTONE_AUTO_APPROVED' } });
     expect(auto.createdAt.getTime()).toBeGreaterThanOrEqual(before);
     expect(auto.createdAt.getTime()).toBeLessThanOrEqual(after);
     expect(auto.createdAt.getTime()).toBeLessThan(autoApproveAt.getTime());
   });
 
-  it('automatic approval of a deleted project posts nothing, like its notifications [MG6] [MS17] [J2]', async () => {
+  it('automatic approval of a deleted project posts nothing, like its notifications', async () => {
     const { project, contract, conversation, autoApproveAt } = await submittedViaApi();
     await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 
@@ -502,7 +502,7 @@ describe('system messages', () => {
     expect(job.status).toBe('SUCCEEDED');
   });
 
-  it('records the whole lifecycle in order, each event once, all invisible to unread counts [MG6] [MG7] [MG8]', async () => {
+  it('records the whole lifecycle in order, each event once, all invisible to unread counts', async () => {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
     const project = await makeProject(client.id);
@@ -541,7 +541,7 @@ describe('system messages', () => {
     for (let i = 1; i < times.length; i += 1) expect(times[i]).toBeGreaterThan(times[i - 1]);
     expect((await authed(client).get('/api/conversations/unread-count')).body).toEqual({ unreadCount: 0 });
     expect((await authed(freelancer).get('/api/conversations/unread-count')).body).toEqual({ unreadCount: 0 });
-    // MG20: system messages are not notifications; and sending none created no digest job.
+    // System messages are not notifications; and sending none created no digest job.
     expect(await prisma.job.count({ where: { type: 'message.unreadDigest' } })).toBe(0);
   });
 });

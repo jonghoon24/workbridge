@@ -4,7 +4,7 @@ import { deletePayoutAccount, getPayoutAccount, putPayoutAccount } from '../serv
 import type { PayoutAccountInput } from '../services/payoutAccount.service';
 import type { AuthedRequest } from '../types/index';
 
-/** `GET /api/users/me/payout-account` (PA2). */
+/** `GET /api/users/me/payout-account`. */
 export async function getMyPayoutAccount(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     res.json(await getPayoutAccount(req.user.id));
@@ -13,7 +13,7 @@ export async function getMyPayoutAccount(req: AuthedRequest, res: Response, next
   }
 }
 
-/** `PUT /api/users/me/payout-account` (PA3–PA4). */
+/** `PUT /api/users/me/payout-account`. */
 export async function putMyPayoutAccount(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     res.json(await putPayoutAccount(req.user.id, req.body as PayoutAccountInput));
@@ -22,7 +22,7 @@ export async function putMyPayoutAccount(req: AuthedRequest, res: Response, next
   }
 }
 
-/** `DELETE /api/users/me/payout-account` (PA5). */
+/** `DELETE /api/users/me/payout-account`. */
 export async function deleteMyPayoutAccount(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     res.json(await deletePayoutAccount(req.user.id));

@@ -10,69 +10,14 @@ import {
   getProjectStatusForRecruitmentStart,
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle';
-import {
-  expandSkillSearchTerms,
-  normalizeSkillList,
-} from '../lib/skills';
-import { kstDateToEndOfDay, startOfKstDay } from '../lib/time';
+import { expandSkillSearchTerms } from '../lib/skills';
+import type { ProjectListQuery } from '../schemas/projects';
 import type {
   AuthedRequest,
   PricingAnalysisData,
   ProjectStatusTransitions,
   RawPricingAnalysis,
 } from '../types/index';
-
-/**
- * `req.query` values are `string | string[] | ParsedQs | ParsedQs[] | undefined`.
- * Every filter below reads a single scalar, so collapse anything else to
- * `undefined` and let the caller fall back to its default.
- */
-function queryString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function parsePositiveInt(value: string, field: string, max: number | null = null) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed < 1) {
-    throw new AppError(`${field} must be a positive integer`, 400);
-  }
-  return max ? Math.min(parsed, max) : parsed;
-}
-
-function parseBudget(value: string, field: string) {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new AppError(`${field} must be a non-negative number`, 400);
-  }
-  return parsed;
-}
-
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * A project date from the request body. A bare `YYYY-MM-DD` (what the project form's date input
- * sends) is a **KST calendar day**: as a `deadline` it lasts until that day ends (23:59:59.999
- * KST), as a `recruitmentStartDate` it begins at 00:00 KST. `new Date('YYYY-MM-DD')` would read
- * it as 00:00 UTC = 09:00 KST, closing a project due "today" the moment it is created after 9 am.
- * Anything else must parse as an instant.
- */
-function parseProjectDate(value: string, field: string, dateOnlyAs: 'startOfDay' | 'endOfDay') {
-  if (typeof value === 'string' && DATE_ONLY.test(value)) {
-    let endOfDay: Date;
-    try {
-      endOfDay = kstDateToEndOfDay(value);
-    } catch {
-      throw new AppError(`${field} must be a valid date`, 400);
-    }
-    return dateOnlyAs === 'endOfDay' ? endOfDay : startOfKstDay(endOfDay);
-  }
-
-  const parsed = new Date(value);
-  if (!value || Number.isNaN(parsed.getTime())) {
-    throw new AppError(`${field} must be a valid date`, 400);
-  }
-  return parsed;
-}
 
 function validateRecruitmentSchedule(recruitmentStartDate: Date, deadline: Date) {
   if (recruitmentStartDate > deadline) {
@@ -136,47 +81,29 @@ function normalizePricingAnalysisData(data: RawPricingAnalysis): PricingAnalysis
   };
 }
 
-export async function getProjects(req: Request, res: Response, next: NextFunction) {
+export async function getProjects(_req: Request, res: Response, next: NextFunction) {
   try {
     await closeExpiredOpenProjects();
 
-    const search = queryString(req.query.search);
-    const category = queryString(req.query.category);
-    const minBudget = queryString(req.query.minBudget);
-    const maxBudget = queryString(req.query.maxBudget);
-    const skills = req.query.skills;
-    const status = queryString(req.query.status) ?? 'OPEN';
-    const sort = queryString(req.query.sort) ?? 'latest';
-    const page = queryString(req.query.page) ?? '1';
-    const limit = queryString(req.query.limit) ?? '10';
-    const validSorts = ['latest', 'deadline', 'budget'];
-    const validStatuses = ['ALL', 'UPCOMING', 'OPEN', 'CLOSED'];
-
-    if (!validSorts.includes(sort)) {
-      throw new AppError('sort must be latest, deadline, or budget', 400);
-    }
-
-    if (!validStatuses.includes(status)) {
-      throw new AppError('status must be ALL, UPCOMING, OPEN, or CLOSED', 400);
-    }
-
-    const pageNum = parsePositiveInt(page, 'page');
-    const limitNum = parsePositiveInt(limit, 'limit', 50);
-    const minBudgetNum = minBudget ? parseBudget(minBudget, 'minBudget') : null;
-    const maxBudgetNum = maxBudget ? parseBudget(maxBudget, 'maxBudget') : null;
-
-    if (minBudgetNum !== null && maxBudgetNum !== null && minBudgetNum > maxBudgetNum) {
-      throw new AppError('minBudget cannot be greater than maxBudget', 400);
-    }
+    // Parsed by `projectListQuery`: defaults applied, `limit` capped, budgets ordered.
+    const {
+      search,
+      category,
+      minBudget,
+      maxBudget,
+      skills,
+      status,
+      sort,
+      page: pageNum,
+      limit: limitNum,
+    } = res.locals.query as ProjectListQuery;
 
     const where: Prisma.ProjectWhereInput = {
       deletedAt: null,
     };
 
     if (status !== 'ALL') {
-      // Validated against `validStatuses` above, and 'ALL' is excluded here, so the
-      // remaining values are exactly ProjectStatus members.
-      where.status = status as ProjectStatus;
+      where.status = status;
     }
 
     if (search) {
@@ -187,10 +114,10 @@ export async function getProjects(req: Request, res: Response, next: NextFunctio
     }
 
     if (category) where.category = category;
-    if (minBudgetNum !== null || maxBudgetNum !== null) {
+    if (minBudget !== undefined || maxBudget !== undefined) {
       where.budget = {};
-      if (minBudgetNum !== null) where.budget.gte = minBudgetNum;
-      if (maxBudgetNum !== null) where.budget.lte = maxBudgetNum;
+      if (minBudget !== undefined) where.budget.gte = minBudget;
+      if (maxBudget !== undefined) where.budget.lte = maxBudget;
     }
     if (skills) {
       const skillArray = expandSkillSearchTerms(skills);
@@ -237,28 +164,20 @@ export async function getProjects(req: Request, res: Response, next: NextFunctio
 
 export async function createProject(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
+    // Parsed by `projectCreateBody`: dates are Dates, skills normalized.
     const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = req.body;
-
-    if (!title || !description || !category || !budget || !deadline) {
-      throw new AppError('All fields are required', 400);
-    }
-
-    const parsedDeadline = parseProjectDate(deadline, 'deadline', 'endOfDay');
-    const parsedRecruitmentStartDate = recruitmentStartDate
-      ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate', 'startOfDay')
-      : new Date();
-    const parsedBudget = parseBudget(budget, 'budget');
-    validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
+    const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? new Date();
+    validateRecruitmentSchedule(parsedRecruitmentStartDate, deadline);
 
     const project = await prisma.project.create({
       data: {
         title,
         description,
         category,
-        budget: parsedBudget,
+        budget,
         recruitmentStartDate: parsedRecruitmentStartDate,
-        deadline: parsedDeadline,
-        requiredSkills: normalizeSkillList(requiredSkills),
+        deadline,
+        requiredSkills,
         clientId: req.user.id,
         status: getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate),
       },
@@ -374,13 +293,14 @@ export async function updateProject(req: AuthedRequest, res: Response, next: Nex
       throw new AppError('Not authorized', 403);
     }
 
+    // Parsed by `projectUpdateBody`: absent fields are `undefined`, dates are Dates.
     const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = req.body;
     const updateData: Prisma.ProjectUpdateInput = {};
 
     if (title !== undefined) updateData.title = title;
     if (description !== undefined) updateData.description = description;
     if (category !== undefined) updateData.category = category;
-    if (requiredSkills !== undefined) updateData.requiredSkills = normalizeSkillList(requiredSkills);
+    if (requiredSkills !== undefined) updateData.requiredSkills = requiredSkills;
 
     // Restrict pricing and recruitment schedule changes if applications exist.
     if (project._count.applications > 0) {
@@ -388,14 +308,10 @@ export async function updateProject(req: AuthedRequest, res: Response, next: Nex
         throw new AppError('Cannot change budget or recruitment dates after applications have been submitted', 400);
       }
     } else {
-      if (budget !== undefined) updateData.budget = parseBudget(budget, 'budget');
+      if (budget !== undefined) updateData.budget = budget;
 
-      const parsedDeadline = deadline !== undefined
-        ? parseProjectDate(deadline, 'deadline', 'endOfDay')
-        : project.deadline;
-      const parsedRecruitmentStartDate = recruitmentStartDate !== undefined
-        ? parseProjectDate(recruitmentStartDate, 'recruitmentStartDate', 'startOfDay')
-        : project.recruitmentStartDate || new Date();
+      const parsedDeadline: Date = deadline ?? project.deadline;
+      const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? project.recruitmentStartDate ?? new Date();
 
       validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
 
@@ -458,7 +374,8 @@ const validTransitions: ProjectStatusTransitions = {
 
 export async function updateProjectStatus(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const { status } = req.body;
+    // Parsed by `projectStatusBody`: a ProjectStatus; the transition table is checked below.
+    const status: ProjectStatus = req.body.status;
 
     const project = await prisma.project.findFirst({
       where: { id: req.params.id, deletedAt: null },
@@ -491,8 +408,8 @@ export async function updateProjectStatus(req: AuthedRequest, res: Response, nex
 
       const recipientIds = [...new Set(project.applications.map((application) => application.freelancerId))];
       if (status === 'CLOSED' && recipientIds.length > 0) {
-        // Inline wording (pre-existing type), routed through `notifyMany()` for preferences and
-        // email (NC9).
+        // Inline wording (not in the template table), routed through `notifyMany()` for preferences
+        // and email.
         await notifyMany(tx, recipientIds.map((userId) => ({
           userId,
           type: 'PROJECT_STATUS_CHANGED' as const,

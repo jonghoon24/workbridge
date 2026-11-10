@@ -7,12 +7,12 @@ import { lockUserRow } from '../lib/locks';
 import { CAREER_LIMITS, monthRangeIssue } from '../schemas/profile';
 import type { CareerCreateInput, CareerPatchInput } from '../schemas/profile';
 
-/** BEHAVIOR.md "Portfolio and careers", PF4–PF6, PF13–PF15, PF17. */
+/** Career entries: serialization, order, the month summary, the public list and the writes (docs/domain/accounts.md). */
 
 const NOT_FOUND = 'Career not found';
 const LIMIT_REACHED = `Careers are limited to ${CAREER_LIMITS.entries} entries`;
 
-/** PF5: newest start first; among equal starts, current positions, then the latest end. */
+/** Newest start first; among equal starts, current positions, then the latest end. */
 export const CAREER_ORDER: Prisma.CareerOrderByWithRelationInput[] = [
   { startDate: 'desc' },
   { endDate: { sort: 'desc', nulls: 'first' } },
@@ -20,7 +20,7 @@ export const CAREER_ORDER: Prisma.CareerOrderByWithRelationInput[] = [
   { id: 'asc' },
 ];
 
-/** PF4: months as `YYYY-MM` (PF2); `endDate: null` is a current position. */
+/** Months as `YYYY-MM`; `endDate: null` is a current position. */
 export function serializeCareer(career: Career) {
   return {
     id: career.id,
@@ -43,7 +43,7 @@ export interface CareerSummary {
 }
 
 /**
- * PF6: months covered inclusively from start through end (a current position through the KST
+ * Months covered inclusively from start through end (a current position through the KST
  * month of `now`), with overlapping **or adjacent** ranges merged so each month counts once.
  * Display only — never written to `experienceYears`.
  */
@@ -57,7 +57,7 @@ export function summarizeCareers(
       start: kstMonthIndex(kstMonthString(career.startDate)),
       end: career.endDate ? kstMonthIndex(kstMonthString(career.endDate)) : current,
     }))
-    // Unreachable through the API (PF13 rejects both), but a range that ends before it starts
+    // Unreachable through the API (validation rejects both), but a range that ends before it starts
     // must not subtract months.
     .filter((range) => range.end >= range.start)
     .sort((a, b) => a.start - b.start);
@@ -77,20 +77,20 @@ export function summarizeCareers(
   return { totalMonths, years: Math.floor(totalMonths / 12), months: totalMonths % 12 };
 }
 
-/** The careers of `userId` in PF5 order with their summary. The caller has checked visibility. */
+/** The careers of `userId` in `CAREER_ORDER` with their summary. The caller has checked visibility. */
 export async function listCareers(userId: string, now: Date = new Date()) {
   const careers = await prisma.career.findMany({ where: { userId }, orderBy: CAREER_ORDER });
   return { careers: careers.map(serializeCareer), careerSummary: summarizeCareers(careers, now) };
 }
 
-/** PF17. */
+/** `GET /api/users/:id/careers`: 404 for a missing or soft-deleted user. */
 export async function getPublicCareers(userId: string, now: Date = new Date()) {
   const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { id: true } });
   if (!user) throw new AppError('User not found', 404);
   return listCareers(userId, now);
 }
 
-/** PF13: the count is checked under PF8's lock. */
+/** The count is checked under the user-row lock, so concurrent creates cannot pass the limit. */
 export async function createCareer(userId: string, input: CareerCreateInput) {
   const career = await prisma.$transaction(async (tx) => {
     await lockUserRow(tx, userId);
@@ -113,7 +113,7 @@ export async function createCareer(userId: string, input: CareerCreateInput) {
   return { career: serializeCareer(career) };
 }
 
-/** PF7's existence-then-ownership check. */
+/** Existence (404), then ownership (403). */
 async function findOwnCareer(userId: string, careerId: string): Promise<Career> {
   const career = await prisma.career.findUnique({ where: { id: careerId } });
   if (!career) throw new AppError(NOT_FOUND, 404);
@@ -121,7 +121,7 @@ async function findOwnCareer(userId: string, careerId: string): Promise<Career> 
   return career;
 }
 
-/** PF14. No lock: an update changes no count. */
+/** Partial update. No lock: an update changes no count. */
 export async function updateCareer(userId: string, careerId: string, input: CareerPatchInput) {
   const stored = await findOwnCareer(userId, careerId);
 
@@ -150,7 +150,7 @@ export async function updateCareer(userId: string, careerId: string, input: Care
   return { career: serializeCareer(career) };
 }
 
-/** PF15: hard delete, no lock. */
+/** Hard delete, no lock. */
 export async function deleteCareer(userId: string, careerId: string) {
   await findOwnCareer(userId, careerId);
   const { count } = await prisma.career.deleteMany({ where: { id: careerId, userId } });

@@ -200,7 +200,7 @@ export type ConversationWithParticipants = Conversation & { participants: Conver
 
 /**
  * The contract's conversation with its two participants (client and freelancer, nothing read), as
- * accepting an application creates it (BEHAVIOR.md MG2, MG3) — but without the `CONTRACT_CREATED`
+ * accepting an application creates it — but without the `CONTRACT_CREATED`
  * system message, like a conversation backfilled by the migration.
  */
 export function makeConversation(
@@ -223,7 +223,7 @@ export function makeConversation(
  * A message in `conversationId`: `TEXT` from `senderId`, or `SYSTEM` when `senderId` is `null`
  * (with `systemEvent` defaulting to `CONTRACT_CREATED`). `createdAt` defaults to now; pass it to
  * place a message in the past (the 5-minute delete window, cursors). Keeps the conversation's
- * `lastMessageAt` at its newest message, as posting does (MG7). `attachments` adds attachment
+ * `lastMessageAt` at its newest message, as posting does. `attachments` adds attachment
  * rows.
  */
 export async function makeMessage(
@@ -291,7 +291,7 @@ export async function makePortfolioItem(
 
 /**
  * A career entry for `userId`: by default a finished `FULL_TIME` position from 2020-01 to
- * 2021-12, with months stored as the first instant of the month in KST (BEHAVIOR.md PF2).
+ * 2021-12, with months stored as the first instant of the month in KST.
  * Pass `endDate: null` for a current position.
  */
 export function makeCareer(
@@ -316,7 +316,7 @@ export function makeCareer(
  * The full chain most contract, payment, and review tests need: a client, a freelancer, a
  * project whose recruitment has closed, an accepted application, the resulting contract, its
  * default milestone (sequence 1, the whole contract amount) and its conversation with both
- * participants — as accepting an application creates them (BEHAVIOR.md M9, MG3). The
+ * participants — as accepting an application creates them. The
  * conversation has no messages.
  *
  * Pass `contract` overrides to place the contract in a particular state, e.g.
@@ -359,13 +359,13 @@ export async function makeContractScenario(overrides: {
   return { client, freelancer, project, application, contract, milestone, conversation };
 }
 
-// ─── Notification channels (BEHAVIOR.md "Notification channels") ──────────
+// ─── Notification channels ───────────────────────────────────────────────
 
 /**
  * A stored preference override for `userId` and `type`. Both channels default to `null`
- * ("follow the policy default", NC4) — pass the channel the test overrides, e.g.
+ * ("follow the policy default") — pass the channel the test overrides, e.g.
  * `makeNotificationPreference(user.id, 'APPLICATION_REJECTED', { email: true })`.
- * Written directly, so it can also store what the API refuses (a locked channel, NC3).
+ * Written directly, so it can also store what the API refuses (a locked channel).
  */
 export function makeNotificationPreference(
   userId: string,
@@ -379,8 +379,8 @@ export function makeNotificationPreference(
 
 /**
  * An email delivery addressed to `user`: `PENDING`, no attempts, no linked notification, as
- * `notify()` creates it (NC9, NC12) but without enqueueing its `notification.email` job. Pass
- * `createdAt` to place a digest delivery in time for the J8 throttle, e.g.
+ * `notify()` creates it but without enqueueing its `notification.email` job. Pass
+ * `createdAt` to place a digest delivery in time for the unread-digest throttle, e.g.
  * `{ type: 'MESSAGE_UNREAD_DIGEST', contextKey: 'conversation:<id>', createdAt }`.
  */
 export function makeEmailDelivery(

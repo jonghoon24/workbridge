@@ -1,30 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Mock } from 'vitest';
 
 /**
- * Two module boundaries are mocked so this file can exercise **every** mutating endpoint a
- * soft-deleted principal can reach without touching a real service:
- *
- * - `axios` — `POST /api/payments/confirm` calls TossPayments.
- * - `src/lib/openai` — `POST /api/projects/:id/analyze` calls OpenAI.
- *
- * Both are stubbed to *succeed*, which is what makes the D12 rows below meaningful: today the
- * write lands, so the "database is unchanged" assertion fails for a product reason rather than
- * because an upstream call blew up.
+ * `src/lib/openai` is mocked so `POST /api/projects/:id/analyze` can be exercised against a
+ * soft-deleted project without touching a real service.
  */
-vi.mock('axios', () => {
-  const post = vi.fn();
-  const get = vi.fn();
-  return { default: { post, get } };
-});
-
 const { openaiCreate } = vi.hoisted(() => ({ openaiCreate: vi.fn() }));
 
 vi.mock('../src/lib/openai', () => ({
   default: { chat: { completions: { create: openaiCreate } } },
 }));
-
-import axios from 'axios';
 
 import { api, authed, tokenFor } from './helpers/api';
 import type { Principal } from './helpers/api';
@@ -37,8 +21,6 @@ import {
   makeContractScenario,
   makeFreelancer,
   makeMessage,
-  makeMilestone,
-  makePayment,
   makePayoutAccount,
   makePortfolioItem,
   makeProject,
@@ -57,17 +39,13 @@ import { errorHandler } from '../src/middlewares/errorHandler';
 // Local helpers (kept in this file on purpose — the shared harness is off limits)
 // ---------------------------------------------------------------------------------------------
 
-/** `axios.post` is typed to return a full `AxiosResponse`; the mock returns a stub. */
-const axiosPost = axios.post as unknown as Mock;
-
 /** Just enough of a supertest response for these assertions. */
 type Sent = { status: number; body: { error?: { message?: string } } };
 
 /**
  * Request builder around an explicitly minted token. `authed(user)` mints one at call time,
- * which is fine — tokens are stateless, so deletion does not invalidate them — but every D12
- * case wants the token visibly issued *before* the deletion, which is the scenario the
- * divergence is about.
+ * which is fine — tokens are stateless, so deletion does not invalidate them — but the write
+ * matrix wants the token visibly issued *before* the deletion, which is the scenario under test.
  */
 function bearer(token: string) {
   return {
@@ -87,392 +65,21 @@ async function restore(userId: string): Promise<void> {
   await prisma.user.update({ where: { id: userId }, data: { deletedAt: null } });
 }
 
-/** There is no notification factory in the shared harness, so build the row directly. */
-function makeNotification(userId: string) {
-  return prisma.notification.create({
-    data: {
-      userId,
-      type: 'APPLICATION_CREATED',
-      title: '새 지원자가 있습니다',
-      message: '알림 본문',
-      href: '/my/applications',
-    },
-  });
-}
-
 /** A value the tests can look for in the database — nothing legitimate ever writes it. */
 const GHOST = 'ghost-write-by-deleted-user';
 
-const VALID_ANALYSIS = JSON.stringify({
-  features: [{ name: '기능 A', description: 'd', estimatedCost: 1_000_000, rationale: 'r', duration: '1주' }],
-  totalAmount: 1_000_000,
-  summary: 's',
-  marketReference: 'm',
-});
-
 beforeEach(() => {
-  axiosPost.mockReset();
   openaiCreate.mockReset();
-  openaiCreate.mockResolvedValue({ choices: [{ message: { content: VALID_ANALYSIS } }] });
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 / D12 — the write matrix
+// A soft-deleted principal's writes
 // ---------------------------------------------------------------------------------------------
 
-/**
- * One row per mutating endpoint a soft-deleted principal can reach with a pre-deletion token.
- *
- * `setup` builds a fixture in which the request would *legitimately* succeed (right role,
- * ownership, complete profile, right resource state), so the only thing standing between the
- * caller and the write is the missing `deletedAt` re-check. `assertUnchanged` captures the
- * invariant that matters: **nothing the request would have written landed.** That assertion is
- * what flips when a guard is added; the status code is the secondary signal.
- *
- * `PATCH /api/contracts/:id` left this table when milestones took over completion: it answers
- * 410 to everyone (CT11), so it writes nothing and is no longer a D12 vector.
- *
- * Three mutating routes are deliberately absent, none of which can exhibit D12:
- * - `POST /api/auth/logout` — clears a cookie and writes no row.
- * - `POST /api/auth/select-role` — already filters `deletedAt: null`; asserted separately below.
- * - `POST /api/payments/dev-complete` — `ALLOW_PAYMENT_BYPASS` is `false` under test, so it
- *   answers 403 for *every* caller. A test here would pass for the wrong reason.
- */
-type MutationCase = {
-  actor: Principal;
-  send: (token: string) => PromiseLike<Sent>;
-  assertUnchanged: () => Promise<void>;
-};
-
-type Mutation = {
-  /** Method and path, used verbatim in the test name. */
-  label: string;
-  setup: () => Promise<MutationCase>;
-};
-
-const mutations: Mutation[] = [
-  {
-    label: 'PATCH /api/users/me',
-    async setup() {
-      const actor = await makeFreelancer({ name: 'Before deletion', bio: null });
-      return {
-        actor,
-        send: (token) => bearer(token).patch('/api/users/me').send({ name: GHOST, bio: GHOST }),
-        async assertUnchanged() {
-          const stored = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
-          expect(stored.name).toBe('Before deletion');
-          expect(stored.bio).toBeNull();
-        },
-      };
-    },
-  },
-  {
-    label: 'POST /api/projects',
-    async setup() {
-      const actor = await makeClient();
-      return {
-        actor,
-        send: (token) => bearer(token).post('/api/projects').send({
-          title: GHOST,
-          description: GHOST,
-          category: '웹 개발',
-          budget: 1_000_000,
-          deadline: daysFromNow(10).toISOString(),
-        }),
-        async assertUnchanged() {
-          expect(await prisma.project.count({ where: { clientId: actor.id } })).toBe(0);
-        },
-      };
-    },
-  },
-  {
-    label: 'PATCH /api/projects/:id',
-    async setup() {
-      const actor = await makeClient();
-      const project = await makeProject(actor.id, { title: 'Before deletion' });
-      return {
-        actor,
-        send: (token) => bearer(token).patch(`/api/projects/${project.id}`).send({ title: GHOST }),
-        async assertUnchanged() {
-          const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-          expect(stored.title).toBe('Before deletion');
-        },
-      };
-    },
-  },
-  {
-    label: 'DELETE /api/projects/:id',
-    async setup() {
-      const actor = await makeClient();
-      const project = await makeProject(actor.id);
-      return {
-        actor,
-        send: (token) => bearer(token).delete(`/api/projects/${project.id}`),
-        async assertUnchanged() {
-          const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-          expect(stored.deletedAt).toBeNull();
-        },
-      };
-    },
-  },
-  {
-    label: 'PATCH /api/projects/:id/status',
-    async setup() {
-      const actor = await makeClient();
-      const freelancer = await makeFreelancer();
-      const project = await makeProject(actor.id, { status: 'OPEN' });
-      const application = await makeApplication(project.id, freelancer.id);
-      return {
-        actor,
-        send: (token) =>
-          bearer(token).patch(`/api/projects/${project.id}/status`).send({ status: 'CLOSED' }),
-        async assertUnchanged() {
-          const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-          expect(stored.status).toBe('OPEN');
-          const storedApplication = await prisma.application.findUniqueOrThrow({
-            where: { id: application.id },
-          });
-          expect(storedApplication.status).toBe('PENDING');
-          expect(await prisma.notification.count()).toBe(0);
-        },
-      };
-    },
-  },
-  {
-    label: 'POST /api/projects/:id/applications',
-    async setup() {
-      const client = await makeClient();
-      const actor = await makeFreelancer();
-      const project = await makeProject(client.id, { status: 'OPEN' });
-      return {
-        actor,
-        send: (token) => bearer(token).post(`/api/projects/${project.id}/applications`).send({
-          coverLetter: GHOST,
-          expectedRate: 1_000_000,
-          expectedDuration: '2주',
-        }),
-        async assertUnchanged() {
-          expect(await prisma.application.count({ where: { freelancerId: actor.id } })).toBe(0);
-          expect(await prisma.notification.count()).toBe(0);
-        },
-      };
-    },
-  },
-  {
-    label: 'PATCH /api/projects/:projectId/applications/:appId',
-    async setup() {
-      const actor = await makeClient();
-      const freelancer = await makeFreelancer();
-      const project = await makeProject(actor.id, { status: 'OPEN' });
-      const application = await makeApplication(project.id, freelancer.id);
-      return {
-        actor,
-        send: (token) =>
-          bearer(token)
-            .patch(`/api/projects/${project.id}/applications/${application.id}`)
-            .send({ status: 'ACCEPTED' }),
-        async assertUnchanged() {
-          const stored = await prisma.application.findUniqueOrThrow({
-            where: { id: application.id },
-          });
-          expect(stored.status).toBe('PENDING');
-          expect(await prisma.contract.count()).toBe(0);
-          expect(await prisma.notification.count()).toBe(0);
-        },
-      };
-    },
-  },
-  {
-    label: 'POST /api/projects/:id/bookmark',
-    async setup() {
-      const client = await makeClient();
-      const actor = await makeFreelancer();
-      const project = await makeProject(client.id);
-      return {
-        actor,
-        send: (token) => bearer(token).post(`/api/projects/${project.id}/bookmark`),
-        async assertUnchanged() {
-          expect(await prisma.projectBookmark.count({ where: { userId: actor.id } })).toBe(0);
-        },
-      };
-    },
-  },
-  {
-    label: 'DELETE /api/projects/:id/bookmark',
-    async setup() {
-      const client = await makeClient();
-      const actor = await makeFreelancer();
-      const project = await makeProject(client.id);
-      await prisma.projectBookmark.create({ data: { projectId: project.id, userId: actor.id } });
-      return {
-        actor,
-        send: (token) => bearer(token).delete(`/api/projects/${project.id}/bookmark`),
-        async assertUnchanged() {
-          // The pre-existing bookmark must survive: deleting it is a write.
-          expect(await prisma.projectBookmark.count({ where: { userId: actor.id } })).toBe(1);
-        },
-      };
-    },
-  },
-  {
-    label: 'POST /api/contracts/:id/sign',
-    async setup() {
-      const { freelancer, contract } = await makeContractScenario();
-      return {
-        actor: freelancer,
-        send: (token) => bearer(token).post(`/api/contracts/${contract.id}/sign`),
-        async assertUnchanged() {
-          const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-          expect(stored.freelancerSigned).toBe(false);
-          expect(stored.status).toBe('PENDING');
-        },
-      };
-    },
-  },
-  {
-    label: 'POST /api/payments',
-    async setup() {
-      const { client, milestone } = await makeContractScenario({
-        contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
-      });
-      return {
-        actor: client,
-        send: (token) => bearer(token).post('/api/payments').send({ milestoneId: milestone.id }),
-        async assertUnchanged() {
-          expect(await prisma.payment.count()).toBe(0);
-        },
-      };
-    },
-  },
-  {
-    label: 'POST /api/payments/confirm',
-    async setup() {
-      const { client, milestone } = await makeContractScenario({
-        contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
-      });
-      const payment = await makePayment(milestone.id, client.id, { status: 'PENDING' });
-      // The provider is stubbed to approve, so a 400 here can only come from a guard, never
-      // from a failed verification.
-      axiosPost.mockResolvedValue({ data: { status: 'DONE', totalAmount: payment.amount } });
-      return {
-        actor: client,
-        send: (token) => bearer(token).post('/api/payments/confirm').send({
-          paymentKey: 'toss_key_soft_deleted',
-          orderId: payment.orderId,
-          amount: payment.amount,
-        }),
-        async assertUnchanged() {
-          const stored = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
-          // Neither COMPLETED (the happy path) nor FAILED (the catch path) — untouched.
-          expect(stored.status).toBe('PENDING');
-          expect(stored.paymentKey).toBeNull();
-        },
-      };
-    },
-  },
-  {
-    label: 'POST /api/reviews',
-    async setup() {
-      const { client, freelancer, contract } = await makeContractScenario({
-        project: { status: 'COMPLETED' },
-        contract: { status: 'COMPLETED', clientSigned: true, freelancerSigned: true },
-      });
-      return {
-        actor: client,
-        send: (token) => bearer(token).post('/api/reviews').send({
-          contractId: contract.id,
-          revieweeId: freelancer.id,
-          rating: 5,
-          content: GHOST,
-        }),
-        async assertUnchanged() {
-          expect(await prisma.review.count()).toBe(0);
-        },
-      };
-    },
-  },
-  {
-    label: 'POST /api/projects/:id/analyze',
-    async setup() {
-      const actor = await makeClient();
-      const project = await makeProject(actor.id);
-      return {
-        actor,
-        send: (token) => bearer(token).post(`/api/projects/${project.id}/analyze`),
-        async assertUnchanged() {
-          expect(await prisma.pricingAnalysis.count({ where: { projectId: project.id } })).toBe(0);
-        },
-      };
-    },
-  },
-  {
-    label: 'PATCH /api/notifications/:id/read',
-    async setup() {
-      const actor = await makeFreelancer();
-      const notification = await makeNotification(actor.id);
-      return {
-        actor,
-        send: (token) => bearer(token).patch(`/api/notifications/${notification.id}/read`),
-        async assertUnchanged() {
-          const stored = await prisma.notification.findUniqueOrThrow({
-            where: { id: notification.id },
-          });
-          expect(stored.readAt).toBeNull();
-        },
-      };
-    },
-  },
-  {
-    label: 'PATCH /api/notifications/read-all',
-    async setup() {
-      const actor = await makeFreelancer();
-      await makeNotification(actor.id);
-      await makeNotification(actor.id);
-      return {
-        actor,
-        send: (token) => bearer(token).patch('/api/notifications/read-all'),
-        async assertUnchanged() {
-          expect(await prisma.notification.count({
-            where: { userId: actor.id, readAt: null },
-          })).toBe(2);
-        },
-      };
-    },
-  },
-];
-
-describe('a soft-deleted principal must not be able to write anything (D12)', () => {
+describe('a soft-deleted principal holding a pre-deletion token', () => {
   /**
-   * 알려진 불일치 D12 — #7
-   * Cross-cutting rule 5: "Every read and write must filter `deletedAt: null`." D1 fixed the
-   * authentication and profile *read* paths; **no write path re-checks the actor**, which is
-   * what D12 records.
-   *
-   * Current behavior, per endpoint: the request succeeds exactly as it would for a live user —
-   * `PATCH /api/users/me` → 200 and the change persists, `POST /api/projects` → 201,
-   * `POST /api/projects/:id/applications` → 201 with a real application row,
-   * `POST /api/payments` → 201, `POST /api/contracts/:id/sign` → 200, and so on for every row
-   * below. `authenticate` only verifies the JWT signature, `requireRole` reads the role out of
-   * the token, and `requireCompleteProfile` looks the caller up with a plain `findUnique` that
-   * ignores `deletedAt` — so nothing in the request path ever consults the flag.
-   */
-  it.fails.each(mutations)('$label is refused and writes nothing [D12]', async (mutation) => {
-    const { actor, send, assertUnchanged } = await mutation.setup();
-    const token = tokenFor(actor);
-
-    await softDelete(actor.id);
-    const res = await send(token);
-
-    // The database assertion first: it is the invariant that matters, and the one that flips
-    // the moment a guard lands.
-    await assertUnchanged();
-    expect(res.status).toBeGreaterThanOrEqual(400);
-  });
-
-  /**
-   * The counterpart that must keep passing once D12 is fixed: the block is the flag, not the
-   * row, so a restored user can write again. Written against `PATCH /api/users/me` because it
-   * is the cheapest write in the matrix.
+   * The block must be the flag, not the row, so a restored user can write again. Written
+   * against `PATCH /api/users/me` because it is the cheapest write.
    */
   it('lets a restored user write again — the block must be the flag, not the row', async () => {
     const actor = await makeFreelancer({ name: 'Before deletion' });
@@ -488,12 +95,8 @@ describe('a soft-deleted principal must not be able to write anything (D12)', ()
     expect(stored.name).toBe('복구됨');
   });
 
-  /**
-   * The one write path that *is* guarded, which delimits D12's scope: `selectRole` looks the
-   * caller up with `findFirst … deletedAt: null`, so it 404s. Every other mutating endpoint in
-   * the matrix above lacks that lookup.
-   */
-  it('POST /api/auth/select-role is already guarded: 404, role unchanged', async () => {
+  /** `selectRole` looks the caller up with `findFirst … deletedAt: null`, so it 404s. */
+  it('POST /api/auth/select-role is guarded: 404, role unchanged', async () => {
     const actor = await makeUser({ role: 'FREELANCER', roleSelected: false });
     const token = tokenFor(actor);
     await softDelete(actor.id);
@@ -509,19 +112,32 @@ describe('a soft-deleted principal must not be able to write anything (D12)', ()
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 / rule 12 — expansion routes mount `requireActiveUser`, so D12 must not reproduce on them
+// Expansion routes mount `requireActiveUser`, so a soft-deleted principal cannot write
 // ---------------------------------------------------------------------------------------------
 
 /**
- * The counterpart of `mutations` for routes added by the platform expansion. Same row shape,
- * but run with a plain `it.each`: these routes put `requireActiveUser` behind `authenticate`,
- * so a soft-deleted caller is refused with 401 and nothing lands.
+ * One row per mutating expansion route a soft-deleted principal can reach with a pre-deletion
+ * token. `setup` builds a fixture in which the request would *legitimately* succeed (right role,
+ * ownership, complete profile, right resource state), so the only thing standing between the
+ * caller and the write is the `requireActiveUser` guard. `assertUnchanged` captures the invariant
+ * that matters: **nothing the request would have written landed.**
  *
- * Every new mutating expansion route gets a row here. **Never add an expansion route to
- * `mutations`** — that table is `it.fails`, and a guarded route would break it with an
- * unexpected pass. Rows are grouped by domain: milestones, plan and payout account;
- * conversations and messages; portfolio and careers; notification preferences.
+ * Every new mutating expansion route gets a row here. Rows are grouped by domain: milestones,
+ * plan and payout account; conversations and messages; portfolio and careers; notification
+ * preferences.
  */
+type MutationCase = {
+  actor: Principal;
+  send: (token: string) => PromiseLike<Sent>;
+  assertUnchanged: () => Promise<void>;
+};
+
+type Mutation = {
+  /** Method and path, used verbatim in the test name. */
+  label: string;
+  setup: () => Promise<MutationCase>;
+};
+
 const activeContract = () => makeContractScenario({
   contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
 });
@@ -623,7 +239,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Conversations and messages (MG10).
+  // Conversations and messages.
   {
     label: 'POST /api/conversations/:id/messages',
     async setup() {
@@ -667,7 +283,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Portfolio and careers (PF20).
+  // Portfolio and careers.
   {
     label: 'POST /api/users/me/portfolio',
     async setup() {
@@ -771,7 +387,7 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
-  // Notification preferences (NC7).
+  // Notification preferences.
   {
     label: 'PUT /api/notifications/preferences',
     async setup() {
@@ -837,10 +453,10 @@ describe('expansion routes refuse a soft-deleted principal (requireActiveUser)',
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 / D1 (resolved) — the read and authentication paths, which must stay fixed
+// The read and authentication paths refuse a soft-deleted user
 // ---------------------------------------------------------------------------------------------
 
-describe('a soft-deleted user cannot authenticate or be looked up (D1, fixed)', () => {
+describe('a soft-deleted user cannot authenticate or be looked up', () => {
   it('cannot log in, even with the correct password', async () => {
     const user = await makeUser();
     await softDelete(user.id);
@@ -963,7 +579,7 @@ describe('a soft-deleted user cannot authenticate or be looked up (D1, fixed)', 
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 — a soft-deleted project is invisible to listing, fetching, applying and bookmarking
+// A soft-deleted project is invisible to listing, fetching, applying and bookmarking
 // ---------------------------------------------------------------------------------------------
 
 type DeletedProjectFixture = {
@@ -999,7 +615,7 @@ async function deletedProjectFixture(): Promise<DeletedProjectFixture> {
 
 /**
  * Every route that resolves a project by id. `GET`/`DELETE /:id/bookmark` are deliberately
- * absent: they do not check the project at all, which is **D19**, covered in `bookmarks.test.ts`.
+ * absent: they do not check the project at all (issue #14).
  */
 const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) => PromiseLike<Sent> }[] = [
   {
@@ -1165,44 +781,16 @@ describe('a soft-deleted project', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 / D21 — the contract endpoints never filter deletedAt
+// A contract whose project is soft-deleted
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `getContract` and `signContract` resolve the contract with a plain `findUnique` and never
- * consult `deletedAt` on the joined project. Rule 5 ("every read and write must filter
- * `deletedAt: null`") decides the soft-deleted case, so a contract whose project is gone must be
- * invisible. Today both succeed: the contract is served with the deleted project embedded in
- * the body, and it can be signed. Completion moved to the milestone routes (C3), which do
- * filter — that half of D21 is now a passing test. Interacts with D11/Q4 — once deleting a
- * project with a live contract is blocked, this state becomes much harder to reach.
+ * A contract whose project is gone must be invisible (docs/domain/README.md, soft delete).
+ * Completion goes through the milestone routes, which filter the joined project's `deletedAt`.
+ * `GET /api/contracts/:id` and `POST /api/contracts/:id/sign` do not yet — tracked in issue #16.
  */
-describe('a contract whose project is soft-deleted (D21)', () => {
-  // 알려진 불일치 D21 — #16
-  it.fails('is not served by GET /api/contracts/:id [D21]', async () => {
-    const { client, project, contract } = await makeContractScenario();
-    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(client).get(`/api/contracts/${contract.id}`);
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-  });
-
-  // 알려진 불일치 D21 — #16
-  it.fails('cannot be signed: 404 and no signature recorded [D21]', async () => {
-    const { freelancer, project, contract } = await makeContractScenario();
-    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
-
-    expect(res.status).toBe(404);
-    const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(stored.freelancerSigned).toBe(false);
-    expect(stored.status).toBe('PENDING');
-  });
-
-  it('cannot be completed: approving its last milestone is 404 and writes nothing [MS5] [D21]', async () => {
+describe('a contract whose project is soft-deleted', () => {
+  it('cannot be completed: approving its last milestone is 404 and writes nothing', async () => {
     const { client, project, contract, milestone } = await activeContract();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
     await makeSubmission(milestone.id);
@@ -1221,8 +809,8 @@ describe('a contract whose project is soft-deleted (D21)', () => {
   });
 });
 
-/** Rule 5 on the expansion routes: the deleted project hides its contract's milestones. */
-describe('a contract whose project is soft-deleted, on the expansion routes (rule 5)', () => {
+/** On the expansion routes the deleted project hides its contract and its milestones. */
+describe('a contract whose project is soft-deleted, on the expansion routes', () => {
   async function deletedProjectContract() {
     const scenario = await activeContract();
     await prisma.milestone.update({ where: { id: scenario.milestone.id }, data: { status: 'SUBMITTED' } });
@@ -1231,7 +819,7 @@ describe('a contract whose project is soft-deleted, on the expansion routes (rul
     return scenario;
   }
 
-  it('is left out of GET /api/contracts [CT1]', async () => {
+  it('is left out of GET /api/contracts', async () => {
     const { client } = await deletedProjectContract();
 
     const res = await authed(client).get('/api/contracts');
@@ -1246,7 +834,7 @@ describe('a contract whose project is soft-deleted, on the expansion routes (rul
     ['GET /api/milestones/:id', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.freelancer).get(`/api/milestones/${s.milestone.id}`), 'Milestone not found'],
     ['POST /api/milestones/:id/reject', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post(`/api/milestones/${s.milestone.id}/reject`).send({ reason: 'Not what we agreed on.' }), 'Milestone not found'],
     ['POST /api/payments', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post('/api/payments').send({ milestoneId: s.milestone.id }), 'Milestone not found'],
-  ] as const)('%s → 404 [MS5] [PY1]', async (_label, send, message) => {
+  ] as const)('%s → 404', async (_label, send, message) => {
     const scenario = await deletedProjectContract();
 
     const res = await send(scenario);
@@ -1257,7 +845,7 @@ describe('a contract whose project is soft-deleted, on the expansion routes (rul
 });
 
 // ---------------------------------------------------------------------------------------------
-// §5 vs. the review lists — an unaddressed edge, filed under Q11
+// Review lists for a soft-deleted user — an open product question
 // ---------------------------------------------------------------------------------------------
 
 /**
@@ -1265,13 +853,12 @@ describe('a contract whose project is soft-deleted, on the expansion routes (rul
  * a user who 404s at `GET /api/users/:id` still has their received reviews served — including
  * the reviewer's name and avatar for a soft-deleted reviewer.
  *
- * Filed as **Q11** rather than a new divergence number, because it is the same unanswered
- * question as the joined-owner case already pinned in `projects-list.test.ts`: rule 5 is
- * written about the record being read, and here the soft-deleted user is a *join target*, not
- * the record. The reviews themselves are not deleted. If Q11 is decided the strict way, these
- * three tests flip to expecting `[]` (or a 404) and move under a D-number.
+ * This is the same open question as the joined-owner case pinned in `projects-list.test.ts`:
+ * the soft-delete rule is written about the record being read, and here the soft-deleted user
+ * is a *join target*, not the record. The reviews themselves are not deleted. If the question is
+ * decided the strict way, these three tests flip to expecting `[]` (or a 404).
  */
-describe('review lists for a soft-deleted user (Q11)', () => {
+describe('review lists for a soft-deleted user', () => {
   async function reviewedPair() {
     const { client, freelancer, contract } = await makeContractScenario({
       project: { status: 'COMPLETED' },

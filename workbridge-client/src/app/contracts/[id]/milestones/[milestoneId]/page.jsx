@@ -38,7 +38,7 @@ export default function MilestoneDetailPage() {
     useAuthStore.getState().initAuth();
     loadMilestone()
       .catch((err) => {
-        setLoadError(toUserMessage(err, '마일스톤을 불러오지 못했습니다'));
+        setLoadError(toUserMessage(err, '마일스톤을 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, [loadMilestone]);
@@ -62,7 +62,7 @@ export default function MilestoneDetailPage() {
         : '마일스톤을 승인했습니다.');
       await loadMilestone();
     } catch (err) {
-      setActionError(toUserMessage(err, '승인에 실패했습니다'));
+      setActionError(toUserMessage(err, '승인에 실패했습니다.'));
     } finally {
       setApproving(false);
     }
@@ -87,7 +87,7 @@ export default function MilestoneDetailPage() {
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
         <EmptyState
           tone="error"
-          title={loadError || '마일스톤을 찾을 수 없습니다'}
+          title={loadError || '마일스톤을 찾을 수 없습니다.'}
           action={(
             <Link href={`/contracts/${contractId}`} className="text-primary-600 hover:text-primary-700 font-semibold">
               계약서로 돌아가기 →
@@ -104,7 +104,7 @@ export default function MilestoneDetailPage() {
   const isFreelancer = currentUser?.id === contract.freelancerId;
   const canSubmit = isFreelancer && ['FUNDED', 'REVISION_REQUESTED'].includes(milestone.status);
   const canReview = isClient && milestone.status === 'SUBMITTED';
-  // 앞선 마일스톤이 PENDING이면 서버가 400 `Earlier milestones must be funded first`로 막는다(M13).
+  // 앞선 마일스톤이 PENDING이면 서버가 400 `Earlier milestones must be funded first`로 막는다.
   const canPay = isClient && contract.status === 'ACTIVE' && milestone.status === 'PENDING';
   const remaining = milestone.status === 'SUBMITTED' ? formatRemaining(milestone.autoApproveAt) : null;
   const submissions = milestone.submissions || [];

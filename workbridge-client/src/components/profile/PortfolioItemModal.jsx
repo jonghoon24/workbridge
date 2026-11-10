@@ -27,7 +27,7 @@ function toForm(item) {
   };
 }
 
-// 포트폴리오 추가·수정(BEHAVIOR.md PF9, PF10). 이미지가 있을 수 있어 항상 multipart로 보낸다.
+// 포트폴리오 추가·수정. 이미지가 있을 수 있어 항상 multipart로 보낸다.
 // 수정 때는 모든 필드를 보낸다: 빈 값은 서버에서 null로 지워진다. 그래서 폼은 첫 렌더부터 item으로
 // 채워져 있어야 한다(effect로 채우면 첫 프레임의 입력이 빈 폼으로 저장되어 항목이 지워진다).
 // 부모는 열 때마다 key={item?.id ?? 'new'}로 새로 마운트한다.
@@ -71,6 +71,10 @@ export default function PortfolioItemModal({ isOpen, item, onClose, onSaved }) {
     if (form.title.trim().length > 100) return '제목은 100자 이하로 입력해 주세요.';
     if (form.url.trim() && !/^https?:\/\//i.test(form.url.trim())) return '링크는 http:// 또는 https://로 시작하는 주소여야 합니다.';
     if (form.skills.length > MAX_SKILLS) return '기술은 최대 10개까지 선택할 수 있습니다.';
+    const maxMonth = currentKstMonth();
+    if ((form.startedAt && form.startedAt > maxMonth) || (form.endedAt && form.endedAt > maxMonth)) {
+      return '이번 달 이후는 선택할 수 없습니다.';
+    }
     if (form.endedAt && !form.startedAt) return '종료 월을 입력하려면 시작 월도 입력해 주세요.';
     if (form.startedAt && form.endedAt && form.endedAt < form.startedAt) return '종료 월은 시작 월보다 빠를 수 없습니다.';
     return '';
@@ -107,7 +111,7 @@ export default function PortfolioItemModal({ isOpen, item, onClose, onSaved }) {
       const { data } = await request;
       onSaved(data.item);
     } catch (err) {
-      setError(describeProfileError(err, '포트폴리오를 저장하지 못했습니다'));
+      setError(describeProfileError(err, '포트폴리오를 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }
@@ -118,7 +122,8 @@ export default function PortfolioItemModal({ isOpen, item, onClose, onSaved }) {
 
   return (
     <Modal isOpen={isOpen} onClose={saving ? () => {} : onClose} title={item ? '포트폴리오 수정' : '포트폴리오 추가'}>
-      <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+      {/* noValidate: 브라우저 기본 검증(url·month 입력) 말풍선 대신 validate()의 한국어 안내를 보여 준다. */}
+      <form noValidate onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
         {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
 
         <div>

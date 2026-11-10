@@ -15,13 +15,16 @@ paths:
 ## 금액 — `src/lib/money.ts`에서만
 
 - 모든 금액은 **원 단위 정수**다. 수수료, 부가세, 반올림은 `lib/money.ts`를 거친다:
-  `payoutBreakdown(gross)`(M3: `fee = floor(gross × 10%)`, `vat = floor(fee × 10%)`,
-  `net = gross − fee − vat`), `sumBreakdowns(items)`(M5: 합계는 항목의 합이고, 총액에서 다시
-  계산하지 않는다), `wholeWon()`(M7), 그리고 상수
+  `payoutBreakdown(gross)`(`fee = floor(gross × 10%)`, `vat = floor(fee × 10%)`,
+  `net = gross − fee − vat`), `sumBreakdowns(items)`(합계는 항목의 합이고, 총액에서 다시
+  계산하지 않는다), `wholeWon()`(계약 금액의 원 단위 반올림), 그리고 상수
   `PLATFORM_FEE_RATE_BPS`, `MIN_MILESTONES`/`MAX_MILESTONES`, `MIN_MILESTONE_AMOUNT`.
 - 다른 곳에서 금액에 인라인 `* 0.1`, `Math.round(amount * …)`, `toFixed`를 쓰지 않는다.
 - `schema.prisma`의 `Float` 금액 컬럼은 알고 있는 부채다. 마이그레이션하지 않는다.
-- 새 라우트의 zod 스키마는 정수가 아닌 금액을 거부한다(규칙 12) → 400.
+- 새 라우트의 zod 스키마는 정수가 아닌 금액을 거부한다 → 400. 요청 본문의 금액은 `src/schemas/common.ts`의
+  `bodyWholeWon(label, { min })`(JSON 정수나 정수 문자열만 받는다)을 쓴다. 확장 스키마에 이미 있는
+  `.int()`(`schemas/milestones.ts`의 마일스톤 금액, `schemas/users.ts`의 `hourlyRate`)도 같은 규칙이다.
+- 규칙과 그 이유: `docs/domain/milestones-payments.md` "돈 규칙".
 
 ## 시간 — `src/lib/time.ts`, 고정 UTC+9
 

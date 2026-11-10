@@ -2,7 +2,7 @@
 
 import { formatKRW } from '@/lib/format';
 
-// 서버가 계산한 payoutPreview {gross, fee, vat, net}를 그대로 보여준다(BEHAVIOR.md MS1).
+// 서버가 계산한 payoutPreview {gross, fee, vat, net}를 그대로 보여준다.
 // 화면에서 다시 계산하지 않는다. 승인 후에는 정산 항목의 저장값이다.
 export default function PayoutPreview({ preview, compact = false }) {
   if (!preview) return null;

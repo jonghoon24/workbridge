@@ -12,6 +12,7 @@ vi.mock('@sentry/node', () => sentry);
 import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient } from './helpers/factories';
+import { fundableMilestone, withFailingPaymentInsert } from './helpers/faults';
 import { registry } from '../src/jobs/registry';
 import { PermanentJobError } from '../src/jobs/errors';
 import { runDueJobs } from '../src/jobs/runner';
@@ -24,10 +25,11 @@ import { runDueJobs } from '../src/jobs/runner';
 
 const DSN = 'https://public@o0.ingest.sentry.io/0';
 
-/** A non-string `milestoneId` makes Prisma reject the lookup — the suite's standing 500 vector. */
+/** The suite's standing 500 vector (`helpers/faults.ts`): a payment insert failing at the database. */
 async function provoke500(requestId: string) {
-  const client = await makeClient();
-  const res = await authed(client).post('/api/payments').set('X-Request-Id', requestId).send({ milestoneId: 12345 });
+  const { client, milestone } = await fundableMilestone();
+  const res = await withFailingPaymentInsert(() =>
+    authed(client).post('/api/payments').set('X-Request-Id', requestId).send({ milestoneId: milestone.id }));
   return { res, client };
 }
 

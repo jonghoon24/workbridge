@@ -23,6 +23,7 @@ import reviewRoutes from './routes/reviews.routes';
 import notificationRoutes from './routes/notifications.routes';
 import conversationRoutes from './routes/conversations.routes';
 import internalRoutes from './routes/internal.routes';
+import docsRoutes from './routes/docs.routes';
 import { errorHandler } from './middlewares/errorHandler';
 import { accessLog } from './middlewares/accessLog';
 import { bindRequestContext, requestId } from './middlewares/requestId';
@@ -67,7 +68,7 @@ if (isProduction && !hasAllowedOrigins) {
   logger.warn('CLIENT_URL or CORS_ORIGINS must be set for browser CORS requests.');
 }
 
-// NC14: a set but unsupported MAIL_PROVIDER is a `warn` line once per process, never a throw.
+// A set but unsupported MAIL_PROVIDER is a `warn` line once per process, never a throw.
 warnIfUnsupportedMailProvider();
 
 // First, so every response — CORS rejections and body-parse errors included — carries
@@ -119,6 +120,8 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/internal', internalRoutes);
+// `GET /api/docs` and `GET /api/openapi.json`. Last, and touching no other router's paths.
+app.use('/api', docsRoutes);
 
 app.use(errorHandler);
 

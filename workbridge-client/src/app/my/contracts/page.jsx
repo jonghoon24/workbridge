@@ -54,7 +54,7 @@ export default function MyContractsPage() {
         setMeta(data.meta || { total: 0, page, limit: PAGE_SIZE, totalPages: 0 });
       })
       .catch((err) => {
-        if (!ignored) setError(toUserMessage(err, '계약 목록을 불러오지 못했습니다'));
+        if (!ignored) setError(toUserMessage(err, '계약 목록을 불러오지 못했습니다.'));
       })
       .finally(() => {
         if (!ignored) setLoading(false);
@@ -65,7 +65,7 @@ export default function MyContractsPage() {
     };
   }, [status, page]);
 
-  // 목록에는 대화방 id가 없으므로(MG19는 수만 준다) 계약의 대화방을 찾아서 연다(MG18).
+  // 목록에는 대화방 id가 없으므로(수만 준다) 계약의 대화방을 찾아서 연다.
   async function openConversation(contractId) {
     setOpeningChat(contractId);
     try {

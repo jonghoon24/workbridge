@@ -7,7 +7,7 @@ import { makeClient, makeFreelancer, makeCareer } from './helpers/factories';
 import { kstMonthString, kstMonthToDate } from '../src/lib/time';
 
 /**
- * Career entries — BEHAVIOR.md PF1, PF2, PF4–PF8, PF13–PF15, PF17, PF19, PF20. Role and
+ * Career entries. Role and
  * ownership rows live in `authorization.test.ts`; the soft-deleted writer in `soft-delete.test.ts`.
  */
 
@@ -24,7 +24,7 @@ const post = (user: User, body: Record<string, unknown>) => authed(user).post('/
 const patch = (user: User, id: string, body: Record<string, unknown>) =>
   authed(user).patch(`/api/users/me/careers/${id}`).send(body);
 
-/** A career stored with months given as `YYYY-MM` (PF2). */
+/** A career stored with months given as `YYYY-MM` (stored as the first instant of the month in KST). */
 function career(userId: string, start: string, end: string | null, extra: Record<string, unknown> = {}) {
   return makeCareer(userId, {
     startDate: kstMonthToDate(start),
@@ -34,7 +34,7 @@ function career(userId: string, start: string, end: string | null, extra: Record
 }
 
 describe('POST /api/users/me/careers', () => {
-  it('creates an entry and returns the PF4 object with YYYY-MM months [PF13] [PF4] [PF2]', async () => {
+  it('creates an entry and returns the career object with YYYY-MM months', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, { ...VALID, endDate: '2023-12', description: '  결제 시스템  ' });
@@ -63,7 +63,7 @@ describe('POST /api/users/me/careers', () => {
     ['absent', {}],
     ['null', { endDate: null }],
     ['empty', { endDate: '' }],
-  ])('treats an endDate that is %s as a current position; several may coexist [PF13] [PF4]', async (_name, extra) => {
+  ])('treats an endDate that is %s as a current position; several may coexist', async (_name, extra) => {
     const freelancer = await makeFreelancer();
     await career(freelancer.id, '2020-01', null);
 
@@ -88,7 +88,7 @@ describe('POST /api/users/me/careers', () => {
     { name: 'description of 2001', body: { ...VALID, description: 'x'.repeat(2001) }, message: 'description: Description must be at most 2000 characters' },
   ];
 
-  it.each(VALIDATION)('400 for $name, with the exact message [PF13] [PF2]', async ({ body, message }) => {
+  it.each(VALIDATION)('400 for $name, with the exact message', async ({ body, message }) => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, body);
@@ -99,11 +99,27 @@ describe('POST /api/users/me/careers', () => {
   });
 
   it.each([
+    ['an unknown employmentType', { ...VALID, employmentType: 'PART_TIME' }],
+    ['a missing employmentType', { ...VALID, employmentType: undefined }],
+    ['a non-string employmentType', { ...VALID, employmentType: 3 }],
+  ])('400 for %s with one sentence naming the allowed values', async (_name, body) => {
+    const freelancer = await makeFreelancer();
+
+    const res = await post(freelancer, body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: { message: 'employmentType: Employment type must be one of FULL_TIME, CONTRACT, FREELANCE, INTERN' },
+    });
+    expect(await prisma.career.count()).toBe(0);
+  });
+
+  it.each([
     ['an unknown employmentType', { ...VALID, employmentType: 'PART_TIME' }, 'employmentType: '],
     ['a missing employmentType', { ...VALID, employmentType: undefined }, 'employmentType: '],
     ['a missing startDate', { ...VALID, startDate: undefined }, 'startDate: '],
     ['a non-string company', { ...VALID, company: 7 }, 'company: '],
-  ])('400 for %s — path prefix asserted [PF13] [PF7]', async (_name, body, prefix) => {
+  ])('400 for %s — path prefix asserted', async (_name, body, prefix) => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, body);
@@ -112,7 +128,7 @@ describe('POST /api/users/me/careers', () => {
     expect(res.body.error.message.startsWith(prefix)).toBe(true);
   });
 
-  it('accepts a start and end in the same month, the current month included [PF2]', async () => {
+  it('accepts a start and end in the same month, the current month included', async () => {
     const freelancer = await makeFreelancer();
     const current = monthFromNow(0);
 
@@ -121,7 +137,7 @@ describe('POST /api/users/me/careers', () => {
     expect(res.status).toBe(201);
   });
 
-  it('409s at 30 entries [PF13] [PF1]', async () => {
+  it('409s at 30 entries', async () => {
     const freelancer = await makeFreelancer();
     for (let i = 0; i < 30; i += 1) await makeCareer(freelancer.id);
 
@@ -131,7 +147,7 @@ describe('POST /api/users/me/careers', () => {
     expect(res.body).toEqual({ error: { message: 'Careers are limited to 30 entries' } });
   });
 
-  it('serializes concurrent creates on the user row: two at 29 end at 30 and one 409 [PF8]', async () => {
+  it('serializes concurrent creates on the user row: two at 29 end at 30 and one 409', async () => {
     const freelancer = await makeFreelancer();
     for (let i = 0; i < 29; i += 1) await makeCareer(freelancer.id);
 
@@ -143,7 +159,7 @@ describe('POST /api/users/me/careers', () => {
 });
 
 describe('PATCH /api/users/me/careers/:careerId', () => {
-  it('changes only the fields present; endDate null or "" makes the position current [PF14]', async () => {
+  it('changes only the fields present; endDate null or "" makes the position current', async () => {
     const freelancer = await makeFreelancer();
     const entry = await career(freelancer.id, '2020-01', '2021-12', { description: 'old' });
 
@@ -165,7 +181,7 @@ describe('PATCH /api/users/me/careers/:careerId', () => {
     expect(nulled.body.career.endDate).toBeNull();
   });
 
-  it('cannot clear a required field [PF14]', async () => {
+  it('cannot clear a required field', async () => {
     const freelancer = await makeFreelancer();
     const entry = await makeCareer(freelancer.id);
 
@@ -175,7 +191,7 @@ describe('PATCH /api/users/me/careers/:careerId', () => {
     expect(res.body).toEqual({ error: { message: 'company: Company is required' } });
   });
 
-  it('checks the month order on the merged row, after existence and ownership [PF14] [PF7]', async () => {
+  it('checks the month order on the merged row, after existence and ownership', async () => {
     const owner = await makeFreelancer();
     const intruder = await makeFreelancer();
     const entry = await career(owner.id, '2022-05', '2023-01');
@@ -198,7 +214,7 @@ describe('PATCH /api/users/me/careers/:careerId', () => {
 });
 
 describe('DELETE /api/users/me/careers/:careerId', () => {
-  it('hard-deletes, then 404s [PF15]', async () => {
+  it('hard-deletes, then 404s', async () => {
     const freelancer = await makeFreelancer();
     const entry = await makeCareer(freelancer.id);
 
@@ -214,7 +230,7 @@ describe('DELETE /api/users/me/careers/:careerId', () => {
 });
 
 describe('GET /api/users/:id/careers', () => {
-  it('is public and lists in PF5 order: start desc, current first, end desc, createdAt desc, id asc [PF17] [PF5]', async () => {
+  it('is public and lists in display order: start desc, current first, end desc, createdAt desc, id asc', async () => {
     const freelancer = await makeFreelancer();
     const oldest = await career(freelancer.id, '2018-01', '2019-01');
     const endedEarly = await career(freelancer.id, '2021-01', '2021-06');
@@ -230,7 +246,7 @@ describe('GET /api/users/:id/careers', () => {
       .toEqual([latest.id, current.id, endedLate.id, newer.id, endedEarly.id, oldest.id]);
   });
 
-  it('returns careerSummary with overlapping and adjacent ranges merged — the PF6 example [PF6] [PF17]', async () => {
+  it('returns careerSummary with overlapping and adjacent ranges merged (2020-01–2021-06 plus 2021-03–2022-02 is 26 months)', async () => {
     const freelancer = await makeFreelancer();
     await career(freelancer.id, '2020-01', '2021-06');
     await career(freelancer.id, '2021-03', '2022-02');
@@ -242,7 +258,7 @@ describe('GET /api/users/:id/careers', () => {
     expect((await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } })).experienceYears).toBe(3);
   });
 
-  it('counts a current position through the current KST month [PF6]', async () => {
+  it('counts a current position through the current KST month', async () => {
     const freelancer = await makeFreelancer();
     await career(freelancer.id, monthFromNow(-2), null);
 
@@ -251,7 +267,7 @@ describe('GET /api/users/:id/careers', () => {
     expect(res.body.careerSummary).toEqual({ totalMonths: 3, years: 0, months: 3 });
   });
 
-  it('is all zero with no entries, and 404 for unknown, "me" and soft-deleted users [PF6] [PF17] [PF19] [PF20]', async () => {
+  it('is all zero with no entries, and 404 for unknown, "me" and soft-deleted users', async () => {
     const client = await makeClient();
     const gone = await makeFreelancer({ deletedAt: new Date() });
     await makeCareer(gone.id);

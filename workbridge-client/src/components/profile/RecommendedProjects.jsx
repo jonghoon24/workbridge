@@ -11,7 +11,7 @@ import { SparklesIcon } from '@/components/ui/Icons';
 
 const INCOMPLETE_PROFILE = '프로필을 먼저 완성해주세요';
 
-// 프리랜서에게 맞는 프로젝트 추천(BEHAVIOR.md RC6–RC8). 프로필이 미완성이면 서버가 403을 주므로
+// 프리랜서에게 맞는 프로젝트 추천. 프로필이 미완성이면 서버가 403을 주므로
 // 완성을 유도한다. compact는 홈 화면용(카드 3개 + 더 보기).
 export default function RecommendedProjects({ limit = 10, compact = false }) {
   const [projects, setProjects] = useState(null);
@@ -23,7 +23,7 @@ export default function RecommendedProjects({ limit = 10, compact = false }) {
       .then(({ data }) => setProjects(data.projects))
       .catch((err) => {
         if (err.response?.data?.error?.message === INCOMPLETE_PROFILE) setIncomplete(true);
-        else setError('추천 프로젝트를 불러오지 못했습니다');
+        else setError('추천 프로젝트를 불러오지 못했습니다.');
         setProjects([]);
       });
   }, [limit]);

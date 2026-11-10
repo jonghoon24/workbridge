@@ -15,34 +15,35 @@ import type { PrismaTransactionClient } from '../types/index';
 import type { MessageListQuery } from '../schemas/conversations';
 
 /**
- * Conversations and messages (BEHAVIOR.md "Conversations", MG1–MG21, and the 2A half of J8).
+ * Conversations and messages, plus the unread-message digest's enqueue rule and run logic
+ * (docs/domain/messaging-notifications.md).
  *
  * Every message — a person's text or a contract event's system message — goes through
  * {@link postMessage}, which takes the conversation's row lock and derives `createdAt` from the
  * locked `lastMessageAt`, so `createdAt` strictly increases in commit order within a conversation
- * (MG7). The cursors and the read watermark depend on that. Lock order across the codebase is
+ * The cursors and the read watermark depend on that. Lock order across the codebase is
  * `Contract` → `Milestone` → the event's other writes → `Conversation`: a system message is always
  * the last write of its event transaction, and nothing here locks anything after a conversation.
  */
 
 // ---------------------------------------------------------------------------
-// Constants (MG1)
+// Constants
 // ---------------------------------------------------------------------------
 
-/** MG9: posting stays open this long after completion — exact hours, not KST days. */
+/** Posting stays open this long after completion — exact hours, not KST days. */
 export const POST_COMPLETION_WINDOW_MS = 30 * DAY_MS;
-/** MG17: a sender may delete a message strictly less than this long after `createdAt`. */
+/** A sender may delete a message strictly less than this long after `createdAt`. */
 export const DELETE_WINDOW_MS = 5 * MINUTE_MS;
-/** J8: the unread digest runs this long after the message that schedules it. */
+/** The unread digest runs this long after the message that schedules it. */
 export const UNREAD_DIGEST_DELAY_MS = 10 * MINUTE_MS;
-/** MG1: at most one digest email per conversation and recipient per this period (NC16). */
+/** At most one digest email per conversation and recipient per this period. */
 export const UNREAD_DIGEST_THROTTLE_MS = 60 * MINUTE_MS;
 
 const CONVERSATION_NOT_FOUND = 'Conversation not found';
 const NOT_AUTHORIZED = 'Not authorized';
 
 // ---------------------------------------------------------------------------
-// System messages (MG6)
+// System messages
 // ---------------------------------------------------------------------------
 
 /** `Message.systemEvent` values — a bare String in the schema, like `Notification.type`. */
@@ -66,7 +67,7 @@ export interface SystemMessageVars {
 }
 
 /**
- * Fixed Korean bodies. The wording is not part of the spec (tests assert `systemEvent`). No
+ * Fixed Korean bodies. The wording is not a contract (tests assert `systemEvent`). No
  * particle follows a quoted title — 이/가 would depend on its last syllable.
  */
 const ms = (v: SystemMessageVars) => `마일스톤 '${v.milestoneTitle ?? ''}'`;
@@ -85,12 +86,12 @@ const SYSTEM_BODIES: Record<MessageSystemEvent, (v: SystemMessageVars) => string
 };
 
 // ---------------------------------------------------------------------------
-// Serialization (MG4, MG5)
+// Serialization
 // ---------------------------------------------------------------------------
 
 const userCard = { select: { id: true, name: true, profileImage: true } } as const;
 
-/** MG4: the attachment keys, in upload order. */
+/** The attachment keys, in upload order. */
 const messageInclude = {
   sender: userCard,
   attachments: {
@@ -101,12 +102,12 @@ const messageInclude = {
 
 type MessageRow = Prisma.MessageGetPayload<{ include: typeof messageInclude }>;
 
-/** `(createdAt, id)` — the order of MG14 and of "newest" everywhere in this file. */
+/** `(createdAt, id)` — the order of a message page and of "newest" everywhere in this file. */
 const NEWEST_FIRST = [{ createdAt: 'desc' }, { id: 'desc' }] satisfies Prisma.MessageOrderByWithRelationInput[];
 const OLDEST_FIRST = [{ createdAt: 'asc' }, { id: 'asc' }] satisfies Prisma.MessageOrderByWithRelationInput[];
 
 /**
- * MG4. `readByCounterpart` only means something for the viewer's own text messages; a deleted
+ * `readByCounterpart` only means something for the viewer's own text messages; a deleted
  * message is a tombstone (`body: ''`, `attachments: []`).
  */
 export function serializeMessage(row: MessageRow, viewerId: string, counterpartLastReadAt: Date | null) {
@@ -150,7 +151,10 @@ type ConversationRow = Prisma.ConversationGetPayload<{ include: typeof conversat
 
 export type ClosedReason = 'CONTRACT_CLOSED' | 'COUNTERPART_INACTIVE';
 
-/** MG9, top to bottom. A COMPLETED contract without `completedAt` (bad data) has no `closesAt`. */
+/**
+ * Who may post, decided top to bottom: closed after `closesAt`, then an inactive counterpart, else
+ * open. A COMPLETED contract without `completedAt` (bad data) has no `closesAt`.
+ */
 export function postingState(
   contract: Pick<Contract, 'status' | 'completedAt'>,
   counterpart: { deletedAt: Date | null },
@@ -178,7 +182,7 @@ function sides(row: ConversationRow, userId: string) {
   };
 }
 
-/** MG5. */
+/** The conversation object as every conversation route returns it. */
 function serializeConversation(row: ConversationRow, userId: string, unreadCount: number, now: Date) {
   const { myRole, counterpartUser, myLastReadAt, counterpartLastReadAt } = sides(row, userId);
   const { id: counterpartId, name, profileImage } = counterpartUser;
@@ -199,11 +203,12 @@ function serializeConversation(row: ConversationRow, userId: string, unreadCount
 }
 
 // ---------------------------------------------------------------------------
-// Unread counts (MG8, MG12, MG19)
+// Unread counts
 // ---------------------------------------------------------------------------
 
 /**
- * MG8 for `userId`, per conversation matching `condition` (a predicate on `c`, the conversation).
+ * Unread count for `userId` — the counterpart's undeleted text messages after the caller's
+ * `lastReadAt` — per conversation matching `condition` (a predicate on `c`, the conversation).
  * Conversations with nothing unread are absent from the result.
  */
 async function unreadRows(client: PrismaTransactionClient, userId: string, condition: Prisma.Sql) {
@@ -220,7 +225,7 @@ async function unreadRows(client: PrismaTransactionClient, userId: string, condi
      GROUP BY c."id", c."contractId"`;
 }
 
-/** MG8 per conversation id; 0 for any id not in the map. */
+/** Unread count per conversation id; 0 for any id not in the map. */
 export async function unreadByConversation(
   userId: string,
   conversationIds: readonly string[],
@@ -231,14 +236,14 @@ export async function unreadByConversation(
   return new Map(rows.map((r) => [r.conversationId, r.unread]));
 }
 
-/** MG19: MG8 per contract id (callers have already excluded deleted projects). */
+/** Unread count per contract id, for the contract list (callers already excluded deleted projects). */
 export async function unreadByContract(userId: string, contractIds: readonly string[]): Promise<Map<string, number>> {
   if (contractIds.length === 0) return new Map();
   const rows = await unreadRows(prisma, userId, Prisma.sql`c."contractId" IN (${Prisma.join(contractIds)})`);
   return new Map(rows.map((r) => [r.contractId, r.unread]));
 }
 
-/** MG12: the sum over the caller's conversations, MG10 excluded. */
+/** The sum over the caller's conversations, those of soft-deleted projects excluded. */
 export async function unreadTotal(userId: string): Promise<{ unreadCount: number }> {
   const rows = await unreadRows(prisma, userId, Prisma.sql`EXISTS (
     SELECT 1 FROM "Contract" ct JOIN "Project" pr ON pr."id" = ct."projectId"
@@ -247,7 +252,7 @@ export async function unreadTotal(userId: string): Promise<{ unreadCount: number
 }
 
 // ---------------------------------------------------------------------------
-// Posting (MG7)
+// Posting
 // ---------------------------------------------------------------------------
 
 interface PostInput {
@@ -259,9 +264,9 @@ interface PostInput {
 }
 
 /**
- * MG7: lock the conversation, take `createdAt = max(clock, lastMessageAt + 1 ms)` with the clock
+ * Lock the conversation, take `createdAt = max(clock, lastMessageAt + 1 ms)` with the clock
  * read only once the lock is held, insert the message, move `lastMessageAt`. Always the server
- * clock — never a `now` handed in (an exception to rule 11).
+ * clock — never a `now` handed in (an exception to the take-`now`-as-an-argument convention).
  */
 async function postMessage(tx: PrismaTransactionClient, conversationId: string, input: PostInput): Promise<MessageRow> {
   const [locked] = await tx.$queryRaw<{ lastMessageAt: Date | null }[]>`
@@ -295,7 +300,7 @@ async function postMessage(tx: PrismaTransactionClient, conversationId: string, 
 }
 
 /**
- * MG6/MG7: records a contract event in its conversation. Call it as the **last write** of the
+ * Records a contract event in its conversation. Call it as the **last write** of the
  * event's transaction. A contract without a conversation (a data-repair case, or a test fixture
  * made with `makeContract` alone) posts nothing and logs a warning — it never throws.
  */
@@ -318,7 +323,7 @@ export async function postSystemMessage(
   });
 }
 
-/** MG3, accept step 7: the conversation, both participants, then `CONTRACT_CREATED`. */
+/** Part of accepting an application: the conversation, both participants, then `CONTRACT_CREATED`. */
 export async function openContractConversation(
   tx: PrismaTransactionClient,
   contract: Pick<Contract, 'id' | 'clientId' | 'freelancerId'>,
@@ -333,10 +338,10 @@ export async function openContractConversation(
 }
 
 // ---------------------------------------------------------------------------
-// Unread digest scheduling (J8)
+// Unread digest scheduling
 // ---------------------------------------------------------------------------
 
-/** J8's enqueue rule: skipped while a `PENDING` digest exists for the pair (matched on payload). */
+/** The digest's enqueue rule: skipped while a `PENDING` digest exists for the pair (by payload). */
 async function scheduleUnreadDigest(
   tx: PrismaTransactionClient,
   conversationId: string,
@@ -360,17 +365,18 @@ async function scheduleUnreadDigest(
 
 export type UnreadDigestOutcome = 'not-applicable' | 'nothing-unread' | 'rescheduled' | 'throttled' | 'notified';
 
-/** NC16: the digest delivery's `contextKey`, which step 3's throttle looks up. */
+/** The digest delivery's `contextKey`, which the throttle (step 3 below) looks up. */
 export function digestContextKey(conversationId: string): string {
   return `conversation:${conversationId}`;
 }
 
 /**
- * J8 (steps 1–4, NC16). One transaction: lock the recipient's
- * participant row (a concurrent `POST …/read` writes the same row), then decide. `throttled`
+ * The `message.unreadDigest` job (docs/domain/messaging-notifications.md). One transaction:
+ * lock the recipient's participant row (a concurrent `POST …/read` writes the same row), then
+ * decide. `throttled`
  * re-enqueues for one throttle period after the last digest; `notified` handed the digest to
  * `notify()`, which creates the email (or nothing, when the recipient turned the digest off).
- * A payload naming a participant row that does not exist is a `PermanentJobError` (J1, J8).
+ * A payload naming a participant row that does not exist is a `PermanentJobError`.
  */
 export async function runUnreadDigest(
   conversationId: string,
@@ -416,7 +422,7 @@ export async function runUnreadDigest(
       return { outcome: 'rescheduled' as const, unreadCount, nextRunAt };
     }
 
-    // 3. NC16 throttle: the newest digest delivery for the pair, in any status. `createdAt` is
+    // 3. Throttle: the newest digest delivery for the pair, in any status. `createdAt` is
     // the `ctx.now` of the run that created it, so this is exact under `runDueJobs({ now })`.
     const contextKey = digestContextKey(conversationId);
     const last = await tx.emailDelivery.findFirst({
@@ -430,7 +436,7 @@ export async function runUnreadDigest(
       return { outcome: 'throttled' as const, unreadCount, nextRunAt };
     }
 
-    // 4. The email-only digest (NC2): no in-app row; its `notification.email` job sends it on a
+    // 4. The email-only digest: no in-app row; its `notification.email` job sends it on a
     // later runner pass.
     await notify(tx, {
       userId: recipientId,
@@ -447,10 +453,10 @@ export async function runUnreadDigest(
 }
 
 // ---------------------------------------------------------------------------
-// Route lookups (MG10, MG13)
+// Route lookups
 // ---------------------------------------------------------------------------
 
-/** MG13: missing or MG10 → 404, not a participant → 403. */
+/** Missing or its project soft-deleted → 404, not a participant → 403. */
 async function findConversationForRoute(conversationId: string, userId: string): Promise<ConversationRow> {
   const row = await prisma.conversation.findFirst({
     where: { id: conversationId, contract: { project: { deletedAt: null } } },
@@ -470,7 +476,6 @@ export interface ConversationListQuery {
   limit: number;
 }
 
-/** MG11. */
 export async function listConversations(userId: string, query: ConversationListQuery, now: Date = new Date()) {
   const where: Prisma.ConversationWhereInput = {
     participants: { some: { userId } },
@@ -501,14 +506,13 @@ export async function listConversations(userId: string, query: ConversationListQ
   };
 }
 
-/** MG13. */
 export async function getConversation(conversationId: string, userId: string, now: Date = new Date()) {
   const row = await findConversationForRoute(conversationId, userId);
   const unread = await unreadByConversation(userId, [row.id]);
   return { conversation: serializeConversation(row, userId, unread.get(row.id) ?? 0, now) };
 }
 
-/** MG14. Always ascending `(createdAt, id)`; never marks anything read. */
+/** Always ascending `(createdAt, id)`; never marks anything read. */
 export async function listMessages(conversationId: string, userId: string, query: MessageListQuery) {
   const row = await findConversationForRoute(conversationId, userId);
   const { counterpartLastReadAt } = sides(row, userId);
@@ -555,7 +559,10 @@ export async function listMessages(conversationId: string, userId: string, query
   return { messages: page.map((m) => serializeMessage(m, userId, counterpartLastReadAt)), hasMore };
 }
 
-/** MG15 steps 2–5 (step 1, validation, ran before). */
+/**
+ * Lookup, posting check, file storage, then one transaction for the message and the digest
+ * (validation ran before).
+ */
 export async function sendMessage(
   conversationId: string,
   userId: string,
@@ -598,7 +605,7 @@ export async function sendMessage(
   return { message: serializeMessage(message, userId, counterpartLastReadAt) };
 }
 
-/** MG16: up to the newest counterpart message, conditionally, so it never moves back. */
+/** Moves `lastReadAt` up to the newest counterpart message, conditionally, so it never moves back. */
 export async function markRead(conversationId: string, userId: string) {
   const row = await findConversationForRoute(conversationId, userId);
   const { counterpartUser } = sides(row, userId);
@@ -627,7 +634,6 @@ export async function markRead(conversationId: string, userId: string) {
   return { lastReadAt: me.lastReadAt, unreadCount: unread.get(conversationId) ?? 0 };
 }
 
-/** MG17. */
 export async function deleteMessage(conversationId: string, messageId: string, userId: string, now: Date = new Date()) {
   const row = await findConversationForRoute(conversationId, userId);
   const { counterpartLastReadAt } = sides(row, userId);
@@ -654,7 +660,6 @@ export async function deleteMessage(conversationId: string, messageId: string, u
   return { message: serializeMessage(tombstone, userId, counterpartLastReadAt) };
 }
 
-/** MG18. */
 export async function getContractConversation(contractId: string, userId: string) {
   const contract = await prisma.contract.findFirst({
     where: { id: contractId, project: { deletedAt: null } },

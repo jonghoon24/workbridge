@@ -12,6 +12,19 @@ const PROJECT_STATUS_OPTIONS = [
   { value: 'ALL', label: '전체' },
 ];
 
+/**
+ * 예산 입력칸 값을 쿼리 값으로. 숫자 입력칸은 '1e6'·'1.5e3' 같은 지수 표기도 그대로 주는데 서버는
+ * 십진수만 받으므로(`1e6` → 400) 보내기 전에 숫자로 읽어 다시 문자열로 쓴다(프로필 화면과 같은 방식).
+ * 빈 값과 유한하지 않은 값은 ''(조건 없음).
+ */
+export function toBudgetParam(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '';
+  // String()은 아주 크거나 작은 수를 다시 지수 표기로 쓰므로('1e+21', '1e-7') 십진수로 풀어 쓴다.
+  return number.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 20 });
+}
+
 export default function ProjectFilters() {
   const { filters, setFilters, resetFilters } = useProjectStore();
   const selectedSkills = normalizeSkillList(filters.skills);

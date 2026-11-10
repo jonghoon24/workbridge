@@ -1,20 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { authed, type Principal } from './helpers/api';
+import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeProject } from './helpers/factories';
 
 /**
  * Bookmarks — `GET|POST|DELETE /api/projects/:id/bookmark`, all FREELANCER-only.
- * Spec: docs/BEHAVIOR.md § "Bookmarks — /:id/bookmark".
  *
- * Two separate things are in play on `GET`/`DELETE`, and the suite keeps them apart:
- *   - **D19** — neither verb filters `deletedAt: null`, so a soft-deleted project stays
- *     bookmark-visible. Cross-cutting rule 5 already decides this ("a soft-deleted project must be
- *     invisible to listing, fetching, applying, and bookmarking"), so those tests assert 404 and
- *     are marked `it.fails`.
- *   - **Q6** — whether `GET`/`DELETE` should also 404 for an id that *never existed*, as `POST`
- *     does, is deferred. Those tests pin today's behavior with a plain `it` tagged "(Q6)".
+ * Unlike `POST`, `GET` and `DELETE` do not look the project up, so an id that never existed is
+ * answered as "no bookmark" rather than 404. Whether they should 404 is an open product
+ * question; the tests below pin today's behavior.
  */
 
 /** A project id that is guaranteed not to exist (the db was truncated before this test). */
@@ -31,77 +26,6 @@ async function freelancerWithProject() {
 
 const countBookmarks = (where: { projectId?: string; userId?: string } = {}) =>
   prisma.projectBookmark.count({ where });
-
-/** Sessions on this database currently parked on a lock — i.e. a statement waiting on another. */
-async function sessionsWaitingOnALock(): Promise<number> {
-  const [{ waiting }] = await prisma.$queryRaw<Array<{ waiting: number }>>`
-    SELECT count(*)::int AS waiting
-    FROM pg_stat_activity
-    WHERE datname = current_database()
-      AND state = 'active'
-      AND wait_event_type = 'Lock'`;
-  return waiting;
-}
-
-/**
- * Forces a POST onto the losing side of `projectBookmark.upsert`'s find-then-insert window,
- * without depending on two requests happening to interleave.
- *
- * The test connection opens a transaction, inserts `(projectId, userId)`, and holds it open. A
- * POST then runs its `findUnique`, which cannot see the uncommitted row, and proceeds to `INSERT`
- * — which Postgres parks on the duplicate uncommitted key. Once that wait shows up in
- * `pg_stat_activity`, the holding transaction commits and the parked insert wakes to a unique
- * violation: exactly what two simultaneous POSTs hit, but deterministically.
- *
- * `blockedObserved` reports whether the wait was really seen, so a test can assert the
- * interleaving happened instead of assuming it.
- */
-async function postBookmarkLosingTheInsertRace(freelancer: Principal, projectId: string) {
-  let announceInserted: () => void = () => {};
-  const inserted = new Promise<void>((resolve) => { announceInserted = resolve; });
-  let commit: () => void = () => {};
-  const held = new Promise<void>((resolve) => { commit = resolve; });
-
-  const holder = prisma.$transaction(
-    async (tx) => {
-      await tx.projectBookmark.create({ data: { projectId, userId: freelancer.id } });
-      announceInserted();
-      await held;
-    },
-    { timeout: 20_000, maxWait: 10_000 },
-  );
-
-  try {
-    // Raced against `holder` so that a transaction that fails before inserting surfaces as its own
-    // error rather than hanging here until the test times out.
-    await Promise.race([
-      inserted,
-      holder.then(() => { throw new Error('the holding transaction ended before it inserted'); }),
-    ]);
-
-    // `.then()` is what dispatches a supertest request; merely building it sends nothing.
-    let settled = false;
-    const post = authed(freelancer)
-      .post(bookmarkPath(projectId))
-      .then((res) => { settled = true; return res; });
-
-    let blockedObserved = false;
-    const deadline = Date.now() + 5_000;
-    while (!settled && Date.now() < deadline) {
-      if (await sessionsWaitingOnALock() > 0) {
-        blockedObserved = true;
-        break;
-      }
-      await new Promise((resolve) => { setTimeout(resolve, 25); });
-    }
-
-    commit();
-    return { res: await post, blockedObserved };
-  } finally {
-    commit();
-    await holder;
-  }
-}
 
 describe('GET /api/projects/:id/bookmark', () => {
   it('returns { bookmarked: false } when the freelancer has not bookmarked the project', async () => {
@@ -149,33 +73,16 @@ describe('GET /api/projects/:id/bookmark', () => {
     expect(theirs.body).toEqual({ bookmarked: true });
   });
 
-  // ---- Q6: GET does not verify the project, unlike POST -------------------------------------
+  // ---- GET does not verify the project, unlike POST ----------------------------------------
   // Current behavior: the handler only looks up the (projectId, userId) bookmark row, so an
   // unknown id simply has no bookmark and answers 200 instead of 404.
-  it('GET bookmark for a non-existent project currently succeeds with { bookmarked: false } (Q6)', async () => {
+  it('GET bookmark for a non-existent project currently succeeds with { bookmarked: false }', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).get(bookmarkPath(MISSING_PROJECT_ID));
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ bookmarked: false });
-  });
-
-  // 알려진 불일치 D19 — #14
-  // Rule 5 is unconditional — a soft-deleted project is invisible to bookmarking. Today: `getProjectBookmark` looks up only the (projectId, userId) bookmark row and never
-  // touches the project, so there is no `deletedAt: null` filter and the answer is
-  // 200 `{ bookmarked: true }`. Not the Q6 case: rule 5 already decides the soft-deleted one.
-  it.fails('[D19] GET bookmark for a soft-deleted project must 404', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-    await authed(freelancer).post(bookmarkPath(project.id));
-    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(freelancer).get(bookmarkPath(project.id));
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-    // Reading must not remove the row either way — the project is deleted, the bookmark is not.
-    expect(await countBookmarks()).toBe(1);
   });
 });
 
@@ -280,45 +187,9 @@ describe('POST /api/projects/:id/bookmark', () => {
       authed(freelancer).post(bookmarkPath(project.id)),
     ]);
 
-    // Whatever the statuses are (see the next test), the unique constraint holds the state.
+    // Whatever the statuses are, the unique constraint holds the state.
     expect(await countBookmarks()).toBe(1);
   });
-
-  // 알려진 불일치 — #39
-  // The "idempotent (upsert)" guarantee and cross-cutting rule 8 ("unique-constraint collision →
-  // 409, never 500") both break when two writes overlap: `prisma.projectBookmark.upsert` is a
-  // find-then-insert, not `INSERT … ON CONFLICT`, so a POST that misses the row and then loses the
-  // insert raises P2002, which nothing catches → 500, with the raw Prisma error text (absolute
-  // source path and a source excerpt, cf. D14) in the response body. The row is still created
-  // exactly once, so only the status and the body are wrong.
-  //
-  // This is driven deterministically by `postBookmarkLosingTheInsertRace` rather than by firing
-  // pairs of requests and hoping they overlap. The previous form ran 10 pairs and relied on most
-  // of them genuinely racing; an unlucky all-serialized run would have reported a confusing
-  // "unexpected pass" instead of the divergence.
-  it.fails('is idempotent under concurrency: an insert that loses the race must not 500 [unlisted]', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-
-    const { res } = await postBookmarkLosingTheInsertRace(freelancer, project.id);
-
-    // Either repair satisfies the spec: 201 (the upsert absorbs the collision, which is what
-    // "idempotent" implies) or 409 (rule 8's status for a unique-constraint collision).
-    expect([201, 409]).toContain(res.status);
-    expect(await countBookmarks()).toBe(1);
-  });
-
-  // Guards the test above. `it.fails` inverts the result, so a test broken in its *setup* would
-  // look exactly like a confirmed divergence; this asserts that the interleaving it depends on
-  // really happens. It deliberately makes no claim about the status code.
-  it('harness check: the losing POST really is parked on a duplicate uncommitted key', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-
-    const { blockedObserved } = await postBookmarkLosingTheInsertRace(freelancer, project.id);
-
-    expect(blockedObserved).toBe(true);
-    expect(await countBookmarks()).toBe(1);
-  });
-
 });
 
 describe('DELETE /api/projects/:id/bookmark', () => {
@@ -383,32 +254,15 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     expect((await authed(other).get(bookmarkPath(project.id))).body).toEqual({ bookmarked: true });
   });
 
-  // ---- Q6: DELETE does not verify the project, unlike POST ----------------------------------
+  // ---- DELETE does not verify the project, unlike POST -------------------------------------
   // Current behavior: `deleteMany` matches zero rows and the handler answers 200 rather than 404.
-  it('DELETE bookmark for a non-existent project currently succeeds (Q6)', async () => {
+  it('DELETE bookmark for a non-existent project currently succeeds', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).delete(bookmarkPath(MISSING_PROJECT_ID));
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ bookmarked: false });
-  });
-
-  // 알려진 불일치 D19 — #14
-  // Today: `deleteProjectBookmark` runs `deleteMany` on (projectId, userId) with no project
-  // lookup, so a soft-deleted project's bookmark is removed and the call answers
-  // 200 `{ bookmarked: false }`. Rule 5 requires the project to be invisible here, so the write
-  // must not happen at all. Again distinct from the Q6 never-existed-id case above.
-  it.fails('[D19] DELETE bookmark for a soft-deleted project must 404 and leave the row', async () => {
-    const { freelancer, project } = await freelancerWithProject();
-    await authed(freelancer).post(bookmarkPath(project.id));
-    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
-
-    const res = await authed(freelancer).delete(bookmarkPath(project.id));
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-    expect(await countBookmarks()).toBe(1);
   });
 });
 

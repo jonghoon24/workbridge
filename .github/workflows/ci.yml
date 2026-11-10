@@ -63,6 +63,11 @@ jobs:
       - name: Prisma 스키마 검증
         run: npx prisma validate
 
+      # `openapi.json`은 zod 스키마에서 생성해 커밋한다. 스키마나 라우트를 바꾸고 다시 생성하지 않았으면
+      # 여기서 실패한다 — `npm run openapi`로 만들어 함께 커밋한다. DB와 환경변수 없이 돈다.
+      - name: OpenAPI 문서가 최신인지 확인
+        run: npm run openapi && git diff --exit-code openapi.json
+
       - name: 테스트 DB에 마이그레이션 적용
         run: npx prisma migrate deploy
 

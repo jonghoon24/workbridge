@@ -6,7 +6,8 @@ import { makeContractScenario, makeMilestone } from './helpers/factories';
 import { DAY_MS, kstDateString, kstDateToEndOfDay } from '../src/lib/time';
 
 /**
- * The milestone plan — BEHAVIOR.md MS6–MS10 and the plan rules M7, M8, M10–M12. The 401/403/
+ * The milestone plan — reading and replacing it, and the plan rules (count, amounts, sum,
+ * due dates). The 401/403/
  * ownership matrix for these routes lives in authorization.test.ts.
  */
 
@@ -26,7 +27,7 @@ function put(user: { id: string; email: string; role: 'CLIENT' | 'FREELANCER' },
 }
 
 describe('GET /api/contracts/:id/milestones', () => {
-  it('returns milestone objects in sequence order with the summary, to either party [MS6] [MS1]', async () => {
+  it('returns milestone objects in sequence order with the summary, to either party', async () => {
     const { client, freelancer, contract, milestone } = await makeContractScenario({ milestone: { amount: 1_000_000 } });
     const second = await makeMilestone(contract.id, { amount: 3_000_000 });
 
@@ -56,7 +57,7 @@ describe('GET /api/contracts/:id/milestones', () => {
 });
 
 describe('PUT /api/contracts/:id/milestones — success', () => {
-  it('replaces the whole plan, numbering by array order, and stores KST end-of-day due dates [MS8] [MS10] [M12]', async () => {
+  it('replaces the whole plan, numbering by array order, and stores KST end-of-day due dates', async () => {
     const { client, contract, milestone } = await makeContractScenario();
     const plan = twoStep();
 
@@ -89,7 +90,7 @@ describe('PUT /api/contracts/:id/milestones — success', () => {
     expect(stored.endDate.toISOString()).toBe(kstDateToEndOfDay(plan[1].dueDate).toISOString());
   });
 
-  it('accepts a due date of today in KST and equal consecutive dates [M12]', async () => {
+  it('accepts a due date of today in KST and equal consecutive dates', async () => {
     const { client, contract } = await makeContractScenario();
 
     const res = await put(client, contract.id, [
@@ -100,7 +101,7 @@ describe('PUT /api/contracts/:id/milestones — success', () => {
     expect(res.status).toBe(200);
   });
 
-  it('accepts exactly 10 milestones and exactly 10,000 won [M8] [M10]', async () => {
+  it('accepts exactly 10 milestones and exactly 10,000 won', async () => {
     const { client, contract } = await makeContractScenario({ contract: { amount: 1_000_000 } });
     const items = Array.from({ length: 10 }, (_, i) => ({
       title: `단계 ${i + 1}`,
@@ -114,7 +115,7 @@ describe('PUT /api/contracts/:id/milestones — success', () => {
     expect(res.body.milestones).toHaveLength(10);
   });
 
-  it('resets both signatures and notifies the freelancer when a signature was present [MS8]', async () => {
+  it('resets both signatures and notifies the freelancer when a signature was present', async () => {
     const { client, freelancer, contract } = await makeContractScenario({ contract: { clientSigned: true } });
 
     const res = await put(client, contract.id, twoStep());
@@ -127,7 +128,7 @@ describe('PUT /api/contracts/:id/milestones — success', () => {
     expect(notifications[0]).toMatchObject({ userId: freelancer.id, href: `/contracts/${contract.id}` });
   });
 
-  it('does not notify when no one had signed [MS8]', async () => {
+  it('does not notify when no one had signed', async () => {
     const { client, contract } = await makeContractScenario();
 
     await put(client, contract.id, twoStep());
@@ -135,7 +136,7 @@ describe('PUT /api/contracts/:id/milestones — success', () => {
     expect(await prisma.notification.count()).toBe(0);
   });
 
-  it('does not notify a soft-deleted freelancer (rule 5) [MS8]', async () => {
+  it('does not notify a soft-deleted freelancer', async () => {
     const { client, freelancer, contract } = await makeContractScenario({ contract: { freelancerSigned: true } });
     await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
 
@@ -145,7 +146,7 @@ describe('PUT /api/contracts/:id/milestones — success', () => {
     expect(await prisma.notification.count()).toBe(0);
   });
 
-  it('produces a plan the contract can then be signed with [CT7]', async () => {
+  it('produces a plan the contract can then be signed with', async () => {
     const { client, freelancer, contract } = await makeContractScenario();
     await put(client, contract.id, twoStep());
 
@@ -173,7 +174,12 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     ['an impossible date', () => [{ title: 't', amount: 4_000_000, dueDate: '2099-02-30' }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date'],
     ['yesterday', () => [{ title: 't', amount: 4_000_000, dueDate: inDays(-1) }], 'milestones.0.dueDate: Due date cannot be in the past'],
     ['decreasing dates', () => [{ title: 'a', amount: 2_000_000, dueDate: inDays(10) }, { title: 'b', amount: 2_000_000, dueDate: inDays(9) }], 'milestones.1.dueDate: Due dates must not decrease'],
-  ])('400s on %s with an exact message [MS7]', async (_label, items, message) => {
+    // No zod default message (`Required`, `Expected number, received string`) reaches the client.
+    ['a missing title', () => [{ amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.title: Title is required'],
+    ['a string amount', () => [{ title: 't', amount: '4000000', dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won'],
+    ['a missing amount', () => [{ title: 't', dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won'],
+    ['a missing due date', () => [{ title: 't', amount: 4_000_000 }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date'],
+  ])('400s on %s with an exact message', async (_label, items, message) => {
     const { client, contract, milestone } = await makeContractScenario();
 
     const res = await put(client, contract.id, items());
@@ -183,7 +189,19 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
   });
 
-  it('reports the first failing entry in array order: a past date on #0 wins over a blank title on #1 [MS7]', async () => {
+  it.each<[string, Record<string, unknown>]>([
+    ['a body without milestones', {}],
+    ['milestones that are not a list', { milestones: 'x' }],
+  ])('400s on %s with the milestone count message', async (_label, body) => {
+    const { client, contract } = await makeContractScenario();
+
+    const res = await authed(client).put(`/api/contracts/${contract.id}/milestones`).send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'milestones: A contract must have between 1 and 10 milestones' } });
+  });
+
+  it('reports the first failing entry in array order: a past date on #0 wins over a blank title on #1', async () => {
     const { client, contract } = await makeContractScenario();
 
     const res = await put(client, contract.id, [
@@ -194,7 +212,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect(res.body).toEqual({ error: { message: 'milestones.0.dueDate: Due date cannot be in the past' } });
   });
 
-  it('checks the date order only after every entry passed its own checks [MS7]', async () => {
+  it('checks the date order only after every entry passed its own checks', async () => {
     const { client, contract } = await makeContractScenario();
 
     const res = await put(client, contract.id, [
@@ -206,7 +224,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect(res.body).toEqual({ error: { message: 'milestones.2.title: Title is required' } });
   });
 
-  it('accepts exactly 100 / 2000 characters (the inclusive bounds) [M18]', async () => {
+  it('accepts exactly 100 / 2000 characters (the inclusive bounds)', async () => {
     const { client, contract } = await makeContractScenario();
 
     const res = await put(client, contract.id, [
@@ -216,7 +234,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect(res.status).toBe(200);
   });
 
-  it('validates before looking the contract up: a bad body on a missing id is 400, not 404 [MS5]', async () => {
+  it('validates before looking the contract up: a bad body on a missing id is 400, not 404', async () => {
     const client = (await makeContractScenario()).client;
 
     const res = await put(client, '00000000-0000-0000-0000-000000000000', []);
@@ -224,7 +242,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect(res.status).toBe(400);
   });
 
-  it('400s when the amounts do not add up, naming the whole-won contract amount [M11] [M7]', async () => {
+  it('400s when the amounts do not add up, naming the whole-won contract amount', async () => {
     const { client, contract } = await makeContractScenario({ contract: { amount: 2_500_000.5 } });
 
     const res = await put(client, contract.id, [{ title: 't', amount: 2_500_000, dueDate: inDays(5) }]);
@@ -235,7 +253,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     });
   });
 
-  it.each(['ACTIVE', 'COMPLETED'] as const)('409s on a %s contract, before the sum check [MS7]', async (status) => {
+  it.each(['ACTIVE', 'COMPLETED'] as const)('409s on a %s contract, before the sum check', async (status) => {
     const { client, contract, milestone } = await makeContractScenario({
       contract: { status, clientSigned: true, freelancerSigned: true },
     });
@@ -247,7 +265,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
   });
 
-  it("403s for a FREELANCER, even the contract's own (role gate) [MS7]", async () => {
+  it("403s for a FREELANCER, even the contract's own (role gate)", async () => {
     const { freelancer, contract } = await makeContractScenario();
 
     const res = await put(freelancer, contract.id, twoStep());
@@ -257,14 +275,14 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
   });
 });
 
-describe('plan replacement racing a signature (MS9)', () => {
+describe('plan replacement racing a signature', () => {
   /**
    * Deterministic stale-read check: a signature lands (uncommitted, holding the contract row)
    * after the replacement has read the contract but before its transaction locks it. "A signature
-   * was present" must come from the locked pre-image, so the freelancer is notified (MS8). A
+   * was present" must come from the locked pre-image, so the freelancer is notified. A
    * replacement deciding from its earlier read, or from an unlocked read, would see no signature.
    */
-  it('decides "a signature was present" from the locked row, not an earlier read [MS9] [MS8]', async () => {
+  it('decides "a signature was present" from the locked row, not an earlier read', async () => {
     const { client, contract } = await makeContractScenario();
     await Promise.all([1, 2, 3].map(() => authed(client).get('/api/contracts')));
     // The signer and the poll run on their own pool, so they never take the app's connections
@@ -307,7 +325,7 @@ describe('plan replacement racing a signature (MS9)', () => {
    * commits first, the outcome is one of exactly two consistent states — never an ACTIVE
    * contract on a plan that was replaced after the signatures.
    */
-  it('serializes on the contract row: either ACTIVE with the old plan, or PENDING and unsigned-by-client with the new one [MS9]', async () => {
+  it('serializes on the contract row: either ACTIVE with the old plan, or PENDING and unsigned-by-client with the new one', async () => {
     const outcomes = new Set<string>();
     for (let iteration = 0; iteration < 8; iteration += 1) {
       const { client, freelancer, contract, milestone } = await makeContractScenario({ contract: { clientSigned: true } });

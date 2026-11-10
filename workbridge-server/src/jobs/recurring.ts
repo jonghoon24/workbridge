@@ -30,7 +30,7 @@ export const RECURRING_JOBS: readonly RecurringJob[] = [
     dedupeKey: (runAt) => `maintenance.cleanup:${kstDateString(runAt)}`,
   },
   {
-    // Monday 03:00 KST; the key names the settled period, which the handler reads back (J6).
+    // Monday 03:00 KST; the key names the settled period, which the handler reads back.
     type: 'settlement.weeklyBatch',
     nextRunAt: nextBatchAt,
     dedupeKey: weeklyBatchDedupeKey,

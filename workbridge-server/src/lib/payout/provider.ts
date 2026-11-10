@@ -4,7 +4,7 @@ import { logger } from '../logger';
 import { maskAccountNumber } from '../banks';
 
 /**
- * Bank transfers for settlement payouts (BEHAVIOR.md S9–S11). Real transfers are out of scope:
+ * Bank transfers for settlement payouts. Real transfers are out of scope:
  * the default provider logs and succeeds. Tests swap in a failing provider with
  * `setPayoutProvider` to exercise the retry path.
  */
@@ -38,7 +38,7 @@ export class LogPayoutProvider implements PayoutProvider {
       attempt: request.attempt,
       amount: request.amount,
       bankCode: request.bankCode,
-      // Never log the full account number (PA1).
+      // Never log the full account number.
       accountNumberMasked: maskAccountNumber(request.accountNumber),
       reference,
     });

@@ -1,14 +1,16 @@
-import { z } from 'zod';
+import { z } from '../lib/zod';
 
 import { MAX_MILESTONES, MIN_MILESTONE_AMOUNT, MIN_MILESTONES } from '../lib/money';
 import { kstDateString, kstDateToEndOfDay } from '../lib/time';
 
 /**
- * Request bodies of the milestone routes (BEHAVIOR.md MS7, MS12, MS18). Messages are part of the
- * spec — tests assert them exactly — so keep them in sync with BEHAVIOR.md.
+ * Request bodies of the milestone routes. Messages are part of the API contract — tests assert
+ * them exactly — so change them only together with the tests.
  */
 
 const COUNT_MESSAGE = `A contract must have between ${MIN_MILESTONES} and ${MAX_MILESTONES} milestones`;
+const AMOUNT_MESSAGE = 'Amount must be a whole number of won';
+const DUE_DATE_FORMAT_MESSAGE = 'Due date must be a YYYY-MM-DD date';
 
 function isCalendarDate(value: string): boolean {
   try {
@@ -19,36 +21,42 @@ function isCalendarDate(value: string): boolean {
   }
 }
 
+// Every field states its missing / wrong-type message, so no zod default (`Required`,
+// `Expected number, received string`) reaches the client.
 const planItem = z.object({
-  title: z.string().trim().min(1, 'Title is required').max(100, 'Title must be at most 100 characters'),
+  title: z.string({ required_error: 'Title is required', invalid_type_error: 'Title must be a string' }).trim().min(1, 'Title is required').max(100, 'Title must be at most 100 characters'),
   description: z
-    .string()
+    .string({ invalid_type_error: 'Description must be a string' })
     .trim()
     .max(2000, 'Description must be at most 2000 characters')
     .nullish()
     .transform((value) => (value ? value : null)),
   amount: z
-    .number()
-    .int('Amount must be a whole number of won')
+    .number({ required_error: AMOUNT_MESSAGE, invalid_type_error: AMOUNT_MESSAGE })
+    .int(AMOUNT_MESSAGE)
     .min(MIN_MILESTONE_AMOUNT, `Amount must be at least ${MIN_MILESTONE_AMOUNT}`),
   // Format and "not before today" are per-item checks, so they are reported in array order with
-  // the other per-item checks (MS7). Today is the KST date at request time (M12).
-  dueDate: z.string().superRefine((value, ctx) => {
+  // the other per-item checks. Today is the KST date at request time.
+  dueDate: z.string({ required_error: DUE_DATE_FORMAT_MESSAGE, invalid_type_error: DUE_DATE_FORMAT_MESSAGE }).superRefine((value, ctx) => {
     if (!isCalendarDate(value)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date must be a YYYY-MM-DD date' });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: DUE_DATE_FORMAT_MESSAGE });
     } else if (value < kstDateString(new Date())) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date cannot be in the past' });
     }
-  }),
+  }).openapi({ format: 'date', description: 'KST 날짜. 오늘 이전은 안 된다.', example: '2026-12-31' }),
 });
 
 /**
- * MS7. The order check compares entries with each other, so it runs only once every entry has
+ * The whole plan. The order check compares entries with each other, so it runs only once every entry has
  * passed its own checks — a decreasing date is reported after any per-item failure.
  */
 export const milestonePlanBody = z
   .object({
-    milestones: z.array(planItem).min(MIN_MILESTONES, COUNT_MESSAGE).max(MAX_MILESTONES, COUNT_MESSAGE),
+    // Missing or not a list reads as "no milestones": the same count message.
+    milestones: z
+      .array(planItem, { required_error: COUNT_MESSAGE, invalid_type_error: COUNT_MESSAGE })
+      .min(MIN_MILESTONES, COUNT_MESSAGE)
+      .max(MAX_MILESTONES, COUNT_MESSAGE),
   })
   .superRefine((body, ctx) => {
     body.milestones.forEach((item, index) => {
@@ -68,7 +76,7 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-/** MS12. Multipart fields arrive as strings; a single `links` value is a one-element list. */
+/** A submission. Multipart fields arrive as strings; a single `links` value is a one-element list. */
 export const submissionBody = z.object({
   message: z
     .string({ required_error: 'Message is required' })
@@ -78,12 +86,13 @@ export const submissionBody = z.object({
   links: z.preprocess(
     (value) => (value === undefined || value === '' ? [] : Array.isArray(value) ? value : [value]),
     z
-      .array(z.string().trim().refine(isHttpUrl, 'Links must be http or https URLs'))
-      .max(5, 'At most 5 links are allowed'),
+      .array(z.string().trim().refine(isHttpUrl, 'Links must be http or https URLs').openapi({ format: 'uri' }))
+      .max(5, 'At most 5 links are allowed')
+      .openapi({ description: 'http(s) URL 최대 5개. multipart에서는 같은 필드를 반복하거나 하나만 보낸다.' }),
   ),
 });
 
-/** MS18. */
+/** A revision request. */
 export const rejectBody = z.object({
   reason: z
     .string({ required_error: 'Reason must be at least 10 characters' })

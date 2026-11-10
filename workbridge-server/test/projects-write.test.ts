@@ -14,12 +14,12 @@ import {
 import { DAY_MS, kstDateString, kstDateToEndOfDay, startOfKstDay } from '../src/lib/time';
 
 /**
- * The project mutation endpoints, asserted against `docs/BEHAVIOR.md` (§ Projects).
+ * The project mutation endpoints. Product rules: `docs/domain/projects-contracts.md`.
  *
  * Two module-boundary mocks, and nothing else:
  *  - `src/lib/openai` — `POST /:id/analyze` must never reach the real provider.
  *  - `src/lib/projectLifecycle` — a passthrough by default, switchable to throw so the
- *    `CLOSED` transaction's rollback can be observed (spec § 6, Atomicity).
+ *    `CLOSED` transaction's rollback can be observed (atomicity).
  *
  * Scope limit on that second mock, worth stating because it is easy to over-read: replacing the
  * module's exports only intercepts calls made *through the module boundary*, i.e. the
@@ -89,7 +89,7 @@ const ALL_STATUSES: ProjectStatus[] = [
   'CLOSED',
 ];
 
-/** BEHAVIOR.md § `PATCH /:id/status` — the manual-transition table, verbatim. */
+/** `PATCH /:id/status` — the client's manual-transition table, verbatim. */
 const ALLOWED: Array<[ProjectStatus, ProjectStatus]> = [
   ['UPCOMING', 'OPEN'],
   ['UPCOMING', 'CANCELLED'],
@@ -119,9 +119,15 @@ describe('POST /api/projects', () => {
     deadline: daysFromNow(30).toISOString(),
   });
 
-  it.each(['title', 'description', 'category', 'budget', 'deadline'])(
+  it.each([
+    ['title', 'Project title is required'],
+    ['description', 'Project description is required'],
+    ['category', 'Category is required'],
+    ['budget', 'Budget is required'],
+    ['deadline', 'Deadline is required'],
+  ])(
     'rejects a body missing %s with 400',
-    async (field) => {
+    async (field, message) => {
       const client = await makeClient();
       const body: Record<string, unknown> = validBody();
       delete body[field];
@@ -129,7 +135,7 @@ describe('POST /api/projects', () => {
       const res = await authed(client).post('/api/projects').send(body);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'All fields are required' } });
+      expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
       expect(await prisma.project.count()).toBe(0);
     },
   );
@@ -142,7 +148,7 @@ describe('POST /api/projects', () => {
       .send({ ...validBody(), deadline: 'not-a-date' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('deadline must be a valid date');
+    expect(res.body.error.message).toBe('deadline: Deadline must be a valid date');
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -154,7 +160,7 @@ describe('POST /api/projects', () => {
       .send({ ...validBody(), recruitmentStartDate: 'yesterday-ish' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('recruitmentStartDate must be a valid date');
+    expect(res.body.error.message).toBe('recruitmentStartDate: Recruitment start date must be a valid date');
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -164,7 +170,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: -1 });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('budget must be a non-negative number');
+    expect(res.body.error.message).toBe('budget: Budget must be a positive whole number of won');
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -174,47 +180,31 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 'abc' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('budget must be a non-negative number');
+    expect(res.body.error.message).toBe('budget: Budget must be a positive whole number of won');
     expect(await prisma.project.count()).toBe(0);
   });
 
-  // 알려진 불일치 D15 — #10
-  // Boundary. The spec specifies `budget` as a **non-negative** number, so `0` is a
-  // valid budget and must be created. Actual: the required-field guard is `!budget` and `0` is
-  // falsy, so this returns 400 `All fields are required` and writes nothing. (Contrast the
-  // review `rating: 0` case, which the spec documents as intentionally caught by the
-  // required-field check — here it is not intended.)
-  it.fails('accepts a zero budget with 201 and persists budget 0 [D15]', async () => {
+  // Boundary: a budget is at least 1 won. `0` is refused like any other invalid budget.
+  it('rejects a zero budget with 400', async () => {
     const client = await makeClient();
 
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 0 });
 
-    expect(res.status).toBe(201);
-    expect(res.body.budget).toBe(0);
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: res.body.id } });
-    expect(stored.budget).toBe(0);
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
+    expect(await prisma.project.count()).toBe(0);
   });
 
-  // Companion to the above, written to be correct on **both sides** of [D15] so that fixing the
-  // divergence cannot turn this red for the wrong reason. Today the required-field guard refuses a
-  // zero budget (400) and writes nothing; once D15 is fixed the project is created (201) with
-  // budget 0. Either way the invariant is the same: the outcome and the row count must agree, and
-  // a rejected request must never half-create a project.
-  it('never half-creates a project when a zero budget is submitted', async () => {
+  it('accepts a budget of 1 won with 201 and persists it', async () => {
     const client = await makeClient();
 
-    const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 0 });
+    const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 1 });
 
-    if (res.status >= 400) {
-      expect(res.body).toEqual({ error: { message: expect.any(String) } });
-      expect(await prisma.project.count()).toBe(0);
-    } else {
-      expect(res.status).toBe(201);
-      const stored = await prisma.project.findUniqueOrThrow({ where: { id: res.body.id } });
-      expect(stored.budget).toBe(0);
-      expect(await prisma.project.count()).toBe(1);
-    }
+    expect(res.status).toBe(201);
+    expect(res.body.budget).toBe(1);
+
+    const stored = await prisma.project.findUniqueOrThrow({ where: { id: res.body.id } });
+    expect(stored.budget).toBe(1);
   });
 
   it('accepts a numeric-string budget', async () => {
@@ -224,6 +214,86 @@ describe('POST /api/projects', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.budget).toBe(2_500_000);
+  });
+
+  // Strict body validation: `parseFloat` used to accept these by truncating or reading them loosely.
+  it.each([
+    ['trailing garbage', '2500000abc'],
+    ['an empty string', ''],
+    ['a whitespace-only string', '   '],
+    ['Infinity', 'Infinity'],
+    ['a boolean', true],
+    ['null', null],
+    // Money-time rule: amounts are whole won.
+    ['a fraction', 2_500_000.5],
+    ['a fractional string', '1000.5'],
+  ])('rejects %s as budget with 400', async (_label, budget) => {
+    const client = await makeClient();
+
+    const res = await authed(client).post('/api/projects').send({ ...validBody(), budget });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
+    expect(await prisma.project.count()).toBe(0);
+  });
+
+  it.each([
+    ['title', 'Project title is required'],
+    ['description', 'Project description is required'],
+    ['category', 'Category is required'],
+  ])('rejects a whitespace-only %s with 400', async (field, message) => {
+    const client = await makeClient();
+
+    const res = await authed(client).post('/api/projects').send({ ...validBody(), [field]: '   ' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
+    expect(await prisma.project.count()).toBe(0);
+  });
+
+  // A non-string title used to be passed to Prisma, which rejected it as a 500.
+  it('rejects a non-string title with 400 rather than 500', async () => {
+    const client = await makeClient();
+
+    const res = await authed(client).post('/api/projects').send({ ...validBody(), title: 123 });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'title: Project title must be a string' } });
+    expect(await prisma.project.count()).toBe(0);
+  });
+
+  it('trims the text fields', async () => {
+    const client = await makeClient();
+
+    const res = await authed(client)
+      .post('/api/projects')
+      .send({ ...validBody(), title: '  랜딩 페이지  ', category: ' 웹 개발 ' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ title: '랜딩 페이지', category: '웹 개발' });
+  });
+
+  it('rejects a non-string deadline with 400', async () => {
+    const client = await makeClient();
+
+    const res = await authed(client).post('/api/projects').send({ ...validBody(), deadline: 1_900_000_000_000 });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'deadline: Deadline must be a valid date' } });
+  });
+
+  it.each([
+    ['an empty string', ''],
+    ['null', null],
+  ])('treats %s as an absent recruitmentStartDate, defaulting to now', async (_label, recruitmentStartDate) => {
+    const client = await makeClient();
+    const before = Date.now();
+
+    const res = await authed(client).post('/api/projects').send({ ...validBody(), recruitmentStartDate });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('OPEN');
+    expect(new Date(res.body.recruitmentStartDate).getTime()).toBeGreaterThanOrEqual(before);
   });
 
   it('rejects recruitmentStartDate after deadline with 400', async () => {
@@ -349,7 +419,7 @@ describe('POST /api/projects', () => {
       const res = await authed(client).post('/api/projects').send({ ...validBody(), deadline: '2030-02-30' });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'deadline must be a valid date' } });
+      expect(res.body).toEqual({ error: { message: 'deadline: Deadline must be a valid date' } });
       expect(await prisma.project.count()).toBe(0);
     });
   });
@@ -379,38 +449,33 @@ describe('POST /api/projects', () => {
     expect(res.body.requiredSkills).toEqual(['React', 'SQL']);
   });
 
-  // 알려진 불일치 D16 — #11
-  // Cross-cutting rule 8: a malformed value is a 400, never a 500. Actual:
-  // `normalizeSkillList` calls `.trim()` on every element, so a numeric array throws
-  // `TypeError: skill.trim is not a function`, which reaches `errorHandler` with no
-  // `statusCode` → 500 (and gets logged, hence the console.error spy).
-  it.fails('rejects a non-string requiredSkills array with 400, not a 500 [D16]', async () => {
+  // A malformed value is a 400, never a 500. `normalizeSkillList` calls
+  // `.trim()` on every element, so a numeric array used to throw a `TypeError` → 500;
+  // `projectCreateBody` admits only a string or a list of strings.
+  it.each([
+    ['a numeric array', [1, 2]],
+    ['a nested array', [['React']]],
+    ['a number', 7],
+    ['an object', { React: true }],
+  ])('rejects %s as requiredSkills with 400 and creates nothing', async (_label, requiredSkills) => {
     const client = await makeClient();
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const res = await authed(client)
       .post('/api/projects')
-      .send({ ...validBody(), requiredSkills: [1, 2] });
-    consoleError.mockRestore();
+      .send({ ...validBody(), requiredSkills });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
+    expect(res.body).toEqual({ error: { message: 'requiredSkills: Required skills must be a string or a list of strings' } });
+    expect(await prisma.project.count()).toBe(0);
   });
 
-  // Companion to the above that passes today: whatever status the TypeError becomes, the
-  // create must not have persisted a project.
-  it('creates no project when requiredSkills contains non-strings [D16]', async () => {
+  it('yields [] when requiredSkills is null', async () => {
     const client = await makeClient();
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    const res = await authed(client)
-      .post('/api/projects')
-      .send({ ...validBody(), requiredSkills: [1, 2] });
-    consoleError.mockRestore();
+    const res = await authed(client).post('/api/projects').send({ ...validBody(), requiredSkills: null });
 
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-    expect(await prisma.project.count()).toBe(0);
+    expect(res.status).toBe(201);
+    expect(res.body.requiredSkills).toEqual([]);
   });
 
   it('yields [] when requiredSkills is omitted', async () => {
@@ -482,7 +547,7 @@ describe('GET /api/projects/:id', () => {
     await prisma.pricingAnalysis.create({
       data: {
         projectId: project.id,
-        features: [{ name: '로그인', estimatedCost: 500_000 }],
+        features: [{ name: '로그인', description: '이메일 로그인', estimatedCost: 500_000, rationale: '근거', duration: '3일' }],
         totalAmount: 500_000,
         summary: '요약',
         marketReference: '참고',
@@ -590,39 +655,59 @@ describe('PATCH /api/projects/:id', () => {
     expect(stored.requiredSkills).toEqual(['SQL', 'React']);
   });
 
-  // 알려진 불일치 D16 — #11
-  // Same defect as on `POST`, reached through the other `normalizeSkillList` call site.
-  // Actual: `TypeError: skill.trim is not a function` → 500.
-  it.fails('rejects a non-string requiredSkills array with 400, not a 500 [D16]', async () => {
+  // Same check as on `POST` (it used to be a `TypeError` → 500). The whole update is
+  // refused, so neither the skills nor the title sent alongside them is modified.
+  it('rejects a non-string requiredSkills array with 400 and modifies nothing', async () => {
     const { client, project } = await ownedProject();
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const res = await authed(client)
       .patch(`/api/projects/${project.id}`)
       .send({ title: '함께 보낸 제목', requiredSkills: [1, 2] });
-    consoleError.mockRestore();
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
-  });
-
-  // Companion to the above that passes today: the whole update is abandoned, so neither the
-  // skills nor the title sent alongside them is modified.
-  it('modifies nothing when requiredSkills contains non-strings [D16]', async () => {
-    const { client, project } = await ownedProject();
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client)
-      .patch(`/api/projects/${project.id}`)
-      .send({ title: '함께 보낸 제목', requiredSkills: [1, 2] });
-    consoleError.mockRestore();
-
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
+    expect(res.body).toEqual({ error: { message: 'requiredSkills: Required skills must be a string or a list of strings' } });
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.requiredSkills).toEqual(project.requiredSkills);
     expect(stored.title).toBe(project.title);
+  });
+
+  // `title !== undefined` used to store an empty title, and a `null` one reached Prisma as a 500.
+  it.each([
+    ['an empty title', { title: '' }, 'title: Project title is required'],
+    ['a whitespace-only description', { description: '  ' }, 'description: Project description is required'],
+    ['a null category', { category: null }, 'category: Category must be a string'],
+    ['a null deadline', { deadline: null }, 'deadline: Deadline must be a valid date'],
+    ['an empty recruitmentStartDate', { recruitmentStartDate: '' }, 'recruitmentStartDate: Recruitment start date must be a valid date'],
+  ])('rejects %s with 400 and modifies nothing', async (_label, body, message) => {
+    const { client, project } = await ownedProject();
+
+    const res = await authed(client).patch(`/api/projects/${project.id}`).send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(stored).toEqual(project);
+  });
+
+  it('clears requiredSkills when it is sent as null', async () => {
+    const { client, project } = await ownedProject();
+
+    const res = await authed(client).patch(`/api/projects/${project.id}`).send({ requiredSkills: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.requiredSkills).toEqual([]);
+  });
+
+  // Validation runs before the controller's 404/403.
+  it('validates the body before the ownership check: an invalid body from a non-owner is 400', async () => {
+    const { project } = await ownedProject();
+    const intruder = await makeClient();
+
+    const res = await authed(intruder).patch(`/api/projects/${project.id}`).send({ budget: -1 });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
   });
 
   it('leaves omitted fields untouched', async () => {
@@ -797,7 +882,7 @@ describe('PATCH /api/projects/:id', () => {
         .send({ deadline: 'someday' });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('deadline must be a valid date');
+      expect(res.body.error.message).toBe('deadline: Deadline must be a valid date');
     });
 
     it('rejects a negative budget with 400', async () => {
@@ -806,7 +891,7 @@ describe('PATCH /api/projects/:id', () => {
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: -5 });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('budget must be a non-negative number');
+      expect(res.body.error.message).toBe('budget: Budget must be a positive whole number of won');
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.budget).toBe(project.budget);
@@ -818,23 +903,32 @@ describe('PATCH /api/projects/:id', () => {
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 'abc' });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('budget must be a non-negative number');
+      expect(res.body.error.message).toBe('budget: Budget must be a positive whole number of won');
     });
 
-    // The `PATCH` counterpart of [D15]. BEHAVIOR.md says of D15 that "the same shape applies to
-    // `PATCH /:id`", but it does not: `updateProject` gates on `budget !== undefined` rather
-    // than on a falsy check, so `0` reaches `parseBudget`, passes the non-negative test, and is
-    // stored. That is what the spec asks for, so this is a plain assertion, not an `it.fails`.
-    it('accepts a zero budget and persists it', async () => {
+    // The `PATCH` counterpart of the budget boundary on `POST`: at least 1 won.
+    it('rejects a zero budget with 400 and keeps the stored budget', async () => {
       const { client, project } = await ownedProject();
 
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 0 });
 
-      expect(res.status).toBe(200);
-      expect(res.body.budget).toBe(0);
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-      expect(stored.budget).toBe(0);
+      expect(stored.budget).toBe(project.budget);
+    });
+
+    it('accepts a budget of 1 won and persists it', async () => {
+      const { client, project } = await ownedProject();
+
+      const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 1 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.budget).toBe(1);
+
+      const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(stored.budget).toBe(1);
     });
 
     it('updates the budget when it is valid', async () => {
@@ -903,7 +997,7 @@ describe('PATCH /api/projects/:id', () => {
     });
 
     // `getProjectStatusForRecruitmentStart` only ever answers UPCOMING or OPEN, so moving the
-    // deadline into the past does not close the project on the spot — the lazy sweep (§ 7)
+    // deadline into the past does not close the project on the spot — the lazy lifecycle sweep
     // converges it on the next read. Only the converged state is asserted.
     it('converges to CLOSED on the next read when the deadline is moved into the past', async () => {
       const { client, project } = await ownedProject({
@@ -960,7 +1054,7 @@ describe('PATCH /api/projects/:id', () => {
     });
   });
 
-  it('allows editing a COMPLETED project — intentional, per Q3', async () => {
+  it('allows editing a COMPLETED project — intentional', async () => {
     const { client, project } = await ownedProject({ status: 'COMPLETED' });
 
     const res = await authed(client)
@@ -976,7 +1070,7 @@ describe('PATCH /api/projects/:id', () => {
     expect(stored.status).toBe('COMPLETED');
   });
 
-  it('allows editing a CANCELLED project — intentional, per Q3', async () => {
+  it('allows editing a CANCELLED project — intentional', async () => {
     const { client, project } = await ownedProject({ status: 'CANCELLED' });
 
     const res = await authed(client)
@@ -1036,42 +1130,6 @@ describe('DELETE /api/projects/:id', () => {
 
     const stored = await prisma.application.findUnique({ where: { id: application.id } });
     expect(stored).not.toBeNull();
-  });
-
-  // 알려진 불일치 D11 — #6
-  // `deleteProject` checks only existence and ownership, so the project is soft-deleted
-  // (200) and the PENDING contract is left pointing at a deleted project.
-  it.fails('refuses deletion with 409 when the contract is PENDING [D11]', async () => {
-    const { client, project, contract } = await projectWithContract('PENDING');
-
-    const res = await authed(client).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(409);
-    // Re-read the row: asserting on the object the factory returned would pass without the
-    // database being consulted at all.
-    const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
-    expect(storedContract.status).toBe('PENDING');
-  });
-
-  // 알려진 불일치 D11 — #6
-  // Same for an ACTIVE contract: work is underway, yet the delete currently returns 200.
-  it.fails('refuses deletion with 409 when the contract is ACTIVE [D11]', async () => {
-    const { client, project } = await projectWithContract('ACTIVE');
-
-    const res = await authed(client).delete(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(409);
-  });
-
-  // 알려진 불일치 D11 — #6
-  // The row must survive untouched when deletion is refused.
-  it.fails('leaves deletedAt null when deletion is refused for a live contract [D11]', async () => {
-    const { client, project } = await projectWithContract('ACTIVE');
-
-    await authed(client).delete(`/api/projects/${project.id}`);
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(stored.deletedAt).toBeNull();
   });
 
   it('allows deletion when the contract is COMPLETED', async () => {
@@ -1140,7 +1198,7 @@ describe('PATCH /api/projects/:id/status', () => {
     const res = await authed(client).patch(`/api/projects/${project.id}/status`).send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('Cannot transition from OPEN to undefined');
+    expect(res.body.error.message).toBe('status: Project status is required');
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.status).toBe('OPEN');
@@ -1154,10 +1212,24 @@ describe('PATCH /api/projects/:id/status', () => {
       .send({ status: 'BANANA' });
 
     expect(res.status).toBe(400);
-    expect(res.body.error.message).toBe('Cannot transition from OPEN to BANANA');
+    expect(res.body.error.message).toBe(
+      'status: Project status must be one of UPCOMING, OPEN, IN_PROGRESS, COMPLETED, CANCELLED, CLOSED',
+    );
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.status).toBe('OPEN');
+  });
+
+  // Validation runs before the controller's 404.
+  it('validates the body before the existence check: an invalid status on an unknown id is 400', async () => {
+    const client = await makeClient();
+
+    const res = await authed(client)
+      .patch('/api/projects/00000000-0000-0000-0000-000000000000/status')
+      .send({ status: 'closed' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(/^status: Project status must be one of /);
   });
 
   it.each(ALLOWED)('allows %s -> %s', async (from, to) => {
@@ -1648,45 +1720,6 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(stored.id).toBe(first.body.id);
     expect(stored.totalAmount).toBe(750_000);
     expect(stored.summary).toBe('두 번째 요약');
-  });
-
-  // 알려진 불일치 — #38
-  // Spec § 8: "Upstream provider failure (OpenAI, TossPayments) → 502 or 400, never 500."
-  // Not numbered in Known divergences (listed under "Found by the suite"), hence `[unlisted]`.
-  // Actual: `JSON.parse` throws a bare SyntaxError, which reaches errorHandler without a
-  // statusCode → 500 with the parser's message in the envelope.
-  it.fails('returns 502 rather than 500 when the model returns non-JSON content [unlisted]', async () => {
-    openaiCreate.mockResolvedValue(rawContent('not json at all'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-  });
-
-  // 알려진 불일치 — #38
-  // Actual: `completion.choices[0]` is undefined, so reading `.message` throws a TypeError → 500.
-  it.fails('returns 502 rather than 500 when the model returns no choices [unlisted]', async () => {
-    openaiCreate.mockResolvedValue({ choices: [] });
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-  });
-
-  // 알려진 불일치 — #38
-  // Actual: the provider's own error propagates untouched → 500 with its message.
-  it.fails('returns 502 rather than 500 when the provider call itself fails [unlisted]', async () => {
-    openaiCreate.mockRejectedValue(new Error('socket hang up'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
   });
 
   it('persists nothing when the provider call fails', async () => {

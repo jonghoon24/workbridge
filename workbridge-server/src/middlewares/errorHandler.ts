@@ -10,16 +10,24 @@ import type { ErrorEnvelope } from '../types/index';
  * **Must keep all four parameters** — Express identifies error handlers by arity, so
  * dropping `next` would silently demote this to an ordinary middleware.
  *
- * The only error-level log in the request path, and only for a 500 (BEHAVIOR.md rules 1, 9).
+ * Answers every error passed to `next(err)` with `{ error: { message } }`. The only error-level
+ * log in the request path, and only for a 500.
  *
  * A 500 is also reported to Sentry when `SENTRY_DSN` is set. The handler itself stays
  * synchronous (Express 4 ignores a returned promise, and a rejection would go unhandled); the
  * response is sent only after the event has been flushed, because Vercel may freeze the
  * function as soon as it goes out. Without a DSN the response is sent synchronously, as before.
  */
+/** `express.json()` (body-parser) could not parse the body; its own message quotes the parser. */
+export const INVALID_JSON_MESSAGE = 'Request body must be valid JSON';
+
 export const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
   const status = err.statusCode || 500;
-  const message = err.message || 'Internal Server Error';
+  // A malformed JSON body is a 400 whose message would echo the JSON parser
+  // (`Expected property name or '}' in JSON at position 2 …`); answer one fixed sentence instead.
+  const message = err.type === 'entity.parse.failed' && status === 400
+    ? INVALID_JSON_MESSAGE
+    : err.message || 'Internal Server Error';
   const send = () => {
     res.status(status).json({ error: { message } } satisfies ErrorEnvelope);
   };

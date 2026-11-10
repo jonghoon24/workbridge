@@ -24,8 +24,9 @@ function parse(schema: ZodTypeAny, value: unknown): unknown {
 }
 
 /**
- * zod request validation — **expansion routes only** (BEHAVIOR.md rule 12). Pre-existing
- * controllers still validate by hand until they move to services + zod (#40).
+ * zod request validation for every route that reads a body or query. Mount
+ * it after authentication, role and profile checks, and before the controller, so a malformed
+ * request is a 400 before any lookup can 404, 403 or 409. Schemas live in `src/schemas/`.
  *
  * Parsed values land in `req.body`, `res.locals.query` and `res.locals.params`. Express 4's
  * `req.query` is a getter-backed object that should not be reassigned, so parsed queries go to

@@ -21,7 +21,7 @@ export default function MyApplicationsPage() {
     useAuthStore.getState().initAuth();
     api.get('/api/users/me/applications')
       .then(({ data }) => setApplications(data))
-      .catch((err) => setError(toUserMessage(err, '지원 현황을 불러오지 못했습니다')))
+      .catch((err) => setError(toUserMessage(err, '지원 현황을 불러오지 못했습니다.')))
       .finally(() => setLoading(false));
   }, []);
 

@@ -1,0 +1,8 @@
+# `npx @redocly/cli lint openapi.json` — the recommended ruleset, with the exceptions below.
+# Per-operation exceptions (redirect-only and always-410 routes have no 2xx; routes that cannot
+# fail have no 4xx) are listed in `.redocly.lint-ignore.yaml`.
+extends:
+  - recommended
+rules:
+  # A private service API: there is no license to state.
+  info-license: off

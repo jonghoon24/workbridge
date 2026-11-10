@@ -32,10 +32,10 @@ function vercelClientIp(request) {
  * `X-Forwarded-For` to this function's own address. So when `PROXY_SHARED_SECRET` is set (the same
  * value as the backend's), the browser's address goes in `X-Client-IP` with the secret in
  * `X-Proxy-Secret`, and the backend trusts `X-Client-IP` only when the secret matches
- * (BEHAVIOR.md rule 10, `workbridge-server/src/lib/clientIp.ts`).
+ * (`workbridge-server/src/lib/clientIp.ts`).
  *
  * `X-Forwarded-For` is still passed on exactly as Next received it, for self-hosted setups where
- * the backend runs with `TRUST_PROXY` (Q23).
+ * the backend runs with `TRUST_PROXY`.
  */
 export function buildForwardHeaders(request) {
   const headers = new Headers();

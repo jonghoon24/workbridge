@@ -1,6 +1,6 @@
 # 데이터베이스 모델
 
-PostgreSQL(운영은 Supabase) + Prisma. 스키마는 `workbridge-server/prisma/schema.prisma` 한 파일이고, 마이그레이션은 `prisma/migrations/`에 있다. 모델 25개, enum 13개. 동작 규칙의 기준은 [BEHAVIOR.md](BEHAVIOR.md)이고 이 문서는 데이터 구조와 불변식을 정리한다.
+PostgreSQL(운영은 Supabase) + Prisma. 스키마는 `workbridge-server/prisma/schema.prisma` 한 파일이고, 마이그레이션은 `prisma/migrations/`에 있다. 모델 25개, enum 13개. 제품 규칙과 그 이유는 [domain/](domain/README.md)에 있고, 이 문서는 데이터 구조와 불변식, 잠금을 정리한다.
 
 ## 한눈에 보기
 
@@ -47,7 +47,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | --- | --- | --- |
 | **SettlementItem** | 승인된 마일스톤 하나의 정산 원장 | `milestoneId` unique, `contractId`, `freelancerId`, `settlementId`(null = 미정산), `grossAmount`, `feeRateBps`(승인 시점 요율 스냅샷, 1000 = 10%), `feeAmount`, `feeVatAmount`, `netAmount`, `approvedAt`. 인덱스 `[freelancerId, settlementId]`, `[settlementId]` |
 | **Settlement** | 프리랜서별 주간 정산 | `periodStart`(월요일 00:00 KST), `periodEnd`(다음 월요일, 미포함), `scheduledPayoutAt`, `status`, `itemCount`, 금액 합계 4개, `payoutAttempts`(최대 3), 지급 시점 계좌 스냅샷 `bankName`/`accountNumberMasked`/`accountHolder`, `providerReference`, `failureReason`, `paidAt`. `(freelancerId, periodStart)` unique, 인덱스 `[status, scheduledPayoutAt]` |
-| **PayoutAccount** | 프리랜서 지급 계좌 | `userId` unique(1인 1계좌), `bankCode`(`lib/banks.ts` 목록), `accountNumber`(숫자만, **평문 저장**, 응답에서는 마스킹, Q22), `holderName` |
+| **PayoutAccount** | 프리랜서 지급 계좌 | `userId` unique(1인 1계좌), `bankCode`(`lib/banks.ts` 목록), `accountNumber`(숫자만, **평문 저장**, 응답에서는 마스킹. 저장 시 암호화는 미정: [#28](https://github.com/jonghoon24/workbridge/issues/28)), `holderName` |
 
 ### 메시지
 
@@ -70,7 +70,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
 | **NotificationPreference** | 사용자별 알림 설정 중 기본값과 **다른 것만** | `type String`, `inApp Boolean?`, `email Boolean?` — null은 "정책 기본값을 따른다". 두 채널이 모두 null이 되면 row를 지운다. `(userId, type)` unique |
-| **EmailDelivery** | 이메일 한 통의 발송 기록(감사용) | `notificationId`(같은 `notify()`가 만든 인앱 row, 없으면 null), `type`, `toAddress`(생성 시점 주소), `subject`, `body`, `contextKey`(다이제스트만 `conversation:<id>`), `status`, `attempts`, `provider`, `providerMessageId`, `error`(≤2,000자), `sentAt`. 인덱스 `[userId, type, contextKey, createdAt]`(다이제스트 60분 제한 조회), `[userId, createdAt]`, `[status]`. 읽는 API가 없고 아무것도 지우지 않는다(Q24) |
+| **EmailDelivery** | 이메일 한 통의 발송 기록(감사용) | `notificationId`(같은 `notify()`가 만든 인앱 row, 없으면 null), `type`, `toAddress`(생성 시점 주소), `subject`, `body`, `contextKey`(다이제스트만 `conversation:<id>`), `status`, `attempts`, `provider`, `providerMessageId`, `error`(≤2,000자), `sentAt`. 인덱스 `[userId, type, contextKey, createdAt]`(다이제스트 60분 제한 조회), `[userId, createdAt]`, `[status]`. 읽는 API가 없고 아무것도 지우지 않는다(보관 기간 미정: [#26](https://github.com/jonghoon24/workbridge/issues/26)) |
 
 ### 인프라
 
@@ -84,13 +84,13 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | Enum | 값과 흐름 |
 | --- | --- |
 | `Role` | `CLIENT`, `FREELANCER` |
-| `ProjectStatus` | `UPCOMING` → `OPEN` → `CLOSED` → `COMPLETED`. 모집 시작일·마감일에 따라 지연 스윕(GET 목록·상세)과 `project.lifecycleSweep` 작업이 `UPCOMING`→`OPEN`→`CLOSED`로 바꾸고, 지원 수락도 `CLOSED`로 만든다. 마지막 마일스톤 승인이 `CLOSED`에서 바로 `COMPLETED`로 바꾼다. 의뢰인의 수동 전이(`PATCH /api/projects/:id/status`)는 `UPCOMING`→`OPEN`·`CLOSED`·`CANCELLED`, `OPEN`→`CLOSED`·`CANCELLED`다. **`IN_PROGRESS`는 enum과 수동 전이 표에만 있고 아무것도 쓰지 않는다**(Q5) |
+| `ProjectStatus` | `UPCOMING` → `OPEN` → `CLOSED` → `COMPLETED`. 모집 시작일·마감일에 따라 지연 스윕(GET 목록·상세)과 `project.lifecycleSweep` 작업이 `UPCOMING`→`OPEN`→`CLOSED`로 바꾸고, 지원 수락도 `CLOSED`로 만든다. 마지막 마일스톤 승인이 `CLOSED`에서 바로 `COMPLETED`로 바꾼다. 의뢰인의 수동 전이(`PATCH /api/projects/:id/status`)는 `UPCOMING`→`OPEN`·`CLOSED`·`CANCELLED`, `OPEN`→`CLOSED`·`CANCELLED`다. **`IN_PROGRESS`는 enum과 수동 전이 표에만 있고 아무것도 쓰지 않는다** |
 | `ApplicationStatus` | `PENDING` → `ACCEPTED` / `REJECTED`. 수락하면 같은 프로젝트의 다른 대기 지원은 거절된다. 마감된 프로젝트의 대기 지원도 거절된다 |
 | `ContractStatus` | `PENDING`(서명 대기) → `ACTIVE`(양측 서명, 유효한 계획 필요) → `COMPLETED`(마지막 마일스톤 승인 시 자동). 취소·해지 상태는 없다 |
 | `MilestoneStatus` | `PENDING` → `FUNDED`(결제) → `SUBMITTED`(제출) → `APPROVED`(최종) 또는 `REVISION_REQUESTED`(반려) → `SUBMITTED`(재제출). 계약이 `PENDING`인 동안 계획 교체가 `PENDING` 마일스톤을 지우고 새로 만든다 |
 | `ApprovalType` | `MANUAL`(의뢰인 승인), `AUTO`(제출 7일 뒤 자동 승인) |
 | `SubmissionDecision` | `APPROVED`, `REJECTED` (null = 검수 대기) |
-| `PaymentStatus` | `PENDING` → `COMPLETED` / `FAILED`(재시도 시 새 `orderId`로 `PENDING`). `REFUNDED`는 읽기만 하고 아무것도 쓰지 않는다(환불 흐름 없음, Q5) |
+| `PaymentStatus` | `PENDING` → `COMPLETED` / `FAILED`(재시도 시 새 `orderId`로 `PENDING`). `REFUNDED`는 읽기만 하고 아무것도 쓰지 않는다(환불 흐름 없음) |
 | `SettlementStatus` | `SCHEDULED` → `PROCESSING` → `PAID`. 지급 시점에 계좌가 없으면 `ON_HOLD`(계좌 등록 시 `SCHEDULED`), 이체 실패는 `FAILED`(24시간 뒤 재시도, 3회째 실패는 최종). `PROCESSING`에서 멈춘 정산은 자동으로 다시 시도하지 않는다(이중 지급 방지, 운영자 몫) |
 | `MessageKind` | `TEXT`(참여자가 씀), `SYSTEM`(계약·마일스톤 이벤트 기록, 발신자 없음) |
 | `EmploymentType` | `FULL_TIME`, `CONTRACT`, `FREELANCE`, `INTERN` |
@@ -105,7 +105,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | --- | --- | --- |
 | Project ↔ Contract | 1 : 0..1 | `Contract.projectId` unique |
 | Application ↔ Contract | 1 : 0..1 | `Contract.applicationId` unique |
-| Contract ↔ Milestone | 1 : 1..10 | `(contractId, sequence)` unique. 개수·합계는 서비스가 검사(M8, M11) |
+| Contract ↔ Milestone | 1 : 1..10 | `(contractId, sequence)` unique. 개수·합계는 서비스가 검사 |
 | **Contract ↔ Payment** | **1 : N** | 마일스톤마다 결제 1건. 확장 전에는 1:1이었다 |
 | Milestone ↔ Payment | 1 : 0..1 | `Payment.milestoneId` unique |
 | Milestone ↔ MilestoneSubmission | 1 : N | `(milestoneId, round)` unique, 회차는 1부터 연속 |
@@ -127,14 +127,14 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 
 그 밖의 불변식:
 
-- **금액**: 마일스톤 금액 합계 = `Math.round(contract.amount)`(M7, M11). 결제 금액 = 마일스톤 금액. 정산 항목은 `fee = floor(gross × 10%)`, `vat = floor(fee × 10%)`, `net = gross − fee − vat`(정수 연산, `src/lib/money.ts`만 쓴다). 정산 합계는 항목 값을 더한 것이고 합계 gross에서 다시 계산하지 않는다(M5).
-- **결제 순서**: 마일스톤은 `sequence` 순서대로만 결제된다(M13).
-- **메시지**: `TEXT`는 발신자가 참여자이고 `systemEvent`가 null, `SYSTEM`은 발신자가 null이고 `systemEvent`가 있다. 대화방 안에서 `createdAt`은 커밋 순서대로 엄격히 증가한다(대화방 row를 잠근 뒤 `max(서버 시각, lastMessageAt + 1ms)`, MG7). 커서 폴링과 읽음 워터마크가 이것에 기댄다.
+- **금액**: 마일스톤 금액 합계 = `Math.round(contract.amount)`. 결제 금액 = 마일스톤 금액. 정산 항목은 `fee = floor(gross × 10%)`, `vat = floor(fee × 10%)`, `net = gross − fee − vat`(정수 연산, `src/lib/money.ts`만 쓴다). 정산 합계는 항목 값을 더한 것이고 합계 gross에서 다시 계산하지 않는다.
+- **결제 순서**: 마일스톤은 `sequence` 순서대로만 결제된다.
+- **메시지**: `TEXT`는 발신자가 참여자이고 `systemEvent`가 null, `SYSTEM`은 발신자가 null이고 `systemEvent`가 있다. 대화방 안에서 `createdAt`은 커밋 순서대로 엄격히 증가한다(대화방 row를 잠근 뒤 `max(서버 시각, lastMessageAt + 1ms)`, `postMessage`). 커서 폴링과 읽음 워터마크가 이것에 기댄다.
 - **활성 계약 계획 잠금**: 계약이 `ACTIVE`가 되면 마일스톤 계획을 바꿀 수 없다.
 
 ### `Message.sender`의 `onDelete: Restrict`
 
-선택 관계의 Prisma 기본값은 `SetNull`이다. 그대로 두면 사용자 row가 지워질 때 그 사람의 `TEXT` 메시지가 발신자 없는 메시지, 즉 시스템 메시지처럼 보이는 행이 된다(MG2 위반). 사용자는 항상 소프트 삭제만 되므로 실제로 지워질 일은 없지만, 하드 삭제를 시도하면 DB가 막도록 `Restrict`를 명시했다.
+선택 관계의 Prisma 기본값은 `SetNull`이다. 그대로 두면 사용자 row가 지워질 때 그 사람의 `TEXT` 메시지가 발신자 없는 메시지, 즉 시스템 메시지처럼 보이는 행이 된다(위 "메시지" 불변식 위반). 사용자는 항상 소프트 삭제만 되므로 실제로 지워질 일은 없지만, 하드 삭제를 시도하면 DB가 막도록 `Restrict`를 명시했다.
 
 ### 외래 키의 삭제 동작
 
@@ -163,7 +163,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 
 - `User`와 `Project`만 `deletedAt`으로 소프트 삭제한다. **모든 조회와 쓰기에 `deletedAt: null`을 건다.**
 - 확장 리소스는 계약의 프로젝트를 따른다: 프로젝트가 삭제된 계약·마일스톤·대화방은 확장 라우트에서 404이고 목록에서 빠진다. 예외로 정산과 지급 계좌는 프로젝트 삭제와 무관하게 보이고 지급되며, 자동 승인도 진행한다(이미 결제된 돈을 묶지 않는다).
-- 확장 라우트는 호출자도 다시 확인한다(`requireActiveUser`, 삭제된 사용자는 401). 기존 라우트의 쓰기 경로는 이 확인이 없다(D12).
+- 확장 라우트는 호출자도 다시 확인한다(`requireActiveUser`, 삭제된 사용자는 401). 기존 라우트의 쓰기 경로는 이 확인이 없다([#7](https://github.com/jonghoon24/workbridge/issues/7)).
 - 포트폴리오와 경력은 하드 삭제한다. 사용자가 소프트 삭제되면 보이지 않을 뿐 남아 있다.
 - 메시지의 `deletedAt`은 사용자의 "보낸 메시지 삭제"다. 행과 첨부는 남고 API는 내용 없는 표시(tombstone)로 돌려준다.
 
@@ -184,14 +184,29 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `Conversation` | 메시지·시스템 메시지 게시(항상 이벤트 트랜잭션의 마지막 쓰기) |
 | `ConversationParticipant` | 읽음 처리, 미확인 메시지 다이제스트 |
 
-잠금 순서는 `Contract` → `Milestone` → 이벤트의 다른 쓰기 → `Conversation`이다.
+잠금 순서는 `Contract` → `Milestone` → 이벤트의 다른 쓰기 → `Conversation`이다. 대화방 시스템 메시지
+(`postSystemMessage`, `src/services/messaging.service.ts`)는 언제나 이벤트 트랜잭션의 **마지막 쓰기**라서
+(`MILESTONE_APPROVED` 다음 `CONTRACT_COMPLETED`처럼) `Conversation` 잠금을 가장 늦게 잡고, 대화방을 잠근 트랜잭션이
+그 뒤에 계약·마일스톤·프로젝트를 잠그는 일이 없다. 그래서 대화방 잠금은 다른 잠금과 순환을 만들지 않는다. 새 이벤트에
+시스템 메시지를 붙일 때도 마지막에 부른다(같은 프로젝트의 지원 동시 수락은 아직 교착한다: [#15](https://github.com/jonghoon24/workbridge/issues/15)). 예외로 결제 확인과 dev-complete는 `Payment`를 `Milestone`보다 먼저 쓴다.
+`ConversationParticipant`는 다른 잠금과 함께 잡지 않는다.
+
+**계약 서명은 `FOR UPDATE` 없이 직렬화된다.** `prisma.contract.update`는 `UPDATE … RETURNING` 한 문장으로 컴파일되어
+그 행의 잠금을 잡는다. 두 당사자가 동시에 서명하면 두 번째 `UPDATE`가 첫 번째의 커밋을 기다린 뒤 커밋된 값 위에
+쓰고 돌려주므로, 나중 서명자가 두 플래그가 모두 켜진 것을 보고 계약을 `ACTIVE`로 만든다(동시 서명 15쌍으로 확인).
+`signContract`가 서명과 활성화를 한 트랜잭션에 묶은 것은 경합 때문이 아니라, 두 문장 사이에서 실패하면 서명만 되고
+활성화되지 않은 계약이 남기 때문이다. 활성화는 `status = PENDING`일 때만 한다.
 
 ## 금액이 `Float`인 부채
 
 `Project.budget`, `Application.expectedRate`, `Contract.amount`, `Milestone.amount`, `Payment.amount`, 정산 금액들, `User.hourlyRate`, `PricingAnalysis.totalAmount`가 모두 `Float`(double)이다. 확장 이전부터 있던 부채이고 일부러 고치지 않았다. 대신 다음 규칙으로 오차를 막는다.
 
-- 확장 도메인은 원 단위 정수만 쓴다. 소수 금액 입력은 400(M6).
-- 계약 금액은 지원의 `expectedRate`라 소수일 수 있다. 마일스톤 관련 계산은 `Math.round(contract.amount)`(반올림)를 쓴다(M7).
+- 확장 도메인은 원 단위 정수만 쓴다. 소수 금액 입력은 400.
+- 계약 금액은 지원의 `expectedRate`라 소수일 수 있다. 마일스톤 관련 계산(기본 마일스톤, 계획 합계, 서명 때의 계획
+  검사)은 `Math.round(contract.amount)`(0.5는 올림, `wholeWon()`)를 쓴다.
+- **SQL에서 금액을 반올림할 때는 `ROUND(x::numeric)`을 쓴다.** Postgres의 `round()`는 `float8`에서 0.5를 짝수 쪽으로
+  보내서(`2500000.5` → `2500000`) `Math.round`(`2500001`)와 1원 어긋난다. 이렇게 만든 마일스톤 계획은 합계가
+  `Math.round(contract.amount)`와 달라 서명 때의 계획 검사에서 거절된다. `numeric`의 `ROUND`는 양수의 0.5를 올린다.
 - 수수료 계산은 basis point 정수 연산이라 부동소수 오차가 없다.
 
 ## 마이그레이션과 백필 메모
@@ -205,7 +220,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `20261021071341_expansion_notification_channels` | 알림 설정, 이메일 발송 기록 |
 | `20261108143952_add_list_and_foreign_key_indexes` | 인덱스만 추가: `Project` 4개, `Application[freelancerId]`, `Contract[clientId]`·`[freelancerId]`, `Payment[clientId]`, `Review[revieweeId]`("인덱스" 참고). 데이터 변경 없음 |
 
-- **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. Postgres의 float `round()`는 .5를 짝수로 보내 `Math.round`와 1원 어긋나므로 numeric으로 바꿔 반올림한다. 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
+- **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. float를 그대로 반올림하면 1원 어긋나므로 numeric으로 바꿔 반올림한다(위 "금액이 `Float`인 부채"). 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
 - **정산 원장은 확장 이후 승인분부터다.** 확장 전에 완료된 계약의 마일스톤에는 `SettlementItem`이 없다(화면의 예상 정산액은 현재 요율로 계산해 보여준다).
 - **대화방 백필**: 확장 전 계약마다 대화방과 참여자 둘을 계약의 `createdAt`으로 만들었다. 메시지(시스템 메시지 포함)는 백필하지 않았다.
 - **알림 설정**: 희소 저장이라 백필이 없다. row가 없으면 기본값이다.

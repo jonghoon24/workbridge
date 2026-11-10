@@ -72,7 +72,7 @@ EOF
 ```
 
 `RATE_LIMIT_ENABLED=false`로 두는 이유: 로컬 로그인은 모두 loopback에서 오므로 15분에 20회 한도 하나를
-나눠 쓴다(BEHAVIOR.md 규칙 10). 시드: 사용자 8명, 프로젝트 16개, 계약 6개로 마일스톤/정산/대화의
+나눠 쓴다(`docs/domain/accounts.md` "로그인 요청 제한"). 시드: 사용자 8명, 프로젝트 16개, 계약 6개로 마일스톤/정산/대화의
 모든 상태를 덮고, 날짜는 지금 기준이다. **시드 계정 비밀번호는 모두 `password123`**
 (`kim@example.com` CLIENT, `park@example.com` FREELANCER. 화면별로 어떤 계정을 쓸지는 `docs/SEED_DATA.md`).
 
@@ -118,6 +118,7 @@ npx playwright cli -s=wb close
 
 간단한 수동 확인: `curl -s http://localhost:4000/health` → `{"status":"ok"}`,
 `curl -s http://localhost:3000/api/projects | head -c 200` → 프록시를 거친 JSON.
+API 문서 화면은 `http://localhost:4000/api/docs`, 원본은 `http://localhost:4000/api/openapi.json`이다.
 
 기본이 아닌 포트: 서버 `.env`에 `PORT=4001`, `CLIENT_URL=http://localhost:3001`, 클라이언트
 `.env.local`에 `API_URL`/`NEXT_PUBLIC_API_URL=http://localhost:4001`, 시작은 `npx next dev -p 3001`.

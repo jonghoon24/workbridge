@@ -15,24 +15,11 @@ import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
+    // Parsed by `applicationCreateBody`: `expectedRate` is a whole number of won >= 1; it becomes the contract amount.
     const { coverLetter, expectedRate, expectedDuration } = req.body;
     const projectId = req.params.id;
 
     await closeExpiredOpenProjects();
-
-    if (!coverLetter || !expectedRate || !expectedDuration) {
-      throw new AppError('All fields are required', 400);
-    }
-
-    const parsedExpectedRate = Number.parseFloat(expectedRate);
-    if (!Number.isFinite(parsedExpectedRate) || parsedExpectedRate <= 0) {
-      throw new AppError('expectedRate must be a positive number', 400);
-    }
-
-    // A rate that rounds to 0 won would create a milestone that can never be paid (M7, [C2]).
-    if (parsedExpectedRate < 1) {
-      throw new AppError('expectedRate must be at least 1', 400);
-    }
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
@@ -71,14 +58,14 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
             projectId,
             freelancerId: req.user.id,
             coverLetter,
-            expectedRate: parsedExpectedRate,
+            expectedRate,
             expectedDuration,
             status: 'PENDING',
           },
         });
 
-        // The wording stays inline here (pre-existing type); `notify()` applies the channel
-        // policy and preferences (NC9). The client is notified even when soft-deleted (Q11).
+        // The wording stays inline here (not in the template table); `notify()` applies the channel
+        // policy and preferences. The client is notified even when soft-deleted (joined owners: #20).
         await notify(tx, {
           userId: project.clientId,
           type: 'APPLICATION_CREATED',
@@ -151,11 +138,8 @@ export async function getApplications(req: AuthedRequest, res: Response, next: N
 export async function updateApplication(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     const { projectId, appId } = req.params;
+    // Parsed by `applicationDecisionBody`: `ACCEPTED` or `REJECTED`.
     const { status } = req.body;
-
-    if (!['ACCEPTED', 'REJECTED'].includes(status)) {
-      throw new AppError('Status must be ACCEPTED or REJECTED', 400);
-    }
 
     const project = await prisma.project.findFirst({
       where: { id: projectId, deletedAt: null },
@@ -186,7 +170,7 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
 
     if (status === 'ACCEPTED') {
       // Atomic transaction: accept application, reject others, create contract and its default
-      // milestone, close recruitment, notify, open the conversation (BEHAVIOR.md accept steps 1–7).
+      // milestone, close recruitment, notify, open the conversation (steps 1–7 below).
       const now = new Date();
       const milestoneDueDate = defaultMilestoneDueDate(now);
       let result;
@@ -216,7 +200,7 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
               amount: application.expectedRate,
               startDate: now,
               // The last milestone's due date — not the recruitment deadline, which may have
-              // passed already ([C2]).
+              // passed already.
               endDate: milestoneDueDate,
               status: 'PENDING',
             },
@@ -246,7 +230,7 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
           })), now);
 
           // 7. The conversation, its participants and `CONTRACT_CREATED` — last, so the
-          // conversation lock is the last one taken (MG3, MG7).
+          // conversation lock is the last one taken.
           await openContractConversation(tx, contract);
 
           return { application: updatedApp, contract };

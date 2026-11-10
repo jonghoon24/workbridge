@@ -9,6 +9,7 @@
     "postinstall": "prisma generate",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
+    "openapi": "tsx scripts/generate-openapi.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:db": "bash scripts/test-db.sh",
@@ -23,6 +24,7 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.4",
     "@prisma/client": "^5.7.0",
     "@sentry/node": "^10.78.0",
     "@supabase/supabase-js": "^2.39.0",

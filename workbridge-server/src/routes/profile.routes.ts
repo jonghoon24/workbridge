@@ -28,26 +28,27 @@ import {
 } from '../schemas/profile';
 
 /**
- * Portfolio, careers, profile completion and project recommendations (BEHAVIOR.md
- * "Portfolio and careers", "Profile completion and recommendations"). Mounted on `/api/users`
- * **after** `userRoutes`, so the existing `/me/*` and `/:id` routes keep precedence.
- * Register `PUT /me/portfolio/order` before `/me/portfolio/:itemId` (PF12). The public
- * `GET /:id/portfolio` and `GET /:id/careers` must not read `req.user`; with the id `me` they are
- * a 404 like any unknown user (PF19).
- * `GET /api/projects/:id/recommended-freelancers` (RC3) lives on the projects router instead.
+ * Portfolio, careers, profile completion and project recommendations. Mounted on `/api/users`
+ * **after** `userRoutes`, so the `/me/*` and `/:id` routes there keep precedence.
+ * Register `PUT /me/portfolio/order` before `/me/portfolio/:itemId`, or `order` would match
+ * `:itemId`. The public `GET /:id/portfolio` and `GET /:id/careers` must not read `req.user`;
+ * there is no `/me/portfolio` or `/me/careers` read, so with the id `me` they are a 404 like any
+ * unknown user.
+ * `GET /api/projects/:id/recommended-freelancers` lives on the projects router instead.
  *
- * Attach guards per route, never with `router.use` — Q10 vectors and public GETs live here
- * (an unmatched path must still fall through to the HTML 404, and PF16/PF17 need no token).
+ * Attach guards per route, never with `router.use` — unmatched paths and public GETs pass through
+ * here (an unmatched path must still fall through to Express's HTML 404, #19, and the public
+ * reads need no token).
  */
 const router = Router();
 
 const freelancer = [authenticate, requireActiveUser, requireRole('FREELANCER')];
 
-// Public reads (PF16, PF17).
+// Public reads.
 router.get('/:id/portfolio', getUserPortfolio);
 router.get('/:id/careers', getUserCareers);
 
-// Portfolio writes (PF9–PF12). The upload runs after the role check and before validation
+// Portfolio writes. The upload runs after the role check and before validation
 // (multer fills `req.body`); it passes a JSON request through untouched.
 router.post('/me/portfolio', ...freelancer, imageUpload, validate({ body: portfolioCreateBody }), postPortfolioItem);
 router.put('/me/portfolio/order', ...freelancer, validate({ body: portfolioOrderBody }), putPortfolioOrder);
@@ -60,15 +61,15 @@ router.patch(
 );
 router.delete('/me/portfolio/:itemId', ...freelancer, removePortfolioItem);
 
-// Career writes (PF13–PF15), JSON only.
+// Career writes, JSON only.
 router.post('/me/careers', ...freelancer, validate({ body: careerCreateBody }), postCareer);
 router.patch('/me/careers/:careerId', ...freelancer, validate({ body: careerPatchBody }), patchCareer);
 router.delete('/me/careers/:careerId', ...freelancer, removeCareer);
 
-// PF21 — either role.
+// Profile completion — either role.
 router.get('/me/profile-completion', authenticate, requireActiveUser, getMyProfileCompletion);
 
-// RC6 — role, then complete profile (rule 4), then validation.
+// Recommended projects — role, then complete profile, then validation.
 router.get(
   '/me/recommended-projects',
   ...freelancer,

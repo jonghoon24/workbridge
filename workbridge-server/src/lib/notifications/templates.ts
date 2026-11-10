@@ -2,9 +2,9 @@ import { env } from '../../env';
 import type { NotificationType } from './types';
 
 /**
- * Wording and links of the contract, milestone and settlement notification types (BEHAVIOR.md
- * "Notifications" table) and of the email-only unread-message digest (NC16), plus the email
- * rendering every type shares (NC13). The four pre-existing types still keep their strings
+ * Wording and links of the contract, milestone and settlement notification types and of the
+ * email-only unread-message digest, plus the email rendering every type shares. The four
+ * application and project-status types (excluded from `TemplateType` below) keep their strings
  * inline in their controllers.
  */
 
@@ -23,7 +23,7 @@ export interface TemplateVars {
   amount?: number;
   reason?: string;
   conversationId?: string;
-  /** MG8's unread count, for the digest. */
+  /** The conversation's unread count, for the digest. */
   unreadCount?: number;
 }
 
@@ -132,7 +132,7 @@ export interface RenderedEmail {
 }
 
 /**
- * NC1: `CLIENT_URL` without a trailing `/`. `index.ts` also accepts a comma-separated list there
+ * `CLIENT_URL` without a trailing `/`. `index.ts` also accepts a comma-separated list there
  * (CORS origins); links use the first entry.
  */
 function linkBase(): string {
@@ -141,7 +141,7 @@ function linkBase(): string {
 }
 
 /**
- * NC13 — plain-text Korean email for one notification, rendered once by `notify()` and stored on
+ * Plain-text Korean email for one notification, rendered once by `notify()` and stored on
  * the `EmailDelivery`. Tests assert the delivery's type, recipient and context, never this text.
  */
 export function renderEmail(input: { title: string; message: string; href?: string | null }): RenderedEmail {

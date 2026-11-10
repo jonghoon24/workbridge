@@ -170,21 +170,26 @@ describe('GET /api/notifications', () => {
     expect(res.body.notifications[0].title).toBe('제목 3');
   });
 
-  it.each(['0', '-1', '-50', 'abc', 'null', 'NaN', 'Infinity'])(
-    'rejects limit=%s with 400',
-    async (limit) => {
-      const caller = await makeClient();
-      await seedNotifications(caller.id, 2);
+  it.each([
+    ['0', 'limit: must be at least 1'],
+    ['-1', 'limit: must be at least 1'],
+    ['-50', 'limit: must be at least 1'],
+    ['abc', 'limit: must be an integer'],
+    ['null', 'limit: must be an integer'],
+    ['NaN', 'limit: must be an integer'],
+    ['Infinity', 'limit: must be an integer'],
+  ])('rejects limit=%s with 400', async (limit, message) => {
+    const caller = await makeClient();
+    await seedNotifications(caller.id, 2);
 
-      const res = await authed(caller).get(`/api/notifications?limit=${limit}`);
+    const res = await authed(caller).get(`/api/notifications?limit=${limit}`);
 
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'limit must be a positive integer' } });
-    },
-  );
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+  });
 
   it('falls back to the default when limit is present but empty', async () => {
-    // `value || '20'` treats an empty string as absent, so `?limit=` is the documented default.
+    // An empty query value is absent, so `?limit=` is the documented default.
     const caller = await makeClient();
     await seedNotifications(caller.id, 25);
 
@@ -194,55 +199,43 @@ describe('GET /api/notifications', () => {
     expect(res.body.notifications).toHaveLength(20);
   });
 
-  // 알려진 불일치 — #37
-  // The spec says a non-integer limit must be 400, but `Number.parseInt`
-  // truncates "1.5" to 1, so the request succeeds with one row instead of erroring.
-  it.fails('rejects a fractional limit with 400 [unlisted]', async () => {
+  // #37, fixed by the zod schema: `Number.parseInt` used to truncate "1.5" to 1, so the request
+  // succeeded with one row instead of erroring.
+  it('rejects a fractional limit with 400', async () => {
     const caller = await makeClient();
     await seedNotifications(caller.id, 4);
 
     const res = await authed(caller).get('/api/notifications?limit=1.5');
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'limit: must be an integer' } });
   });
 
-  // 알려진 불일치 — #37
-  // Same root cause: "20abc" parses to 20 rather than being rejected.
-  it.fails('rejects a trailing-garbage limit with 400 [unlisted]', async () => {
+  // #37: same root cause — "3abc" used to parse to 3 rather than being rejected.
+  it('rejects a trailing-garbage limit with 400', async () => {
     const caller = await makeClient();
     await seedNotifications(caller.id, 4);
 
     const res = await authed(caller).get('/api/notifications?limit=3abc');
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'limit: must be an integer' } });
   });
 
-  it('takes the leading number from a repeated limit (Q12)', async () => {
-    // qs parses `?limit=1&limit=2` into `['1', '2']`; `Number.parseInt` stringifies that to
-    // '1,2' and stops at the comma, so the request succeeds with limit 1 — neither the
-    // documented default of 20 nor a 400. `GET /api/projects` deliberately falls back to its
-    // default in the same situation, so the two endpoints disagree. Pinned, not endorsed.
-    const caller = await makeClient();
-    await seedNotifications(caller.id, 25);
+  // A repeated query parameter is a 400. It used to stringify to '1,2' and
+  // `Number.parseInt` took the leading number, so the first value silently won.
+  it.each(['limit=1&limit=2', 'limit=2&limit=1', 'limit[]=5'])(
+    'rejects a repeated or array limit (%s) with 400',
+    async (query) => {
+      const caller = await makeClient();
+      await seedNotifications(caller.id, 3);
 
-    const res = await authed(caller).get('/api/notifications?limit=1&limit=2');
+      const res = await authed(caller).get(`/api/notifications?${query}`);
 
-    expect(res.status).toBe(200);
-    expect(res.body.notifications).toHaveLength(1);
-    expect(res.body.unreadCount).toBe(25);
-  });
-
-  it('is order-dependent for a repeated limit — the first value wins (Q12)', async () => {
-    // Same mechanism, reversed: '2,1' parses to 2. Confirms the value is read from the leading
-    // number rather than, say, the last occurrence.
-    const caller = await makeClient();
-    await seedNotifications(caller.id, 25);
-
-    const res = await authed(caller).get('/api/notifications?limit=2&limit=1');
-
-    expect(res.status).toBe(200);
-    expect(res.body.notifications).toHaveLength(2);
-  });
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'limit: must be a single value' } });
+    },
+  );
 
   it('counts every unread notification, not just the page returned', async () => {
     const caller = await makeClient();
@@ -496,8 +489,8 @@ describe('PATCH /api/notifications/read-all', () => {
   });
 });
 
-describe('contract, milestone and settlement notification types [C9]', () => {
-  it('renders all 15 new types with the links BEHAVIOR.md lists', () => {
+describe('contract, milestone and settlement notification types', () => {
+  it('renders all 15 new types with their contract, milestone or settlement links', () => {
     const v = { projectTitle: 'P', contractId: 'c1', milestoneId: 'm1', milestoneTitle: 'M', settlementId: 's1', amount: 1_000, reason: 'r' };
     const milestone = '/contracts/c1/milestones/m1';
     const expected: Record<string, string> = {

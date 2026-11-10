@@ -18,21 +18,21 @@ import type { StoredFile } from '../middlewares/attachmentUpload';
 import type { PrismaTransactionClient } from '../types/index';
 
 /**
- * Milestones: plan, funding, submission, review and automatic approval (BEHAVIOR.md
- * "Milestones", MS1–MS22). Controllers and job handlers both call into this file; the
- * transactional order of each operation is part of the spec and is commented where it matters.
+ * Milestones: plan, funding, submission, review and automatic approval
+ * (docs/domain/milestones-payments.md). Controllers and job handlers both call into this file; the
+ * transactional order of each operation is deliberate and is commented where it matters.
  */
 
 // ---------------------------------------------------------------------------
 // Constants and small helpers
 // ---------------------------------------------------------------------------
 
-/** M9: the default milestone is due 30 KST days after acceptance. */
+/** The default milestone is due 30 KST days after acceptance. */
 export const DEFAULT_MILESTONE_DAYS = 30;
 export const DEFAULT_MILESTONE_TITLE = '전체 작업';
-/** M15: the client is reminded this long before auto-approval. */
+/** The client is reminded this long before auto-approval. */
 export const AUTO_APPROVE_REMINDER_MS = 48 * HOUR_MS;
-/** M16: the freelancer is told this long before the due date. */
+/** The freelancer is told this long before the due date. */
 export const DUE_SOON_MS = 24 * HOUR_MS;
 
 const FUNDED_STATUSES: readonly MilestoneStatus[] = ['FUNDED', 'SUBMITTED', 'REVISION_REQUESTED', 'APPROVED'];
@@ -42,23 +42,23 @@ const NOT_AWAITING_SUBMISSION = 'Milestone is not awaiting a submission';
 const NOT_AWAITING_REVIEW = 'Milestone is not awaiting review';
 export const PLAN_LOCKED = 'Milestone plan is locked once the contract is active';
 
-/** M14: a positive integer number of days; anything else falls back to 7. */
+/** `MILESTONE_AUTO_APPROVE_DAYS`: a positive integer number of days; anything else falls back to 7. */
 export function autoApproveDays(): number {
   const raw = env.MILESTONE_AUTO_APPROVE_DAYS.trim();
   const days = /^\d+$/.test(raw) ? Number(raw) : NaN;
   return Number.isSafeInteger(days) && days >= 1 ? days : 7;
 }
 
-/** M9: end of the KST day 30 days after `now`'s KST date. */
+/** End of the KST day 30 days after `now`'s KST date. */
 export function defaultMilestoneDueDate(now: Date): Date {
   return kstDateToEndOfDay(kstDateString(new Date(now.getTime() + DEFAULT_MILESTONE_DAYS * DAY_MS)));
 }
 
 // ---------------------------------------------------------------------------
-// Serialization (MS1, CT6)
+// Serialization
 // ---------------------------------------------------------------------------
 
-/** MS2: an attachment is exactly `{ id, url, fileName, mimeType, size, createdAt }`. */
+/** An attachment is exactly `{ id, url, fileName, mimeType, size, createdAt }`. */
 const attachmentQuery = {
   select: { id: true, url: true, fileName: true, mimeType: true, size: true, createdAt: true },
   orderBy: { createdAt: 'asc' },
@@ -76,7 +76,7 @@ export const milestoneInclude = {
 
 export type MilestoneWithRelations = Prisma.MilestoneGetPayload<{ include: typeof milestoneInclude }>;
 
-/** MS1: the settlement item's stored values once approved, else M3 at the current rate. */
+/** The settlement item's stored values once approved, else `payoutBreakdown()` at the current rate. */
 export function payoutPreviewFor(
   milestone: Pick<Milestone, 'amount'> & {
     settlementItem: { grossAmount: number; feeAmount: number; feeVatAmount: number; netAmount: number } | null;
@@ -89,7 +89,7 @@ export function payoutPreviewFor(
   return payoutBreakdown(wholeWon(milestone.amount), PLATFORM_FEE_RATE_BPS);
 }
 
-/** MS1: the milestone row plus `payment`, `latestSubmission` and `payoutPreview`. */
+/** The milestone row plus `payment`, `latestSubmission` and `payoutPreview`. */
 export function serializeMilestone(milestone: MilestoneWithRelations) {
   const { submissions, settlementItem, ...row } = milestone;
   return {
@@ -107,7 +107,7 @@ export interface MilestoneSummary {
   approvedCount: number;
 }
 
-/** CT6. */
+/** A contract's milestone totals, as returned with the contract. */
 export function milestoneSummary(
   milestones: readonly Pick<Milestone, 'status' | 'amount'>[],
   contractAmount: number,
@@ -149,7 +149,7 @@ const milestoneContextInclude = {
 
 type MilestoneWithContext = Prisma.MilestoneGetPayload<{ include: typeof milestoneContextInclude }>;
 
-/** MS5: missing, or the contract's project soft-deleted → 404 `Milestone not found`. */
+/** Missing, or the contract's project soft-deleted → 404 `Milestone not found`. */
 async function findMilestoneForRoute(milestoneId: string): Promise<MilestoneWithContext> {
   const milestone = await prisma.milestone.findFirst({
     where: { id: milestoneId, contract: { project: { deletedAt: null } } },
@@ -166,7 +166,7 @@ function assertParty(milestone: MilestoneWithContext, userId: string): void {
   }
 }
 
-/** Contract routes of the plan (MS6, MS7): missing or project soft-deleted → 404. */
+/** Contract routes of the plan: missing or project soft-deleted → 404. */
 async function findContractForRoute(contractId: string) {
   const contract = await prisma.contract.findFirst({
     where: { id: contractId, project: { deletedAt: null } },
@@ -200,10 +200,10 @@ async function notifyTemplate(
 }
 
 // ---------------------------------------------------------------------------
-// Default milestone (M9) and plan (MS6–MS10)
+// Default milestone and plan
 // ---------------------------------------------------------------------------
 
-/** Accept-application step 4 (C2): the contract's single default milestone. */
+/** Created when an application is accepted: the contract's single default milestone. */
 export function createDefaultMilestone(
   tx: PrismaTransactionClient,
   contract: { id: string; amount: number },
@@ -220,7 +220,7 @@ export function createDefaultMilestone(
   });
 }
 
-/** MS6. */
+/** Either party may read the plan. */
 export async function listContractMilestones(contractId: string, userId: string) {
   const contract = await findContractForRoute(contractId);
   if (contract.clientId !== userId && contract.freelancerId !== userId) {
@@ -241,11 +241,11 @@ export interface PlanItem {
   title: string;
   description: string | null;
   amount: number;
-  /** `YYYY-MM-DD`, already validated (M12). */
+  /** `YYYY-MM-DD`, already validated (a KST date, not before today). */
   dueDate: string;
 }
 
-/** MS7–MS10: replace the whole plan of a PENDING contract. */
+/** Replaces the whole plan of a PENDING contract. */
 export async function replacePlan(contractId: string, actorId: string, items: readonly PlanItem[], now: Date = new Date()) {
   const contract = await findContractForRoute(contractId);
   if (contract.clientId !== actorId) throw new AppError('Not authorized', 403);
@@ -261,7 +261,7 @@ export async function replacePlan(contractId: string, actorId: string, items: re
   const endDate = dueDates[dueDates.length - 1];
 
   return prisma.$transaction(async (tx) => {
-    // MS9: lock the contract row and read its pre-image first. A concurrent signature serializes
+    // Lock the contract row and read its pre-image first. A concurrent signature serializes
     // on this lock, and "was a signature present" comes from the locked row, not a stale read.
     const [locked] = await tx.$queryRaw<{ status: string; clientSigned: boolean; freelancerSigned: boolean }[]>`
       SELECT "status", "clientSigned", "freelancerSigned" FROM "Contract" WHERE "id" = ${contractId} FOR UPDATE`;
@@ -292,7 +292,8 @@ export async function replacePlan(contractId: string, actorId: string, items: re
         contractId,
       }, now);
     }
-    // MG6: every replacement leaves a system message, signature or not — the last write (MG7).
+    // Every replacement leaves a system message, signature or not. It is the last write, so the
+    // conversation row is locked after the contract.
     await postSystemMessage(tx, contractId, 'MILESTONE_PLAN_UPDATED', {
       signaturesReset: locked.clientSigned || locked.freelancerSigned,
     });
@@ -306,7 +307,7 @@ export async function replacePlan(contractId: string, actorId: string, items: re
   }, { timeout: 15_000 });
 }
 
-/** CT7: the plan a PENDING contract must have before it can be signed. */
+/** The plan a PENDING contract must have before it can be signed. */
 export function isValidPlan(milestones: readonly Pick<Milestone, 'status' | 'amount'>[], contractAmount: number): boolean {
   if (milestones.length === 0) return false;
   if (milestones.some((m) => m.status !== 'PENDING')) return false;
@@ -315,7 +316,7 @@ export function isValidPlan(milestones: readonly Pick<Milestone, 'status' | 'amo
 }
 
 // ---------------------------------------------------------------------------
-// Detail (MS11)
+// Detail
 // ---------------------------------------------------------------------------
 
 export async function getMilestoneDetail(milestoneId: string, userId: string) {
@@ -349,11 +350,11 @@ export async function getMilestoneDetail(milestoneId: string, userId: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Funding (PY7)
+// Funding
 // ---------------------------------------------------------------------------
 
 /**
- * PY7: `PENDING → FUNDED`. A **no-op when the milestone is no longer PENDING** — it must not
+ * `PENDING → FUNDED`. A **no-op when the milestone is no longer PENDING** — it must not
  * throw, because the confirm path's verification catch-all would turn the error into a FAILED
  * payment and overwrite a concurrent winner's COMPLETED one.
  */
@@ -391,15 +392,15 @@ export async function markFunded(
     dedupeKey: `milestone.overdue:${milestoneId}`,
   });
 
-  // MG6: only the transition posts (the no-op above returned early). Callers make this the last
-  // write of their transaction (MG7).
+  // Only the transition posts (the no-op above returned early). Callers make this the last
+  // write of their transaction, so the conversation row is locked last.
   await postSystemMessage(tx, milestone.contractId, 'MILESTONE_FUNDED', { milestoneTitle: milestone.title });
 
   return { funded: true };
 }
 
 // ---------------------------------------------------------------------------
-// Submission (MS12–MS14)
+// Submission
 // ---------------------------------------------------------------------------
 
 export interface SubmissionInput {
@@ -418,7 +419,7 @@ export async function submitMilestone(
   if (milestone.contract.freelancerId !== actorId) throw new AppError('Not authorized', 403);
   if (!SUBMITTABLE.includes(milestone.status)) throw new AppError(NOT_AWAITING_SUBMISSION, 409);
 
-  // MS13: store files before the transaction; a 409 below leaves them unreferenced.
+  // Store files before the transaction; a 409 below leaves them unreferenced.
   const stored: StoredFile[] = [];
   for (const file of files) {
     stored.push(await storeUploadedFile(file, `milestones/${milestoneId}`));
@@ -427,7 +428,7 @@ export async function submitMilestone(
   const autoApproveAt = new Date(now.getTime() + autoApproveDays() * DAY_MS);
 
   return prisma.$transaction(async (tx) => {
-    // MS13: the conditional status write comes first and holds the milestone's row lock, so
+    // The conditional status write comes first and holds the milestone's row lock, so
     // the round below is computed by one submission at a time (never a P2002 → 500).
     const { count } = await tx.milestone.updateMany({
       where: { id: milestoneId, status: { in: SUBMITTABLE } },
@@ -486,7 +487,7 @@ export async function submitMilestone(
 }
 
 // ---------------------------------------------------------------------------
-// Approval (MS15–MS17, MS20–MS22)
+// Approval
 // ---------------------------------------------------------------------------
 
 export interface ApproveOptions {
@@ -504,9 +505,9 @@ export interface ApproveResult {
 /**
  * The single approval path for the client (MANUAL) and the auto-approval job (AUTO).
  *
- * MANUAL runs MS5's checks (404 for a deleted project, 403, 409). AUTO skips them — the job
- * has already re-read the state (J2) — and proceeds even when the project is soft-deleted
- * (MS17's deleted-project case). An AUTO approval that loses its conditional write returns
+ * MANUAL runs the route checks (404 for a deleted project, 403, 409). AUTO skips them — the job
+ * has already re-read the state — and proceeds even when the project is soft-deleted, so money
+ * already paid is never held by a deletion. An AUTO approval that loses its conditional write returns
  * `null` instead of throwing.
  */
 export async function approveMilestone(milestoneId: string, opts: ApproveOptions): Promise<ApproveResult | null> {
@@ -526,15 +527,15 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
   }
 
   return prisma.$transaction(async (tx) => {
-    // MS16: lock the contract row first, so approvals of different milestones of one contract
-    // serialize and the completion count below sees the other's committed approval (MS22).
+    // Lock the contract row first, so approvals of different milestones of one contract
+    // serialize and the completion count below sees the other's committed approval.
     await tx.$queryRaw`SELECT "id" FROM "Contract" WHERE "id" = ${contractId} FOR UPDATE`;
 
     const { count } = await tx.milestone.updateMany({
       where: {
         id: milestoneId,
         status: 'SUBMITTED',
-        // MS20: a job for an earlier round must not approve a fresh resubmission.
+        // A job for an earlier round must not approve a fresh resubmission.
         ...(kind === 'AUTO' ? { autoApproveAt: { lte: now } } : {}),
       },
       data: { status: 'APPROVED', approvedAt: now, approvalType: kind, autoApproveAt: null },
@@ -560,7 +561,7 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
       });
     }
 
-    // S3: the settlement item, with the fee rate snapshotted (M4).
+    // The settlement item, with the fee rate snapshotted at approval.
     const breakdown = payoutBreakdown(wholeWon(milestone.amount), PLATFORM_FEE_RATE_BPS);
     await tx.settlementItem.create({
       data: {
@@ -576,7 +577,7 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
       },
     });
 
-    // MS17: a fresh statement, after the milestone write.
+    // A fresh statement, after the milestone write.
     const remaining = await tx.milestone.count({ where: { contractId, status: { not: 'APPROVED' } } });
     let completed = false;
     if (remaining === 0) {
@@ -590,7 +591,7 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
       }
     }
 
-    // MS17: a deleted project's approval notifies nobody and posts no system message (MG6).
+    // A deleted project's approval notifies nobody and posts no system message.
     if (!projectDeleted) {
       const vars = varsFor(milestone);
       if (kind === 'MANUAL') {
@@ -602,8 +603,8 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
         await notifyTemplate(tx, [contract.client, contract.freelancer], 'CONTRACT_COMPLETED', vars, now);
       }
 
-      // MG6: the approval's own message, then completion — the last writes, so the conversation
-      // lock comes after the contract, milestone and project (MG7). Skipped with the
+      // The approval's own message, then completion — the last writes, so the conversation
+      // lock comes after the contract, milestone and project. Skipped with the
       // notifications for a deleted project.
       const title = { milestoneTitle: milestone.title };
       await postSystemMessage(tx, contractId, kind === 'MANUAL' ? 'MILESTONE_APPROVED' : 'MILESTONE_AUTO_APPROVED', title);
@@ -620,7 +621,7 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
 }
 
 // ---------------------------------------------------------------------------
-// Rejection (MS18–MS19)
+// Rejection
 // ---------------------------------------------------------------------------
 
 export async function rejectMilestone(
@@ -633,7 +634,7 @@ export async function rejectMilestone(
   if (milestone.status !== 'SUBMITTED') throw new AppError(NOT_AWAITING_REVIEW, 409);
 
   return prisma.$transaction(async (tx) => {
-    // MS19: the conditional write first; the latest submission is read after it.
+    // The conditional write first; the latest submission is read after it.
     const { count } = await tx.milestone.updateMany({
       where: { id: milestoneId, status: 'SUBMITTED' },
       data: { status: 'REVISION_REQUESTED', revisionCount: { increment: 1 }, autoApproveAt: null },
@@ -661,7 +662,7 @@ export async function rejectMilestone(
 }
 
 // ---------------------------------------------------------------------------
-// Scheduled notices (J3–J5)
+// Scheduled notices
 // ---------------------------------------------------------------------------
 
 /** Loads a milestone with its context for a job handler; `null` when it does not exist. */
@@ -679,9 +680,9 @@ export async function latestRound(milestoneId: string): Promise<number | null> {
 }
 
 /**
- * J3–J5. These notices have no state change of their own, so they open a transaction: a notice's
- * in-app rows, email deliveries and email jobs commit together, and a retry after a failure does
- * not duplicate rows (NC9).
+ * The auto-approval reminder, due-soon and overdue notices. They have no state change of their
+ * own, so they open a transaction: a notice's in-app rows, email deliveries and email jobs commit
+ * together, and a retry after a failure does not duplicate rows.
  */
 export async function sendMilestoneNotice(
   milestone: MilestoneWithContext,

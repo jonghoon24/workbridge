@@ -5,7 +5,7 @@ import { AppError } from '../src/lib/errors';
 import { logger, serializeError } from '../src/lib/logger';
 import { runWithContext } from '../src/lib/requestContext';
 
-/** The JSON-line logger — BEHAVIOR.md rule 9. */
+/** The JSON-line logger. */
 
 afterEach(() => {
   process.env.LOG_LEVEL = 'error';

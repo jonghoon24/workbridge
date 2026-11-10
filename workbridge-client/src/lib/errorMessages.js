@@ -1,5 +1,5 @@
 // 서버 오류 응답({ error: { message } })을 사용자에게 보여 줄 한국어 문구로 바꾸는 공용 변환.
-// 서버 문구는 영어이고 docs/BEHAVIOR.md와 서버 테스트에 묶여 있으므로 서버는 그대로 두고 여기서
+// 서버 문구는 영어이고 서버 테스트에 묶여 있으므로 서버는 그대로 두고 여기서
 // 바꾼다. 오류를 화면에 보여 주는 곳은 모두 toUserMessage()를 거친다 — 영어 문구를 그대로
 // 보여 주지 않는다.
 //
@@ -39,7 +39,6 @@ const SERVER_ERROR = '일시적인 오류가 발생했습니다. 잠시 후 다�
 const MESSAGES = {
   // 인증·계정
   'Invalid credentials': '이메일 또는 비밀번호가 올바르지 않습니다.',
-  'Email and password are required': '이메일과 비밀번호를 입력해 주세요.',
   'All fields are required': '필수 항목을 모두 입력해 주세요.',
   'Email already in use': '이미 가입된 이메일입니다. 로그인하거나 다른 이메일을 사용해 주세요.',
   'Role must be CLIENT or FREELANCER': '역할을 선택해 주세요.',
@@ -60,13 +59,9 @@ const MESSAGES = {
   'Only clients can view their projects': '의뢰인 회원만 볼 수 있는 화면입니다.',
   'Only freelancers can view their bookmarks': '북마크는 프리랜서 회원만 사용할 수 있습니다.',
   'Only freelancers can view their applications': '지원 현황은 프리랜서 회원만 볼 수 있습니다.',
-  'minBudget cannot be greater than maxBudget': '최소 예산이 최대 예산보다 클 수 없습니다.',
   'recruitmentStartDate cannot be after deadline': '모집 시작일은 마감일보다 늦을 수 없습니다.',
   'Cannot change budget or recruitment dates after applications have been submitted':
     '지원자가 있는 프로젝트는 예산과 모집 기간을 바꿀 수 없습니다.',
-  'status must be ALL, UPCOMING, OPEN, or CLOSED': '프로젝트 상태 조건이 올바르지 않습니다.',
-  'sort must be latest, deadline, or budget': '정렬 조건이 올바르지 않습니다.',
-  'limit must be a positive integer': '목록 조건이 올바르지 않습니다.',
   'AI analysis did not return a response': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
   'AI analysis did not return valid feature pricing': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
 
@@ -74,12 +69,62 @@ const MESSAGES = {
   'You have already applied to this project': '이미 지원한 프로젝트입니다. 내 지원 현황에서 확인할 수 있습니다.',
   'Project is not accepting applications': '지금은 지원을 받지 않는 프로젝트입니다.',
   'Project deadline has passed': '모집 마감일이 지난 프로젝트입니다.',
-  'expectedRate must be a positive number': '희망 금액을 입력해 주세요.',
-  'expectedRate must be at least 1': '희망 금액은 1원 이상이어야 합니다.',
   'Application not found': '지원 내역을 찾을 수 없습니다.',
   'This application has already been processed': '이미 처리된 지원입니다. 새로고침한 뒤 다시 확인해 주세요.',
-  'Status must be ACCEPTED or REJECTED': '처리 방법이 올바르지 않습니다.',
   'A contract already exists for this project': '이 프로젝트에는 이미 계약이 있습니다.',
+
+  // 프로젝트·지원·결제 요청 검증(zod). 본문 오류는 `<필드>: <문장>`이라 접두어를 뗀 문장으로
+  // 매핑한다. 목록 쿼리 오류(`page: must be an integer`)는 문구가 필드마다 같아서 접두어까지 포함한
+  // 전체 문구로 매핑한다.
+  'Project title is required': '프로젝트명을 입력해 주세요.',
+  'Project title must be a string': '프로젝트명을 다시 입력해 주세요.',
+  'Project description is required': '프로젝트 설명을 입력해 주세요.',
+  'Project description must be a string': '프로젝트 설명을 다시 입력해 주세요.',
+  'Category is required': '카테고리를 선택해 주세요.',
+  'Category must be a string': '카테고리를 다시 선택해 주세요.',
+  'Budget is required': '예산을 입력해 주세요.',
+  'Budget must be a positive whole number of won': '예산은 1원 이상의 원 단위 정수로 입력해 주세요.',
+  'Deadline is required': '마감일을 선택해 주세요.',
+  'Deadline must be a valid date': '마감일을 다시 선택해 주세요.',
+  'Recruitment start date must be a valid date': '모집 시작일을 다시 선택해 주세요.',
+  'Required skills must be a string or a list of strings': '필요 기술을 다시 선택해 주세요.',
+  'Project status is required': '바꿀 프로젝트 상태를 선택해 주세요.',
+  'Project status must be one of UPCOMING, OPEN, IN_PROGRESS, COMPLETED, CANCELLED, CLOSED':
+    '바꿀 프로젝트 상태가 올바르지 않습니다.',
+  'Cover letter is required': '지원서를 입력해 주세요.',
+  'Cover letter must be a string': '지원서를 다시 입력해 주세요.',
+  'Expected rate is required': '제안 금액을 입력해 주세요.',
+  'Expected rate must be a positive whole number of won': '제안 금액은 1원 이상의 원 단위 정수로 입력해 주세요.',
+  'Expected duration is required': '예상 기간을 입력해 주세요.',
+  'Expected duration must be a string': '예상 기간을 다시 입력해 주세요.',
+  'Status is required': '처리 방법을 선택해 주세요.',
+  'Status must be one of ACCEPTED, REJECTED': '처리 방법이 올바르지 않습니다.',
+  'Milestone ID is required': '결제할 마일스톤 정보가 없습니다.',
+  'Milestone ID must be a string': '결제할 마일스톤 정보가 올바르지 않습니다.',
+  'Payment key is required': '결제 정보가 올바르지 않습니다. 결제를 다시 진행해 주세요.',
+  'Order ID is required': '결제 정보가 올바르지 않습니다. 결제를 다시 진행해 주세요.',
+  'Amount is required': '결제 정보가 올바르지 않습니다. 결제를 다시 진행해 주세요.',
+  'Amount must be a positive whole number of won': '결제 금액이 올바르지 않습니다.',
+  'minBudget: must be a number': '최소 예산은 숫자로 입력해 주세요.',
+  'minBudget: must be at least 0': '최소 예산은 0원 이상으로 입력해 주세요.',
+  'maxBudget: must be a number': '최대 예산은 숫자로 입력해 주세요.',
+  'maxBudget: must be at least 0': '최대 예산은 0원 이상으로 입력해 주세요.',
+  'minBudget: must not be greater than maxBudget': '최소 예산이 최대 예산보다 클 수 없습니다.',
+  'sort: must be one of latest, deadline, budget': '정렬 조건이 올바르지 않습니다.',
+  'status: must be one of ALL, UPCOMING, OPEN, CLOSED': '프로젝트 상태 조건이 올바르지 않습니다.',
+  'skills: must be a string or a list of strings': '기술 조건이 올바르지 않습니다.',
+  ...Object.fromEntries(
+    [
+      'page: must be an integer',
+      'page: must be at least 1',
+      'page: must be at most 1000000',
+      'limit: must be an integer',
+      'limit: must be at least 1',
+      ...['page', 'limit', 'sort', 'status', 'search', 'category', 'minBudget', 'maxBudget'].map(
+        (field) => `${field}: must be a single value`,
+      ),
+    ].map((message) => [message, '목록 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.']),
+  ),
 
   // 계약·마일스톤 계획
   'Contract not found': '계약을 찾을 수 없습니다.',
@@ -93,6 +138,9 @@ const MESSAGES = {
   'Due date must be a YYYY-MM-DD date': '기한을 선택해 주세요.',
   'Due date cannot be in the past': '기한은 오늘 이후로 선택해 주세요.',
   'Due dates must not decrease': '기한은 앞 마일스톤보다 빠를 수 없습니다.',
+  'Title must be a string': '제목을 다시 입력해 주세요.',
+  'Description must be a string': '설명을 다시 입력해 주세요.',
+  'status: must be one of PENDING, ACTIVE, COMPLETED': '계약 상태 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.',
 
   // 결제
   'Payment verification failed': '결제 승인에 실패했습니다. 결제 내역을 확인한 뒤 다시 시도해 주세요.',
@@ -102,10 +150,7 @@ const MESSAGES = {
   'Payment cannot be created for this milestone': '이 마일스톤은 지금 결제할 수 없습니다.',
   'Payment cannot be completed for a refunded milestone': '환불된 마일스톤은 결제를 완료할 수 없습니다.',
   'Payment amount does not match the contract amount': '결제 금액이 마일스톤 금액과 다릅니다.',
-  'Invalid payment amount': '결제 금액이 올바르지 않습니다.',
-  'paymentKey, orderId, and amount are required': '결제 정보가 올바르지 않습니다. 결제를 다시 진행해 주세요.',
   'Payment bypass is disabled': '이 환경에서는 개발용 결제 완료를 사용할 수 없습니다.',
-  'Milestone ID is required': '결제할 마일스톤 정보가 없습니다.',
   'Milestone not found': '마일스톤을 찾을 수 없습니다.',
   'Milestone is already funded': '이미 결제된 마일스톤입니다.',
   'Earlier milestones must be funded first': '앞 순서의 마일스톤부터 결제해 주세요.',
@@ -124,11 +169,29 @@ const MESSAGES = {
   // 리뷰
   'You have already reviewed this contract': '이미 리뷰를 작성한 계약입니다.',
   'Reviews can only be written after project completion': '계약이 완료된 뒤에 리뷰를 작성할 수 있습니다.',
-  'Rating must be between 1 and 5': '별점은 1점에서 5점 사이로 선택해 주세요.',
   'Invalid reviewee': '리뷰 대상이 올바르지 않습니다.',
+
+  // 요청 검증(zod) — 회원가입·로그인·역할 선택, 내 정보 수정, 리뷰 작성
+  // (workbridge-server/src/schemas/auth.ts, users.ts, reviews.ts). 형식이 틀린 값은 PATTERNS의 같은 묶음.
+  'Email is required': '이메일을 입력해 주세요.',
+  'Email must be a valid email address': '올바른 이메일 주소를 입력해 주세요.',
+  'Password is required': '비밀번호를 입력해 주세요.',
+  'Password must be at least 8 characters': '비밀번호는 8자 이상이어야 합니다.',
+  'Name is required': '이름을 입력해 주세요.',
+  'Experience years must be a non-negative integer': '경력은 0 이상의 정수(년 단위)로 입력해 주세요.',
+  'Hourly rate must be a positive whole number of won': '시간당 단가는 1원 이상의 원 단위 정수로 입력해 주세요.',
+  'Hourly rate must be at most 100,000,000 won': '시간당 단가는 1억 원 이하로 입력해 주세요.',
+  'Contract ID is required': '리뷰할 계약 정보가 없습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'Reviewee ID is required': '리뷰 대상 정보가 없습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'Rating is required': '별점을 선택해 주세요.',
+  'Rating must be an integer between 1 and 5': '별점은 1점에서 5점 사이로 선택해 주세요.',
+  'Content is required': '리뷰 내용을 입력해 주세요.',
+  'Tags must be strings': '태그를 다시 선택해 주세요.',
 
   // 정산·지급 계좌
   'Settlement not found': '정산 내역을 찾을 수 없습니다.',
+  'status: must be one of SCHEDULED, PROCESSING, PAID, FAILED, ON_HOLD':
+    '정산 상태 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.',
   'Account holder must match your name': '예금주가 회원 이름과 같아야 합니다. 본인 명의 계좌만 등록할 수 있습니다.',
   'Account holder is required': '예금주를 입력해 주세요.',
   'Account number must be 10 to 14 digits': '계좌번호는 숫자 10~14자리로 입력해 주세요.',
@@ -138,6 +201,8 @@ const MESSAGES = {
 
   // 알림
   'Notification not found': '알림을 찾을 수 없습니다.',
+  'Unknown notification type': '알 수 없는 알림 종류가 있습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'preferences: Expected 1 to 20 entries': '알림 설정을 저장하지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.',
 
   // 메시지
   'Conversation not found': '대화방을 찾을 수 없습니다.',
@@ -170,6 +235,7 @@ const MESSAGES = {
   'Company must be at most 100 characters': '회사명은 100자 이하로 입력해 주세요.',
   'Position is required': '직책을 입력해 주세요.',
   'Position must be at most 100 characters': '직책은 100자 이하로 입력해 주세요.',
+  'Employment type must be one of FULL_TIME, CONTRACT, FREELANCE, INTERN': '고용 형태를 선택해 주세요.',
   'Cannot upload and remove an image at once': '이미지 교체와 삭제를 동시에 할 수 없습니다.',
 
   // 업로드
@@ -178,6 +244,7 @@ const MESSAGES = {
   'Only image files are allowed': '이미지 파일만 올릴 수 있습니다.',
   'File too large': '파일이 너무 큽니다. 크기를 줄여 다시 올려 주세요.',
   'request entity too large': STATUS_DEFAULTS[413],
+  'Request body must be valid JSON': '요청을 읽지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.',
   'Request Entity Too Large': STATUS_DEFAULTS[413],
 };
 
@@ -191,9 +258,21 @@ const PATTERNS = [
     (m) => `마일스톤 금액의 합계가 계약 금액(${Number(m[1]).toLocaleString('ko-KR')}원)과 같아야 합니다.`,
   ],
   [/^Cannot transition from /, '지금 상태에서는 이 작업을 할 수 없습니다. 새로고침한 뒤 다시 확인해 주세요.'],
+  [/^Amount must be at least (\d+)$/, (m) => `금액은 ${Number(m[1]).toLocaleString('ko-KR')}원 이상이어야 합니다.`],
+  [/^A contract must have between (\d+) and (\d+) milestones$/, (m) => `마일스톤은 ${m[1]}~${m[2]}개여야 합니다.`],
   [/must be a valid date$/, '날짜를 다시 선택해 주세요.'],
   [/must be a (positive integer|non-negative number)$/, '숫자를 올바르게 입력해 주세요.'],
   [/Message not found in this conversation$/, '메시지를 찾을 수 없습니다. 새로고침해 주세요.'],
+  // 요청 검증(zod) — 회원가입·로그인, 내 정보 수정, 리뷰 작성의 형식이 틀린 값
+  [
+    /^(Email|Password|Name|Bio|Company name|Business field|Website|Activity category|Portfolio URL|Contract ID|Reviewee ID|Content) must be a string$/,
+    '입력 형식이 올바르지 않습니다. 다시 확인해 주세요.',
+  ],
+  // zod 기본 문구(서버 스키마가 문장을 정하지 않은 필드). 필드 접두어를 뗀 뒤 비교하므로 어느 필드든
+  // 안전한 일반 안내로 바꾼다. 위의 표와 패턴이 먼저다.
+  [/^Required$/, '필수 항목을 입력해 주세요.'],
+  [/^Expected .+, received .+$/, '입력 형식이 올바르지 않습니다. 다시 확인해 주세요.'],
+  [/^Invalid enum value\b/, '입력 형식이 올바르지 않습니다. 다시 확인해 주세요.'],
 ];
 
 function applyPattern(patterns, text) {

@@ -25,11 +25,16 @@ export default function ProjectForm({ initialData = null }) {
   const lastStep = STEPS.length - 1;
   const today = kstToday();
 
+  const initialRecruitmentStartDate = initialData?.recruitmentStartDate
+    ? toKstDateInput(initialData.recruitmentStartDate)
+    : '';
+  const initialDeadline = initialData?.deadline ? toKstDateInput(initialData.deadline) : '';
+
   const [form, setForm] = useState({
     title: initialData?.title || '',
     description: initialData?.description || '',
     category: initialData?.category || '',
-    budget: initialData?.budget || '',
+    budget: initialData?.budget ?? '',
     recruitmentStartDate: initialData?.recruitmentStartDate
       ? toKstDateInput(initialData.recruitmentStartDate)
       : today,
@@ -52,29 +57,41 @@ export default function ProjectForm({ initialData = null }) {
     return () => window.clearTimeout(timer);
   }, [currentStep, lastStep]);
 
+  // 브라우저 기본 검증은 끄고(<form noValidate>) 여기서 모두 검사한다: 빈 값, 소수·음수·0 예산,
+  // 오늘 이전 날짜(예전 date 입력의 min이 막던 것), 시작일 > 마감일.
   function validate() {
     const errs = {};
-    const budget = Number.parseFloat(form.budget);
-    if (!form.title.trim()) errs.title = '프로젝트명을 입력해 주세요';
-    if (!form.description.trim()) errs.description = '프로젝트 설명을 입력해 주세요';
-    if (!form.category) errs.category = '카테고리를 선택해 주세요';
-    if (!hasApplications && (!form.budget || !Number.isFinite(budget) || budget <= 0)) {
-      errs.budget = '예산을 1원 이상의 금액으로 입력해 주세요';
+    // 금액은 1원 이상의 원 단위 정수다(서버 budget 규칙과 같다).
+    const budget = Number(form.budget);
+    if (!form.title.trim()) errs.title = '프로젝트명을 입력해 주세요.';
+    if (!form.description.trim()) errs.description = '프로젝트 설명을 입력해 주세요.';
+    if (!form.category) errs.category = '카테고리를 선택해 주세요.';
+    if (!hasApplications && (form.budget === '' || !Number.isSafeInteger(budget) || budget <= 0)) {
+      errs.budget = '예산은 1원 이상의 원 단위 정수로 입력해 주세요.';
     }
     if (!hasApplications && !form.recruitmentStartDate) {
-      errs.recruitmentStartDate = '모집 시작일을 선택해 주세요';
+      errs.recruitmentStartDate = '모집 시작일을 선택해 주세요.';
+    } else if (!hasApplications && isPastAndChanged(form.recruitmentStartDate, initialRecruitmentStartDate)) {
+      errs.recruitmentStartDate = '모집 시작일은 오늘 이후로 선택해 주세요.';
     }
-    if (!hasApplications && !form.deadline) errs.deadline = '마감일을 선택해 주세요';
-    if (
+    if (!hasApplications && !form.deadline) {
+      errs.deadline = '마감일을 선택해 주세요.';
+    } else if (!hasApplications && isPastAndChanged(form.deadline, initialDeadline)) {
+      errs.deadline = '마감일은 오늘 이후로 선택해 주세요.';
+    } else if (
       !hasApplications
       && form.recruitmentStartDate
-      && form.deadline
       && form.recruitmentStartDate > form.deadline
     ) {
-      errs.deadline = '마감일은 모집 시작일 이후로 선택해 주세요';
+      errs.deadline = '마감일은 모집 시작일 이후로 선택해 주세요.';
     }
-    if (form.requiredSkills.length === 0) errs.requiredSkills = '필요 기술을 하나 이상 선택해 주세요';
+    if (form.requiredSkills.length === 0) errs.requiredSkills = '필요 기술을 하나 이상 선택해 주세요.';
     return errs;
+  }
+
+  // 오늘 이전 날짜는 새로 고른 경우에만 막는다. 수정 화면에서 이미 지난 모집 시작일을 그대로 두는 것은 괜찮다.
+  function isPastAndChanged(value, initialValue) {
+    return value < today && (!isEditing || value !== initialValue);
   }
 
   function getFirstInvalidStep(errs) {
@@ -128,7 +145,7 @@ export default function ProjectForm({ initialData = null }) {
       };
 
       if (!hasApplications) {
-        payload.budget = parseFloat(form.budget);
+        payload.budget = Number(form.budget);
         payload.recruitmentStartDate = form.recruitmentStartDate;
         payload.deadline = form.deadline;
       }
@@ -141,7 +158,7 @@ export default function ProjectForm({ initialData = null }) {
         router.push(`/projects/${data.id}`);
       }
     } catch (err) {
-      setErrors({ submit: toUserMessage(err, isEditing ? '프로젝트를 수정하지 못했습니다' : '프로젝트를 등록하지 못했습니다') });
+      setErrors({ submit: toUserMessage(err, isEditing ? '프로젝트를 수정하지 못했습니다.' : '프로젝트를 등록하지 못했습니다.') });
     } finally {
       setLoading(false);
     }
@@ -162,7 +179,9 @@ export default function ProjectForm({ initialData = null }) {
   const formattedDeadline = formatDate(form.deadline);
 
   return (
-    <form onSubmit={handleFormSubmit} className="space-y-6">
+    // noValidate: 브라우저 기본 검증 말풍선 대신 validate()의 한국어 안내를 보여 준다.
+    // 입력 타입(number/date)과 min·step은 키패드와 날짜 선택기 힌트로 남겨 둔다.
+    <form noValidate onSubmit={handleFormSubmit} className="space-y-6">
       <div className="grid grid-cols-3 gap-2">
         {STEPS.map((step, index) => (
           <button
@@ -253,12 +272,15 @@ export default function ProjectForm({ initialData = null }) {
             label="예산 (원)"
             required
             type="number"
+            min="1"
+            step="1"
+            inputMode="numeric"
             value={form.budget}
             onChange={(e) => setForm({ ...form, budget: e.target.value })}
             error={errors.budget}
             placeholder="예: 1000000"
             disabled={hasApplications}
-            helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다' : undefined}
+            helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다.' : undefined}
           />
 
           <Input
@@ -270,7 +292,7 @@ export default function ProjectForm({ initialData = null }) {
             error={errors.recruitmentStartDate}
             min={today}
             disabled={hasApplications}
-            helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다' : undefined}
+            helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다.' : undefined}
           />
 
           <Input
@@ -282,7 +304,7 @@ export default function ProjectForm({ initialData = null }) {
             error={errors.deadline}
             min={form.recruitmentStartDate || today}
             disabled={hasApplications}
-            helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다' : undefined}
+            helpText={hasApplications ? '지원자가 있어 수정할 수 없습니다.' : undefined}
           />
         </div>
       )}

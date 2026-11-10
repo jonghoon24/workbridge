@@ -16,7 +16,7 @@ import { LockIcon } from '@/components/ui/Icons';
 
 const EMPTY_FORM = { bankCode: '', accountNumber: '', holderName: '' };
 
-// 지급 계좌(BEHAVIOR.md PA1–PA7). 응답에는 마스킹된 번호만 오므로 변경할 때는 번호를 새로 입력한다.
+// 지급 계좌. 응답에는 마스킹된 번호만 오므로 변경할 때는 번호를 새로 입력한다.
 export default function PayoutAccountPage() {
   const { user } = useAuthStore();
   const [forbidden, setForbidden] = useState(false);
@@ -45,7 +45,7 @@ export default function PayoutAccountPage() {
       })
       .catch((err) => {
         if (err.response?.status === 403) setForbidden(true);
-        else setError(toUserMessage(err, '지급 계좌를 불러오지 못했습니다'));
+        else setError(toUserMessage(err, '지급 계좌를 불러오지 못했습니다.'));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -92,7 +92,7 @@ export default function PayoutAccountPage() {
         ? `지급 계좌를 저장했습니다. 보류된 정산 ${data.rescheduledCount}건이 다음 지급일에 다시 지급됩니다.`
         : '지급 계좌를 저장했습니다.');
     } catch (err) {
-      setError(toUserMessage(err, '지급 계좌를 저장하지 못했습니다'));
+      setError(toUserMessage(err, '지급 계좌를 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }
@@ -111,7 +111,7 @@ export default function PayoutAccountPage() {
       setEditing(true);
       setSuccess('지급 계좌를 삭제했습니다.');
     } catch (err) {
-      setError(toUserMessage(err, '지급 계좌를 삭제하지 못했습니다'));
+      setError(toUserMessage(err, '지급 계좌를 삭제하지 못했습니다.'));
     } finally {
       setDeleting(false);
     }

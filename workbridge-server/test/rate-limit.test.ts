@@ -20,7 +20,7 @@ import { errorHandler } from '../src/middlewares/errorHandler';
 import { rateLimit } from '../src/middlewares/rateLimit';
 
 /**
- * Rate limiting — BEHAVIOR.md rule 10, Auth `POST /login`, Projects `POST /:id/analyze`.
+ * Rate limiting — the limiter itself, `POST /api/auth/login` and `POST /api/projects/:id/analyze`.
  * Counters live in a table that is truncated before every test, so each test starts at zero.
  */
 
@@ -139,12 +139,12 @@ describe('fixed-window counters', () => {
 // POST /api/auth/login
 // ---------------------------------------------------------------------------------------------
 
-describe('POST /api/auth/login rate limits [C8]', () => {
+describe('POST /api/auth/login rate limits', () => {
   beforeEach(() => awayFromWindowEdge());
 
   const login = (body: Record<string, unknown>) => api().post('/api/auth/login').send(body);
 
-  it('the 21st request from one IP in 15 minutes is a 429, whatever the earlier outcomes [C8]', async () => {
+  it('the 21st request from one IP in 15 minutes is a 429, whatever the earlier outcomes', async () => {
     for (let i = 0; i < 20; i += 1) {
       expect((await login({})).status).toBe(400);
     }
@@ -152,7 +152,7 @@ describe('POST /api/auth/login rate limits [C8]', () => {
     expectTooMany(await login({}), 15 * 60);
   });
 
-  it('checks the IP limit before the required-field check [C8]', async () => {
+  it('checks the IP limit before the required-field check', async () => {
     const user = await makeUser();
     for (let i = 0; i < 20; i += 1) await login({});
 
@@ -160,7 +160,7 @@ describe('POST /api/auth/login rate limits [C8]', () => {
     expectTooMany(await login({ email: user.email, password: TEST_PASSWORD }), 15 * 60);
   });
 
-  it('ignores X-Forwarded-For when TRUST_PROXY is unset [C8]', async () => {
+  it('ignores X-Forwarded-For when TRUST_PROXY is unset', async () => {
     for (let i = 0; i < 20; i += 1) {
       await api().post('/api/auth/login').set('X-Forwarded-For', `203.0.113.${i}`).send({});
     }
@@ -170,7 +170,7 @@ describe('POST /api/auth/login rate limits [C8]', () => {
     expectTooMany(res, 15 * 60);
   });
 
-  it('after 5 failures for one email, even the correct password is a 429 [C8]', async () => {
+  it('after 5 failures for one email, even the correct password is a 429', async () => {
     const user = await makeUser();
     for (let i = 0; i < 5; i += 1) {
       const res = await login({ email: user.email, password: 'wrong-password' });
@@ -181,7 +181,7 @@ describe('POST /api/auth/login rate limits [C8]', () => {
     expectTooMany(await login({ email: user.email, password: TEST_PASSWORD }), 15 * 60);
   });
 
-  it('an unknown email is limited exactly like a known one, so the limiter cannot enumerate accounts [C8]', async () => {
+  it('an unknown email is limited exactly like a known one, so the limiter cannot enumerate accounts', async () => {
     const user = await makeUser();
     const sequence = async (email: string) => {
       const statuses = [];
@@ -199,7 +199,7 @@ describe('POST /api/auth/login rate limits [C8]', () => {
     expect(known.map(([status]) => status)).toEqual([401, 401, 401, 401, 401, 429]);
   });
 
-  it('a successful login clears the failure count [C8]', async () => {
+  it('a successful login clears the failure count', async () => {
     const user = await makeUser();
     for (let i = 0; i < 4; i += 1) await login({ email: user.email, password: 'wrong-password' });
 
@@ -211,7 +211,7 @@ describe('POST /api/auth/login rate limits [C8]', () => {
     expect((await login({ email: user.email, password: 'wrong-password' })).status).toBe(429);
   });
 
-  it('keys failures on the trimmed, lowercased email [C8]', async () => {
+  it('keys failures on the trimmed, lowercased email', async () => {
     const user = await makeUser();
     const variants = [user.email, ` ${user.email}`, user.email.toUpperCase(), `${user.email} `, user.email];
     for (const email of variants) {
@@ -221,7 +221,7 @@ describe('POST /api/auth/login rate limits [C8]', () => {
     expect((await login({ email: user.email, password: TEST_PASSWORD })).status).toBe(429);
   });
 
-  it('one email\'s failures do not lock out another email [C8]', async () => {
+  it('one email\'s failures do not lock out another email', async () => {
     const victim = await makeUser();
     const other = await makeUser();
     for (let i = 0; i < 5; i += 1) await login({ email: victim.email, password: 'wrong-password' });
@@ -229,7 +229,7 @@ describe('POST /api/auth/login rate limits [C8]', () => {
     expect((await login({ email: other.email, password: TEST_PASSWORD })).status).toBe(200);
   });
 
-  it('only 401s count as failures — a 400 does not [C8]', async () => {
+  it('only 401s count as failures — a 400 does not', async () => {
     const user = await makeUser();
     for (let i = 0; i < 5; i += 1) {
       expect((await login({ email: user.email })).status).toBe(400);
@@ -324,7 +324,7 @@ describe('client IP from the Next.js proxy and the Vercel edge', () => {
     expect(await ipOf({ 'X-Vercel-Forwarded-For': '198.51.100.32' })).toBe(await socketIp());
   });
 
-  it('keys the login limit on the proxied client IP: one browser at the limit does not block another [C8]', async () => {
+  it('keys the login limit on the proxied client IP: one browser at the limit does not block another', async () => {
     process.env.PROXY_SHARED_SECRET = SECRET;
     const loginFrom = (ip: string, secret = SECRET) => api().post('/api/auth/login')
       .set('X-Client-IP', ip).set('X-Proxy-Secret', secret).send({});
@@ -336,7 +336,7 @@ describe('client IP from the Next.js proxy and the Vercel edge', () => {
     expect((await loginFrom('203.0.113.41')).status).toBe(400);
   });
 
-  it('a forged X-Client-IP without the secret cannot dodge the login limit [C8]', async () => {
+  it('a forged X-Client-IP without the secret cannot dodge the login limit', async () => {
     process.env.PROXY_SHARED_SECRET = SECRET;
     for (let i = 0; i < 20; i += 1) {
       await api().post('/api/auth/login').set('X-Client-IP', `203.0.113.${50 + i}`).set('X-Proxy-Secret', 'guess').send({});
@@ -352,10 +352,10 @@ describe('client IP from the Next.js proxy and the Vercel edge', () => {
 // POST /api/projects/:id/analyze
 // ---------------------------------------------------------------------------------------------
 
-describe('POST /api/projects/:id/analyze rate limits [C8]', () => {
+describe('POST /api/projects/:id/analyze rate limits', () => {
   beforeEach(() => awayFromWindowEdge());
 
-  it('the 6th call in an hour is a 429 and never reaches OpenAI [C8]', async () => {
+  it('the 6th call in an hour is a 429 and never reaches OpenAI', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     for (let i = 0; i < 5; i += 1) {
@@ -368,7 +368,7 @@ describe('POST /api/projects/:id/analyze rate limits [C8]', () => {
     expect(openaiCreate).toHaveBeenCalledTimes(5);
   });
 
-  it('404, ownership 403 and 502 outcomes all count [C8]', async () => {
+  it('404, ownership 403 and 502 outcomes all count', async () => {
     const client = await makeClient();
     const someoneElse = await makeClient();
     const theirs = await makeProject(someoneElse.id);
@@ -384,7 +384,7 @@ describe('POST /api/projects/:id/analyze rate limits [C8]', () => {
     expectTooMany(await authed(client).post(`/api/projects/${mine.id}/analyze`), 3600);
   });
 
-  it('is per user [C8]', async () => {
+  it('is per user', async () => {
     const client = await makeClient();
     const other = await makeClient();
     const project = await makeProject(client.id);
@@ -394,7 +394,7 @@ describe('POST /api/projects/:id/analyze rate limits [C8]', () => {
     expect((await authed(other).post(`/api/projects/${otherProject.id}/analyze`)).status).toBe(200);
   });
 
-  it('requests rejected by authentication or the role check do not count [C8]', async () => {
+  it('requests rejected by authentication or the role check do not count', async () => {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
     const project = await makeProject(client.id);
@@ -407,7 +407,7 @@ describe('POST /api/projects/:id/analyze rate limits [C8]', () => {
     expect((await authed(client).post(`/api/projects/${project.id}/analyze`)).status).toBe(200);
   });
 
-  it('the daily limit of 20 is a 429 until 00:00 KST [C8]', async () => {
+  it('the daily limit of 20 is a 429 until 00:00 KST', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const now = new Date();
@@ -423,7 +423,7 @@ describe('POST /api/projects/:id/analyze rate limits [C8]', () => {
     expect(openaiCreate).not.toHaveBeenCalled();
   });
 
-  it('a call refused by the hourly limit does not count toward the daily one [C8]', async () => {
+  it('a call refused by the hourly limit does not count toward the daily one', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     for (let i = 0; i < 8; i += 1) await authed(client).post(`/api/projects/${project.id}/analyze`);

@@ -41,6 +41,7 @@ npm run dev
 cd workbridge-server
 bash scripts/test-db.sh       # workbridge_test 생성·마이그레이션
 npm run typecheck
+npm run openapi               # 라우트나 스키마를 바꿨으면 openapi.json을 다시 만들어 커밋
 npm test
 
 # E2E (Playwright) — 리포지토리 루트에서. 시드한 workbridge_e2e DB, 서버 :4002, 클라이언트 :3002
@@ -52,9 +53,9 @@ cd workbridge-client
 npm run lint && npm run build
 ```
 
-- 서버 테스트는 [docs/BEHAVIOR.md](docs/BEHAVIOR.md)를 기준으로 단언하고, 알려진 불일치(D)는 실패가 예상되는 테스트로 고정합니다. 테스트마다 모든 테이블을 비우므로 이름에 `test`가 들어간 DB에서만 돕니다.
+- 서버 테스트는 현재 코드가 아니라 의도한 동작([docs/domain/](docs/domain/README.md)의 규칙과 OpenAPI 문서)을 단언합니다. 모든 응답은 OpenAPI 응답 스키마와도 대조하므로 문서에 없는 상태 코드나 필드가 나오면 실패합니다. 알려진 버그는 GitHub 이슈로 추적합니다. 테스트마다 모든 테이블을 비우므로 이름에 `test`가 들어간 DB에서만 돕니다.
 - E2E는 로그인, 프로젝트 등록, 지원, 수락·서명, 마일스톤 결제·제출·승인을 브라우저로 확인합니다([workbridge-client/e2e/README.md](workbridge-client/e2e/README.md)).
-- CI: `.github/workflows/ci.yml`(서버 typecheck·`prisma validate`·테스트, 클라이언트 lint·빌드)과 `e2e.yml`(Playwright)이 PR과 `main` 푸시마다 Postgres 서비스 컨테이너로 돕니다. PR마다 Claude가 `REVIEW.md` 기준으로 AI 리뷰를 남기고(`claude-code-review.yml`), 이슈·PR에서 `@claude`를 멘션해 작업을 맡길 수 있습니다(`claude.yml`). 이슈에서 맡긴 작업은 드래프트 PR로 돌아오고, Ready for review를 누르면 AI 리뷰가 시작됩니다.
+- CI: `.github/workflows/ci.yml`(서버 typecheck·`prisma validate`·`openapi.json` 최신 여부·테스트, 클라이언트 lint·빌드)과 `e2e.yml`(Playwright)이 PR과 `main` 푸시마다 Postgres 서비스 컨테이너로 돕니다. PR마다 Claude가 `REVIEW.md` 기준으로 AI 리뷰를 남기고(`claude-code-review.yml`), 이슈·PR에서 `@claude`를 멘션해 작업을 맡길 수 있습니다(`claude.yml`). 이슈에서 맡긴 작업은 드래프트 PR로 돌아오고, Ready for review를 누르면 AI 리뷰가 시작됩니다.
 
 ## 배포
 
@@ -65,8 +66,8 @@ npm run lint && npm run build
 | 문서 | 설명 |
 | --- | --- |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 구조: 레이어, 요청 흐름, 작업 큐, 클라이언트, 환경 |
-| [docs/BEHAVIOR.md](docs/BEHAVIOR.md) | API 동작 명세 (영문, 테스트의 기준). 알려진 불일치(D)와 미결 질문(Q) |
-| [docs/API.md](docs/API.md) | API 엔드포인트 목록 |
+| [docs/domain/](docs/domain/README.md) | 도메인 규칙: 제품 규칙과 그 이유, 정책 수치, 상태 전이 |
+| [workbridge-server/openapi.json](workbridge-server/openapi.json) | API 문서(OpenAPI 3.1, zod 스키마에서 생성). 화면은 로컬 서버의 `GET /api/docs` |
 | [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 모델과 불변식 |
 | [docs/ENV.md](docs/ENV.md) | 환경변수와 외부 서비스 설정 |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 환경, Vercel 배포, 운영 환경의 한계 |
@@ -76,4 +77,4 @@ npm run lint && npm run build
 
 ## 기여
 
-이슈는 템플릿으로 엽니다: 버그, 명세 불일치(BEHAVIOR.md와 구현이 다른 것), 기능 제안. 명세 불일치는 BEHAVIOR.md의 D·Q 목록에 이미 있는지 먼저 확인합니다. PR은 `.github/PULL_REQUEST_TEMPLATE.md`를 따릅니다.
+이슈는 템플릿으로 엽니다: 버그, 기능 제안. 버그에는 기대 동작의 근거(도메인 문서의 절이나 API 문서)를 적고, 도메인 문서에 `현재 다름: #N`으로 이미 링크된 것인지 먼저 확인합니다. 버그를 고치는 PR에는 그 이슈 번호와 회귀 테스트를 넣습니다. PR은 `.github/PULL_REQUEST_TEMPLATE.md`를 따릅니다.

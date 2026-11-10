@@ -7,8 +7,8 @@ import { ATTACHMENT_ACCEPT } from '@/constants/milestones';
 import { CLOSED_REASON_TEXT, MESSAGE_LIMITS } from './messageUtils';
 import { PaperclipIcon } from '@/components/ui/Icons';
 
-// 메시지 입력창(BEHAVIOR.md MG15). Enter 전송, Shift+Enter 줄바꿈. 파일은 최대 5개, 개당 10MB.
-// 보낼 수 없는 대화방(MG9)이면 입력창 대신 이유를 보여준다.
+// 메시지 입력창. Enter 전송, Shift+Enter 줄바꿈. 파일은 최대 5개, 개당 10MB.
+// 보낼 수 없는 대화방이면 입력창 대신 이유를 보여준다.
 export default function MessageComposer({ canSend, closedReason, onSend }) {
   const [body, setBody] = useState('');
   const [files, setFiles] = useState([]);

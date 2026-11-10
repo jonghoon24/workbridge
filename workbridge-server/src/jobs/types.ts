@@ -5,12 +5,12 @@ import type { Logger } from '../lib/logger';
 /**
  * Every job type, with its payload shape. `Job.type` is a bare `String` in the schema (like
  * `Notification.type`), so adding a type needs no migration — add it here, give it a handler
- * in `registry.ts`, and document it in BEHAVIOR.md "Background jobs".
+ * in `registry.ts`, and document it in docs/domain/jobs.md.
  */
 export interface JobPayloads {
   'project.lifecycleSweep': Record<string, never>;
   'maintenance.cleanup': Record<string, never>;
-  // Milestones and settlements (BEHAVIOR.md "Background jobs", J1–J7)
+  // Milestones and settlements
   'milestone.autoApprove': { milestoneId: string; round: number };
   'milestone.autoApproveReminder': { milestoneId: string; round: number };
   'milestone.dueSoon': { milestoneId: string };
@@ -19,9 +19,9 @@ export interface JobPayloads {
   'settlement.weeklyBatch': Record<string, never>;
   /** `scheduledPayoutAt` is an ISO-8601 string; a mismatch with the row means "rescheduled". */
   'settlement.payout': { settlementId: string; scheduledPayoutAt: string };
-  // Messaging (BEHAVIOR.md J8). No dedupeKey: the enqueue rule matches PENDING jobs on the payload.
+  // Messaging. No dedupeKey: the enqueue rule matches PENDING jobs on the payload.
   'message.unreadDigest': { conversationId: string; recipientId: string };
-  // Notification channels (BEHAVIOR.md J9). dedupeKey `notification.email:<deliveryId>`, enqueued by notify().
+  // Notification channels. dedupeKey `notification.email:<deliveryId>`, enqueued by notify().
   'notification.email': { deliveryId: string };
 }
 

@@ -6,10 +6,10 @@ import { requireActiveUser } from '../middlewares/activeUser';
 import { validate } from '../middlewares/validate';
 import { settlementListQuery } from '../schemas/settlements';
 
-/** `/api/settlements` — expansion routes for freelancers (S14–S16). */
+/** `/api/settlements` — a freelancer's own settlements. */
 const router = Router();
 
-// Per route rather than `router.use`, so unmatched paths stay unmatched (Q10).
+// Per route rather than `router.use`, so unmatched paths stay unmatched (#19).
 const guard = [authenticate, requireActiveUser, requireRole('FREELANCER')];
 
 router.get('/', ...guard, validate({ query: settlementListQuery }), getMySettlements);

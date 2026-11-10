@@ -22,7 +22,7 @@ import { makeContractScenario, makeMilestone, makePayment, makeSubmission } from
 import { DAY_MS, HOUR_MS } from '../src/lib/time';
 
 /**
- * Milestone detail, submission, approval and rejection — BEHAVIOR.md MS11–MS19, MS22, S3. The
+ * Milestone detail, submission, approval and rejection, and the payout preview. The
  * 401/403/ownership matrix is in authorization.test.ts; automatic approval in auto-approval.test.ts.
  */
 
@@ -69,7 +69,7 @@ const submit = (user: Parameters<typeof authed>[0], milestoneId: string) =>
 // ---------------------------------------------------------------------------------------------
 
 describe('GET /api/milestones/:id', () => {
-  it('returns the milestone with every submission newest first, its payment and contract summary [MS11] [MS2]', async () => {
+  it('returns the milestone with every submission newest first, its payment and contract summary', async () => {
     const { client, freelancer, project, contract, milestone } = await submitted();
     await prisma.milestoneSubmission.updateMany({ where: { milestoneId: milestone.id }, data: { decision: 'REJECTED', decisionReason: 'Fix the header please' } });
     const second = await makeSubmission(milestone.id, { round: 2 });
@@ -99,7 +99,7 @@ describe('GET /api/milestones/:id', () => {
     });
     expect(asClient.body.submissions.map((s: { round: number }) => s.round)).toEqual([2, 1]);
     expect(asClient.body.submissions[0].attachments).toMatchObject([{ fileName: '보고서.pdf', size: 3 }]);
-    // MS2: exactly these keys — no submissionId.
+    // Exactly these keys — no submissionId.
     expect(Object.keys(asClient.body.submissions[0].attachments[0]).sort())
       .toEqual(['createdAt', 'fileName', 'id', 'mimeType', 'size', 'url']);
     expect(Object.keys(asClient.body.submissions[0]).sort()).toEqual([
@@ -109,7 +109,7 @@ describe('GET /api/milestones/:id', () => {
     expect(asClient.body.submissions[1]).toMatchObject({ decision: 'REJECTED', decisionReason: 'Fix the header please' });
   });
 
-  it("previews from the settlement item's stored values once approved [MS1] [M4]", async () => {
+  it("previews from the settlement item's stored values once approved", async () => {
     const { client, freelancer, contract, milestone } = await submitted();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'APPROVED' } });
     await prisma.settlementItem.create({
@@ -131,7 +131,7 @@ describe('GET /api/milestones/:id', () => {
     expect(res.body.payoutPreview).toEqual({ gross: 4_000_000, fee: 200_000, vat: 20_000, net: 3_780_000 });
   });
 
-  it('falls back to M3 at the current rate for an approval with no settlement item (backfill) [MS1]', async () => {
+  it('falls back to the current fee rate (10% fee, 10% VAT on the fee) for an approval with no settlement item (backfill)', async () => {
     const { client, milestone } = await makeContractScenario({ contract: { status: 'COMPLETED' } });
     expect(milestone.status).toBe('APPROVED');
 
@@ -146,7 +146,7 @@ describe('GET /api/milestones/:id', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('POST /api/milestones/:id/submissions', () => {
-  it('submits a FUNDED milestone: round 1, SUBMITTED, 7-day timer, two jobs, client notified [MS13] [MS14] [M14] [M15]', async () => {
+  it('submits a FUNDED milestone: round 1, SUBMITTED, 7-day timer, two jobs, client notified', async () => {
     const { client, freelancer, contract, milestone } = await funded();
     const before = Date.now();
 
@@ -171,7 +171,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect(stored.submittedAt!.getTime()).toBeGreaterThanOrEqual(before);
     expect(stored.submittedAt!.getTime()).toBeLessThanOrEqual(after);
 
-    // The client's MILESTONE_SUBMITTED email job is asserted in email.test.ts (NC9).
+    // The client's MILESTONE_SUBMITTED email job is asserted in email.test.ts.
     const jobs = await prisma.job.findMany({ where: { type: { not: 'notification.email' } }, orderBy: { runAt: 'asc' } });
     expect(jobs.map((j) => [j.type, j.dedupeKey, j.payload])).toEqual([
       ['milestone.autoApproveReminder', `milestone.autoApproveReminder:${milestone.id}:1`, { milestoneId: milestone.id, round: 1 }],
@@ -189,7 +189,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     });
   });
 
-  it('stores multipart files under milestones/<id>/ and restores Korean file names [MS13]', async () => {
+  it('stores multipart files under milestones/<id>/ and restores Korean file names', async () => {
     const { freelancer, milestone } = await funded();
 
     const res = await submit(freelancer, milestone.id)
@@ -208,7 +208,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect(await prisma.milestoneAttachment.count()).toBe(2);
   });
 
-  it('a storage failure is a 502 and writes nothing [MS13]', async () => {
+  it('a storage failure is a 502 and writes nothing', async () => {
     const { freelancer, milestone } = await funded();
     storageUpload.mockResolvedValue({ data: null, error: new Error('bucket down') });
 
@@ -221,7 +221,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('FUNDED');
   });
 
-  it('resubmits after a rejection as round 2 with fresh round-2 jobs [MS13] [M14]', async () => {
+  it('resubmits after a rejection as round 2 with fresh round-2 jobs', async () => {
     const { freelancer, milestone } = await submitted();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'REVISION_REQUESTED', autoApproveAt: null } });
 
@@ -236,7 +236,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     ]);
   });
 
-  it.each(['PENDING', 'SUBMITTED', 'APPROVED'] as const)('409s for a %s milestone [MS12]', async (status) => {
+  it.each(['PENDING', 'SUBMITTED', 'APPROVED'] as const)('409s for a %s milestone', async (status) => {
     const { freelancer, milestone } = await funded();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status } });
 
@@ -256,7 +256,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     ['a non-http link', { message: 'x', links: ['ftp://e.com/file'] }, 'links.0: Links must be http or https URLs'],
     ['a relative link', { message: 'x', links: ['/just/a/path'] }, 'links.0: Links must be http or https URLs'],
     ['a 2001-character link', { message: 'x', links: [`https://e.com/${'a'.repeat(1990)}`] }, 'links.0: Links must be http or https URLs'],
-  ])('400s on %s with an exact message [MS12] [M18]', async (_label, body, message) => {
+  ])('400s on %s with an exact message', async (_label, body, message) => {
     const { freelancer, milestone } = await funded();
 
     const res = await submit(freelancer, milestone.id).send(body);
@@ -265,7 +265,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect(res.body).toEqual({ error: { message } });
   });
 
-  it('accepts exactly 5000 characters and exactly 5 links, and a single link as a string [M18]', async () => {
+  it('accepts exactly 5000 characters and exactly 5 links, and a single link as a string', async () => {
     const { freelancer, milestone } = await funded();
 
     const res = await submit(freelancer, milestone.id).send({
@@ -277,7 +277,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect(res.body.submission.links).toHaveLength(5);
   });
 
-  it('validates before looking the milestone up: a bad body on a missing id is 400 [MS5]', async () => {
+  it('validates before looking the milestone up: a bad body on a missing id is 400', async () => {
     const { freelancer } = await funded();
 
     const res = await submit(freelancer, 'missing-milestone-id').send({ message: '' });
@@ -285,7 +285,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect(res.status).toBe(400);
   });
 
-  it('two concurrent submissions: one 201, one 409, one submission, never a 500 [MS13] [MS4]', async () => {
+  it('two concurrent submissions: one 201, one 409, one submission, never a 500', async () => {
     for (let iteration = 0; iteration < 5; iteration += 1) {
       const { freelancer, milestone } = await funded();
       await Promise.all([1, 2, 3].map(() => authed(freelancer).get(`/api/milestones/${milestone.id}`)));
@@ -300,7 +300,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     }
   });
 
-  it('honors MILESTONE_AUTO_APPROVE_DAYS, and skips the reminder when it would not be in the future [M14] [M15]', async () => {
+  it('honors MILESTONE_AUTO_APPROVE_DAYS, and skips the reminder when it would not be in the future', async () => {
     process.env.MILESTONE_AUTO_APPROVE_DAYS = '2';
     const { freelancer, milestone } = await funded();
 
@@ -311,7 +311,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect((await prisma.job.findMany({ where: { type: { not: 'notification.email' } } })).map((j) => j.type)).toEqual(['milestone.autoApprove']);
   });
 
-  it.each(['0', '-3', '1.5', 'seven'])('falls back to 7 days for MILESTONE_AUTO_APPROVE_DAYS=%s [M14]', async (value) => {
+  it.each(['0', '-3', '1.5', 'seven'])('falls back to 7 days for MILESTONE_AUTO_APPROVE_DAYS=%s', async (value) => {
     process.env.MILESTONE_AUTO_APPROVE_DAYS = value;
     const { freelancer, milestone } = await funded();
 
@@ -321,7 +321,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     expect(stored.autoApproveAt!.getTime() - stored.submittedAt!.getTime()).toBe(7 * DAY_MS);
   });
 
-  it('accepts a submission after the due date (no late penalty) [M16]', async () => {
+  it('accepts a submission after the due date (no late penalty)', async () => {
     const { freelancer, milestone } = await funded();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { dueDate: new Date(Date.now() - DAY_MS) } });
 
@@ -334,7 +334,7 @@ describe('POST /api/milestones/:id/submissions', () => {
 // ---------------------------------------------------------------------------------------------
 
 describe('POST /api/milestones/:id/approve', () => {
-  it('approves: APPROVED/MANUAL, submission decided, settlement item, freelancer notified [MS16] [S3]', async () => {
+  it('approves: APPROVED/MANUAL, submission decided, settlement item, freelancer notified', async () => {
     const { client, freelancer, contract, milestone, submission } = await submitted({ milestones: 2 });
 
     const res = await authed(client).post(`/api/milestones/${milestone.id}/approve`);
@@ -368,7 +368,7 @@ describe('POST /api/milestones/:id/approve', () => {
     expect(notifications.map((n) => [n.type, n.userId])).toEqual([['MILESTONE_APPROVED', freelancer.id]]);
   });
 
-  it('completes the contract and project when the last milestone is approved [MS17] [C3]', async () => {
+  it('completes the contract and project when the last milestone is approved', async () => {
     const { client, freelancer, project, contract, milestone } = await submitted();
 
     const res = await authed(client).post(`/api/milestones/${milestone.id}/approve`);
@@ -378,7 +378,7 @@ describe('POST /api/milestones/:id/approve', () => {
     expect(res.body.contract.completedAt).not.toBeNull();
     const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(storedContract.status).toBe('COMPLETED');
-    // Directly from CLOSED, bypassing validTransitions (Q5).
+    // Directly from CLOSED, bypassing validTransitions.
     expect(project.status).toBe('CLOSED');
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('COMPLETED');
 
@@ -393,7 +393,7 @@ describe('POST /api/milestones/:id/approve', () => {
     expect(review.status).toBe(201);
   });
 
-  it.each(['FUNDED', 'REVISION_REQUESTED', 'APPROVED'] as const)('409s for a %s milestone and writes nothing [MS15]', async (status) => {
+  it.each(['FUNDED', 'REVISION_REQUESTED', 'APPROVED'] as const)('409s for a %s milestone and writes nothing', async (status) => {
     const { client, milestone } = await submitted();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status } });
 
@@ -404,7 +404,7 @@ describe('POST /api/milestones/:id/approve', () => {
     expect(await prisma.settlementItem.count()).toBe(0);
   });
 
-  it('approves even when the freelancer is soft-deleted, skipping only their notification (rule 5) [MS16]', async () => {
+  it('approves even when the freelancer is soft-deleted, skipping only their notification', async () => {
     const { client, freelancer, milestone } = await submitted({ milestones: 2 });
     await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
 
@@ -415,7 +415,7 @@ describe('POST /api/milestones/:id/approve', () => {
     expect(await prisma.notification.count()).toBe(0);
   });
 
-  it('is atomic: a failing settlement-item insert leaves the milestone SUBMITTED [MS16]', async () => {
+  it('is atomic: a failing settlement-item insert leaves the milestone SUBMITTED', async () => {
     const { client, milestone } = await submitted();
     await prisma.$executeRawUnsafe(`ALTER TABLE "SettlementItem" ADD CONSTRAINT "tmp_no_items" CHECK (false) NOT VALID`);
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -434,10 +434,10 @@ describe('POST /api/milestones/:id/approve', () => {
   });
 
   /**
-   * MS22: approving the last two milestones at the same time must complete the contract. Each
+   * Approving the last two milestones at the same time must complete the contract. Each
    * approval locks the contract row first, so the second sees the first in its completion count.
    */
-  it('two concurrent approvals of the last two milestones complete the contract exactly once [MS22]', async () => {
+  it('two concurrent approvals of the last two milestones complete the contract exactly once', async () => {
     for (let iteration = 0; iteration < 6; iteration += 1) {
       const { client, freelancer, contract, milestone } = await submitted();
       await prisma.milestone.update({ where: { id: milestone.id }, data: { amount: 3_000_000 } });
@@ -460,7 +460,7 @@ describe('POST /api/milestones/:id/approve', () => {
     }
   });
 
-  it('two concurrent approvals of one milestone: one 200, one 409, one settlement item [MS21] [MS4]', async () => {
+  it('two concurrent approvals of one milestone: one 200, one 409, one settlement item', async () => {
     const { client, milestone } = await submitted();
     await Promise.all([1, 2, 3].map(() => authed(client).get('/api/contracts')));
 
@@ -482,7 +482,7 @@ describe('POST /api/milestones/:id/approve', () => {
 describe('POST /api/milestones/:id/reject', () => {
   const REASON = '헤더 레이아웃을 시안대로 맞춰주세요';
 
-  it('sends the submission back: REVISION_REQUESTED, count +1, timer cleared, freelancer notified [MS19]', async () => {
+  it('sends the submission back: REVISION_REQUESTED, count +1, timer cleared, freelancer notified', async () => {
     const { client, freelancer, milestone, submission } = await submitted();
 
     const res = await authed(client).post(`/api/milestones/${milestone.id}/reject`).send({ reason: `  ${REASON}  ` });
@@ -504,7 +504,7 @@ describe('POST /api/milestones/:id/reject', () => {
     ['a 9-character reason', { reason: '123456789' }, 'reason: Reason must be at least 10 characters'],
     ['a reason that is short once trimmed', { reason: '   12345678   ' }, 'reason: Reason must be at least 10 characters'],
     ['a 2001-character reason', { reason: 'x'.repeat(2001) }, 'reason: Reason must be at most 2000 characters'],
-  ])('400s on %s [MS18] [M18]', async (_label, body, message) => {
+  ])('400s on %s', async (_label, body, message) => {
     const { client, milestone } = await submitted();
 
     const res = await authed(client).post(`/api/milestones/${milestone.id}/reject`).send(body);
@@ -514,14 +514,14 @@ describe('POST /api/milestones/:id/reject', () => {
     expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('SUBMITTED');
   });
 
-  it('accepts exactly 10 and exactly 2000 characters [M18]', async () => {
+  it('accepts exactly 10 and exactly 2000 characters', async () => {
     const first = await submitted();
     expect((await authed(first.client).post(`/api/milestones/${first.milestone.id}/reject`).send({ reason: '1234567890' })).status).toBe(200);
     const second = await submitted();
     expect((await authed(second.client).post(`/api/milestones/${second.milestone.id}/reject`).send({ reason: 'x'.repeat(2000) })).status).toBe(200);
   });
 
-  it('409s unless SUBMITTED [MS18]', async () => {
+  it('409s unless SUBMITTED', async () => {
     const { client, milestone } = await funded();
 
     const res = await authed(client).post(`/api/milestones/${milestone.id}/reject`).send({ reason: REASON });
@@ -530,7 +530,7 @@ describe('POST /api/milestones/:id/reject', () => {
     expect(res.body).toEqual({ error: { message: 'Milestone is not awaiting review' } });
   });
 
-  it('has no cap on revisions: reject, resubmit, reject again, then approve [M17] [MS3]', async () => {
+  it('has no cap on revisions: reject, resubmit, reject again, then approve', async () => {
     const { client, freelancer, milestone } = await submitted({ milestones: 2 });
 
     for (let round = 2; round <= 3; round += 1) {
@@ -553,7 +553,7 @@ describe('unauthenticated access', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// System messages (MG6, MG7)
+// System messages
 // ---------------------------------------------------------------------------------------------
 
 describe('system messages of submission, review and completion', () => {
@@ -567,7 +567,7 @@ describe('system messages of submission, review and completion', () => {
     return messages.map((m) => m.systemEvent);
   }
 
-  it('a submission posts MILESTONE_SUBMITTED; a refused one posts nothing [MG6] [MS13]', async () => {
+  it('a submission posts MILESTONE_SUBMITTED; a refused one posts nothing', async () => {
     const { freelancer, milestone, conversation } = await funded();
 
     expect((await submit(freelancer, milestone.id).send({ message: '1차' })).status).toBe(201);
@@ -576,7 +576,7 @@ describe('system messages of submission, review and completion', () => {
     expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_SUBMITTED']);
   });
 
-  it('a rejection posts MILESTONE_REVISION_REQUESTED [MG6] [MS19]', async () => {
+  it('a rejection posts MILESTONE_REVISION_REQUESTED', async () => {
     const { client, milestone, conversation } = await submitted();
 
     const res = await authed(client).post(`/api/milestones/${milestone.id}/reject`).send({ reason: '헤더 레이아웃을 고쳐주세요.' });
@@ -585,7 +585,7 @@ describe('system messages of submission, review and completion', () => {
     expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_REVISION_REQUESTED']);
   });
 
-  it('approving a milestone that is not the last posts MILESTONE_APPROVED only [MG6] [MS16]', async () => {
+  it('approving a milestone that is not the last posts MILESTONE_APPROVED only', async () => {
     const { client, milestone, conversation } = await submitted({ milestones: 2 });
 
     await authed(client).post(`/api/milestones/${milestone.id}/approve`);
@@ -593,7 +593,7 @@ describe('system messages of submission, review and completion', () => {
     expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_APPROVED']);
   });
 
-  it('approving the last milestone posts MILESTONE_APPROVED, then CONTRACT_COMPLETED [MG6] [MG7] [MS17]', async () => {
+  it('approving the last milestone posts MILESTONE_APPROVED, then CONTRACT_COMPLETED', async () => {
     const { client, milestone, conversation } = await submitted();
 
     await authed(client).post(`/api/milestones/${milestone.id}/approve`);
@@ -605,7 +605,7 @@ describe('system messages of submission, review and completion', () => {
     expect(stored.lastMessageAt?.getTime()).toBe(completed.createdAt.getTime());
   });
 
-  it('a rolled-back approval posts nothing [MG6] [MS16]', async () => {
+  it('a rolled-back approval posts nothing', async () => {
     const { client, milestone, conversation } = await submitted();
     await prisma.$executeRawUnsafe(`ALTER TABLE "SettlementItem" ADD CONSTRAINT "tmp_no_items" CHECK (false) NOT VALID`);
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -618,7 +618,7 @@ describe('system messages of submission, review and completion', () => {
     }
   });
 
-  it('two concurrent approvals of one milestone post one MILESTONE_APPROVED [MG6] [MS4]', async () => {
+  it('two concurrent approvals of one milestone post one MILESTONE_APPROVED', async () => {
     const { client, milestone, conversation } = await submitted({ milestones: 2 });
     await Promise.all([1, 2, 3].map(() => authed(client).get('/api/contracts')));
 
@@ -630,7 +630,7 @@ describe('system messages of submission, review and completion', () => {
     expect(await systemMessages(conversation.id)).toEqual(['MILESTONE_APPROVED']);
   });
 
-  it('concurrent approvals of the last two milestones: two approvals, then one completion [MG6] [MG7] [MS22]', async () => {
+  it('concurrent approvals of the last two milestones: two approvals, then one completion', async () => {
     for (let iteration = 0; iteration < 4; iteration += 1) {
       const { client, contract, milestone, conversation } = await submitted();
       await prisma.milestone.update({ where: { id: milestone.id }, data: { amount: 3_000_000 } });

@@ -2,7 +2,7 @@ import { env } from '../env';
 import { getRequestContext } from './requestContext';
 
 /**
- * Dependency-free JSON-line logger (BEHAVIOR.md rule 9).
+ * Dependency-free JSON-line logger.
  *
  * **Only `error` goes to `console.error`**; `debug`/`info`/`warn` go to `console.log`. The
  * suite pins "a 500 is logged exactly once" with a `console.error` spy, so error level is

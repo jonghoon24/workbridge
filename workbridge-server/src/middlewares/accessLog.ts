@@ -5,8 +5,8 @@ import { logger } from '../lib/logger';
 import type { JwtUserPayload } from '../types/index';
 
 /**
- * One `info` line per request when the response finishes, whatever the status — a 500 included
- * (BEHAVIOR.md rule 9). Error level belongs to `errorHandler` alone.
+ * One `info` line per request when the response finishes, whatever the status — a 500 included.
+ * Error level belongs to `errorHandler` alone.
  */
 export function accessLog(req: Request, res: Response, next: NextFunction) {
   const startedAt = process.hrtime.bigint();

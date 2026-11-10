@@ -16,15 +16,15 @@ import { PermanentJobError } from '../jobs/errors';
 import type { PrismaTransactionClient } from '../types/index';
 
 /**
- * Weekly settlements and payouts (BEHAVIOR.md "Settlements", S1–S17, M19–M22).
+ * Weekly settlements and payouts (docs/domain/milestones-payments.md "정산").
  */
 
-/** M19: periods are one week; the batch runs 3 h after the period ends (Monday 03:00 KST). */
+/** Periods are one week; the batch runs 3 h after the period ends (Monday 03:00 KST). */
 export const SETTLEMENT_PERIOD_MS = 7 * DAY_MS;
 export const BATCH_DELAY_MS = 3 * HOUR_MS;
-/** M19: payout at `periodEnd + 2 days 10 h` (Wednesday 10:00 KST). */
+/** Payout at `periodEnd + 2 days 10 h` (Wednesday 10:00 KST). */
 export const PAYOUT_DELAY_MS = 2 * DAY_MS + 10 * HOUR_MS;
-/** M22. */
+/** Payout attempts per settlement (the first try plus two retries), 24 h apart. */
 export const MAX_PAYOUT_ATTEMPTS = 3;
 export const PAYOUT_RETRY_MS = DAY_MS;
 
@@ -34,7 +34,7 @@ const MAX_FAILURE_REASON = 500;
 
 export const WEEKLY_BATCH_KEY_PREFIX = 'settlement.weeklyBatch:';
 
-/** The recurring slot after `now`: the next Monday 03:00 KST (M19). */
+/** The recurring slot after `now`: the next Monday 03:00 KST. */
 export function nextBatchAt(now: Date): Date {
   return nextKstWeekday(now, MONDAY, 3);
 }
@@ -45,7 +45,7 @@ export function weeklyBatchDedupeKey(runAt: Date): string {
   return `${WEEKLY_BATCH_KEY_PREFIX}${periodStart.toISOString()}`;
 }
 
-/** J6: the period start encoded in a batch job's `dedupeKey`; `null` if absent or malformed. */
+/** The period start encoded in a batch job's `dedupeKey`; `null` if absent or malformed. */
 export function periodStartFromDedupeKey(dedupeKey: string | null): Date | null {
   if (!dedupeKey?.startsWith(WEEKLY_BATCH_KEY_PREFIX)) return null;
   const iso = dedupeKey.slice(WEEKLY_BATCH_KEY_PREFIX.length);
@@ -77,7 +77,7 @@ async function notifyFreelancer(
 }
 
 // ---------------------------------------------------------------------------
-// Weekly batch (S4–S6)
+// Weekly batch
 // ---------------------------------------------------------------------------
 
 export interface BatchResult {
@@ -89,7 +89,7 @@ export interface BatchResult {
 }
 
 /**
- * S4–S6 for the period starting at `periodStart`. One transaction per freelancer; a failure
+ * Settles every freelancer's unsettled items for the period starting at `periodStart`. One transaction per freelancer; a failure
  * rolls back only that freelancer, and the batch throws at the end so the queue retries it.
  */
 export async function runWeeklyBatch(periodStart: Date, now: Date): Promise<BatchResult> {
@@ -128,7 +128,7 @@ async function settleFreelancer(
   now: Date,
 ): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
-    // S5: insert-or-ignore on (freelancerId, periodStart), then read — never Prisma's upsert.
+    // Insert-or-ignore on (freelancerId, periodStart), then read — never Prisma's upsert.
     const inserted = await tx.settlement.createMany({
       data: [{
         freelancerId,
@@ -148,7 +148,7 @@ async function settleFreelancer(
       where: { freelancerId_periodStart: { freelancerId, periodStart } },
     });
 
-    // S5: lock it with a conditional write on SCHEDULED; anything else leaves the items for
+    // Lock it with a conditional write on SCHEDULED; anything else leaves the items for
     // the next batch. (A just-inserted row is SCHEDULED and already ours.)
     const locked = await tx.settlement.updateMany({
       where: { id: settlement.id, status: 'SCHEDULED' },
@@ -192,14 +192,14 @@ async function settleFreelancer(
 }
 
 // ---------------------------------------------------------------------------
-// Payout (S7–S12, S17)
+// Payout
 // ---------------------------------------------------------------------------
 
 export type PayoutOutcome = 'skipped' | 'on_hold' | 'paid' | 'retry_scheduled' | 'failed';
 
 const PAYABLE: SettlementStatus[] = ['SCHEDULED', 'FAILED'];
 
-/** The conditions under which S7 lets a payout proceed, as a `where` for conditional writes. */
+/** The conditions under which a payout may proceed, as a `where` for conditional writes. */
 function payableWhere(settlementId: string, scheduledPayoutAt: Date): Prisma.SettlementWhereInput {
   return {
     id: settlementId,
@@ -213,14 +213,14 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
   const settlement = await prisma.settlement.findUnique({ where: { id: settlementId } });
   if (!settlement) throw new PermanentJobError(`settlement ${settlementId} does not exist`);
 
-  // S7: a rescheduled settlement belongs to a newer job.
+  // A rescheduled settlement belongs to a newer job.
   if (settlement.scheduledPayoutAt.toISOString() !== scheduledPayoutAtIso) return 'skipped';
   if (!PAYABLE.includes(settlement.status) || settlement.payoutAttempts >= MAX_PAYOUT_ATTEMPTS) return 'skipped';
 
   const scheduledPayoutAt = settlement.scheduledPayoutAt;
 
   const decision = await prisma.$transaction(async (tx) => {
-    // S17: serialize with payout-account writes on the freelancer's user row.
+    // Serialize with payout-account writes on the freelancer's user row.
     await lockUserRow(tx, settlement.freelancerId);
     const freelancer = await tx.user.findUniqueOrThrow({
       where: { id: settlement.freelancerId },
@@ -228,7 +228,7 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
     });
     const account = await tx.payoutAccount.findUnique({ where: { userId: settlement.freelancerId } });
 
-    // S8: no account, or a soft-deleted freelancer → ON_HOLD (attempts unchanged).
+    // No account, or a soft-deleted freelancer → ON_HOLD (attempts unchanged).
     if (!account || freelancer.deletedAt) {
       const held = await tx.settlement.updateMany({
         where: payableWhere(settlementId, scheduledPayoutAt),
@@ -240,7 +240,7 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
       return held.count === 1 ? { kind: 'on_hold' as const } : { kind: 'skipped' as const };
     }
 
-    // S9: the conditional transition, then the row it produced (still under its lock).
+    // The conditional transition, then the row it produced (still under its lock).
     const moved = await tx.settlement.updateMany({
       where: payableWhere(settlementId, scheduledPayoutAt),
       data: {
@@ -273,7 +273,7 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
     return recordTransferFailure(processing, freelancer, err, now);
   }
 
-  // S10
+  // The transfer succeeded: PROCESSING → PAID.
   await prisma.$transaction(async (tx) => {
     const paid = await tx.settlement.updateMany({
       where: { id: settlementId, status: 'PROCESSING' },
@@ -286,7 +286,7 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
   return 'paid';
 }
 
-/** S11: FAILED, then a retry 24 h later while attempts remain; the last failure notifies. */
+/** FAILED, then a retry 24 h later while attempts remain; the last failure notifies. */
 async function recordTransferFailure(
   processing: Settlement,
   freelancer: { id: string; deletedAt: Date | null },
@@ -318,7 +318,7 @@ async function recordTransferFailure(
 }
 
 // ---------------------------------------------------------------------------
-// Reads (S13–S16)
+// Reads
 // ---------------------------------------------------------------------------
 
 export interface SettlementListQuery {
@@ -344,7 +344,7 @@ export async function listSettlements(freelancerId: string, query: SettlementLis
   };
 }
 
-/** S15. Every settlement lands in exactly one of `scheduled`, `onHold`, `failed`, `paidTotal`. */
+/** Every settlement lands in exactly one of `scheduled`, `onHold`, `failed`, `paidTotal`. */
 export async function settlementSummary(freelancerId: string, now: Date = new Date()) {
   const [unsettled, settlements, account] = await Promise.all([
     prisma.settlementItem.findMany({
@@ -394,7 +394,7 @@ export async function settlementSummary(freelancerId: string, now: Date = new Da
   };
 }
 
-/** S16. Project deletion only changes `projectDeleted` (S2). */
+/** Project deletion has no effect on a settlement; it only sets an item's `projectDeleted`. */
 export async function getSettlement(settlementId: string, freelancerId: string) {
   const settlement = await prisma.settlement.findUnique({
     where: { id: settlementId },
@@ -434,12 +434,12 @@ export async function getSettlement(settlementId: string, freelancerId: string) 
 }
 
 // ---------------------------------------------------------------------------
-// Rescheduling held settlements (PA4)
+// Rescheduling held settlements
 // ---------------------------------------------------------------------------
 
 /**
- * PA4: every ON_HOLD settlement → SCHEDULED for the next Wednesday 10:00 KST strictly after both
- * `now` and its current `scheduledPayoutAt`. The second bound keeps the new payout key distinct
+ * Registering a payout account moves every ON_HOLD settlement → SCHEDULED for the next
+ * Wednesday 10:00 KST strictly after both `now` and its current `scheduledPayoutAt`. The second bound keeps the new payout key distinct
  * from the job that put it ON_HOLD — with a skewed clock (or a manual run with a future `now`) the
  * same Wednesday would collide with that job's `dedupeKey` and silently enqueue nothing.
  */

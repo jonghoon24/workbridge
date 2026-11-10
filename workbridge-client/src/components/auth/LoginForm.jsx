@@ -33,6 +33,15 @@ export default function LoginForm() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    // 형식 검사는 하지 않는다: 형식이 틀린 이메일은 서버에서 없는 계정(401)과 같게 답한다.
+    if (!form.email.trim()) {
+      setError('이메일을 입력해 주세요.');
+      return;
+    }
+    if (!form.password) {
+      setError('비밀번호를 입력해 주세요.');
+      return;
+    }
     setError('');
     setLoading(true);
 
@@ -41,7 +50,7 @@ export default function LoginForm() {
       setAuth(data.user, data.accessToken);
       router.push(redirect);
     } catch (err) {
-      setError(toUserMessage(err, '로그인에 실패했습니다'));
+      setError(toUserMessage(err, '로그인에 실패했습니다.'));
     } finally {
       setLoading(false);
     }
@@ -51,8 +60,9 @@ export default function LoginForm() {
     window.location.href = '/api/auth/google';
   }
 
+  // noValidate: 브라우저 기본 검증 말풍선 대신 이 화면의 한국어 안내를 보여 준다.
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form noValidate onSubmit={handleSubmit} className="space-y-4">
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           {error}

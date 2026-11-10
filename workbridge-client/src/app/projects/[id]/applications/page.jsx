@@ -30,7 +30,7 @@ export default function ApplicationsPage() {
     useAuthStore.getState().initAuth();
     api.get(`/api/projects/${id}/applications`)
       .then(({ data }) => setApplications(data))
-      .catch((err) => setError(toUserMessage(err, '지원자 목록을 불러오지 못했습니다')))
+      .catch((err) => setError(toUserMessage(err, '지원자 목록을 불러오지 못했습니다.')))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -61,7 +61,7 @@ export default function ApplicationsPage() {
         router.push(`/contracts/${result.contract.id}`);
       }
     } catch (err) {
-      alert(toUserMessage(err, '지원을 처리하지 못했습니다'));
+      alert(toUserMessage(err, '지원을 처리하지 못했습니다.'));
     } finally {
       setUpdating(null);
     }

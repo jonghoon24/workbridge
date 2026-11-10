@@ -34,7 +34,7 @@ export function isProfileComplete(user: ProfileCompletionInput | null): boolean 
 }
 
 // ---------------------------------------------------------------------------------------------
-// Completion score (BEHAVIOR.md PF21). Display only: `isProfileComplete` above stays the gate.
+// Completion score (docs/domain/accounts.md). Display only: `isProfileComplete` above stays the gate.
 // ---------------------------------------------------------------------------------------------
 
 /** Not null and not empty after trimming. */
@@ -48,7 +48,7 @@ type ScoreRule = {
   done(user: ProfileScoreInput, counts: ProfileCompletionCounts): boolean;
 };
 
-/** PF21's checklists, in response order. Each role's weights sum to 100. */
+/** The completion checklists, in response order. Each role's weights sum to 100. */
 export const PROFILE_SCORE_RULES: Record<'CLIENT' | 'FREELANCER', readonly ScoreRule[]> = {
   FREELANCER: [
     { key: 'skills', weight: 15, done: (u) => Array.isArray(u.skills) && u.skills.length > 0 },
@@ -80,8 +80,8 @@ export const PROFILE_SCORE_RULES: Record<'CLIENT' | 'FREELANCER', readonly Score
 };
 
 /**
- * PF21: `{ isComplete, percent, items }` for the user's **stored** role. `isComplete` is exactly
- * `isProfileComplete` (rule 4); `percent` is the weight of the done items. The two are independent.
+ * `{ isComplete, percent, items }` for the user's **stored** role. `isComplete` is exactly
+ * `isProfileComplete` (the gate); `percent` is the weight of the done items. The two are independent.
  */
 export function getProfileCompletion(user: ProfileScoreInput, counts: ProfileCompletionCounts): ProfileCompletion {
   const rules = PROFILE_SCORE_RULES[user.role as 'CLIENT' | 'FREELANCER'] ?? [];
@@ -94,7 +94,7 @@ export function getProfileCompletion(user: ProfileScoreInput, counts: ProfileCom
   };
 }
 
-/** Loads what PF21 needs for `userId` and scores it. `null` when the user is gone. */
+/** Loads what the completion score needs for `userId` and scores it. `null` when the user is gone. */
 export async function loadProfileCompletion(userId: string): Promise<ProfileCompletion | null> {
   const user = await prisma.user.findFirst({
     where: { id: userId, deletedAt: null },

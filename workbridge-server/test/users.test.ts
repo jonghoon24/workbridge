@@ -1,3 +1,4 @@
+import type { Role } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createClient } from '@supabase/supabase-js';
 
@@ -116,6 +117,23 @@ describe('GET /api/users/me', () => {
 });
 
 describe('PATCH /api/users/me', () => {
+  // The body schema is picked by the token's role. A role with no schema must be refused, not let
+  // through to the update unvalidated.
+  it('refuses a token whose role has no profile schema with 403 and changes nothing', async () => {
+    const client = await makeClient({ name: 'Old Name' });
+    const unknownRole = tokenFor({ id: client.id, email: client.email, role: 'ADMIN' as Role });
+
+    const res = await api()
+      .patch('/api/users/me')
+      .set('Authorization', `Bearer ${unknownRole}`)
+      .send({ name: 'New Name', hourlyRate: 'not a number' });
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
+    expect(stored.name).toBe('Old Name');
+  });
+
   it('updates name and bio for a CLIENT and persists them', async () => {
     const client = await makeClient({ name: 'Old Name', bio: null });
 
@@ -153,7 +171,7 @@ describe('PATCH /api/users/me', () => {
     });
   });
 
-  it('silently ignores freelancer-only fields sent by a CLIENT [Q2]', async () => {
+  it('silently ignores freelancer-only fields sent by a CLIENT', async () => {
     const client = await makeClient();
 
     const res = await authed(client).patch('/api/users/me').send({
@@ -165,7 +183,7 @@ describe('PATCH /api/users/me', () => {
       portfolioUrl: 'https://example.com',
     });
 
-    // Ignored, not rejected — intentional per Q2.
+    // Ignored, not rejected — intentional (docs/domain/accounts.md).
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('이름만 반영');
     expect(res.body.skills).toEqual([]);
@@ -180,7 +198,7 @@ describe('PATCH /api/users/me', () => {
     expect(stored.portfolioUrl).toBeNull();
   });
 
-  it('silently ignores client-only fields sent by a FREELANCER [Q2]', async () => {
+  it('silently ignores client-only fields sent by a FREELANCER', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).patch('/api/users/me').send({
@@ -208,7 +226,7 @@ describe('PATCH /api/users/me', () => {
       skills: ['React', 'Node.js', 'TypeScript'],
       activityCategory: '데이터 분석',
       experienceYears: 7,
-      hourlyRate: 88_000.5,
+      hourlyRate: 88_000,
       portfolioUrl: 'https://portfolio.example',
     });
 
@@ -219,7 +237,7 @@ describe('PATCH /api/users/me', () => {
       skills: ['React', 'Node.js', 'TypeScript'],
       activityCategory: '데이터 분석',
       experienceYears: 7,
-      hourlyRate: 88_000.5,
+      hourlyRate: 88_000,
       portfolioUrl: 'https://portfolio.example',
     });
   });
@@ -276,44 +294,40 @@ describe('PATCH /api/users/me', () => {
   });
 
   /*
-   * 알려진 불일치 D3 — #1
-   * There is no 500 here, contrary to what BEHAVIOR.md used to claim. `parseInt('abc')` is
-   * NaN and `experienceYears` is a **nullable** column, so Prisma serializes NaN to `null` and the
-   * write *succeeds*: the response is **200**, the other fields in the same request are persisted,
-   * and the stored `experienceYears` is silently wiped to `null`. That is worse than a 500 —
-   * it is silent data loss that also makes the profile incomplete, so every later
-   * `POST /api/projects/:id/applications` 403s on `requireCompleteProfile`.
-   *
-   * Both assertions below flip together when a NaN guard lands: 400 instead of 200, and the
-   * previously stored value still present.
+   * Fixed by the zod schema (#1). `parseInt('abc')` used to be NaN, which Prisma serializes
+   * to `null` on the nullable column: the request answered **200**, persisted the other fields
+   * and silently wiped `experienceYears` — which also made the profile incomplete, so every later
+   * application 403'd on `requireCompleteProfile`. Now the whole request is a 400 and nothing is
+   * written.
    */
-  it.fails('rejects a non-numeric experienceYears with 400 and does not null it [D3]', async () => {
+  it('rejects a non-numeric experienceYears with 400 and does not null it', async () => {
     const freelancer = await makeFreelancer({ experienceYears: 3 });
 
     const res = await authed(freelancer).patch('/api/users/me').send({ experienceYears: 'abc' });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: { message: 'experienceYears: Experience years must be a non-negative integer' },
+    });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.experienceYears).toBe(3);
   });
 
-  // 알려진 불일치 D3 — #1
-  // `parseFloat('abc')` is NaN and `hourlyRate` is nullable too, so the same silent wipe
-  // happens on the money field: 200 today, with the stored rate replaced by null.
-  it.fails('rejects a non-numeric hourlyRate with 400 and does not null it [D3]', async () => {
+  // Same on the money field: `parseFloat('abc')` used to replace the stored rate with null.
+  it('rejects a non-numeric hourlyRate with 400 and does not null it', async () => {
     const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
 
     const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate: 'abc' });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a positive whole number of won' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.hourlyRate).toBe(50_000);
   });
 
-  // 알려진 불일치 D3 — #1
-  // The blast radius: today the whole request is applied, so `name` is written *and*
-  // `experienceYears` is nulled. A rejected request must leave every field as it was.
-  it.fails('leaves the profile untouched when a non-numeric experienceYears is submitted [D3]', async () => {
+  // The blast radius: the whole request used to be applied, so `name` was written *and*
+  // `experienceYears` nulled. A rejected request must leave every field as it was.
+  it('leaves the profile untouched when a non-numeric experienceYears is submitted', async () => {
     const freelancer = await makeFreelancer({ name: 'Unchanged', experienceYears: 3 });
 
     await authed(freelancer)
@@ -325,10 +339,7 @@ describe('PATCH /api/users/me', () => {
     expect(stored.experienceYears).toBe(3);
   });
 
-  // 알려진 불일치 D3 — #1
-  // Same blast radius on the other numeric field: the sibling `name` sticks while the
-  // stored `hourlyRate` is replaced by null.
-  it.fails('leaves the profile untouched when a non-numeric hourlyRate is submitted [D3]', async () => {
+  it('leaves the profile untouched when a non-numeric hourlyRate is submitted', async () => {
     const freelancer = await makeFreelancer({ name: 'Unchanged', hourlyRate: 50_000 });
 
     await authed(freelancer)
@@ -340,23 +351,201 @@ describe('PATCH /api/users/me', () => {
     expect(stored.hourlyRate).toBe(50_000);
   });
 
-  // 알려진 불일치 D16 — #11
-  // `normalizeSkillList` maps `.trim()` over every element, so a non-string element throws
-  // `TypeError: skill.trim is not a function` inside the controller, before Prisma is reached.
-  // With no `statusCode` on the error, `errorHandler` renders it as **500**; cross-cutting rule 8
-  // requires 400 for a malformed value.
-  it.fails('rejects a skills array of non-strings with 400 [D16]', async () => {
+  // `experienceYears` is a non-negative integer — the range `requireCompleteProfile` accepts.
+  // An empty multipart field is a present, non-numeric value, not "absent": 400, not a wipe.
+  it.each([
+    ['a fractional number', 1.5],
+    ['a fractional string', '1.5'],
+    ['a negative number', -1],
+    ['a negative string', '-1'],
+    ['trailing garbage', '3abc'],
+    ['an empty string', ''],
+    ['null', null],
+    ['a value beyond the Int column', 2_147_483_648],
+  ])('rejects %s as experienceYears with 400, row unchanged', async (_label, experienceYears) => {
+    const freelancer = await makeFreelancer({ experienceYears: 3 });
+
+    const res = await authed(freelancer).patch('/api/users/me').send({ experienceYears });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: { message: 'experienceYears: Experience years must be a non-negative integer' },
+    });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored.experienceYears).toBe(3);
+  });
+
+  it.each([
+    ['an empty multipart field', 'experienceYears', ''],
+    ['a fractional multipart value', 'experienceYears', '2.5'],
+    ['an empty multipart field', 'hourlyRate', ''],
+    ['a non-numeric multipart value', 'hourlyRate', '5만원'],
+    ['a fractional multipart value', 'hourlyRate', '45000.5'],
+    ['a comma-grouped multipart value', 'hourlyRate', '45,000'],
+  ])('rejects %s for %s with 400, row unchanged', async (_label, field, value) => {
+    const freelancer = await makeFreelancer({ experienceYears: 3, hourlyRate: 50_000 });
+
+    const res = await authed(freelancer).patch('/api/users/me').field(field, value);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toMatch(new RegExp(`^${field}: `));
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored).toMatchObject({ experienceYears: 3, hourlyRate: 50_000 });
+  });
+
+  it.each([
+    ['null', null],
+    ['an empty string', ''],
+    ['an object', { amount: 1 }],
+    ['a value that overflows to Infinity', '1e400'],
+    // Money rule: amounts are whole won.
+    ['a fractional number', 45_000.5],
+    ['a fractional string', '45000.5'],
+    ['a negative number', -1],
+    ['a negative string', '-1'],
+    // A rate is at least 1 won.
+    ['zero', 0],
+    ['a zero string', '0'],
+  ])('rejects %s as hourlyRate with 400, row unchanged', async (_label, hourlyRate) => {
+    const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
+
+    const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a positive whole number of won' } });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored.hourlyRate).toBe(50_000);
+  });
+
+  it('accepts experienceYears 0 and a digit-string hourlyRate', async () => {
+    const freelancer = await makeFreelancer({ experienceYears: 3, hourlyRate: 50_000 });
+
+    const res = await authed(freelancer)
+      .patch('/api/users/me')
+      .send({ experienceYears: '0', hourlyRate: '12000' });
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored).toMatchObject({ experienceYears: 0, hourlyRate: 12_000 });
+  });
+
+  it.each([1, 100_000_000])('accepts the boundary hourlyRate %s', async (hourlyRate) => {
+    const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
+
+    const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate });
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored.hourlyRate).toBe(hourlyRate);
+  });
+
+  it('rejects an hourlyRate above 100,000,000 won with 400, row unchanged', async () => {
+    const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
+
+    const res = await authed(freelancer).patch('/api/users/me').field('hourlyRate', '100000001');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be at most 100,000,000 won' } });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored.hourlyRate).toBe(50_000);
+  });
+
+  it.each([
+    ['an empty name', { name: '' }, 'name: Name is required'],
+    ['a blank name', { name: '   ' }, 'name: Name is required'],
+    ['a numeric name', { name: 7 }, 'name: Name must be a string'],
+    ['an object bio', { bio: { text: 'x' } }, 'bio: Bio must be a string'],
+  ])('rejects %s with 400 rather than 500 and writes nothing', async (_label, body, message) => {
+    const client = await makeClient({ name: 'Unchanged', bio: 'kept' });
+
+    const res = await authed(client).patch('/api/users/me').send(body);
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message } });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
+    expect(stored).toMatchObject({ name: 'Unchanged', bio: 'kept' });
+  });
+
+  it('rejects a repeated multipart name with 400', async () => {
+    const freelancer = await makeFreelancer({ name: 'Unchanged' });
+
+    const res = await authed(freelancer).patch('/api/users/me').field('name', 'a').field('name', 'b');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'name: Name must be a string' } });
+  });
+
+  it('stores the name trimmed and lets JSON null clear an optional text field', async () => {
+    const client = await makeClient({ website: 'https://old.example' });
+
+    const res = await authed(client).patch('/api/users/me').send({ name: '  새 이름  ', website: null });
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
+    expect(stored.name).toBe('새 이름');
+    expect(stored.website).toBeNull();
+  });
+
+  it('validates the CLIENT fields but not the freelancer ones for a CLIENT', async () => {
+    const client = await makeClient({ companyName: '코드잇' });
+
+    const res = await authed(client).patch('/api/users/me').send({ companyName: 42, experienceYears: 'abc' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'companyName: Company name must be a string' } });
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
+    expect(stored.companyName).toBe('코드잇');
+  });
+
+  it('ignores a malformed client-only field from a FREELANCER', async () => {
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer)
+      .patch('/api/users/me')
+      .send({ activityCategory: '기획', companyName: { not: 'a string' } });
+
+    expect(res.status).toBe(200);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+    expect(stored.activityCategory).toBe('기획');
+    expect(stored.companyName).toBeNull();
+  });
+
+  // Fixed by the zod schema (#11): `normalizeSkillList` used to call `.trim()` on every element,
+  // so a non-string element threw a TypeError → 500.
+  it('rejects a skills array of non-strings with 400', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).patch('/api/users/me').send({ skills: [1, 2] });
 
     expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'skills: Skills must be strings' } });
   });
 
-  // The redeeming half of D16, and true both today and after the fix: the throw happens before
-  // `prisma.user.update`, so a malformed `skills` writes nothing at all — not even the sibling
-  // `name`. Only the status code is wrong.
-  it('writes nothing when skills contains non-strings (D16 — true before and after the fix)', async () => {
+  it.each([
+    ['a number', 7],
+    ['an object', { a: 'React' }],
+    ['a nested array', [['React']]],
+  ])('rejects skills given as %s with 400', async (_label, skills) => {
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer).patch('/api/users/me').send({ skills });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'skills: Skills must be strings' } });
+  });
+
+  it('clears skills with JSON null', async () => {
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer).patch('/api/users/me').send({ skills: null });
+
+    expect(res.status).toBe(200);
+    expect(res.body.skills).toEqual([]);
+  });
+
+  // The half that already held before the fix: a malformed `skills` writes nothing at all —
+  // not even the sibling `name`.
+  it('writes nothing when skills contains non-strings', async () => {
     const freelancer = await makeFreelancer({ name: 'Unchanged' });
 
     const res = await authed(freelancer)
@@ -365,7 +554,7 @@ describe('PATCH /api/users/me', () => {
 
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.body).toEqual({ error: { message: expect.any(String) } });
-    // Unlike the Prisma-formatted errors in D14, this plain TypeError leaks no source path.
+    // Unlike Prisma-formatted errors (issue #9), this error body leaks no source path.
     expect(res.body.error.message).not.toMatch(/workbridge-server|\.ts:/);
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
@@ -375,7 +564,7 @@ describe('PATCH /api/users/me', () => {
   });
 
   /*
-   * BEHAVIOR.md documents this route as `multipart/form-data`, and the client does send that —
+   * This route is documented as `multipart/form-data`, and the client does send that —
    * it is the only way to attach `profileImage`. A JSON body nevertheless works: `express.json()`
    * is mounted before the router, and `upload.single()` passes a non-multipart request straight
    * through without touching `req.body`. The two are *not* equivalent, because
@@ -461,17 +650,17 @@ describe('PATCH /api/users/me', () => {
       const jsonRes = await authed(viaJson)
         .patch('/api/users/me')
         .set('Content-Type', 'application/json')
-        .send(JSON.stringify({ experienceYears: 7, hourlyRate: 45_000.5 }));
+        .send(JSON.stringify({ experienceYears: 7, hourlyRate: 45_000 }));
       const multipartRes = await authed(viaMultipart)
         .patch('/api/users/me')
         .field('experienceYears', '7')
-        .field('hourlyRate', '45000.5');
+        .field('hourlyRate', '45000');
 
       expect([jsonRes.status, multipartRes.status]).toEqual([200, 200]);
       for (const user of [viaJson, viaMultipart]) {
         const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
         expect(stored.experienceYears).toBe(7);
-        expect(stored.hourlyRate).toBe(45_000.5);
+        expect(stored.hourlyRate).toBe(45_000);
       }
     });
   });
@@ -537,19 +726,21 @@ describe('PATCH /api/users/me', () => {
       expect(supabaseUpload).not.toHaveBeenCalled();
     });
 
-    // 알려진 불일치 D6
-    // The fileFilter's plain `Error` has no statusCode, so errorHandler renders 500.
-    it.fails('rejects a non-image upload with 400 [D6]', async () => {
-      const freelancer = await makeFreelancer();
+    // Validation runs after multer (which fills `req.body`) and before the controller uploads, so
+    // a malformed field never reaches storage.
+    it('rejects a malformed field with 400 before uploading the attached image', async () => {
+      const freelancer = await makeFreelancer({ experienceYears: 3 });
 
       const res = await authed(freelancer)
         .patch('/api/users/me')
-        .attach('profileImage', Buffer.from('hello'), {
-          filename: 'notes.txt',
-          contentType: 'text/plain',
-        });
+        .field('experienceYears', 'abc')
+        .attach('profileImage', PNG, { filename: 'me.png', contentType: 'image/png' });
 
       expect(res.status).toBe(400);
+      expect(res.body.error.message).toBe('experienceYears: Experience years must be a non-negative integer');
+      expect(supabaseUpload).not.toHaveBeenCalled();
+      const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
+      expect(stored).toMatchObject({ experienceYears: 3, profileImage: null });
     });
 
     it('never reaches storage for a non-image upload', async () => {
@@ -565,34 +756,6 @@ describe('PATCH /api/users/me', () => {
       expect(supabaseUpload).not.toHaveBeenCalled();
       const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
       expect(stored.profileImage).toBeNull();
-    });
-
-    // 알려진 불일치 D6
-    // Multer's LIMIT_FILE_SIZE MulterError has no statusCode, so errorHandler renders 500.
-    it.fails('rejects an upload over the 5 MB limit with 413 or 400 [D6]', async () => {
-      const freelancer = await makeFreelancer();
-
-      const res = await authed(freelancer)
-        .patch('/api/users/me')
-        .attach('profileImage', Buffer.alloc(6 * 1024 * 1024, 7), {
-          filename: 'huge.png',
-          contentType: 'image/png',
-        });
-
-      expect([400, 413]).toContain(res.status);
-    });
-
-    // 알려진 불일치 D6
-    // The raw Supabase error is rethrown as-is, so it has no statusCode and renders 500.
-    it.fails('surfaces a storage failure as an upstream error, not 500 [D6]', async () => {
-      const freelancer = await makeFreelancer();
-      supabaseUpload.mockResolvedValue({ data: null, error: new Error('bucket unavailable') });
-
-      const res = await authed(freelancer)
-        .patch('/api/users/me')
-        .attach('profileImage', PNG, { filename: 'me.png', contentType: 'image/png' });
-
-      expect([400, 502]).toContain(res.status);
     });
 
     it('does not modify the profile when storage fails', async () => {
@@ -755,7 +918,7 @@ describe('GET /api/users/:id', () => {
     expect(res.body).toEqual({ error: { message: 'User not found' } });
   });
 
-  it('adds portfolioItems, careers and careerSummary exactly as the public routes return them [C10] [PF18]', async () => {
+  it('adds portfolioItems, careers and careerSummary exactly as the public routes return them', async () => {
     const freelancer = await makeFreelancer();
     await makePortfolioItem(freelancer.id, { sortOrder: 1, title: 'Second' });
     await makePortfolioItem(freelancer.id, { sortOrder: 0, title: 'First', startedAt: new Date('2025-02-28T15:00:00.000Z') });
@@ -782,7 +945,7 @@ describe('GET /api/users/:id', () => {
     expect(profile.body).toMatchObject({ id: freelancer.id, avgRating: null, reviewCount: 0, receivedReviews: [] });
   });
 
-  it('gives a CLIENT empty lists and a zero summary [C10] [PF18]', async () => {
+  it('gives a CLIENT empty lists and a zero summary', async () => {
     const client = await makeClient();
 
     const res = await api().get(`/api/users/${client.id}`);
@@ -795,7 +958,7 @@ describe('GET /api/users/:id', () => {
     });
   });
 
-  it('404s a soft-deleted user even with portfolio and careers kept [C10] [PF20]', async () => {
+  it('404s a soft-deleted user even with portfolio and careers kept', async () => {
     const freelancer = await makeFreelancer({ deletedAt: new Date() });
     await makePortfolioItem(freelancer.id);
     await makeCareer(freelancer.id);

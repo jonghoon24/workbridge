@@ -31,7 +31,7 @@ import {
 import { generateRefreshToken } from '../src/lib/jwt';
 
 /**
- * The cross-cutting authentication/authorization matrix — BEHAVIOR.md §2 and §3.
+ * The cross-cutting authentication/authorization matrix.
  *
  * This file exists as the compensating control for a deliberate type-safety tradeoff: the
  * codebase augments `Express.Request.user` as **non-optional**, so the compiler cannot warn
@@ -543,7 +543,7 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     role: null,
     gate: null,
   },
-  // notifications.routes.ts — preferences (NC5–NC8)
+  // notifications.routes.ts — notification preferences
   {
     label: 'GET /api/notifications/preferences',
     method: 'get',
@@ -659,7 +659,7 @@ const PUBLIC_ROUTES: PublicSpec[] = [
     path: () => `/api/reviews/users/${pub.user.id}`,
     expected: 200,
   },
-  // profile.routes.ts — PF16, PF17. The fixture user is a CLIENT, so both lists are empty.
+  // profile.routes.ts — public portfolio and career lists. The fixture user is a CLIENT, so both lists are empty.
   {
     label: 'GET /api/users/:id/portfolio',
     method: 'get',
@@ -684,8 +684,11 @@ const PUBLIC_ROUTES: PublicSpec[] = [
 
 const ROLE_GATED_ROUTES = PROTECTED_ROUTES.filter((route) => route.role !== null);
 
-/** Mounted outside `src/routes/` and outside both tables: the load balancer's liveness probe. */
-const UNTABLED_ROUTES = ['GET /health'];
+/**
+ * Outside both tables: the load balancer's liveness probe (mounted outside `src/routes/`) and the
+ * API reference (`docs.routes.ts`, public, off in production — `test/openapi.test.ts`).
+ */
+const UNTABLED_ROUTES = ['GET /health', 'GET /api/openapi.json', 'GET /api/docs'];
 
 interface RouterLayer {
   name: string;
@@ -740,7 +743,7 @@ function call(route: RouteSpec, ids: Ids, headers: Record<string, string> = {}) 
 }
 
 /**
- * BEHAVIOR.md §1: every error body is exactly `{ error: { message: string } }` — *exactly*, so
+ * Every error body is exactly `{ error: { message: string } }` — *exactly*, so
  * this asserts the whole shape rather than probing for the message. No `stack`, no `statusCode`,
  * no `success: false` alongside it, nothing nested under `error` but the one non-empty string,
  * and the response is JSON rather than Express's default HTML error page.
@@ -780,7 +783,7 @@ describe('the route table itself', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// §2 Authentication
+// Authentication
 // ---------------------------------------------------------------------------------------------
 
 describe('authentication — no Authorization header', () => {
@@ -916,14 +919,14 @@ describe('authentication — token claims', () => {
     expect(exp - iat).toBe(15 * 60);
   });
 
-  it('role gating reads the role from the token, not from the database row (Q8)', async () => {
+  it('role gating reads the role from the token, not from the database row', async () => {
     // A CLIENT row holding a token minted with a FREELANCER claim reaches FREELANCER-only
     // routes: `requireRole` compares against `req.user.role`, which comes from the claim, and
     // never re-reads the row. Consequence — a user demoted from FREELANCER to CLIENT keeps
     // FREELANCER access until the token expires (up to 15 minutes), because nothing revokes
-    // the outstanding token. That follows from the stateless-token decision (Q1), but it is
-    // privilege retention after demotion, which BEHAVIOR.md tracks as the still-open **Q8**.
-    // Pinned as current behavior rather than asserted as correct: if Q8 is answered "look the
+    // the outstanding token. That follows from the stateless-token decision, but it is
+    // privilege retention after demotion, which is still an open product question.
+    // Pinned as current behavior rather than asserted as correct: if the answer becomes "look the
     // role up per request", this test is the one that must change.
     const client = await makeClient();
     const forgedRole = tokenFor({ id: client.id, email: client.email, role: 'FREELANCER' });
@@ -937,7 +940,7 @@ describe('authentication — token claims', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// §3 Authorization — role gating
+// Authorization — role gating
 // ---------------------------------------------------------------------------------------------
 
 describe('authorization — role gating', () => {
@@ -1029,7 +1032,7 @@ describe('authorization — role gating', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// §4 Profile completeness — the whole field matrix, at the HTTP boundary
+// Profile completeness — the whole field matrix, at the HTTP boundary
 // ---------------------------------------------------------------------------------------------
 
 /**
@@ -1044,7 +1047,7 @@ describe('authorization — role gating', () => {
  * `POST /api/projects/:id/applications` (FREELANCER) — and both sit behind `requireRole`, so
  * each role is exercised on the route it can actually reach.
  */
-describe('authorization — profile completeness (rule 4)', () => {
+describe('authorization — profile completeness', () => {
   const INCOMPLETE = '프로필을 먼저 완성해주세요';
   type UserOverrides = NonNullable<Parameters<typeof makeClient>[0]>;
 
@@ -1173,7 +1176,7 @@ describe('authorization — profile completeness (rule 4)', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// §2/§3 The public surface — these routes must stay reachable without a token
+// The public surface — these routes must stay reachable without a token
 // ---------------------------------------------------------------------------------------------
 
 describe('the public surface', () => {
@@ -1283,7 +1286,7 @@ describe('the public surface', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// §3 Authorization — ownership, and ownership checked *after* existence
+// Authorization — ownership, and ownership checked *after* existence
 // ---------------------------------------------------------------------------------------------
 
 describe('ownership is checked after existence', () => {
@@ -1331,7 +1334,7 @@ describe('ownership is checked after existence', () => {
       .toBeNull();
   });
 
-  it('GET /api/contracts/:id → 404 for a contract owned by nobody [CT4]', async () => {
+  it('GET /api/contracts/:id → 404 for a contract owned by nobody', async () => {
     const user = await makeClient();
 
     const res = await authed(user).get('/api/contracts/missing-contract-id');
@@ -1340,7 +1343,7 @@ describe('ownership is checked after existence', () => {
     expect(res.body.error.message).not.toMatch(/authoriz/i);
   });
 
-  it('GET /api/contracts/:id → 403 for a user who is not a party to it [CT4]', async () => {
+  it('GET /api/contracts/:id → 403 for a user who is not a party to it', async () => {
     const { contract } = await makeContractChain();
     const outsider = await makeFreelancer();
 
@@ -1350,7 +1353,7 @@ describe('ownership is checked after existence', () => {
     expect(res.body.error.message).toBe('Not authorized');
   });
 
-  it('GET /api/contracts/:id → 200 for either party [CT4]', async () => {
+  it('GET /api/contracts/:id → 200 for either party', async () => {
     const { client, freelancer, contract } = await makeContractChain();
 
     const asClient = await authed(client).get(`/api/contracts/${contract.id}`);
@@ -1488,13 +1491,13 @@ describe('ownership is checked after existence', () => {
     expect((await prisma.review.findFirstOrThrow()).reviewerId).toBe(client.id);
   });
 
-  // PATCH /api/contracts/:id is 410 for everyone (CT11), so it has no ownership rows here; the
+  // PATCH /api/contracts/:id is 410 for everyone, so it has no ownership rows here; the
   // 410 is asserted in contracts.test.ts.
 
   it.each([
     ['GET /api/contracts/:id/milestones', 'get', (id: string) => `/api/contracts/${id}/milestones`],
     ['PUT /api/contracts/:id/milestones', 'put', (id: string) => `/api/contracts/${id}/milestones`],
-  ] as const)('%s → 404 for a missing contract, 403 for a non-party [MS5]', async (_label, method, path) => {
+  ] as const)('%s → 404 for a missing contract, 403 for a non-party', async (_label, method, path) => {
     const { contract } = await makeContractChain();
     const outsider = await makeClient();
     const body = { milestones: [{ title: 'All', amount: 4_000_000, dueDate: '2099-01-01' }] };
@@ -1513,7 +1516,7 @@ describe('ownership is checked after existence', () => {
     ['POST /api/milestones/:id/approve', 'post', '/approve', 'CLIENT'],
     ['POST /api/milestones/:id/reject', 'post', '/reject', 'CLIENT'],
     ['POST /api/milestones/:id/submissions', 'post', '/submissions', 'FREELANCER'],
-  ] as const)('%s → 404 for a missing milestone, 403 for a non-party [MS5]', async (_label, method, suffix, role) => {
+  ] as const)('%s → 404 for a missing milestone, 403 for a non-party', async (_label, method, suffix, role) => {
     const { milestone } = await makeContractChain({ status: 'ACTIVE' });
     const outsider = role === 'CLIENT' ? await makeClient() : await makeFreelancer();
     const body = { reason: 'Please fix the layout.', message: 'Done' };
@@ -1527,7 +1530,7 @@ describe('ownership is checked after existence', () => {
     expect(foreign.body.error.message).toBe('Not authorized');
   });
 
-  it('POST /api/milestones/:id/approve → 403 for a client of another contract even when SUBMITTED [MS15]', async () => {
+  it('POST /api/milestones/:id/approve → 403 for a client of another contract even when SUBMITTED', async () => {
     const { milestone } = await makeContractChain({ status: 'ACTIVE' });
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
     const intruder = await makeClient();
@@ -1538,7 +1541,7 @@ describe('ownership is checked after existence', () => {
     expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('SUBMITTED');
   });
 
-  it('GET /api/settlements/:id → 404 for a missing settlement, 403 for another freelancer\'s [S16]', async () => {
+  it('GET /api/settlements/:id → 404 for a missing settlement, 403 for another freelancer\'s', async () => {
     const owner = await makeFreelancer();
     const other = await makeFreelancer();
     const settlement = await prisma.settlement.create({
@@ -1569,7 +1572,7 @@ describe('ownership is checked after existence', () => {
     ['DELETE', 'delete', 'portfolio', 'Portfolio item not found'],
     ['PATCH', 'patch', 'careers', 'Career not found'],
     ['DELETE', 'delete', 'careers', 'Career not found'],
-  ] as const)('%s /api/users/me/%s/:id → 404 for a missing row, 403 for another freelancer\'s [PF7]', async (_label, method, resource, notFound) => {
+  ] as const)('%s /api/users/me/%s/:id → 404 for a missing row, 403 for another freelancer\'s', async (_label, method, resource, notFound) => {
     const owner = await makeFreelancer();
     const intruder = await makeFreelancer();
     const row = resource === 'portfolio'
@@ -1591,7 +1594,7 @@ describe('ownership is checked after existence', () => {
     expect(JSON.stringify(stillThere)).not.toContain('Taken over');
   });
 
-  it('GET /api/projects/:id/recommended-freelancers → 404 for a missing project, 403 for another client\'s [RC3]', async () => {
+  it('GET /api/projects/:id/recommended-freelancers → 404 for a missing project, 403 for another client\'s', async () => {
     const owner = await makeClient();
     const outsider = await makeClient();
     const project = await makeProject(owner.id);
@@ -1678,7 +1681,7 @@ describe('ownership is checked after existence', () => {
     ['POST /api/conversations/:id/messages', 'post', '/messages'],
     ['POST /api/conversations/:id/read', 'post', '/read'],
     ['DELETE /api/conversations/:id/messages/:messageId', 'delete', '/messages/:messageId'],
-  ] as const)('%s → 404 for a missing conversation, 403 for a non-participant [MG13]', async (_label, method, suffix) => {
+  ] as const)('%s → 404 for a missing conversation, 403 for a non-participant', async (_label, method, suffix) => {
     const { contract, freelancer } = await makeContractChain({ status: 'ACTIVE' });
     const conversation = await makeConversation(contract);
     const message = await makeMessage(conversation.id, freelancer.id);
@@ -1696,7 +1699,7 @@ describe('ownership is checked after existence', () => {
     expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
   });
 
-  it("DELETE /api/conversations/:id/messages/:messageId → 404 for a missing or foreign message, 403 for the other participant's [MG17]", async () => {
+  it("DELETE /api/conversations/:id/messages/:messageId → 404 for a missing or foreign message, 403 for the other participant's", async () => {
     const { contract, client, freelancer } = await makeContractChain({ status: 'ACTIVE' });
     const conversation = await makeConversation(contract);
     const theirs = await makeMessage(conversation.id, freelancer.id);
@@ -1717,7 +1720,7 @@ describe('ownership is checked after existence', () => {
     expect(await prisma.message.count({ where: { deletedAt: { not: null } } })).toBe(0);
   });
 
-  it('GET /api/contracts/:id/conversation → 404 for a missing contract, 403 for a non-party [MG18]', async () => {
+  it('GET /api/contracts/:id/conversation → 404 for a missing contract, 403 for a non-party', async () => {
     const { contract } = await makeContractChain();
     await makeConversation(contract);
     const outsider = await makeFreelancer();
@@ -1731,7 +1734,7 @@ describe('ownership is checked after existence', () => {
     expect(foreign.body.error.message).toBe('Not authorized');
   });
 
-  it("GET /api/conversations lists only the caller's own conversations [MG11]", async () => {
+  it("GET /api/conversations lists only the caller's own conversations", async () => {
     const mine = await makeContractChain({ status: 'ACTIVE' });
     const theirs = await makeContractChain({ status: 'ACTIVE' });
     const conversation = await makeConversation(mine.contract);
@@ -1769,10 +1772,10 @@ describe('ownership is checked after existence', () => {
   }
 });
 
-// §5 (soft delete) is asserted in soft-delete.test.ts.
+// Soft delete is asserted in soft-delete.test.ts.
 
 // ---------------------------------------------------------------------------------------------
-// §1 Error envelope
+// Error envelope
 // ---------------------------------------------------------------------------------------------
 
 describe('error envelope', () => {
@@ -1809,7 +1812,7 @@ describe('error envelope', () => {
   it('is exactly { error: { message } } on 400', async () => {
     const res = await api().post('/api/auth/login').send({ email: 'nobody@test.local' });
 
-    expectExactEnvelope(res, 400, 'Email and password are required');
+    expectExactEnvelope(res, 400, 'password: Password is required');
   });
 
   it('is exactly { error: { message } } on 409', async () => {
@@ -1823,6 +1826,23 @@ describe('error envelope', () => {
     });
 
     expectExactEnvelope(res, 409, 'Email already in use');
+  });
+
+  // body-parser's own message quotes the JSON parser (`Expected property name or '}' in JSON at
+  // position 2 …`); the API answers one fixed sentence instead.
+  it.each([
+    ['a truncated object', '{"email":'],
+    ['an unquoted key', '{email: "a@b.com"}'],
+  ])('answers a malformed JSON body (%s) with a fixed 400 message', async (_label, raw) => {
+    const res = await api().post('/api/auth/login').set('Content-Type', 'application/json').send(raw);
+
+    expectExactEnvelope(res, 400, 'Request body must be valid JSON');
+  });
+
+  it('rejects a malformed JSON body before authentication', async () => {
+    const res = await api().post('/api/projects').set('Content-Type', 'application/json').send('{"title":');
+
+    expectExactEnvelope(res, 400, 'Request body must be valid JSON');
   });
 
   it('never includes a stack trace or extra keys alongside the message', async () => {
@@ -1839,24 +1859,24 @@ describe('error envelope', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// §1, continued — the routes that never reach `errorHandler` at all (Q10)
+// Error envelope, continued — the routes that never reach `errorHandler` at all
 // ---------------------------------------------------------------------------------------------
 
-describe('unmatched paths and methods bypass errorHandler (Q10)', () => {
+describe('unmatched paths and methods bypass errorHandler', () => {
   /**
    * There is no terminal 404 handler after `errorHandler` in `src/index.ts`, and `errorHandler`
    * is an *error* middleware — it only runs for a request that reached a handler which called
    * `next(err)`. A request matching no route falls off the end of the stack to Express's
-   * `finalhandler`, which answers 404 with an **HTML** document. That violates cross-cutting
-   * rule 1 ("every error response body is exactly `{ error: { message } }`").
+   * `finalhandler`, which answers 404 with an **HTML** document — not the
+   * `{ error: { message } }` envelope every other error response uses.
    *
-   * BEHAVIOR.md leaves the fix undecided (**Q10**: add a terminal 404 handler, or scope rule 1
-   * to handled routes?), so these pin today's behavior rather than asserting it is right. When
-   * Q10 is answered "add the handler", these are the tests to invert.
+   * Whether to add a terminal 404 handler or to scope the envelope rule to handled routes is an
+   * open product question, so these pin today's behavior rather than asserting it is right. If
+   * the answer is "add the handler", these are the tests to invert.
    */
   const UNMATCHED = [
     {
-      // Was `GET /api/contracts` until the contract list (CT1) gave that router an index route.
+      // Was `GET /api/contracts` until the contract list endpoint gave that router an index route.
       label: 'GET /api/users (mounted router, no index route)',
       method: 'get' as HttpMethod,
       path: '/api/users',
@@ -1880,8 +1900,8 @@ describe('unmatched paths and methods bypass errorHandler (Q10)', () => {
     const res = await api()[route.method](route.path).send();
 
     expect(res.status).toBe(404);
-    // The rule-1 violation, stated positively so it is unambiguous what changes if Q10 is
-    // decided the other way: HTML, no parsed JSON body, no `error` key anywhere.
+    // The envelope violation, stated positively so it is unambiguous what changes if the open
+    // question is decided the other way: HTML, no parsed JSON body, no `error` key anywhere.
     expect(res.headers['content-type']).toMatch(/text\/html/);
     expect(res.body).not.toEqual({ error: { message: expect.any(String) } });
     expect(res.body).not.toHaveProperty('error');

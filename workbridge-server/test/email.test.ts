@@ -16,8 +16,9 @@ import { LogMailProvider, setMailProvider } from '../src/lib/mail/provider';
 import type { MailMessage, MailProvider } from '../src/lib/mail/provider';
 
 /**
- * Email delivery: what `notify()` creates (NC9–NC11), the `notification.email` handler (J9, NC12),
- * the mail provider (NC14) and the J3–J5 notices' transaction. Wording is never asserted (NC13).
+ * Email delivery: which deliveries `notify()` creates, the `notification.email` handler, the
+ * mail provider, and the transaction of the auto-approval reminder, due-soon and overdue notices.
+ * Email wording is never asserted.
  */
 
 const T0 = new Date('2026-06-01T00:00:00.000Z');
@@ -80,9 +81,9 @@ async function oneDelivery() {
 
 const deliveryOf = (id: string) => prisma.emailDelivery.findUniqueOrThrow({ where: { id } });
 
-describe('notification.email behind JOB_EMAIL_ENABLED (J10, J9 step 1)', () => {
+describe('notification.email behind JOB_EMAIL_ENABLED', () => {
   it.each([['unset', undefined], ['false', 'false']])(
-    'with the flag %s, the delivery is SKIPPED without a provider call and the job SUCCEEDS [J10]',
+    'with the flag %s, the delivery is SKIPPED without a provider call and the job SUCCEEDS',
     async (_label, value) => {
       if (value === undefined) delete process.env.JOB_EMAIL_ENABLED;
       else process.env.JOB_EMAIL_ENABLED = value;
@@ -102,7 +103,7 @@ describe('notification.email behind JOB_EMAIL_ENABLED (J10, J9 step 1)', () => {
     },
   );
 
-  it('turning the flag on later sends only new emails, never the skipped backlog [J10]', async () => {
+  it('turning the flag on later sends only new emails, never the skipped backlog', async () => {
     process.env.JOB_EMAIL_ENABLED = 'false';
     const { user, delivery: old } = await oneDelivery();
     await runJobs(T0);
@@ -125,8 +126,8 @@ describe('notification.email behind JOB_EMAIL_ENABLED (J10, J9 step 1)', () => {
 });
 const quietErrors = () => vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
-  it('PENDING, attempts 0, createdAt = now, linked to the in-app row, address snapshotted [NC9] [NC11]', async () => {
+describe('notify() creates the delivery and its job', () => {
+  it('PENDING, attempts 0, createdAt = now, linked to the in-app row, address snapshotted', async () => {
     const { user, notification, delivery } = await oneDelivery();
 
     expect(delivery).toMatchObject({
@@ -147,7 +148,7 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
     expect(delivery.body.length).toBeGreaterThan(0);
   });
 
-  it('enqueues notification.email with payload { deliveryId }, its dedupe key and runAt = now [J9] [NC9]', async () => {
+  it('enqueues notification.email with payload { deliveryId }, its dedupe key and runAt = now', async () => {
     const { delivery } = await oneDelivery();
 
     const [job] = await jobsOf('notification.email');
@@ -160,7 +161,7 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
     expect(job.runAt.getTime()).toBe(T0.getTime());
   });
 
-  it('links use the first CLIENT_URL entry, trimmed and without a trailing slash [NC13] [NC1]', async () => {
+  it('links use the first CLIENT_URL entry, trimmed and without a trailing slash', async () => {
     process.env.CLIENT_URL = 'http://a.test/, http://b.test';
 
     const { delivery } = await oneDelivery();
@@ -170,14 +171,14 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
     expect(delivery.body).not.toContain('b.test');
   });
 
-  it('carries no unsubscribe link or token; the last line is the sign-in preferences page [NC15]', async () => {
+  it('carries no unsubscribe link or token; the last line is the sign-in preferences page', async () => {
     const { delivery } = await oneDelivery();
 
     expect(delivery.body).not.toMatch(/unsubscribe|token=/i);
     expect(delivery.body.trimEnd().split('\n').at(-1)).toMatch(/\/my\/notifications\/settings$/);
   });
 
-  it('creates no delivery for a recipient without an address [NC9]', async () => {
+  it('creates no delivery for a recipient without an address', async () => {
     const user = await makeFreelancer({ email: '   ' });
 
     await notify(prisma, { userId: user.id, type: 'MILESTONE_DUE_SOON', title: 't', message: 'm' }, T0);
@@ -186,7 +187,7 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
     expect(await prisma.emailDelivery.count()).toBe(0);
   });
 
-  it('creates no delivery for a soft-deleted recipient, whatever the type [NC10] [rule 5]', async () => {
+  it('creates no delivery for a soft-deleted recipient, whatever the type', async () => {
     const user = await makeFreelancer({ deletedAt: new Date() });
 
     await notify(prisma, { userId: user.id, type: 'SETTLEMENT_FAILED', title: 't', message: 'm' }, T0);
@@ -195,7 +196,7 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
     expect(await prisma.job.count()).toBe(0);
   });
 
-  it('a submission writes the client\'s delivery and job in its own transaction [NC9] [MS13] [rule 6]', async () => {
+  it('a submission writes the client\'s delivery and job in its own transaction', async () => {
     const scenario = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
       milestone: { status: 'FUNDED', fundedAt: new Date() },
@@ -214,8 +215,8 @@ describe('notify() creates the delivery and its job [NC9] [NC11]', () => {
   });
 });
 
-describe('notification.email (J9) [NC12]', () => {
-  it('sends: SENT, attempts 1, sentAt = the job\'s now, provider and id recorded; no extra headers [J9] [NC12] [NC15]', async () => {
+describe('notification.email', () => {
+  it('sends: SENT, attempts 1, sentAt = the job\'s now, provider and id recorded; no extra headers', async () => {
     const { user, delivery } = await oneDelivery();
     process.env.MAIL_FROM = 'WorkBridge <mail@test.local>';
     const runAt = new Date(T0.getTime() + 5 * MINUTE);
@@ -235,7 +236,7 @@ describe('notification.email (J9) [NC12]', () => {
     }]);
   });
 
-  it('uses MAIL_FROM\'s default sender when unset [NC1]', async () => {
+  it('uses MAIL_FROM\'s default sender when unset', async () => {
     await oneDelivery();
     delete process.env.MAIL_FROM;
 
@@ -244,7 +245,7 @@ describe('notification.email (J9) [NC12]', () => {
     expect(provider.sent[0].from).toBe('WorkBridge <no-reply@workbridge.local>');
   });
 
-  it('sends to the address snapshotted at creation, and sends even after the email was turned off [NC9] [NC11]', async () => {
+  it('sends to the address snapshotted at creation, and sends even after the email was turned off', async () => {
     const { user, delivery } = await oneDelivery();
     await prisma.user.update({ where: { id: user.id }, data: { email: 'changed@test.local' } });
     await makeNotificationPreference(user.id, 'MILESTONE_DUE_SOON', { email: false });
@@ -255,7 +256,7 @@ describe('notification.email (J9) [NC12]', () => {
     expect(provider.sent.map((m) => m.to)).toEqual([delivery.toAddress]);
   });
 
-  it('a recipient soft-deleted after creation → SKIPPED without a provider call; the job succeeds [J9] [NC10] [NC12]', async () => {
+  it('a recipient soft-deleted after creation → SKIPPED without a provider call; the job succeeds', async () => {
     const { user, delivery } = await oneDelivery();
     await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } });
 
@@ -266,7 +267,7 @@ describe('notification.email (J9) [NC12]', () => {
     expect(provider.calls).toBe(0);
   });
 
-  it('a delivery no longer PENDING is a no-op [J9] [NC12]', async () => {
+  it('a delivery no longer PENDING is a no-op', async () => {
     const { delivery } = await oneDelivery();
     await prisma.emailDelivery.update({ where: { id: delivery.id }, data: { status: 'SENT' } });
 
@@ -277,7 +278,7 @@ describe('notification.email (J9) [NC12]', () => {
     expect(provider.calls).toBe(0);
   });
 
-  it('a payload naming no delivery fails permanently [J9] [J1]', async () => {
+  it('a payload naming no delivery fails permanently', async () => {
     await enqueueJob(prisma, { type: 'notification.email', payload: { deliveryId: 'missing-delivery' }, runAt: T0 });
     const errors = quietErrors();
 
@@ -289,7 +290,7 @@ describe('notification.email (J9) [NC12]', () => {
     expect(errors).toHaveBeenCalledTimes(1);
   });
 
-  it('a provider failure with attempts left keeps PENDING, records error and provider, and retries with backoff [J9] [NC12]', async () => {
+  it('a provider failure with attempts left keeps PENDING, records error and provider, and retries with backoff', async () => {
     const { delivery } = await oneDelivery();
     provider.failures = 1;
 
@@ -306,7 +307,7 @@ describe('notification.email (J9) [NC12]', () => {
     expect(await deliveryOf(delivery.id)).toMatchObject({ status: 'SENT', attempts: 2, error: null, providerMessageId: 'rec-2' });
   });
 
-  it('the provider failing on the job\'s last attempt → FAILED with its error; nothing sends it again [J9] [NC12]', async () => {
+  it('the provider failing on the job\'s last attempt → FAILED with its error; nothing sends it again', async () => {
     const { delivery } = await oneDelivery();
     provider.failures = 99;
     const errors = quietErrors();
@@ -322,10 +323,10 @@ describe('notification.email (J9) [NC12]', () => {
     const [job] = await jobsOf('notification.email');
     expect(job).toMatchObject({ status: 'FAILED', attempts: 5 });
     expect(provider.calls).toBe(5);
-    expect(errors).toHaveBeenCalledTimes(1); // the queue's `job failed` line only (rule 9)
+    expect(errors).toHaveBeenCalledTimes(1); // the queue's `job failed` line only
   });
 
-  it('stores at most 2,000 characters of a provider error [NC1]', async () => {
+  it('stores at most 2,000 characters of a provider error', async () => {
     const { delivery } = await oneDelivery();
     setMailProvider({ send: async () => { throw new Error('x'.repeat(5000)); } });
 
@@ -334,7 +335,7 @@ describe('notification.email (J9) [NC12]', () => {
     expect((await deliveryOf(delivery.id)).error).toHaveLength(2000);
   });
 
-  it('the project\'s soft deletion plays no part [J9]', async () => {
+  it('the project\'s soft deletion plays no part', async () => {
     const scenario = await makeContractScenario();
     await notify(prisma, { userId: scenario.freelancer.id, type: 'MILESTONE_FUNDED', title: 't', message: 'm' }, T0);
     await prisma.project.update({ where: { id: scenario.project.id }, data: { deletedAt: new Date() } });
@@ -345,8 +346,8 @@ describe('notification.email (J9) [NC12]', () => {
   });
 });
 
-describe('mail provider (NC14)', () => {
-  it('an unsupported MAIL_PROVIDER → FAILED without a provider call or an attempt; the job fails without retry [NC14] [NC12]', async () => {
+describe('mail provider', () => {
+  it('an unsupported MAIL_PROVIDER → FAILED without a provider call or an attempt; the job fails without retry', async () => {
     const { delivery } = await oneDelivery();
     process.env.MAIL_PROVIDER = 'smtp';
     const errors = quietErrors();
@@ -367,7 +368,7 @@ describe('mail provider (NC14)', () => {
   });
 
   it.each([['unset', undefined], ['empty', ''], ['log', 'log']])(
-    'MAIL_PROVIDER %s → the log provider, recorded as `log` [NC14]',
+    'MAIL_PROVIDER %s → the log provider, recorded as `log`',
     async (_label, value) => {
       const { delivery } = await oneDelivery();
       if (value === undefined) delete process.env.MAIL_PROVIDER;
@@ -379,7 +380,7 @@ describe('mail provider (NC14)', () => {
     },
   );
 
-  it('the log provider writes one info line `mail.sent` with the email and a `log-<uuid>` id [NC14] [rule 9]', async () => {
+  it('the log provider writes one info line `mail.sent` with the email and a `log-<uuid>` id', async () => {
     setMailProvider(new LogMailProvider());
     const { user, delivery } = await oneDelivery();
     process.env.LOG_LEVEL = 'info';
@@ -402,7 +403,7 @@ describe('mail provider (NC14)', () => {
     expect((await deliveryOf(delivery.id)).providerMessageId).toBe(mail[0].providerMessageId);
   });
 
-  it('an unsupported value is reported once per process as a warn line; a supported one is not [NC14] [rule 9]', async () => {
+  it('an unsupported value is reported once per process as a warn line; a supported one is not', async () => {
     process.env.LOG_LEVEL = 'warn';
     const out = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const warned = () => out.mock.calls.map(([line]) => JSON.parse(String(line))).filter((l) => l.msg === 'unsupported MAIL_PROVIDER');
@@ -421,8 +422,8 @@ describe('mail provider (NC14)', () => {
   });
 });
 
-describe('J3–J5 notices open a transaction and use ctx.now [NC9] [J5]', () => {
-  it('overdue: both parties get a delivery created at the job\'s now; the emails go out on a later pass [J5] [NC9] [NC16]', async () => {
+describe('auto-approval reminder, due-soon and overdue notices open a transaction and use ctx.now', () => {
+  it('overdue: both parties get a delivery created at the job\'s now; the emails go out on a later pass', async () => {
     const scenario = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
       milestone: { status: 'FUNDED', fundedAt: new Date() },
@@ -444,7 +445,7 @@ describe('J3–J5 notices open a transaction and use ctx.now [NC9] [J5]', () => 
     expect((await prisma.emailDelivery.findMany()).map((d) => d.status)).toEqual(['SENT', 'SENT']);
   });
 
-  it('a notice whose write fails leaves no partial rows, so its retry does not duplicate them [NC9] [J5]', async () => {
+  it('a notice whose write fails leaves no partial rows, so its retry does not duplicate them', async () => {
     const scenario = await makeContractScenario({
       contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
       milestone: { status: 'FUNDED', fundedAt: new Date() },

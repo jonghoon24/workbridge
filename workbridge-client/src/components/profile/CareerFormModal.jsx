@@ -22,7 +22,7 @@ function toForm(career) {
   };
 }
 
-// 경력 추가·수정(BEHAVIOR.md PF13, PF14). JSON으로 보낸다. 재직 중이면 endDate를 null로 보낸다.
+// 경력 추가·수정. JSON으로 보낸다. 재직 중이면 endDate를 null로 보낸다.
 // 폼은 첫 렌더부터 career로 채운다(PortfolioItemModal과 같은 이유). 부모가 key로 새로 마운트한다.
 export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
   const [form, setForm] = useState(() => toForm(career));
@@ -34,6 +34,10 @@ export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
     if (!form.position.trim()) return '직책을 입력해 주세요.';
     if (!form.startDate) return '시작 월을 선택해 주세요.';
     if (!form.current && !form.endDate) return '종료 월을 선택하거나 재직 중을 체크해 주세요.';
+    const maxMonth = currentKstMonth();
+    if (form.startDate > maxMonth || (!form.current && form.endDate > maxMonth)) {
+      return '이번 달 이후는 선택할 수 없습니다.';
+    }
     if (!form.current && form.endDate < form.startDate) return '종료 월은 시작 월보다 빠를 수 없습니다.';
     return '';
   }
@@ -63,7 +67,7 @@ export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
         : await api.post('/api/users/me/careers', body);
       onSaved(data.career);
     } catch (err) {
-      setError(describeProfileError(err, '경력을 저장하지 못했습니다'));
+      setError(describeProfileError(err, '경력을 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }
@@ -73,7 +77,8 @@ export default function CareerFormModal({ isOpen, career, onClose, onSaved }) {
 
   return (
     <Modal isOpen={isOpen} onClose={saving ? () => {} : onClose} title={career ? '경력 수정' : '경력 추가'}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      {/* noValidate: 브라우저 기본 검증(month 입력) 말풍선 대신 validate()의 한국어 안내를 보여 준다. */}
+      <form noValidate onSubmit={handleSubmit} className="space-y-4">
         {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
 
         <Input

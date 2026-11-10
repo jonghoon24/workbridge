@@ -1,4 +1,4 @@
-// 프로필 완성도(BEHAVIOR.md PF21) 항목의 한국어 라벨과 채우러 갈 곳. 서버는 key만 준다.
+// 프로필 완성도 항목의 한국어 라벨과 채우러 갈 곳. 서버는 key만 준다.
 export const COMPLETION_ITEMS = {
   skills: { label: '기술 스택', href: '/profile#profile-form' },
   activityCategory: { label: '활동 카테고리', href: '/profile#profile-form' },

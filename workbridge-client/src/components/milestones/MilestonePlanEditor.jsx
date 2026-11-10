@@ -39,8 +39,8 @@ function describeMilestoneField(message) {
   return `${label}: ${translateServerMessage(rest) || '입력한 내용을 다시 확인해 주세요.'}`;
 }
 
-// 계약 PENDING 동안 의뢰인이 계획 전체를 교체한다(PUT /api/contracts/:id/milestones, BEHAVIOR.md MS7).
-// 합계는 milestoneSummary.contractAmount(= M7)와 정확히 같아야 하고, 저장하면 양측 서명이 초기화된다.
+// 계약 PENDING 동안 의뢰인이 계획 전체를 교체한다(PUT /api/contracts/:id/milestones).
+// 합계는 milestoneSummary.contractAmount와 정확히 같아야 하고, 저장하면 양측 서명이 초기화된다.
 export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
   const contractAmount = contract.milestoneSummary?.contractAmount ?? Math.round(contract.amount || 0);
   const hasSignature = contract.clientSigned || contract.freelancerSigned;
@@ -91,7 +91,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
     });
   }
 
-  // 서버 검사(MS7 1단계와 5단계)를 저장 전에 미리 한다.
+  // 서버 검사(금액 합계 등)를 저장 전에 미리 한다.
   function validate() {
     if (rows.length < MILESTONE_LIMITS.minCount || rows.length > MILESTONE_LIMITS.maxCount) {
       return `마일스톤은 ${MILESTONE_LIMITS.minCount}~${MILESTONE_LIMITS.maxCount}개여야 합니다.`;
@@ -145,7 +145,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
       });
       onSaved?.(data, { signaturesReset: hasSignature });
     } catch (err) {
-      setError(describeMilestoneField(err.response?.data?.error?.message) || toUserMessage(err, '마일스톤 계획을 저장하지 못했습니다'));
+      setError(describeMilestoneField(err.response?.data?.error?.message) || toUserMessage(err, '마일스톤 계획을 저장하지 못했습니다.'));
     } finally {
       setSaving(false);
     }

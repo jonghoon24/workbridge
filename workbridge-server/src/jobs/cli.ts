@@ -16,7 +16,7 @@ import { startJobWorker } from './worker';
  */
 async function main() {
   initSentry();
-  // NC14: once per process, for both `jobs:run` and `jobs:worker`.
+  // The unsupported-mail-provider warning: once per process, for both `jobs:run` and `jobs:worker`.
   warnIfUnsupportedMailProvider();
 
   if (process.argv.includes('--once')) {

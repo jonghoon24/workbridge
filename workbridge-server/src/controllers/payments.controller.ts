@@ -8,22 +8,18 @@ import { markFunded } from '../services/milestones.service';
 import type { AuthedRequest } from '../types/index';
 
 /**
- * Payments are per milestone (BEHAVIOR.md "Payments", PY1–PY12, [C1]). This is a pre-existing
- * controller: hand-written validation, no zod, no `requireActiveUser` — 알려진 불일치 D12 (#7).
- * Moving it to services + zod is #40.
+ * Payments are per milestone (docs/domain/milestones-payments.md "안전결제"). This controller
+ * talks to Prisma directly; moving it to a service is #40. Request bodies are parsed by
+ * `schemas/payments.ts` in the route, but the routes do not mount `requireActiveUser` yet (#7).
  */
-
-const isPaymentBypassEnabled = () =>
-  env.ALLOW_PAYMENT_BYPASS === 'true';
 
 /**
  * The milestone a payment request names, with what the checks need. Missing, or its contract's
- * project soft-deleted → 404 (rule 5). The id is not validated yet: a non-string id reaches Prisma
- * and is a 500 — 알려진 불일치 D14 (#9), and the [C7] logging vector.
+ * project soft-deleted → 404.
  */
-async function findMilestoneForPayment(milestoneId: unknown) {
+async function findMilestoneForPayment(milestoneId: string) {
   const milestone = await prisma.milestone.findFirst({
-    where: { id: milestoneId as string, contract: { project: { deletedAt: null } } },
+    where: { id: milestoneId, contract: { project: { deletedAt: null } } },
     include: { contract: true, payment: true },
   });
   if (!milestone) {
@@ -32,7 +28,7 @@ async function findMilestoneForPayment(milestoneId: unknown) {
   return milestone;
 }
 
-/** M13: any lower-sequence milestone still PENDING blocks funding this one. */
+/** Milestones are funded in order: any lower-sequence milestone still PENDING blocks funding this one. */
 async function hasUnfundedPredecessor(contractId: string, sequence: number): Promise<boolean> {
   const count = await prisma.milestone.count({
     where: { contractId, sequence: { lt: sequence }, status: 'PENDING' },
@@ -42,12 +38,8 @@ async function hasUnfundedPredecessor(contractId: string, sequence: number): Pro
 
 export async function createPayment(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // A `contractId` in the body is ignored (PY1).
+    // Parsed by `milestonePaymentBody`; a `contractId` in the body is stripped.
     const { milestoneId } = req.body;
-
-    if (!milestoneId) {
-      throw new AppError('Milestone ID is required', 400);
-    }
 
     const milestone = await findMilestoneForPayment(milestoneId);
     const { contract, payment } = milestone;
@@ -103,7 +95,7 @@ export async function createPayment(req: AuthedRequest, res: Response, next: Nex
 
     const orderId = uuidv4();
 
-    // 알려진 불일치 D13 (#8): `Payment.milestoneId` is unique and a concurrent duplicate's P2002 is not caught.
+    // Known bug #8: `Payment.milestoneId` is unique and a concurrent duplicate's P2002 is not caught.
     const created = await prisma.payment.create({
       data: {
         contractId: contract.id,
@@ -123,18 +115,10 @@ export async function createPayment(req: AuthedRequest, res: Response, next: Nex
 
 export async function confirmPayment(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const { paymentKey, orderId, amount } = req.body;
+    // Parsed by `paymentConfirmBody`: `amount` is a positive whole number of won.
+    const { paymentKey, orderId, amount: requestedAmount } = req.body;
 
-    if (!paymentKey || !orderId || !amount) {
-      throw new AppError('paymentKey, orderId, and amount are required', 400);
-    }
-
-    const requestedAmount = Number(amount);
-    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
-      throw new AppError('Invalid payment amount', 400);
-    }
-
-    // PY5: a payment whose project is soft-deleted is not found — before anything is captured.
+    // A payment whose project is soft-deleted is not found — before anything is captured.
     const payment = await prisma.payment.findFirst({
       where: { orderId, milestone: { contract: { project: { deletedAt: null } } } },
     });
@@ -147,7 +131,7 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
       throw new AppError('Not authorized', 403);
     }
 
-    // 알려진 불일치 D18 (#13): a read followed by an unlocked write; two concurrent confirms can both pass this.
+    // Known bug #13: a read followed by an unlocked write; two concurrent confirms can both pass this.
     if (payment.status !== 'PENDING') {
       throw new AppError('Payment has already been processed', 409);
     }
@@ -160,8 +144,8 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
     try {
       // Deliberately `string | undefined` rather than a required env var: the template
       // literal below stringifies an unset key, so a missing TOSS_SECRET_KEY still surfaces
-      // as a 400 "Payment verification failed" from Toss. Behavior preserved from the JS
-      // version — promoting it to required would turn that into a 500 instead.
+      // as a 400 "Payment verification failed" from Toss. Kept on purpose — promoting it to
+      // required would turn that into a 500 instead.
       const secretKey = env.TOSS_SECRET_KEY;
       const credentials = Buffer.from(`${secretKey}:`).toString('base64');
 
@@ -175,8 +159,8 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
         throw new AppError('Payment verification failed', 400);
       }
 
-      // PY6: the payment and the milestone's funding commit together. `markFunded` is a no-op,
-      // never an error, when a concurrent confirm already funded the milestone (PY7).
+      // The payment and the milestone's funding commit together. `markFunded` is a no-op,
+      // never an error, when a concurrent confirm already funded the milestone.
       const now = new Date();
       const updated = await prisma.$transaction(async (tx) => {
         const completed = await tx.payment.update({
@@ -189,8 +173,8 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
 
       res.json(updated);
     } catch (tossError) {
-      // 알려진 불일치 D8 (#3): the cause is discarded. Any failure after capture — including a database write —
-      // lands here too (PY8). The FAILED write is conditional on PENDING so a confirm that
+      // Known bug #3: the cause is discarded. Any failure after capture — including a database write —
+      // lands here too. The FAILED write is conditional on PENDING so a confirm that
       // lost a race never turns the winner's COMPLETED payment back into FAILED.
       await prisma.payment.updateMany({
         where: { orderId, status: 'PENDING' },
@@ -210,15 +194,9 @@ export async function completePaymentForDev(
   next: NextFunction
 ) {
   try {
-    if (!isPaymentBypassEnabled()) {
-      throw new AppError('Payment bypass is disabled', 403);
-    }
-
+    // `requirePaymentBypass` has already refused the request unless the bypass is on,
+    // and `milestonePaymentBody` parsed the body.
     const { milestoneId } = req.body;
-
-    if (!milestoneId) {
-      throw new AppError('Milestone ID is required', 400);
-    }
 
     const milestone = await findMilestoneForPayment(milestoneId);
     const { contract, payment } = milestone;
@@ -254,7 +232,7 @@ export async function completePaymentForDev(
       paymentKey: `dev_bypass_${milestone.id}`,
     };
 
-    // PY11: complete in place (or create) and fund the milestone in one transaction.
+    // Complete in place (or create) and fund the milestone in one transaction.
     const now = new Date();
     const result = await prisma.$transaction(async (tx) => {
       const saved = payment

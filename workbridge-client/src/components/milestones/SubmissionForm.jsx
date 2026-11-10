@@ -17,8 +17,8 @@ function isHttpUrl(value) {
   }
 }
 
-// 결과물 제출(BEHAVIOR.md MS12). multipart로 message, links(반복 필드), files를 보낸다.
-// 화면 검사는 M18 한도를 미리 알려주는 용도이고, 파일 형식은 서버가 판단한다.
+// 결과물 제출. multipart로 message, links(반복 필드), files를 보낸다.
+// 화면 검사는 마일스톤 한도를 미리 알려주는 용도이고, 파일 형식은 서버가 판단한다.
 export default function SubmissionForm({ milestoneId, isResubmission = false, onSubmitted }) {
   const [message, setMessage] = useState('');
   const [links, setLinks] = useState(['']);
@@ -97,7 +97,7 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
       if (err.response?.status === 413) {
         setError(toUserMessage(err, '파일이 너무 큽니다. 크기를 줄여 다시 올려 주세요.'));
       } else {
-        setError(toUserMessage(err, '결과물을 제출하지 못했습니다'));
+        setError(toUserMessage(err, '결과물을 제출하지 못했습니다.'));
       }
     } finally {
       setSubmitting(false);
@@ -105,7 +105,8 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
   }
 
   return (
-    <form id="submission-form" onSubmit={handleSubmit} className="space-y-4">
+    // noValidate: 브라우저 기본 검증(url 입력) 말풍선 대신 validate()의 한국어 안내를 보여 준다.
+    <form id="submission-form" noValidate onSubmit={handleSubmit} className="space-y-4">
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
           {error}

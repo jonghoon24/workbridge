@@ -26,7 +26,7 @@ function PaymentResultContent() {
   const [result, setResult] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  // 개발 모드의 Strict Mode가 effect를 두 번 돌려 confirm이 두 번 나가지 않게 한다(D18).
+  // 개발 모드의 Strict Mode가 effect를 두 번 돌려 confirm이 두 번 나가지 않게 한다.
   const confirmStarted = useRef(false);
 
   useEffect(() => {
