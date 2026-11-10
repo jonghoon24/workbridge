@@ -12,8 +12,9 @@ import { milestoneInclude, milestoneSummary, serializeMilestone } from './milest
 /** The full contract. `satisfies` keeps literal types like `'desc'` for Prisma. */
 export const contractInclude = {
   project: { select: { id: true, title: true, description: true, category: true, status: true } },
-  client: { select: { id: true, name: true, email: true, companyName: true, profileImage: true } },
-  freelancer: { select: { id: true, name: true, email: true, skills: true, profileImage: true } },
+  // No email: parties reach each other through in-app messages.
+  client: { select: { id: true, name: true, companyName: true, profileImage: true } },
+  freelancer: { select: { id: true, name: true, skills: true, profileImage: true } },
   milestones: { include: milestoneInclude, orderBy: { sequence: 'asc' } },
   reviews: {
     include: {
