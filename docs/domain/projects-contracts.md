@@ -138,7 +138,7 @@ stateDiagram-v2
   금액(원 단위)과 같아야 한다. API로는 잘못된 계획을 만들 수 없으므로 이것은 DB를 직접 고친 경우를 막는 장치다.
 - 두 서명이 모이면 계약은 **정확히 한 번** `ACTIVE`가 되고, 같은 트랜잭션에서 양측에 `CONTRACT_ACTIVATED`를 한 번씩
   보내고 시스템 메시지를 남긴다. 양측이 동시에 서명해도 결과는 같다.
-- 완료된 계약은 다시 서명해 `ACTIVE`로 되돌릴 수 없다. 프로젝트가 삭제된 계약은 조회도 서명도 할 수 없다(현재 다름: [#16]).
+- 완료된 계약은 다시 서명해 `ACTIVE`로 되돌릴 수 없다. 프로젝트가 삭제된 계약은 조회도 서명도 할 수 없다(404).
 - 의뢰인이 계획을 바꾸면 **양측 서명이 모두 초기화된다.** 바뀐 조건에는 둘 다 다시 서명해야 한다. 서명이 하나라도
   있었다면 프리랜서에게 `MILESTONE_PLAN_UPDATED`를 보낸다. 계획 교체와 서명은 계약 행 잠금으로 직렬화되어, 서명이
   먼저 커밋돼 계약이 시작됐으면 계획 교체가 거절되고, 교체가 먼저면 서명은 초기화된 계약 위에 남는다.
@@ -182,7 +182,6 @@ stateDiagram-v2
 [#6]: https://github.com/jonghoon24/workbridge/issues/6
 [#14]: https://github.com/jonghoon24/workbridge/issues/14
 [#15]: https://github.com/jonghoon24/workbridge/issues/15
-[#16]: https://github.com/jonghoon24/workbridge/issues/16
 [#18]: https://github.com/jonghoon24/workbridge/issues/18
 [#38]: https://github.com/jonghoon24/workbridge/issues/38
 [#39]: https://github.com/jonghoon24/workbridge/issues/39
