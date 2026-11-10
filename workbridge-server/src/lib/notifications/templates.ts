@@ -1,4 +1,3 @@
-import { env } from '../../env';
 import type { NotificationType } from './types';
 
 /**
@@ -132,20 +131,12 @@ export interface RenderedEmail {
 }
 
 /**
- * `CLIENT_URL` without a trailing `/`. `index.ts` also accepts a comma-separated list there
- * (CORS origins); links use the first entry.
- */
-function linkBase(): string {
-  const first = (env.CLIENT_URL ?? '').split(',')[0].trim();
-  return (first || 'http://localhost:3000').replace(/\/+$/, '');
-}
-
-/**
  * Plain-text Korean email for one notification, rendered once by `notify()` and stored on
  * the `EmailDelivery`. Tests assert the delivery's type, recipient and context, never this text.
+ * `base` is the frontend origin (`clientUrl()`), or `''` for a delivery that will not be sent
+ * because there is none — its stored body then keeps relative links rather than a guessed host.
  */
-export function renderEmail(input: { title: string; message: string; href?: string | null }): RenderedEmail {
-  const base = linkBase();
+export function renderEmail(input: { title: string; message: string; href?: string | null }, base: string): RenderedEmail {
   const lines = [input.message, ''];
   if (input.href) lines.push(`바로가기: ${base}${input.href}`, '');
   lines.push(`알림 설정: ${base}/my/notifications/settings`);

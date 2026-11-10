@@ -201,8 +201,9 @@ const SYSTEM_BODIES = {
   CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨 주세요.',
 };
 
-// Email rendering (src/lib/notifications/templates.ts `renderEmail`).
-const LINK_BASE = ((process.env.CLIENT_URL || '').split(',')[0].trim() || 'http://localhost:3000').replace(/\/+$/, '');
+// Email rendering (src/lib/notifications/templates.ts `renderEmail`). `CLIENT_URL` is one origin
+// (src/lib/clientUrl.ts); seed data falls back to the local frontend when it is unset.
+const LINK_BASE = (process.env.CLIENT_URL || '').trim().replace(/\/+$/, '') || 'http://localhost:3000';
 function renderEmail({ title, message, href }) {
   const lines = [message, ''];
   if (href) lines.push(`바로가기: ${LINK_BASE}${href}`, '');

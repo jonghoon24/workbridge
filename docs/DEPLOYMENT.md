@@ -74,7 +74,7 @@ Claude Code 세션에서는 이 커맨드가 권한 규칙(deny)으로 막혀 �
 
 ## 배포 후 업데이트
 
-- 백엔드 `CLIENT_URL` → 프론트엔드 Vercel URL (CORS와 메일 링크 기준 주소. 운영에서 비어 있으면 시작 때 경고하고 브라우저 요청이 CORS로 막힌다)
+- 백엔드 `CLIENT_URL` → 프론트엔드 Vercel URL **하나**(Google 로그인 리디렉션, 메일 링크, CORS의 기준 출처). 다른 출처(예: 커스텀 도메인)도 허용해야 하면 `CORS_ORIGINS`에 쉼표로 넣는다. `CLIENT_URL`이 비었거나 목록이면 시작 때 경고하고, 브라우저 요청이 CORS로 막히며, Google 로그인은 500, 메일은 `FAILED`가 된다([ENV.md](ENV.md))
 - 백엔드 `GOOGLE_CALLBACK_URL` → 프론트엔드 Vercel URL + `/api/auth/google/callback`
 - 프론트엔드 `NEXT_PUBLIC_API_URL` → 백엔드 Vercel URL
 - 서버 `ALLOW_PAYMENT_BYPASS`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`는 반드시 `false`
