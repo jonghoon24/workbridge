@@ -341,7 +341,7 @@ model PayoutAccount {
   userId        String   @unique
   user          User     @relation(fields: [userId], references: [id])
   bankCode      String // lib/banks.ts
-  accountNumber String // digits only, plaintext (#28); never returned unmasked
+  accountNumber String // digits, encrypted at rest (`v1:…`, lib/payoutAccountCrypto.ts); rows from before encryption may still hold plain digits. Never returned unmasked
   holderName    String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

@@ -29,6 +29,8 @@ jobs:
     env:
       DATABASE_URL: ${{ inputs.environment == 'production' && secrets.PROD_DIRECT_URL || secrets.PREVIEW_DIRECT_URL }}
       DIRECT_URL: ${{ inputs.environment == 'production' && secrets.PROD_DIRECT_URL || secrets.PREVIEW_DIRECT_URL }}
+      # 시드가 지급 계좌번호를 이 키로 암호화한다. 그 환경 서버(Vercel)의 PAYOUT_ACCOUNT_ENCRYPTION_KEY와 같은 값이어야 한다.
+      PAYOUT_ACCOUNT_ENCRYPTION_KEY: ${{ inputs.environment == 'production' && secrets.PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY || secrets.PREVIEW_PAYOUT_ACCOUNT_ENCRYPTION_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

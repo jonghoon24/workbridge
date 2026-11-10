@@ -4,6 +4,7 @@ import type { User } from '@prisma/client';
 import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeFreelancer, makePayoutAccount } from './helpers/factories';
+import { decryptAccountNumber } from '../src/lib/payoutAccountCrypto';
 import { nextKstWeekday } from '../src/lib/time';
 
 /** The payout account — reading, registering and deleting it, and rescheduling held payouts. */
@@ -64,7 +65,7 @@ describe('GET /api/users/me/payout-account', () => {
 });
 
 describe('PUT /api/users/me/payout-account', () => {
-  it('registers an account: digits only stored, masked response', async () => {
+  it('registers an account: digits only, encrypted at rest, masked response', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await put(freelancer, { bankCode: '004', accountNumber: ' 110-123 456-789 ', holderName: freelancer.name });
@@ -76,7 +77,8 @@ describe('PUT /api/users/me/payout-account', () => {
     });
     expect(JSON.stringify(res.body)).not.toContain('110123456789');
     const stored = await prisma.payoutAccount.findUniqueOrThrow({ where: { userId: freelancer.id } });
-    expect(stored.accountNumber).toBe('110123456789');
+    expect(stored.accountNumber).not.toContain('110123456789');
+    expect(decryptAccountNumber(stored.accountNumber, freelancer.id)).toBe('110123456789');
   });
 
   it('replaces an existing account in place', async () => {
@@ -88,7 +90,8 @@ describe('PUT /api/users/me/payout-account', () => {
     expect(res.status).toBe(200);
     const accounts = await prisma.payoutAccount.findMany({ where: { userId: freelancer.id } });
     expect(accounts).toHaveLength(1);
-    expect(accounts[0]).toMatchObject({ id: before.id, bankCode: '088', accountNumber: '1234567890' });
+    expect(accounts[0]).toMatchObject({ id: before.id, bankCode: '088' });
+    expect(decryptAccountNumber(accounts[0].accountNumber, freelancer.id)).toBe('1234567890');
   });
 
   it('matches the holder ignoring whitespace and letter case', async () => {

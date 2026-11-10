@@ -7,6 +7,7 @@ import { DAY_MS, HOUR_MS, nextKstWeekday } from '../lib/time';
 import { sumBreakdowns } from '../lib/money';
 import { bankName, maskAccountNumber } from '../lib/banks';
 import { lockUserRow } from '../lib/locks';
+import { decryptAccountNumber } from '../lib/payoutAccountCrypto';
 import { notifyRecipients } from '../lib/notifications/notify';
 import { renderTemplate } from '../lib/notifications/templates';
 import type { TemplateType, TemplateVars } from '../lib/notifications/templates';
@@ -240,6 +241,9 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
       return held.count === 1 ? { kind: 'on_hold' as const } : { kind: 'skipped' as const };
     }
 
+    // Decrypted under the lock, so the number transferred is the one the snapshot masks.
+    const accountNumber = decryptAccountNumber(account.accountNumber, account.userId);
+
     // The conditional transition, then the row it produced (still under its lock).
     const moved = await tx.settlement.updateMany({
       where: payableWhere(settlementId, scheduledPayoutAt),
@@ -247,13 +251,13 @@ export async function runPayout(settlementId: string, scheduledPayoutAtIso: stri
         status: 'PROCESSING',
         payoutAttempts: { increment: 1 },
         bankName: bankName(account.bankCode),
-        accountNumberMasked: maskAccountNumber(account.accountNumber),
+        accountNumberMasked: maskAccountNumber(accountNumber),
         accountHolder: account.holderName,
       },
     });
     if (moved.count === 0) return { kind: 'skipped' as const };
     const processing = await tx.settlement.findUniqueOrThrow({ where: { id: settlementId } });
-    return { kind: 'transfer' as const, processing, account, freelancer };
+    return { kind: 'transfer' as const, processing, account: { ...account, accountNumber }, freelancer };
   });
 
   if (decision.kind !== 'transfer') return decision.kind;
