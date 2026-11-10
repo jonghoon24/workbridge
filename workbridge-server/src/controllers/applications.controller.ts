@@ -51,8 +51,11 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
     });
     const applicantName = freelancer?.name || freelancer?.email || '프리랜서';
 
+    // Only the transaction is inside this try, so its catch sees database errors only — never a
+    // failure of the response write below.
+    let application;
     try {
-      const application = await prisma.$transaction(async (tx) => {
+      application = await prisma.$transaction(async (tx) => {
         const created = await tx.application.create({
           data: {
             projectId,
@@ -76,14 +79,14 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
 
         return created;
       });
-
-      res.status(201).json(application);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new AppError('You have already applied to this project', 409);
       }
       throw err;
     }
+
+    res.status(201).json(application);
   } catch (err) {
     next(err);
   }

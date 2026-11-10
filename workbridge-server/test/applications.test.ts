@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { authed } from './helpers/api';
+import { app, authed } from './helpers/api';
 import { DAY_MS, kstDateString, kstDateToEndOfDay } from '../src/lib/time';
 import { prisma } from './helpers/db';
 import {
@@ -190,6 +190,40 @@ describe('POST /api/projects/:id/applications', () => {
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: { message } });
     expect(await prisma.application.count()).toBe(0);
+  });
+
+  /**
+   * A failure after the 201 has gone out must not lead to a second write on the same response.
+   * `app.response` is the prototype of every `res` in this app, so the wrapper is restored in
+   * `finally` — it must not leak into other tests.
+   */
+  it('writes the response once even if something throws after the 201 is sent', async () => {
+    const client = await makeClient();
+    const project = await makeProject(client.id);
+    const freelancer = await makeFreelancer();
+
+    const originalJson = app.response.json;
+    let jsonCalls = 0;
+    app.response.json = function wrappedJson(this: typeof app.response, body?: unknown) {
+      jsonCalls += 1;
+      const result = originalJson.call(this, body);
+      if (jsonCalls === 1) throw new Error('simulated post-response failure');
+      return result;
+    };
+
+    try {
+      // The connection may be cut after the 201; only the number of writes matters here.
+      await authed(freelancer)
+        .post(`/api/projects/${project.id}/applications`)
+        .send(validApplyBody)
+        .then(() => undefined, () => undefined);
+    } finally {
+      app.response.json = originalJson;
+    }
+
+    expect(app.response.json).toBe(originalJson);
+    expect(jsonCalls).toBe(1);
+    expect(await prisma.application.count({ where: { projectId: project.id } })).toBe(1);
   });
 
   it('404s for a project that does not exist', async () => {
