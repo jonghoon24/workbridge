@@ -42,7 +42,7 @@
 
 10. **로그는 `lib/logger.ts`로 남기고 `console.*`를 쓰지 않는다. `error` 레벨은 `errorHandler`의 500과 작업 실패 전용이다. 요청 body·query·헤더를 통째로 로그에 남기지 않는다.**
     - 왜: 스위트가 `console.error` 스파이로 "500은 정확히 한 번 로그된다"를 단언한다. 4xx나 예상된 실패를 `error`로 남기면 그 테스트가 깨지고 운영 경보가 오염된다. 요청 전체를 로그에 넣으면 계좌번호 같은 개인정보와 토큰이 운영 로그에 남는다(로그에는 필요한 필드만).
-    - 확인: 추가된 줄의 `console.`과 `logger.error(`를 grep한다. 예외는 `googleCallback`과 `jobs/cli.ts`뿐이다. 로그 필드에 `req.body`·`req.query`·`req.headers`가 통째로 들어갔는지 본다.
+    - 확인: 추가된 줄의 `console.`과 `logger.error(`를 grep한다. 예외는 `jobs/cli.ts`뿐이다(서버 ESLint `no-console`이 함께 잡는다). 로그 필드에 `req.body`·`req.query`·`req.headers`가 통째로 들어갔는지 본다.
 
 11. **이미 커밋된 마이그레이션은 수정하지 않는다. 스키마 변경은 새 마이그레이션으로 한다.**
     - 왜: main에 합쳐지면 CI가 preview와 production DB에 `prisma migrate deploy`를 돌리고, Prisma는 적용된 마이그레이션의 체크섬을 검사한다. 수정하면 두 DB에서 배포가 멈춘다.

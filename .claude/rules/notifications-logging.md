@@ -25,5 +25,5 @@ paths:
 - `error` 레벨은 `errorHandler`의 500과 작업 실패 전용이다. 스위트는 `console.error` 스파이로
   "500은 정확히 한 번 로그된다"와 "4xx는 error로 로그하지 않는다"를 단언한다.
   나머지는 `warn`/`info`를 쓴다.
-- 남겨 두는 예외: `auth.controller.ts`의 `googleCallback`(리다이렉트로 삼키는 실패를 로그로 남긴다)과
-  `jobs/cli.ts`(CLI에 실행 결과를 출력한다).
+- 남겨 두는 예외는 `jobs/cli.ts`(CLI에 실행 결과를 출력한다)뿐이다. 서버 ESLint의 `no-console`이 나머지를 막는다.
+  `googleCallback`처럼 리다이렉트로 삼키는 실패는 `logger.warn`으로 남긴다.
