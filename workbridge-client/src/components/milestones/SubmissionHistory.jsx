@@ -1,6 +1,7 @@
 'use client';
 
-import { formatDateTime, formatFileSize } from '@/lib/format';
+import { formatDateTime } from '@/lib/format';
+import AttachmentList from '@/components/ui/AttachmentList';
 
 function DecisionLabel({ submission }) {
   if (!submission.decision) {
@@ -47,23 +48,7 @@ export default function SubmissionHistory({ submissions = [] }) {
             </ul>
           )}
 
-          {submission.attachments?.length > 0 && (
-            <ul className="mt-2 flex flex-wrap gap-2">
-              {submission.attachments.map((attachment) => (
-                <li key={attachment.id}>
-                  <a
-                    href={attachment.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100"
-                  >
-                    <span className="max-w-[16rem] truncate">{attachment.fileName}</span>
-                    <span className="text-gray-400">{formatFileSize(attachment.size)}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
+          <AttachmentList attachments={submission.attachments} className="mt-2 max-w-md" />
 
           {submission.decision === 'REJECTED' && submission.decisionReason && (
             <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
