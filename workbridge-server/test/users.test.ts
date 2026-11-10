@@ -554,7 +554,7 @@ describe('PATCH /api/users/me', () => {
 
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.body).toEqual({ error: { message: expect.any(String) } });
-    // Unlike Prisma-formatted errors (issue #9), this error body leaks no source path.
+    // No error body, whatever its status, leaks a source path.
     expect(res.body.error.message).not.toMatch(/workbridge-server|\.ts:/);
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
