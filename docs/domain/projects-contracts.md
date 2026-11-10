@@ -134,7 +134,8 @@ stateDiagram-v2
 - 계약의 종료일은 항상 마지막 마일스톤의 기한이다. 수락 때 정하고, 계획을 바꿀 때마다 다시 정한다.
 - 계약은 당사자(의뢰인, 프리랜서)만 본다. 계약 목록과 계약 상세(서명 응답 포함) 모두 당사자의 이메일을
   내보내지 않는다. 당사자 간 연락은 앱의 메시지로 한다. 플랫폼 밖 직거래를 막고 개인정보를 최소한으로 내보내기
-  위해서다. 마일스톤의 결제에서 토스 결제 키(`paymentKey`)는 내보내지 않는다(현재 다름: [#44]).
+  위해서다. 마일스톤의 결제에서 토스 결제 키(`paymentKey`)는 내보내지 않는다(양 당사자가 같은 응답을 받고, 결제
+  결과 화면은 토스가 돌려준 값을 쓴다).
 
 ### 서명과 계획 교체
 
@@ -188,4 +189,3 @@ stateDiagram-v2
 [#15]: https://github.com/jonghoon24/workbridge/issues/15
 [#39]: https://github.com/jonghoon24/workbridge/issues/39
 [#43]: https://github.com/jonghoon24/workbridge/issues/43
-[#44]: https://github.com/jonghoon24/workbridge/issues/44

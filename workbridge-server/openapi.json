@@ -1615,7 +1615,7 @@
           "FAILED"
         ]
       },
-      "Payment": {
+      "MilestonePayment": {
         "type": [
           "object",
           "null"
@@ -1644,12 +1644,6 @@
           "status": {
             "$ref": "#/components/schemas/PaymentStatus"
           },
-          "paymentKey": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "orderId": {
             "type": "string"
           },
@@ -1665,7 +1659,6 @@
           "clientId",
           "amount",
           "status",
-          "paymentKey",
           "orderId",
           "createdAt"
         ]
@@ -1904,7 +1897,7 @@
             "format": "date-time"
           },
           "payment": {
-            "$ref": "#/components/schemas/Payment"
+            "$ref": "#/components/schemas/MilestonePayment"
           },
           "latestSubmission": {
             "$ref": "#/components/schemas/MilestoneSubmission"
@@ -2168,6 +2161,58 @@
           "milestones",
           "reviews",
           "milestoneSummary"
+        ]
+      },
+      "Payment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contractId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "milestoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "clientId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "amount": {
+            "type": "integer",
+            "description": "원 단위 정수"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "paymentKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "contractId",
+          "milestoneId",
+          "clientId",
+          "amount",
+          "status",
+          "paymentKey",
+          "orderId",
+          "createdAt"
         ]
       },
       "SettlementStatus": {
@@ -8080,7 +8125,7 @@
                       "format": "date-time"
                     },
                     "payment": {
-                      "$ref": "#/components/schemas/Payment"
+                      "$ref": "#/components/schemas/MilestonePayment"
                     },
                     "latestSubmission": {
                       "$ref": "#/components/schemas/MilestoneSubmission"
@@ -9043,14 +9088,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Payment"
-                    },
-                    {
-                      "type": "object"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Payment"
                 }
               }
             }
@@ -9146,14 +9184,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Payment"
-                    },
-                    {
-                      "type": "object"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Payment"
                 }
               }
             }
@@ -9163,14 +9194,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/Payment"
-                    },
-                    {
-                      "type": "object"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/Payment"
                 }
               }
             }

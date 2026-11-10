@@ -64,8 +64,25 @@ const attachmentQuery = {
   orderBy: { createdAt: 'asc' },
 } satisfies Prisma.MilestoneSubmission$attachmentsArgs;
 
+/**
+ * The milestone's payment without the Toss `paymentKey`: both parties read milestones, and no
+ * screen uses the key (the payment result page reads it from Toss's redirect).
+ */
+const milestonePaymentQuery = {
+  select: {
+    id: true,
+    contractId: true,
+    milestoneId: true,
+    clientId: true,
+    amount: true,
+    status: true,
+    orderId: true,
+    createdAt: true,
+  },
+} satisfies Prisma.Milestone$paymentArgs;
+
 export const milestoneInclude = {
-  payment: true,
+  payment: milestonePaymentQuery,
   settlementItem: true,
   submissions: {
     orderBy: { round: 'desc' },

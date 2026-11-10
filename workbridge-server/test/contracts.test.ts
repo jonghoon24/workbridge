@@ -182,6 +182,31 @@ describe('GET /api/contracts/:id', () => {
     expect(res.body.milestones[1]).toMatchObject({ payment: null, latestSubmission: null });
   });
 
+  it("withholds the Toss paymentKey of a milestone's payment from either party", async () => {
+    const { client, freelancer, contract, milestone } = await makeContractScenario({
+      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
+      milestone: { status: 'FUNDED' },
+    });
+    const payment = await makePayment(milestone.id, client.id, { status: 'COMPLETED', paymentKey: 'pk_secret_key' });
+
+    for (const viewer of [client, freelancer]) {
+      const res = await authed(viewer).get(`/api/contracts/${contract.id}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.milestones[0].payment).toEqual({
+        id: payment.id,
+        contractId: contract.id,
+        milestoneId: milestone.id,
+        clientId: client.id,
+        amount: payment.amount,
+        status: 'COMPLETED',
+        orderId: payment.orderId,
+        createdAt: payment.createdAt.toISOString(),
+      });
+      expect(JSON.stringify(res.body)).not.toContain('pk_secret_key');
+    }
+  });
+
   it('reports the milestone summary, and empty reviews, for a fresh contract', async () => {
     const { client, contract } = await makeContractScenario();
 
@@ -538,7 +563,8 @@ describe('POST /api/contracts/:id/sign', () => {
     const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
 
     expect(res.status).toBe(500);
-    expectErrorEnvelope(res.body, INJECTED);
+    // A 500's body is generic; the injected error itself only reaches the log.
+    expectErrorEnvelope(res.body, 'Internal Server Error');
     // Proves the failure landed on the activation and not on the signature write (the project
     // moved to IN_PROGRESS between the two, in the same transaction).
     expect(injection.steps).toEqual(['contract.update', 'project.updateMany', 'contract.update']);
