@@ -7,9 +7,9 @@ import { makeClient, makeFreelancer, makeProject } from './helpers/factories';
 /**
  * Bookmarks — `GET|POST|DELETE /api/projects/:id/bookmark`, all FREELANCER-only.
  *
- * Unlike `POST`, `GET` and `DELETE` do not look the project up, so an id that never existed is
- * answered as "no bookmark" rather than 404. Whether they should 404 is an open product
- * question; the tests below pin today's behavior.
+ * All three look the project up first: a project that never existed or is soft-deleted is 404
+ * (`docs/domain/projects-contracts.md`, 북마크). Removing a bookmark that does not exist on a live
+ * project still succeeds — that is the idempotence rule, not a lookup.
  */
 
 /** A project id that is guaranteed not to exist (the db was truncated before this test). */
@@ -73,16 +73,24 @@ describe('GET /api/projects/:id/bookmark', () => {
     expect(theirs.body).toEqual({ bookmarked: true });
   });
 
-  // ---- GET does not verify the project, unlike POST ----------------------------------------
-  // Current behavior: the handler only looks up the (projectId, userId) bookmark row, so an
-  // unknown id simply has no bookmark and answers 200 instead of 404.
-  it('GET bookmark for a non-existent project currently succeeds with { bookmarked: false }', async () => {
+  it('returns 404 for a project that never existed', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).get(bookmarkPath(MISSING_PROJECT_ID));
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ bookmarked: false });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+  });
+
+  it('returns 404 for a soft-deleted project even when the bookmark row is still there', async () => {
+    const { freelancer, project } = await freelancerWithProject();
+    await prisma.projectBookmark.create({ data: { projectId: project.id, userId: freelancer.id } });
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).get(bookmarkPath(project.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
   });
 });
 
@@ -190,6 +198,40 @@ describe('POST /api/projects/:id/bookmark', () => {
     // Whatever the statuses are, the unique constraint holds the state.
     expect(await countBookmarks()).toBe(1);
   });
+
+  /**
+   * A deterministic version of two overlapping `POST`s: the other request is an uncommitted insert
+   * of the same key, held open in a transaction. The request must block on it (a `Lock` wait in
+   * `pg_stat_activity`) and, once that insert commits, still answer 201 with one row.
+   */
+  it('answers 201 when an overlapping insert of the same bookmark commits first', async () => {
+    const { freelancer, project } = await freelancerWithProject();
+
+    let request: ReturnType<ReturnType<typeof authed>['post']> | undefined;
+    await prisma.$transaction(async (tx) => {
+      await tx.projectBookmark.create({ data: { projectId: project.id, userId: freelancer.id } });
+
+      request = authed(freelancer).post(bookmarkPath(project.id));
+      // supertest sends lazily; `then` starts it while this transaction still holds the row.
+      void request.then(() => undefined, () => undefined);
+
+      // Polled on another connection until the request is waiting on this transaction's insert.
+      const giveUpAt = Date.now() + 5_000;
+      for (;;) {
+        const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+          SELECT count(*)::int AS waiting FROM pg_stat_activity
+           WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+        if (waiting > 0) break;
+        if (Date.now() > giveUpAt) throw new Error('the request never blocked on the open insert');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }, { timeout: 10_000 });
+
+    const res = await request!;
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ bookmarked: true });
+    expect(await countBookmarks()).toBe(1);
+  });
 });
 
 describe('DELETE /api/projects/:id/bookmark', () => {
@@ -254,15 +296,25 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     expect((await authed(other).get(bookmarkPath(project.id))).body).toEqual({ bookmarked: true });
   });
 
-  // ---- DELETE does not verify the project, unlike POST -------------------------------------
-  // Current behavior: `deleteMany` matches zero rows and the handler answers 200 rather than 404.
-  it('DELETE bookmark for a non-existent project currently succeeds', async () => {
+  it('returns 404 for a project that never existed', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).delete(bookmarkPath(MISSING_PROJECT_ID));
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ bookmarked: false });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+  });
+
+  it('returns 404 for a soft-deleted project and leaves the bookmark row in place', async () => {
+    const { freelancer, project } = await freelancerWithProject();
+    await prisma.projectBookmark.create({ data: { projectId: project.id, userId: freelancer.id } });
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).delete(bookmarkPath(project.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(await countBookmarks({ projectId: project.id, userId: freelancer.id })).toBe(1);
   });
 });
 

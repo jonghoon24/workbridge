@@ -143,7 +143,6 @@ const GHOST: Principal = { id: 'ghost-user-id', email: 'ghost@test.local', role:
  */
 const PROTECTED_ROUTES: RouteSpec[] = [
   // auth.routes.ts
-  { label: 'POST /api/auth/logout', method: 'post', path: () => '/api/auth/logout', role: null, gate: null },
   {
     label: 'POST /api/auth/select-role',
     method: 'post',
@@ -625,6 +624,8 @@ const PUBLIC_ROUTES: PublicSpec[] = [
   // Missing fields, so 400 — the point is that it is the validator answering, not `authenticate`.
   { label: 'POST /api/auth/signup', method: 'post', path: () => '/api/auth/signup', expected: 400 },
   { label: 'POST /api/auth/login', method: 'post', path: () => '/api/auth/login', expected: 400 },
+  // Logging out only clears the refresh cookie, so it must work once the access token has expired.
+  { label: 'POST /api/auth/logout', method: 'post', path: () => '/api/auth/logout', expected: 200 },
   {
     label: 'POST /api/auth/refresh',
     method: 'post',
@@ -1194,8 +1195,8 @@ describe('the public surface', () => {
     };
   });
 
-  it('enumerates thirteen public routes (twelve handlers; the review list is mounted twice)', () => {
-    expect(PUBLIC_ROUTES).toHaveLength(13);
+  it('enumerates fourteen public routes (thirteen handlers; the review list is mounted twice)', () => {
+    expect(PUBLIC_ROUTES).toHaveLength(14);
   });
 
   it.each(PUBLIC_ROUTES)('$label is reachable with no token → $expected', async (route) => {

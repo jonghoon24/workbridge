@@ -71,14 +71,14 @@ GitHub 이슈로 추적하고(도메인 문서의 `현재 다름: #N`), 고치�
   새 `/api/users/me/<x>` 라우트는 `profile.routes.ts`에 넣고, 순서는 절대 바꾸지 않는다.
 - `GET /api/projects`와 `GET /api/projects/:id`는 **행을 쓴다**(지연 수명주기 스윕이 마감된
   프로젝트를 닫는다). 읽기 전용이 아니다.
-- `req.user`는 non-optional로 타입이 잡혀 있지만 `src/types/index.ts`에 적힌 공개 핸들러 14개에서는
+- `req.user`는 non-optional로 타입이 잡혀 있지만 `src/types/index.ts`에 적힌 공개 핸들러 15개에서는
   `undefined`다(`X-Internal-Token`으로 지키는 `runJobs`, API 문서 화면 포함). 거기서는 읽지 않는다.
 - 테스트가 **모든 응답**을 OpenAPI 응답 스키마로 strict 검사한다. 라우트·상태 코드·응답 필드를 바꾸면
   `src/openapi/paths`·`responses`를 함께 고치고 `npm run openapi`. 문서에 없는 상태 코드나 필드는 테스트 실패다.
 - 핸들러에 `Promise<void>`를 붙이지 않는다. 함수 중간에 `return res.json(...)`하는 곳이 많다.
 - 여러 행을 바꾸는 상태 변경은 `prisma.$transaction` 하나로 하고, 알림과 작업도 그 안에서 쓴다.
 - 적용된 마이그레이션은 고치지 않는다(훅이 막는다). 스키마를 바꾸고 `prisma migrate dev`.
-- `console.*` 대신 `lib/logger.ts`를 쓴다. `error` 레벨은 500과 작업 실패에만 쓴다.
+- `console.*` 대신 `lib/logger.ts`를 쓴다. `error` 레벨은 500, 응답을 보낸 뒤에 난 예외(서버 버그라 경보 대상), 작업 실패에만 쓴다.
 - 이메일은 로그로만 남는다(`mail.sent` 줄). 결제 우회 플래그는 운영에서 반드시 `false`.
 - 운영에는 상주 작업 워커가 없다. GitHub Actions `jobs.yml`이 15분마다 `POST /api/internal/jobs/run`을
   부른다. 지급(`JOB_PAYOUT_ENABLED`)과 메일(`JOB_EMAIL_ENABLED`) 작업은 플래그로 꺼져 있다.

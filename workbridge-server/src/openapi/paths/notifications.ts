@@ -38,7 +38,7 @@ export function registerNotificationPaths(registry: OpenAPIRegistry): void {
     tags,
     summary: '알림 모두 읽음',
     security: bearer,
-    responses: { 200: ok(messageBody, '`Notifications marked as read`'), ...errors(AUTHENTICATED) },
+    responses: { 200: ok(messageBody, '`Notifications marked as read`'), ...errors(ACTIVE_USER) },
   });
 
   registry.registerPath({
@@ -52,7 +52,7 @@ export function registerNotificationPaths(registry: OpenAPIRegistry): void {
     request: { params: pathParams({ id: '알림 ID' }) },
     responses: {
       200: ok(notification),
-      ...errors(AUTHENTICATED, { 404: ['`Notification not found` — 없거나 내 알림이 아님'] }),
+      ...errors(ACTIVE_USER, { 404: ['`Notification not found` — 없거나 내 알림이 아님'] }),
     },
   });
 

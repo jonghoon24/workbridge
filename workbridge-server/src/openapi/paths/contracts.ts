@@ -26,7 +26,6 @@ const tags = ['Contracts'];
 
 const contractId = pathParams({ id: '계약 ID' });
 const NOT_PARTY = { 403: ['`Not authorized` — 계약 당사자가 아님'] };
-const CONTRACT_NOT_FOUND = notFound('Contract not found', '없는 계약');
 const CONTRACT_OR_PROJECT_NOT_FOUND = notFound('Contract not found', '없는 계약, 또는 프로젝트가 삭제됨');
 
 export function registerContractPaths(registry: OpenAPIRegistry): void {
@@ -105,10 +104,10 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
     operationId: 'getContract',
     tags,
     summary: '계약 상세',
-    description: '마일스톤, 리뷰, 마일스톤 요약을 함께 준다. 삭제된 프로젝트의 계약도 보인다(알려진 버그, 이슈 #16).',
+    description: '마일스톤, 리뷰, 마일스톤 요약을 함께 준다. 프로젝트가 삭제된 계약은 404다.',
     security: bearer,
     request: { params: contractId },
-    responses: { 200: ok(contractDetail), ...errors(AUTHENTICATED, NOT_PARTY, CONTRACT_NOT_FOUND) },
+    responses: { 200: ok(contractDetail), ...errors(AUTHENTICATED, NOT_PARTY, CONTRACT_OR_PROJECT_NOT_FOUND) },
   });
 
   registry.registerPath({
@@ -146,9 +145,9 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
             '`Cannot sign a contract without a valid milestone plan` — 계획이 없거나 금액 합이 맞지 않음',
           ],
         },
-        AUTHENTICATED,
+        ACTIVE_USER,
         NOT_PARTY,
-        CONTRACT_NOT_FOUND,
+        CONTRACT_OR_PROJECT_NOT_FOUND,
       ),
     },
   });

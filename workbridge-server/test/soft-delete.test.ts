@@ -1,13 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * `src/lib/openai` is mocked so `POST /api/projects/:id/analyze` can be exercised against a
- * soft-deleted project without touching a real service.
+ * `src/lib/openai` and `axios` (TossPayments) are mocked so `POST /api/projects/:id/analyze` and
+ * `POST /api/payments/confirm` can be exercised without touching a real service. Toss rejects by
+ * default; a row that needs it to answer sets the answer in its `setup`.
  */
-const { openaiCreate } = vi.hoisted(() => ({ openaiCreate: vi.fn() }));
+const { openaiCreate, tossPost } = vi.hoisted(() => ({ openaiCreate: vi.fn(), tossPost: vi.fn() }));
 
 vi.mock('../src/lib/openai', () => ({
   default: { chat: { completions: { create: openaiCreate } } },
+}));
+
+vi.mock('axios', () => ({
+  default: { post: tossPost },
+  post: tossPost,
 }));
 
 import { api, authed, tokenFor } from './helpers/api';
@@ -21,6 +27,7 @@ import {
   makeContractScenario,
   makeFreelancer,
   makeMessage,
+  makePayment,
   makePayoutAccount,
   makePortfolioItem,
   makeProject,
@@ -68,8 +75,22 @@ async function restore(userId: string): Promise<void> {
 /** A value the tests can look for in the database — nothing legitimate ever writes it. */
 const GHOST = 'ghost-write-by-deleted-user';
 
+/** `POST /api/payments/dev-complete` reads the flag per request; restored in `finally`. */
+async function withBypassEnabled<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.ALLOW_PAYMENT_BYPASS;
+  process.env.ALLOW_PAYMENT_BYPASS = 'true';
+  try {
+    return await fn();
+  } finally {
+    if (previous === undefined) delete process.env.ALLOW_PAYMENT_BYPASS;
+    else process.env.ALLOW_PAYMENT_BYPASS = previous;
+  }
+}
+
 beforeEach(() => {
   openaiCreate.mockReset();
+  tossPost.mockReset();
+  tossPost.mockRejectedValue(new Error('unexpected TossPayments call'));
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -112,19 +133,19 @@ describe('a soft-deleted principal holding a pre-deletion token', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Expansion routes mount `requireActiveUser`, so a soft-deleted principal cannot write
+// Every write route mounts `requireActiveUser`, so a soft-deleted principal cannot write
 // ---------------------------------------------------------------------------------------------
 
 /**
- * One row per mutating expansion route a soft-deleted principal can reach with a pre-deletion
- * token. `setup` builds a fixture in which the request would *legitimately* succeed (right role,
+ * One row per mutating route a soft-deleted principal can reach with a pre-deletion token. `setup` builds a fixture in which the request would *legitimately* succeed (right role,
  * ownership, complete profile, right resource state), so the only thing standing between the
  * caller and the write is the `requireActiveUser` guard. `assertUnchanged` captures the invariant
  * that matters: **nothing the request would have written landed.**
  *
- * Every new mutating expansion route gets a row here. Rows are grouped by domain: milestones,
- * plan and payout account; conversations and messages; portfolio and careers; notification
- * preferences.
+ * Every new mutating route gets a row here. Rows are grouped by domain: milestones, plan and
+ * payout account; conversations and messages; portfolio and careers; notification preferences;
+ * then the existing domains. `POST /api/auth/select-role` is covered above (404 from its own
+ * lookup); `POST /api/auth/logout` writes no row of the caller's.
  */
 type MutationCase = {
   actor: Principal;
@@ -403,9 +424,315 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
+  // Existing-domain writes: users, projects, applications, contracts, payments, reviews,
+  // notifications.
+  {
+    label: 'PATCH /api/users/me',
+    async setup() {
+      const actor = await makeFreelancer({ name: 'Before deletion' });
+      return {
+        actor,
+        send: (token) => bearer(token).patch('/api/users/me').send({ name: GHOST, bio: GHOST }),
+        async assertUnchanged() {
+          const stored = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
+          expect(stored.name).toBe('Before deletion');
+          expect(stored.bio).not.toBe(GHOST);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/projects',
+    async setup() {
+      const actor = await makeClient();
+      return {
+        actor,
+        send: (token) => bearer(token).post('/api/projects').send({
+          title: GHOST,
+          description: '반응형 랜딩 페이지 한 장을 만들어 주세요.',
+          category: '웹 개발',
+          budget: 3_000_000,
+          deadline: daysFromNow(30).toISOString(),
+        }),
+        async assertUnchanged() {
+          expect(await prisma.project.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'PATCH /api/projects/:id',
+    async setup() {
+      const actor = await makeClient();
+      const project = await makeProject(actor.id, { title: 'Before deletion' });
+      return {
+        actor,
+        send: (token) => bearer(token).patch(`/api/projects/${project.id}`).send({ title: GHOST }),
+        async assertUnchanged() {
+          expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).title).toBe('Before deletion');
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/projects/:id',
+    async setup() {
+      const actor = await makeClient();
+      const project = await makeProject(actor.id);
+      return {
+        actor,
+        send: (token) => bearer(token).delete(`/api/projects/${project.id}`),
+        async assertUnchanged() {
+          expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).deletedAt).toBeNull();
+        },
+      };
+    },
+  },
+  {
+    label: 'PATCH /api/projects/:id/status',
+    async setup() {
+      const actor = await makeClient();
+      const project = await makeProject(actor.id, { status: 'OPEN' });
+      const application = await makeApplication(project.id, (await makeFreelancer()).id);
+      return {
+        actor,
+        send: (token) => bearer(token).patch(`/api/projects/${project.id}/status`).send({ status: 'CLOSED' }),
+        async assertUnchanged() {
+          expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('OPEN');
+          expect((await prisma.application.findUniqueOrThrow({ where: { id: application.id } })).status).toBe('PENDING');
+          expect(await prisma.notification.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/projects/:id/applications',
+    async setup() {
+      const actor = await makeFreelancer();
+      const project = await makeProject((await makeClient()).id, { status: 'OPEN' });
+      return {
+        actor,
+        send: (token) => bearer(token).post(`/api/projects/${project.id}/applications`).send({
+          coverLetter: GHOST,
+          expectedRate: 1_000_000,
+          expectedDuration: '2주',
+        }),
+        async assertUnchanged() {
+          expect(await prisma.application.count()).toBe(0);
+          expect(await prisma.notification.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'PATCH /api/projects/:projectId/applications/:appId',
+    async setup() {
+      const actor = await makeClient();
+      const project = await makeProject(actor.id, { status: 'OPEN' });
+      const application = await makeApplication(project.id, (await makeFreelancer()).id);
+      return {
+        actor,
+        send: (token) => bearer(token)
+          .patch(`/api/projects/${project.id}/applications/${application.id}`)
+          .send({ status: 'ACCEPTED' }),
+        async assertUnchanged() {
+          expect((await prisma.application.findUniqueOrThrow({ where: { id: application.id } })).status).toBe('PENDING');
+          expect(await prisma.contract.count()).toBe(0);
+          expect(await prisma.notification.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/projects/:id/bookmark',
+    async setup() {
+      const actor = await makeFreelancer();
+      const project = await makeProject((await makeClient()).id);
+      return {
+        actor,
+        send: (token) => bearer(token).post(`/api/projects/${project.id}/bookmark`),
+        async assertUnchanged() {
+          expect(await prisma.projectBookmark.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'DELETE /api/projects/:id/bookmark',
+    async setup() {
+      const actor = await makeFreelancer();
+      const project = await makeProject((await makeClient()).id);
+      await prisma.projectBookmark.create({ data: { projectId: project.id, userId: actor.id } });
+      return {
+        actor,
+        send: (token) => bearer(token).delete(`/api/projects/${project.id}/bookmark`),
+        async assertUnchanged() {
+          expect(await prisma.projectBookmark.count({ where: { userId: actor.id } })).toBe(1);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/projects/:id/analyze',
+    async setup() {
+      const actor = await makeClient();
+      const project = await makeProject(actor.id);
+      openaiCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              features: [{
+                name: '회원 인증',
+                description: GHOST,
+                estimatedCost: 1_000_000,
+                rationale: '표준 구현 기준',
+                duration: '1주',
+              }],
+              totalAmount: 1_000_000,
+              summary: GHOST,
+              marketReference: '유사 프로젝트 1,000,000원 내외',
+            }),
+          },
+        }],
+      });
+      return {
+        actor,
+        send: (token) => bearer(token).post(`/api/projects/${project.id}/analyze`),
+        async assertUnchanged() {
+          expect(await prisma.pricingAnalysis.count()).toBe(0);
+          expect(openaiCreate).not.toHaveBeenCalled();
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/contracts/:id/sign',
+    async setup() {
+      const { freelancer, contract } = await makeContractScenario();
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/contracts/${contract.id}/sign`),
+        async assertUnchanged() {
+          const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+          expect(stored.freelancerSigned).toBe(false);
+          expect(stored.status).toBe('PENDING');
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/payments',
+    async setup() {
+      const { client, milestone } = await activeContract();
+      return {
+        actor: client,
+        send: (token) => bearer(token).post('/api/payments').send({ milestoneId: milestone.id }),
+        async assertUnchanged() {
+          expect(await prisma.payment.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/payments/confirm',
+    async setup() {
+      const { client, milestone } = await activeContract();
+      const payment = await makePayment(milestone.id, client.id, { status: 'PENDING' });
+      tossPost.mockResolvedValue({
+        data: { status: 'DONE', totalAmount: payment.amount, paymentKey: GHOST, orderId: payment.orderId },
+      });
+      return {
+        actor: client,
+        send: (token) => bearer(token).post('/api/payments/confirm').send({
+          paymentKey: GHOST,
+          orderId: payment.orderId,
+          amount: payment.amount,
+        }),
+        async assertUnchanged() {
+          const stored = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
+          expect(stored.status).toBe('PENDING');
+          expect(stored.paymentKey).toBeNull();
+          expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('PENDING');
+          expect(tossPost).not.toHaveBeenCalled();
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/payments/dev-complete',
+    async setup() {
+      const { client, milestone } = await activeContract();
+      return {
+        actor: client,
+        send: (token) => withBypassEnabled(async () =>
+          bearer(token).post('/api/payments/dev-complete').send({ milestoneId: milestone.id })),
+        async assertUnchanged() {
+          expect(await prisma.payment.count()).toBe(0);
+          expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('PENDING');
+        },
+      };
+    },
+  },
+  {
+    label: 'POST /api/reviews',
+    async setup() {
+      const { client, freelancer, contract } = await makeContractScenario({
+        project: { status: 'COMPLETED' },
+        contract: { status: 'COMPLETED', clientSigned: true, freelancerSigned: true },
+      });
+      return {
+        actor: client,
+        send: (token) => bearer(token).post('/api/reviews').send({
+          contractId: contract.id,
+          revieweeId: freelancer.id,
+          rating: 5,
+          content: GHOST,
+          tags: [],
+        }),
+        async assertUnchanged() {
+          expect(await prisma.review.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
+    label: 'PATCH /api/notifications/:id/read',
+    async setup() {
+      const actor = await makeFreelancer();
+      const notification = await prisma.notification.create({
+        data: { userId: actor.id, type: 'APPLICATION_REJECTED', title: '알림', message: '본문' },
+      });
+      return {
+        actor,
+        send: (token) => bearer(token).patch(`/api/notifications/${notification.id}/read`),
+        async assertUnchanged() {
+          expect((await prisma.notification.findUniqueOrThrow({ where: { id: notification.id } })).readAt).toBeNull();
+        },
+      };
+    },
+  },
+  {
+    label: 'PATCH /api/notifications/read-all',
+    async setup() {
+      const actor = await makeFreelancer();
+      await prisma.notification.createMany({
+        data: [
+          { userId: actor.id, type: 'APPLICATION_REJECTED', title: '알림 1', message: '본문' },
+          { userId: actor.id, type: 'APPLICATION_REJECTED', title: '알림 2', message: '본문' },
+        ],
+      });
+      return {
+        actor,
+        send: (token) => bearer(token).patch('/api/notifications/read-all'),
+        async assertUnchanged() {
+          expect(await prisma.notification.count({ where: { userId: actor.id, readAt: null } })).toBe(2);
+        },
+      };
+    },
+  },
 ];
 
-describe('expansion routes refuse a soft-deleted principal (requireActiveUser)', () => {
+describe('write routes refuse a soft-deleted principal (requireActiveUser)', () => {
   it('lists every guarded route once', () => {
     expect(new Set(guardedMutations.map((m) => m.label)).size).toBe(guardedMutations.length);
   });
@@ -422,7 +749,7 @@ describe('expansion routes refuse a soft-deleted principal (requireActiveUser)',
     expect(res.body).toEqual({ error: { message: 'Account is no longer active' } });
   });
 
-  // The guard itself, on a probe route, so it is pinned before any expansion route uses it.
+  // The guard itself, on a probe route, so it is pinned independently of any route that uses it.
   const probe = express();
   probe.post('/probe', authenticate, requireActiveUser, (req, res) => res.json({ ok: true }));
   probe.use(errorHandler);
@@ -613,10 +940,7 @@ async function deletedProjectFixture(): Promise<DeletedProjectFixture> {
   };
 }
 
-/**
- * Every route that resolves a project by id. `GET`/`DELETE /:id/bookmark` are deliberately
- * absent: they do not check the project at all (issue #14).
- */
+/** Every route that resolves a project by id. */
 const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) => PromiseLike<Sent> }[] = [
   {
     label: 'GET /api/projects/:id',
@@ -659,8 +983,16 @@ const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) =
         .send({ status: 'ACCEPTED' }),
   },
   {
+    label: 'GET /api/projects/:id/bookmark',
+    send: (fx) => authed(fx.otherFreelancer).get(`/api/projects/${fx.projectId}/bookmark`),
+  },
+  {
     label: 'POST /api/projects/:id/bookmark',
     send: (fx) => authed(fx.otherFreelancer).post(`/api/projects/${fx.projectId}/bookmark`),
+  },
+  {
+    label: 'DELETE /api/projects/:id/bookmark',
+    send: (fx) => authed(fx.otherFreelancer).delete(`/api/projects/${fx.projectId}/bookmark`),
   },
 ];
 
@@ -786,10 +1118,40 @@ describe('a soft-deleted project', () => {
 
 /**
  * A contract whose project is gone must be invisible (docs/domain/README.md, soft delete).
- * Completion goes through the milestone routes, which filter the joined project's `deletedAt`.
- * `GET /api/contracts/:id` and `POST /api/contracts/:id/sign` do not yet — tracked in issue #16.
+ * Reading, signing and completing all filter the joined project's `deletedAt`.
  */
 describe('a contract whose project is soft-deleted', () => {
+  async function deletedProjectPendingContract() {
+    const scenario = await makeContractScenario();
+    await prisma.project.update({ where: { id: scenario.project.id }, data: { deletedAt: new Date() } });
+    return scenario;
+  }
+
+  it('GET /api/contracts/:id is 404 for either party', async () => {
+    const { client, freelancer, contract } = await deletedProjectPendingContract();
+
+    for (const party of [client, freelancer]) {
+      const res = await authed(party).get(`/api/contracts/${contract.id}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    }
+  });
+
+  it('cannot be signed: POST /api/contracts/:id/sign is 404 and records no signature', async () => {
+    const { client, freelancer, contract } = await deletedProjectPendingContract();
+    await prisma.contract.update({ where: { id: contract.id }, data: { clientSigned: true } });
+
+    const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(stored.freelancerSigned).toBe(false);
+    expect(stored.status).toBe('PENDING');
+    expect(await prisma.notification.count({ where: { userId: { in: [client.id, freelancer.id] } } })).toBe(0);
+  });
+
   it('cannot be completed: approving its last milestone is 404 and writes nothing', async () => {
     const { client, project, contract, milestone } = await activeContract();
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status: 'SUBMITTED' } });
@@ -845,18 +1207,15 @@ describe('a contract whose project is soft-deleted, on the expansion routes', ()
 });
 
 // ---------------------------------------------------------------------------------------------
-// Review lists for a soft-deleted user — an open product question
+// Review lists for a soft-deleted user
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `getUserReviews` filters on `revieweeId` alone, with no `deletedAt` check on either party. So
- * a user who 404s at `GET /api/users/:id` still has their received reviews served — including
- * the reviewer's name and avatar for a soft-deleted reviewer.
+ * The reviews a soft-deleted user received are hidden with their profile: the public list is
+ * empty, as for an unknown user (`docs/domain/README.md`, 소프트 삭제). The rows stay.
  *
- * This is the same open question as the joined-owner case pinned in `projects-list.test.ts`:
- * the soft-delete rule is written about the record being read, and here the soft-deleted user
- * is a *join target*, not the record. The reviews themselves are not deleted. If the question is
- * decided the strict way, these three tests flip to expecting `[]` (or a 404).
+ * Reviews a soft-deleted user *wrote* are a different case the decision did not cover: they still
+ * appear in the reviewee's list with the stored reviewer snippet (pinned by the last test).
  */
 describe('review lists for a soft-deleted user', () => {
   async function reviewedPair() {
@@ -889,19 +1248,18 @@ describe('review lists for a soft-deleted user', () => {
     return { client, freelancer, clientReview, freelancerReview };
   }
 
-  it('GET /api/users/:id/reviews still returns reviews received by a soft-deleted user', async () => {
+  it('GET /api/users/:id/reviews hides the reviews received by a soft-deleted user', async () => {
     const { freelancer, clientReview } = await reviewedPair();
     await softDelete(freelancer.id);
 
-    // The profile itself is gone …
+    // The profile is gone, and so is the review list …
     expect((await api().get(`/api/users/${freelancer.id}`)).status).toBe(404);
-
-    // … but the review list is not.
     const res = await api().get(`/api/users/${freelancer.id}/reviews`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({ id: clientReview.id, rating: 5 });
+    expect(res.body).toEqual([]);
+    // … while the review row itself is kept.
+    expect(await prisma.review.findUnique({ where: { id: clientReview.id } })).not.toBeNull();
   });
 
   it('GET /api/reviews/users/:id behaves identically — both mount points share the handler', async () => {
@@ -911,7 +1269,9 @@ describe('review lists for a soft-deleted user', () => {
     const viaUsers = await api().get(`/api/users/${freelancer.id}/reviews`);
     const viaReviews = await api().get(`/api/reviews/users/${freelancer.id}`);
 
+    expect(viaReviews.status).toBe(200);
     expect(viaReviews.status).toBe(viaUsers.status);
+    expect(viaReviews.body).toEqual([]);
     expect(viaReviews.body).toEqual(viaUsers.body);
   });
 

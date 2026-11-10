@@ -25,7 +25,7 @@ written=$(jq -r '[.tool_input.content, .tool_input.new_string, (.tool_input.edit
 problems=()
 
 if grep -qE '\bconsole\.' <<<"$written"; then
-  problems+=("서버 코드에서는 임시 디버그 줄을 포함해 console.*를 쓰지 않는다 → src/lib/logger.ts의 \`logger.debug|info|warn(msg, fields)\`로 바꾼다. 필드에는 필요한 값만 넣고 req.body·req.query·헤더를 통째로 넣지 않는다(개인정보·토큰). logger.error는 errorHandler의 500과 작업 실패 전용이다. 지침: .claude/rules/notifications-logging.md")
+  problems+=("서버 코드에서는 임시 디버그 줄을 포함해 console.*를 쓰지 않는다 → src/lib/logger.ts의 \`logger.debug|info|warn(msg, fields)\`로 바꾼다. 필드에는 필요한 값만 넣고 req.body·req.query·헤더를 통째로 넣지 않는다(개인정보·토큰). logger.error는 errorHandler의 500, 응답을 보낸 뒤에 난 예외, 작업 실패 전용이다. 지침: .claude/rules/notifications-logging.md")
 fi
 
 case "$file" in

@@ -216,17 +216,30 @@ export async function googleCallback(req: Request, res: Response, _next: NextFun
 
     const { id: googleId, email, name, picture } = userInfoResponse.data;
 
-    // Upsert user
-    let user = await prisma.user.findFirst({
-      where: { deletedAt: null, OR: [{ googleId }, { email }] },
-    });
+    // Without both values there is nothing to match on — and Prisma reads `{ googleId: undefined }`
+    // as no filter at all, which would match any account.
+    if (typeof googleId !== 'string' || !googleId || typeof email !== 'string' || !email) {
+      throw new Error('Google profile is missing its id or email');
+    }
+
+    // An existing account is matched by `googleId` only. An equal email alone does not prove the
+    // caller owns that account (whether or not Google marks it verified), so such a login is not
+    // linked and gets no session: it goes back to the login screen with its own error code.
+    let user = await prisma.user.findFirst({ where: { googleId, deletedAt: null } });
+
+    if (!user) {
+      const sameEmail = await prisma.user.findFirst({ where: { email, deletedAt: null }, select: { id: true } });
+      if (sameEmail) {
+        return res.redirect(`${env.CLIENT_URL}/login?error=email_account_exists`);
+      }
+    }
 
     let needsRoleSelection = false;
 
     if (user) {
       user = await prisma.user.update({
         where: { id: user.id },
-        data: { googleId, profileImage: user.profileImage || picture },
+        data: { profileImage: user.profileImage || picture },
       });
       needsRoleSelection = !user.roleSelected;
     } else {

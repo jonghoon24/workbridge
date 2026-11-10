@@ -62,13 +62,14 @@ const MESSAGES = {
   'recruitmentStartDate cannot be after deadline': '모집 시작일은 마감일보다 늦을 수 없습니다.',
   'Cannot change budget or recruitment dates after applications have been submitted':
     '지원자가 있는 프로젝트는 예산과 모집 기간을 바꿀 수 없습니다.',
+  'Cannot delete a project with an unfinished contract':
+    '진행 중이거나 서명 대기 중인 계약이 있는 프로젝트는 삭제할 수 없습니다.',
   'AI analysis did not return a response': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
   'AI analysis did not return valid feature pricing': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
 
   // 지원
   'You have already applied to this project': '이미 지원한 프로젝트입니다. 내 지원 현황에서 확인할 수 있습니다.',
   'Project is not accepting applications': '지금은 지원을 받지 않는 프로젝트입니다.',
-  'Project deadline has passed': '모집 마감일이 지난 프로젝트입니다.',
   'Application not found': '지원 내역을 찾을 수 없습니다.',
   'This application has already been processed': '이미 처리된 지원입니다. 새로고침한 뒤 다시 확인해 주세요.',
   'A contract already exists for this project': '이 프로젝트에는 이미 계약이 있습니다.',
