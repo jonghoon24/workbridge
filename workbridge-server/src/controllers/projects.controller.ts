@@ -353,9 +353,25 @@ export async function deleteProject(req: AuthedRequest, res: Response, next: Nex
       throw new AppError('Not authorized', 403);
     }
 
-    await prisma.project.update({
-      where: { id: req.params.id },
-      data: { deletedAt: new Date() },
+    await prisma.$transaction(async (tx) => {
+      // Lock the project row so the contract check and the delete see the same state: an accept
+      // that commits a contract first makes this a 409 instead of orphaning a live contract.
+      await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${project.id} FOR UPDATE`;
+
+      // A pending or active contract belongs to the freelancer too; deleting the project would
+      // hide it from them (every contract path 404s on a deleted project). Completed is fine.
+      const unfinished = await tx.contract.findFirst({
+        where: { projectId: project.id, status: { in: ['PENDING', 'ACTIVE'] } },
+        select: { id: true },
+      });
+      if (unfinished) {
+        throw new AppError('Cannot delete a project with an unfinished contract', 409);
+      }
+
+      await tx.project.update({
+        where: { id: project.id },
+        data: { deletedAt: new Date() },
+      });
     });
 
     res.json({ message: 'Project deleted successfully' });
