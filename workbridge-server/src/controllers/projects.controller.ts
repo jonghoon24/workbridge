@@ -253,18 +253,12 @@ export async function createProjectBookmark(req: AuthedRequest, res: Response, n
   try {
     await findBookmarkableProject(req.params.id);
 
-    await prisma.projectBookmark.upsert({
-      where: {
-        projectId_userId: {
-          projectId: req.params.id,
-          userId: req.user.id,
-        },
-      },
-      update: {},
-      create: {
-        projectId: req.params.id,
-        userId: req.user.id,
-      },
+    // `INSERT … ON CONFLICT DO NOTHING`, not `upsert`: Prisma's upsert on a compound key is
+    // find-then-insert, so an overlapping request for the same bookmark hit P2002 (a 500). An
+    // existing row is left as it is (same id and createdAt).
+    await prisma.projectBookmark.createMany({
+      data: [{ projectId: req.params.id, userId: req.user.id }],
+      skipDuplicates: true,
     });
 
     res.status(201).json({ bookmarked: true });

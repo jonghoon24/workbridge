@@ -282,14 +282,10 @@ describe('POST /api/projects/:id/applications', () => {
       .send(validApplyBody);
 
     expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body);
+    expect(res.body).toEqual({ error: { message: 'Project is not accepting applications' } });
 
-    // What closed the project and rejected the sibling application is the lazy sweep —
-    // `closeExpiredOpenProjects()`, which `apply` awaits as its first statement, in the sweep's
-    // own `$transaction` — *not* `apply`'s in-handler `deadline < now` branch. That branch reads
-    // the project after the sweep has already flipped it to CLOSED, so `status === 'OPEN'` is
-    // false and the branch is unreachable; the request falls through to the not-OPEN guard.
-    // That dead branch and its 'Project deadline has passed' message are tracked in issue #39.
+    // The lazy sweep (`closeExpiredOpenProjects()`, `apply`'s first step) closed the project and
+    // rejected the sibling application before the status check saw it.
     const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(after.status).toBe('CLOSED');
     const rejected = await prisma.application.findUniqueOrThrow({ where: { id: pending.id } });

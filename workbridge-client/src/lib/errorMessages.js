@@ -70,7 +70,6 @@ const MESSAGES = {
   // 지원
   'You have already applied to this project': '이미 지원한 프로젝트입니다. 내 지원 현황에서 확인할 수 있습니다.',
   'Project is not accepting applications': '지금은 지원을 받지 않는 프로젝트입니다.',
-  'Project deadline has passed': '모집 마감일이 지난 프로젝트입니다.',
   'Application not found': '지원 내역을 찾을 수 없습니다.',
   'This application has already been processed': '이미 처리된 지원입니다. 새로고침한 뒤 다시 확인해 주세요.',
   'A contract already exists for this project': '이 프로젝트에는 이미 계약이 있습니다.',

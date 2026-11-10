@@ -33,10 +33,7 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
     responses: {
       201: created(application),
       ...errors(
-        invalid(
-          '`Project deadline has passed` — 마감이 지남(이때 프로젝트를 마감한다)',
-          '`Project is not accepting applications` — 모집 중이 아님',
-        ),
+        invalid('`Project is not accepting applications` — 모집 중이 아님(마감이 지난 프로젝트는 스윕이 먼저 마감한다)'),
         ACTIVE_USER,
         role('FREELANCER'),
         COMPLETE_PROFILE,
