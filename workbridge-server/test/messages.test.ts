@@ -284,8 +284,12 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(attachments.map((a: { url: string }) => a.url)).toEqual(
       keys.map((key) => expect.stringContaining(`/object/sign/${ATTACHMENT_BUCKET}/${key}?`)),
     );
-    const stored = await prisma.messageAttachment.findMany({ orderBy: { fileName: 'asc' } });
-    expect(stored.map((a) => [a.storageKey, a.url])).toEqual([[keys[1], null], [keys[0], null]]);
+    // Keyed by name, not ordered by it: Hangul vs Latin order depends on the database collation.
+    const stored = await prisma.messageAttachment.findMany();
+    expect(Object.fromEntries(stored.map((a) => [a.fileName, [a.storageKey, a.url]]))).toEqual({
+      '최종 시안.pdf': [keys[0], null],
+      'shot.png': [keys[1], null],
+    });
     expect(await prisma.attachmentUpload.count()).toBe(0);
   });
 

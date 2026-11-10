@@ -108,13 +108,14 @@ Vercel 서버리스 함수의 **요청 본문 한도는 4.5MB**다(넘으면 플
 - 지운 메시지의 파일과 붙지 않고 만료된 업로드의 파일은 작업이 지우므로 1번의 지연(최대 15분, 정리는 매일 04:00 KST)만큼 늦게 사라진다. 그동안에도 서명 URL은 나가지 않는다.
 - 버킷은 프리뷰·운영 Supabase 프로젝트마다 따로 만든다. 만드는 법은 [ENV.md](ENV.md#supabase).
 
-**첨부 파일 저장소 이전(한 번).** 이 방식 전에 올린 첨부는 공개 버킷 `workbridge`에 있고 행에 공개 URL만 있다. 그대로 두어도 화면에서 보이지만(공개 URL을 그대로 내보낸다) 로그인 없이 받을 수 있는 상태가 남는다. 프리뷰 → 운영 순서로, 그 환경의 `DATABASE_URL`·`SUPABASE_URL`·`SUPABASE_SECRET_KEY`를 넣고:
+**첨부 파일 저장소 이전(한 번).** 이 방식 전에 올린 첨부는 공개 버킷 `workbridge`에 있고 행에 공개 URL만 있다. 그대로 두어도 화면에서 보이지만(공개 URL을 그대로 내보낸다) 로그인 없이 받을 수 있는 상태가 남는다. 그 환경에 이 코드가 배포된 뒤 프리뷰 → 운영 순서로 수동 워크플로 `attachments-migrate.yml`을 돌린다(원격 DB 접속 문자열과 Supabase 키는 GitHub 시크릿 `*_DIRECT_URL`·`*_SUPABASE_URL`·`*_SUPABASE_SECRET_KEY`에만 있다):
 
 ```bash
-cd workbridge-server
-npx tsx scripts/migrate-legacy-attachments.ts           # 건수만 센다(found/skipped)
-npx tsx scripts/migrate-legacy-attachments.ts --apply   # 비공개 버킷의 같은 키로 복사하고 행을 storageKey로 바꾼다
+gh workflow run attachments-migrate.yml -f environment=preview              # 건수만 센다(found/skipped)
+gh workflow run attachments-migrate.yml -f environment=preview -f apply=true # 비공개 버킷의 같은 키로 복사하고 행을 storageKey로 바꾼다
 ```
+
+워크플로는 `workbridge-server/scripts/migrate-legacy-attachments.ts`를 돌린다. 로컬에서 그 환경의 값을 넣고 `npx tsx scripts/migrate-legacy-attachments.ts [--apply]`로 돌려도 같다.
 
 다시 돌려도 안전하다(옮긴 행은 건너뛴다). `failed`가 비고 화면에서 예전 첨부가 열리는 것을 확인한 뒤, 공개 버킷의 `messages/`·`milestones/` 폴더를 Supabase 대시보드에서 지운다(`profiles/`·`portfolio/`는 지우지 않는다). 시드 데이터의 자리표시 이미지(`placehold.co`)는 건너뛴다(`skipped`).
 
