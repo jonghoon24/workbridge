@@ -66,8 +66,9 @@ paths:
   (`src/types/index.ts`, `lib/projectLifecycle.ts` 참고).
 - 인터랙티브 트랜잭션 *안에서* P2002를 catch하지 않는다 — Postgres가 이미 트랜잭션을 중단했다.
   `createMany({ skipDuplicates: true })`(`jobs/queue.ts` 참고)를 쓰거나 밖에서 catch한다(지원 수락의 방식).
-- 트랜잭션이 지급 계좌, 포트폴리오/경력, 알림 설정을 쓸 때는 `lockUserRow(tx, userId)`가
-  **첫** 문장이다(경합 테스트가 여기에 의존한다).
+- 트랜잭션이 지급 계좌, 포트폴리오/경력, 알림 설정을 쓸 때와 주간 정산 배치(`settleFreelancer`)는
+  `lockUserRow(tx, userId)`가 **첫** 문장이다(경합 테스트가 여기에 의존한다). 정산 배치는 지급 결정과 같은
+  `User` → `Settlement` 순서여야 한다: 한 트랜잭션에서 같은 행을 두 번 쓰면 FK 부모 행도 잠겨서 교착한다(#79).
 
 ## 그 밖
 

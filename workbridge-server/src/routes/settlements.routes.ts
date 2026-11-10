@@ -9,7 +9,7 @@ import { settlementListQuery } from '../schemas/settlements';
 /** `/api/settlements` — a freelancer's own settlements. */
 const router = Router();
 
-// Per route rather than `router.use`, so unmatched paths stay unmatched (#19).
+// Per route rather than `router.use`, so unmatched paths stay unmatched and reach the final JSON 404.
 const guard = [authenticate, requireActiveUser, requireRole('FREELANCER')];
 
 router.get('/', ...guard, validate({ query: settlementListQuery }), getMySettlements);

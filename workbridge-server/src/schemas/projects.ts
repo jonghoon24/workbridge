@@ -85,7 +85,7 @@ export const projectListQuery = z
       .openapi({ description: `${MAX_PAGE_SIZE}보다 크면 ${MAX_PAGE_SIZE}로 줄인다.` }),
     minBudget: queryNumber({ min: 0 }),
     maxBudget: queryNumber({ min: 0 }),
-    search: queryString().openapi({ description: '제목·설명에 들어 있는 글자(대소문자 무시)' }),
+    search: queryString().openapi({ description: '제목·설명에 들어 있는 글자(대소문자 무시, `%`·`_`도 글자 그대로)' }),
     category: queryString().openapi({ description: '카테고리(정확히 일치)' }),
     // `?skills=React,Vue`, `?skills=React&skills=Vue` and `?skills[]=React` are all lists.
     skills: skillsInput('must be a string or a list of strings')
