@@ -123,6 +123,8 @@ describe('storeUploadedFile', () => {
 describe('attachment policy', () => {
   it.each([
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     'application/x-hwp',
     'application/zip',
     'text/plain',
@@ -144,6 +146,12 @@ describe('attachment policy', () => {
     expect(() => assertAttachmentPolicy({ mimeType: 'application/x-msdownload', size: 11 * MB }))
       .toThrow(expect.objectContaining({ message: 'Unsupported file type: application/x-msdownload', statusCode: 400 }));
     expect(isAllowedAttachmentType('application/octet-stream')).toBe(false);
+  });
+
+  it('rejects Office Open XML types the bucket does not list', () => {
+    // The bucket's Allowed MIME types cannot hold a partial wildcard, so the server must not
+    // accept a subtype the signed upload would then fail on.
+    expect(isAllowedAttachmentType('application/vnd.openxmlformats-officedocument.wordprocessingml.template')).toBe(false);
   });
 });
 

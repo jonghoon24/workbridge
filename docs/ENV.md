@@ -77,7 +77,10 @@
 3. Storage에서 `workbridge-attachments` 버킷 생성 — 메시지·결과물 첨부. **Public은 끈다.** 버킷 설정에서
    File size limit `10 MB`, Allowed MIME types는 `image/*`, `application/pdf`, `application/zip`,
    `application/x-zip-compressed`, `text/plain`, `application/msword`, `application/vnd.ms-excel`,
-   `application/vnd.ms-powerpoint`, `application/vnd.openxmlformats-officedocument.*`, `application/x-hwp`로 둔다
+   `application/vnd.ms-powerpoint`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`,
+   `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+   `application/vnd.openxmlformats-officedocument.presentationml.presentation`, `application/x-hwp`로 둔다
+   (Supabase는 `image/*` 같은 하위 유형 전체 와일드카드만 받고 `…officedocument.*` 같은 부분 와일드카드는 거부한다)
    (서버도 같은 정책을 검사한다. 버킷 제한은 서명 URL로 올리는 단계의 두 번째 방어선이다). Storage 정책(RLS)은
    추가하지 않는다: 서버만 Secret Key로 접근하고, 브라우저는 서버가 발급한 서명 URL로만 올리고 내려받는다.
    다른 이름을 쓰면 `SUPABASE_ATTACHMENT_BUCKET`에 넣는다
