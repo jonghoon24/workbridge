@@ -995,6 +995,48 @@ describe('GET /api/auth/google/callback', () => {
     expect(stored.email).toBe('linked@test.local'); // the Google email does not overwrite it
   });
 
+  // A Google account whose address merely equals a password account's address does not prove the
+  // caller owns that account. The login goes back to the login screen with its own error code.
+  it.each([
+    ['an unverified', false],
+    ['a verified', true],
+  ])('does not link %s Google email to an existing password account, and issues no session', async (_label, verified) => {
+    const victim = await makeClient({ email: 'victim@test.local' });
+    stubGoogle(googleProfile({ id: 'attacker-google-uid', email: 'victim@test.local', verified_email: verified }));
+
+    const res = await googleCallback('code');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe(`${CLIENT_URL}/login?error=email_account_exists`);
+    expect(refreshCookie(res)).toBeUndefined();
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: victim.id } });
+    expect(stored.googleId).toBeNull();
+    expect(await prisma.user.count()).toBe(1);
+  });
+
+  it('does not sign in to an account linked to a different Google account with the same email', async () => {
+    const existing = await makeUser({ email: 'shared@test.local', googleId: 'google-uid-original', password: null });
+    stubGoogle(googleProfile({ id: 'google-uid-other', email: 'shared@test.local' }));
+
+    const res = await googleCallback('code');
+
+    expect(res.headers.location).toBe(`${CLIENT_URL}/login?error=email_account_exists`);
+    expect(refreshCookie(res)).toBeUndefined();
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: existing.id } });
+    expect(stored.googleId).toBe('google-uid-original');
+  });
+
+  it('degrades to oauth_failed when the profile has no Google id', async () => {
+    await makeUser({ email: 'someone@test.local', googleId: 'google-uid-1', password: null });
+    stubGoogle({ email: 'gmail.person@test.local', name: 'No Id' });
+
+    const res = await googleCallback('code');
+
+    expect(res.headers.location).toBe(oauthFailed);
+    expect(refreshCookie(res)).toBeUndefined();
+    expect(await prisma.user.count()).toBe(1);
+  });
+
   it('reports needsRoleSelection true for a linked account that has not chosen a role', async () => {
     await makeUser({ googleId: 'google-uid-1', roleSelected: false, password: null });
     stubGoogle(googleProfile({ email: 'unrelated@test.local' }));

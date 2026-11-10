@@ -45,7 +45,9 @@ DB에 있어서 서버 인스턴스끼리 공유한다(`src/lib/rateLimitRules.t
 - Google 로그인은 `state` 값을 쿠키와 대조해 다른 사람의 인가 코드로 이 브라우저가 로그인되는 것(로그인 CSRF)을 막는다.
   실패는 어떤 이유든 로그인 화면의 `oauth_failed` 오류로 돌아가고 서버 오류가 되지 않는다.
 - 이미 있는 계정과는 `googleId`로 연결한다. 이메일이 같다는 것만으로 비밀번호 계정에 Google 계정을 연결하지 않는다.
-  주소를 실제로 소유한다는 증명이 필요하다(현재 다름: [#2]).
+  주소를 실제로 소유한다는 증명이 필요하다. Google이 이메일을 인증했다고 해도 같다. 그래서 이 Google 계정과 연결되지
+  않은 계정이 같은 이메일을 쓰고 있으면 연결하지도 로그인시키지도 않고, 로그인 화면의 `email_account_exists` 오류("이미
+  이메일로 가입된 계정입니다")로 돌려보낸다. 로그인한 사용자가 Google 계정을 직접 연결하는 기능은 아직 없다.
 - 처음 들어온 Google 사용자는 프리랜서 역할로 임시 생성되고 `roleSelected: false`다. 첫 화면에서 역할을 한 번
   고른다. **역할 선택은 한 번뿐이다.** 이미 고른 사용자는 이 경로로 역할을 바꿀 수 없다. 선택하면 새 역할을 담은
   토큰을 다시 발급한다.
@@ -124,6 +126,5 @@ DB에 있어서 서버 인스턴스끼리 공유한다(`src/lib/rateLimitRules.t
   겹치거나 맞닿은 기간은 합쳐 한 달을 한 번만 센다. 예: `2020-01~2021-06`과 `2021-03~2022-02`는 합쳐 26개월,
   2년 2개월이다. 화면 표시용이고 프로필의 `experienceYears`를 바꾸지 않는다.
 
-[#2]: https://github.com/jonghoon24/workbridge/issues/2
 [#21]: https://github.com/jonghoon24/workbridge/issues/21
 [#48]: https://github.com/jonghoon24/workbridge/issues/48
