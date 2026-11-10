@@ -23,7 +23,7 @@ test('프리랜서가 모집 중인 프로젝트에 지원하면 내 지원 현�
 
   await dialog.getByPlaceholder('지원 동기와 경험을 자세히 작성해 주세요')
     .fill('비슷한 대시보드를 세 번 만들어 본 경험이 있습니다. E2E 지원서입니다.');
-  await dialog.getByLabel('제안 금액 (원)').fill('3800000');
+  await dialog.getByLabel('희망 금액 (원)').fill('3800000');
   await dialog.getByLabel('예상 기간').fill('6주');
   await dialog.getByRole('button', { name: '지원하기' }).click();
 
