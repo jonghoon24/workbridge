@@ -24,8 +24,8 @@
    - 왜: 인터랙티브 트랜잭션에서 실패한 문장은 Postgres가 트랜잭션 전체를 중단시켜서 catch해도 이미 망가져 있다. 중복은 `createMany({ skipDuplicates: true })`(`enqueueJob`의 방식)로 피하거나 트랜잭션 밖에서 catch해 409로 바꾼다(지원 수락 `updateApplication`의 방식). 진 쪽이 이긴 쪽 결과를 그대로 받아도 되면 밖에서 catch하고 한 번 다시 실행한다(결제 생성과 dev-complete의 `retryOnceOnPaymentConflict`, 이 처리가 없어 500이 나던 사례가 #8·#17이다).
    - 확인: `$transaction(async (tx)` 블록 안의 `catch`에서 `P2002`를 검사하는지, 다중 쓰기가 트랜잭션 밖에 흩어져 있지 않은지 본다.
 
-6. **지급 계좌·포트폴리오/경력·알림 설정을 쓰는 트랜잭션은 `lockUserRow(tx, userId)`를 첫 문장으로 둔다.**
-   - 왜: 사용자 행 잠금 하나로 이 쓰기들과 지급 결정을 직렬화한다(`docs/DATABASE.md` "동시성: 잠금과 조건부 쓰기"). 앞에 다른 쿼리가 오면 경합 테스트가 잡는 창(예: 19개에서 동시 생성 → 21개)이 다시 열린다.
+6. **지급 계좌·포트폴리오/경력·알림 설정을 쓰는 트랜잭션과 주간 정산 배치(`settleFreelancer`)는 `lockUserRow(tx, userId)`를 첫 문장으로 둔다.**
+   - 왜: 사용자 행 잠금 하나로 이 쓰기들과 지급 결정을 직렬화한다(`docs/DATABASE.md` "동시성: 잠금과 조건부 쓰기"). 앞에 다른 쿼리가 오면 경합 테스트가 잡는 창(예: 19개에서 동시 생성 → 21개)이 다시 열린다. 정산 배치는 지급 결정과 같은 `User` → `Settlement` 순서여야 한다 — 한 트랜잭션에서 같은 행을 두 번 쓰면 FK 부모 행(사용자)도 잠겨, 정산 행부터 잡으면 지급 결정과 교착한다(#79).
    - 확인: 해당 서비스의 `$transaction` 콜백에서 첫 `await`가 `lockUserRow`인지 본다.
 
 7. **알림은 `notify()`/`notifyMany()`로, 작업은 `enqueueJob()`으로, 원인이 된 상태 변경의 트랜잭션 안에서 만든다.**
