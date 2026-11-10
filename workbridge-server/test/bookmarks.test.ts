@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { authed } from './helpers/api';
-import { prisma } from './helpers/db';
+import { prisma, sideClient } from './helpers/db';
 import { makeClient, makeFreelancer, makeProject } from './helpers/factories';
 
 /**
@@ -207,31 +207,48 @@ describe('POST /api/projects/:id/bookmark', () => {
   it('answers 201 when an overlapping insert of the same bookmark commits first', async () => {
     const { freelancer, project } = await freelancerWithProject();
 
-    let request: ReturnType<ReturnType<typeof authed>['post']> | undefined;
-    await prisma.$transaction(async (tx) => {
+    // The open insert and the poll run on their own pool, never the app's — see `sideClient`.
+    const side = sideClient();
+    let release = () => {};
+    let holding!: () => void;
+    const held = new Promise<void>((resolve) => { holding = resolve; });
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const holder = side.$transaction(async (tx) => {
       await tx.projectBookmark.create({ data: { projectId: project.id, userId: freelancer.id } });
+      holding();
+      await released;
+    }, { timeout: 10_000 });
 
-      request = authed(freelancer).post(bookmarkPath(project.id));
-      // supertest sends lazily; `then` starts it while this transaction still holds the row.
-      void request.then(() => undefined, () => undefined);
+    let request: Promise<{ status: number; body: unknown }> | undefined;
+    try {
+      await held;
+      // supertest sends lazily; `then` starts it while the side transaction still holds the row.
+      request = authed(freelancer).post(bookmarkPath(project.id)).then((res) => res);
 
-      // Polled on another connection until the request is waiting on this transaction's insert.
+      // Wait until the request is queued on the uncommitted insert, then commit it.
       const giveUpAt = Date.now() + 5_000;
       for (;;) {
-        const [{ waiting }] = await prisma.$queryRaw<{ waiting: number }[]>`
+        const [{ waiting }] = await side.$queryRaw<{ waiting: number }[]>`
           SELECT count(*)::int AS waiting FROM pg_stat_activity
            WHERE datname = current_database() AND wait_event_type = 'Lock'`;
         if (waiting > 0) break;
         if (Date.now() > giveUpAt) throw new Error('the request never blocked on the open insert');
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-    }, { timeout: 10_000 });
+      release();
+      await holder;
 
-    const res = await request!;
-    expect(res.status).toBe(201);
-    expect(res.body).toEqual({ bookmarked: true });
-    expect(await countBookmarks()).toBe(1);
-  });
+      const res = await request;
+      expect(res.status).toBe(201);
+      expect(res.body).toEqual({ bookmarked: true });
+      expect(await countBookmarks()).toBe(1);
+    } finally {
+      release();
+      await holder.catch(() => {});
+      await request?.catch(() => {});
+      await side.$disconnect();
+    }
+  }, 20_000);
 });
 
 describe('DELETE /api/projects/:id/bookmark', () => {
