@@ -25,7 +25,7 @@ paths:
 - 컨트롤러는 얇게: 서비스를 부르고 `res.json(...)`, `catch (err) { next(err) }`.
 - 비즈니스 로직, 트랜잭션, `AppError`는 `src/services/<domain>.service.ts`에 둔다.
 - OpenAPI에 등록한다: 경로와 상태 코드별 응답·오류 메시지는 `src/openapi/paths/<domain>.ts`, 응답 모양은
-  `src/openapi/responses/<domain>.ts`. 그다음 `npm run openapi`로 `openapi.json`을 다시 만들어 함께 커밋한다.
+  `src/openapi/responses/<domain>.ts`. `openapi.json`은 서버 파일을 고칠 때마다 PostToolUse 훅(`regen-openapi.sh`)이 다시 만든다. 바뀐 파일을 함께 커밋한다.
   등록하지 않으면 `test/openapi.test.ts`가, 응답이 문서와 다르면 그 라우트를 부르는 모든 테스트가 실패한다.
 - 쓰기 라우트는 모두 `guardedMutations`(`test/soft-delete.test.ts`)와
   `PROTECTED_ROUTES`(`test/authorization.test.ts`)에 등록한다. 전체 단계: `add-endpoint` 스킬.

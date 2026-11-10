@@ -53,6 +53,7 @@ rules로 보냈다. 80줄 안팎으로 유지한다.
 |---|---|---|
 | PreToolUse `Edit\|Write\|MultiEdit` | `protect-migrations.sh` | 커밋된 마이그레이션은 preview·production에 적용되고 Prisma가 체크섬을 검사한다. 고치면 `migrate deploy`가 멈춘다. git에 없는 폴더(`--create-only` 직후 백필 단계)만 허용하고, 나머지는 exit 2로 막는다 |
 | PostToolUse `Edit\|Write\|MultiEdit` | `server-rules.sh` | `workbridge-server/src/**/*.ts`에 **방금 쓴 텍스트**에서 `console.`, 서비스·작업 핸들러의 `new Date()`, 호스트 시간대 getter/setter(`get`/`set` + `Date`·`Day`·`Hours`·`Month`·`FullYear`, `toLocaleDateString`)를 찾아 exit 2로 알린다. `toLocaleString`은 금액 포맷과 겹쳐 넣지 않았다. 파일 전체가 아니라 쓴 텍스트만 보는 것은 문서화된 기존 예외가 매번 다시 걸리지 않게 하려는 것이다 |
+| PostToolUse `Edit\|Write\|MultiEdit` | `regen-openapi.sh` | `workbridge-server/src/**/*.ts`를 고칠 때마다 `npm run openapi`로 `openapi.json`을 다시 만든다. 문서는 zod 스키마·OpenAPI 등록·라우트·Prisma enum에서 나와 어느 서버 파일이 바뀌어도 달라질 수 있다. 1초 안에 끝나고 DB가 필요 없다. 편집 도중이라 컴파일되지 않으면 조용히 넘어간다(typecheck와 CI가 잡는다). 사람이 직접 고친 경우는 `ci.yml`의 최신 검사가 잡는다 |
 | Stop | `stop-check.sh` | HEAD 이후 서버 `.ts`가 바뀌었으면 `npm run typecheck`, 클라이언트 `src/`가 바뀌었으면 `npm run lint -- --max-warnings=0`(CI와 같은 기준). 실패하면 마지막 30줄을 돌려주고 exit 2. `stop_hook_active`가 true면 바로 통과한다(무한 루프 방지) |
 
 **한계.** PostToolUse 훅은 편집이 일어난 뒤에 알린다. 막지 않고 고치게 한다. 텍스트 패턴이라 `req.user`나
