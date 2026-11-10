@@ -54,7 +54,7 @@ stateDiagram-v2
 - **지원이 하나라도 들어오면 예산, 모집 시작일, 마감일은 바꿀 수 없다.** 지원한 프리랜서가 보지 못한 사이에 조건이
   바뀌면 안 되기 때문이다. 지원이 없으면 날짜를 바꿀 수 있고, 아직 `UPCOMING`·`OPEN`이면 새 일정으로 상태를 다시 정한다.
 - 삭제는 소프트 삭제다. **완료되지 않은 계약(`PENDING`·`ACTIVE`)이 있는 프로젝트는 지울 수 없다.** 진행 중이거나
-  서명 대기인 상대방의 계약을 지워 버리면 안 된다. 계약이 완료된 프로젝트는 지울 수 있다(현재 다름: [#6]).
+  서명 대기인 상대방의 계약을 지워 버리면 안 된다. 계약이 완료된 프로젝트는 지울 수 있다.
 
 ## 북마크
 
@@ -179,7 +179,6 @@ stateDiagram-v2
 | 신선도: 등록 7일까지 10, 30일까지 선형 감소, 이후 0 | 10 |
 | 마감까지 3일 이상 남음 | 10 |
 
-[#6]: https://github.com/jonghoon24/workbridge/issues/6
 [#14]: https://github.com/jonghoon24/workbridge/issues/14
 [#15]: https://github.com/jonghoon24/workbridge/issues/15
 [#16]: https://github.com/jonghoon24/workbridge/issues/16

@@ -155,12 +155,16 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     operationId: 'deleteProject',
     tags,
     summary: '프로젝트 삭제(소유 의뢰인)',
-    description: '소프트 삭제다. 이후 목록·상세와 그 프로젝트의 계약·마일스톤·대화 경로에서 404가 된다.',
+    description:
+      '소프트 삭제다. 이후 목록·상세와 그 프로젝트의 계약·마일스톤·대화 경로에서 404가 된다. '
+      + '완료되지 않은 계약(`PENDING`·`ACTIVE`)이 있으면 지울 수 없다. 완료된 계약만 있으면 지울 수 있다.',
     security: bearer,
     request: { params: projectId },
     responses: {
       200: ok(messageBody, '`Project deleted successfully`'),
-      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND),
+      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
+        409: ['`Cannot delete a project with an unfinished contract` — 계약이 `PENDING` 또는 `ACTIVE`'],
+      }),
     },
   });
 

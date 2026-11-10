@@ -1143,6 +1143,35 @@ describe('DELETE /api/projects/:id', () => {
     expect(stored.deletedAt).toBeInstanceOf(Date);
   });
 
+  it.each(['PENDING', 'ACTIVE'] as const)(
+    'refuses to delete a project whose contract is %s and leaves both untouched',
+    async (status) => {
+      const { client, project, contract } = await projectWithContract(status);
+
+      const res = await authed(client).delete(`/api/projects/${project.id}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        error: { message: 'Cannot delete a project with an unfinished contract' },
+      });
+
+      const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(stored.deletedAt).toBeNull();
+      const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+      expect(storedContract.status).toBe(status);
+    },
+  );
+
+  it('checks ownership before the contract: a stranger gets 403, not 409', async () => {
+    const { project } = await projectWithContract('ACTIVE');
+    const intruder = await makeClient();
+
+    const res = await authed(intruder).delete(`/api/projects/${project.id}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
+  });
+
   async function projectWithContract(status: 'PENDING' | 'ACTIVE' | 'COMPLETED') {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
