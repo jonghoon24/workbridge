@@ -2028,9 +2028,6 @@
               "name": {
                 "type": "string"
               },
-              "email": {
-                "type": "string"
-              },
               "companyName": {
                 "type": [
                   "string",
@@ -2047,7 +2044,6 @@
             "required": [
               "id",
               "name",
-              "email",
               "companyName",
               "profileImage"
             ]
@@ -2060,9 +2056,6 @@
                 "format": "uuid"
               },
               "name": {
-                "type": "string"
-              },
-              "email": {
                 "type": "string"
               },
               "skills": {
@@ -2081,7 +2074,6 @@
             "required": [
               "id",
               "name",
-              "email",
               "skills",
               "profileImage"
             ]

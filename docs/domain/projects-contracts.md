@@ -127,9 +127,9 @@ stateDiagram-v2
   안에서만 일어난다([milestones-payments.md](milestones-payments.md#승인과-계약-완료)).
 - 계약 금액은 저장된 그대로(소수일 수 있다) 두고, 마일스톤에 관한 모든 계산은 원 단위로 반올림한 값을 쓴다.
 - 계약의 종료일은 항상 마지막 마일스톤의 기한이다. 수락 때 정하고, 계획을 바꿀 때마다 다시 정한다.
-- 계약은 당사자(의뢰인, 프리랜서)만 본다. 계약 목록에는 상대방의 이름과 사진만 나오고 이메일은 없다. 계약 상세에
-  양측 이메일을 보여줄지는 정하지 않았다([#18]). 마일스톤의 결제에서 토스 결제 키(`paymentKey`)는 내보내지 않는다
-  (현재 다름: [#44]).
+- 계약은 당사자(의뢰인, 프리랜서)만 본다. 계약 목록과 계약 상세(서명 응답 포함) 모두 당사자의 이메일을
+  내보내지 않는다. 당사자 간 연락은 앱의 메시지로 한다. 플랫폼 밖 직거래를 막고 개인정보를 최소한으로 내보내기
+  위해서다. 마일스톤의 결제에서 토스 결제 키(`paymentKey`)는 내보내지 않는다(현재 다름: [#44]).
 
 ### 서명과 계획 교체
 
@@ -183,7 +183,6 @@ stateDiagram-v2
 [#14]: https://github.com/jonghoon24/workbridge/issues/14
 [#15]: https://github.com/jonghoon24/workbridge/issues/15
 [#16]: https://github.com/jonghoon24/workbridge/issues/16
-[#18]: https://github.com/jonghoon24/workbridge/issues/18
 [#38]: https://github.com/jonghoon24/workbridge/issues/38
 [#39]: https://github.com/jonghoon24/workbridge/issues/39
 [#43]: https://github.com/jonghoon24/workbridge/issues/43
