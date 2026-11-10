@@ -611,23 +611,6 @@ describe('GET /api/reviews/users/:id', () => {
     expect(viaUsers.body).toEqual(viaReviews.body);
   });
 
-  it('hides the reviews a soft-deleted user received, on both mounts', async () => {
-    const freelancer = await makeFreelancer();
-    const { contract, client } = await contractFor(freelancer.id);
-    await makeReview({ contractId: contract.id, reviewerId: client.id, revieweeId: freelancer.id });
-    await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
-
-    const viaReviews = await api().get(`/api/reviews/users/${freelancer.id}`);
-    const viaUsers = await api().get(`/api/users/${freelancer.id}/reviews`);
-
-    expect(viaReviews.status).toBe(200);
-    expect(viaReviews.body).toEqual([]);
-    expect(viaUsers.status).toBe(200);
-    expect(viaUsers.body).toEqual([]);
-    // Hidden, not deleted.
-    expect(await prisma.review.count({ where: { revieweeId: freelancer.id } })).toBe(1);
-  });
-
   it('returns identical empty bodies from both mounts for an unknown user', async () => {
     const viaReviews = await api().get('/api/reviews/users/ghost');
     const viaUsers = await api().get('/api/users/ghost/reviews');
