@@ -23,7 +23,7 @@ WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 제품 규칙�
 | 도메인 | auth, users, projects, applications, contracts, payments, reviews, notifications | milestones, settlements, payout account, contract list, conversations, portfolio/careers, recommendations, notification preferences |
 | 흐름 | `routes → controllers → lib` | `routes → controllers → services → lib` |
 | 로직 | 컨트롤러 안 | `src/services/*.service.ts`, 일부는 `src/lib/`(추천은 `lib/recommendations.ts`) |
-| 소프트 삭제된 호출자 | 다시 확인하지 않는다([#7](https://github.com/jonghoon24/workbridge/issues/7)) | `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |
+| 소프트 삭제된 호출자 | 쓰기 라우트는 `requireActiveUser`가 401. 읽기 라우트는 다시 확인하지 않는다(`GET /api/users/me`만 404) | `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |
 
 요청 검증은 양쪽 모두 zod 스키마(`src/schemas/`)와 `validate()`(`src/middlewares/validate.ts`)가 맡는다(400
 `<path>: <문장>`). 확장 라우트가 기존 라우터 파일에 들어간 곳도 있다(지급 계좌 `users.routes.ts`, 계약 목록 `contracts.routes.ts`,
@@ -39,11 +39,12 @@ WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 제품 규칙�
   확인한다. 프로젝트 등록은 `requireCompleteProfile`(`src/middlewares/profile.ts`)도 거친다.
 - 로그인과 AI 분석에는 `rateLimit`(`src/middlewares/rateLimit.ts`, 카운터는 `RateLimitCounter` 테이블)이 붙는다.
   `POST /api/internal/jobs/run`은 JWT 대신 `requireInternalToken`(`X-Internal-Token`)으로 지킨다.
-- 공개 핸들러 14개에서는 `req.user`가 `undefined`다. 목록은 `src/types/index.ts`에 있다.
+- 공개 핸들러 15개에서는 `req.user`가 `undefined`다. 목록은 `src/types/index.ts`에 있다.
 
 **에러 처리.** 컨트롤러와 서비스는 `throw new AppError(message, status)`(`src/lib/errors.ts`)로 던지고 `next(err)`로 넘긴다.
 `errorHandler`가 `{ error: { message } }`로 응답하고, 500일 때만 `logger.error`로 남기며 `SENTRY_DSN`이 있으면
-Sentry(`src/lib/sentry.ts`)로 보낸다.
+Sentry(`src/lib/sentry.ts`)로 보낸다. 응답은 요청당 한 번이다. 응답을 보낸 뒤에 넘어온 오류는 다시 쓰지 않고
+`logger.error`로 남긴 뒤 Express 기본 핸들러에 넘겨 연결을 닫는다.
 
 ### API 계약: OpenAPI
 

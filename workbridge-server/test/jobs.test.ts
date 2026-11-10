@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Job, Prisma } from '@prisma/client';
 
 import { api } from './helpers/api';
-import { prisma } from './helpers/db';
+import { prisma, sideClient } from './helpers/db';
 import { atDaysFromNow, jobsOf, runJobs } from './helpers/jobs';
 import { daysFromNow, makeApplication, makeClient, makeFreelancer, makeProject } from './helpers/factories';
 import { PermanentJobError } from '../src/jobs/errors';
@@ -261,17 +261,23 @@ describe('runDueJobs', () => {
 
     // Another runner is mid-claim on `locked`: hold its row lock in an open transaction. With a
     // plain FOR UPDATE, runDueJobs would block until this transaction ends — i.e. never, since
-    // the transaction is waiting for runDueJobs.
-    await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT "id" FROM "Job" WHERE "id" = ${locked.id} FOR UPDATE`;
+    // the transaction is waiting for runDueJobs. The holder is on its own pool (`sideClient`), so
+    // it never takes one of the app's connections that `runDueJobs` needs.
+    const side = sideClient();
+    try {
+      await side.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT "id" FROM "Job" WHERE "id" = ${locked.id} FOR UPDATE`;
 
-      const outcome = await Promise.race([
-        runDueJobs({ types: [TYPE] }),
-        new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 2000)),
-      ]);
+        const outcome = await Promise.race([
+          runDueJobs({ types: [TYPE] }),
+          new Promise<'blocked'>((resolve) => setTimeout(() => resolve('blocked'), 2000)),
+        ]);
 
-      expect(outcome).toMatchObject({ claimed: 2, succeeded: 2 });
-    }, { timeout: 10_000 });
+        expect(outcome).toMatchObject({ claimed: 2, succeeded: 2 });
+      }, { timeout: 10_000 });
+    } finally {
+      await side.$disconnect();
+    }
 
     expect((await reload(locked)).status).toBe('PENDING');
     for (const job of free) expect((await reload(job)).status).toBe('SUCCEEDED');
@@ -546,8 +552,9 @@ describe('POST /api/internal/jobs/run', () => {
       const unmatched = await api().post('/api/internal/jobs/nope').send({});
 
       expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'Not found' } });
       expect(res.headers['content-type']).toBe(unmatched.headers['content-type']);
-      expect(res.text).toBe(unmatched.text.replace('/api/internal/jobs/nope', '/api/internal/jobs/run'));
+      expect(res.text).toBe(unmatched.text);
       expect(await prisma.job.count()).toBe(0);
     });
   });

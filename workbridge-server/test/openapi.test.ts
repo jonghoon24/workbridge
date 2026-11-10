@@ -113,18 +113,18 @@ describe('GET /api/openapi.json and GET /api/docs', () => {
     expect(res.text).toContain("url: '/api/openapi.json'");
   });
 
-  it.each(['/api/openapi.json', '/api/docs'])('%s is the plain HTML 404 in production', async (path) => {
+  it.each(['/api/openapi.json', '/api/docs'])('%s is the same JSON 404 as an unmatched path in production', async (path) => {
     process.env.VERCEL_ENV = 'production';
 
     const res = await api().get(path);
 
     expect(res.status).toBe(404);
-    expect(res.headers['content-type']).toMatch(/text\/html/);
-    expect(res.text).toContain(`Cannot GET ${path}`);
+    expect(res.headers['content-type']).toMatch(/application\/json/);
+    expect(res.body).toEqual({ error: { message: 'Not found' } });
   });
 
   it.each(['/api/openapi.json', '/api/docs'])(
-    '%s is the plain HTML 404 when VERCEL_ENV is unset and NODE_ENV is production',
+    '%s is the same JSON 404 as an unmatched path when VERCEL_ENV is unset and NODE_ENV is production',
     async (path) => {
       delete process.env.VERCEL_ENV;
       process.env.NODE_ENV = 'production';
@@ -132,8 +132,8 @@ describe('GET /api/openapi.json and GET /api/docs', () => {
       const res = await api().get(path);
 
       expect(res.status).toBe(404);
-      expect(res.headers['content-type']).toMatch(/text\/html/);
-      expect(res.text).toContain(`Cannot GET ${path}`);
+      expect(res.headers['content-type']).toMatch(/application\/json/);
+      expect(res.body).toEqual({ error: { message: 'Not found' } });
     },
   );
 
@@ -208,8 +208,8 @@ describe('the response check', () => {
     expect(conformanceError(fakeResponse('GET', '/health', 500, { message: 'boom' }))).toMatch(/error envelope/);
   });
 
-  it('skips a path no route documents — the HTML 404 of an unknown path', () => {
-    expect(conformanceError(fakeResponse('GET', '/api/nope', 404, '<pre>Cannot GET /api/nope</pre>', 'text/html'))).toBeNull();
+  it('skips a path no route documents — the 404 of an unknown path', () => {
+    expect(conformanceError(fakeResponse('GET', '/api/nope', 404, { error: { message: 'Not found' } }))).toBeNull();
   });
 
   it('matches the most literal route, as the routers do', () => {

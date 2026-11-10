@@ -129,6 +129,12 @@ async function settleFreelancer(
   now: Date,
 ): Promise<boolean> {
   return prisma.$transaction(async (tx) => {
+    // The freelancer's user row first, as the payout decision takes it: User → Settlement in both.
+    // Without it the batch locks the settlement and then waits on the user row (its second UPDATE
+    // of the settlement row re-checks the `freelancerId` foreign key), while a payout holding the
+    // user row waits on the settlement — a deadlock.
+    await lockUserRow(tx, freelancerId);
+
     // Insert-or-ignore on (freelancerId, periodStart), then read — never Prisma's upsert.
     const inserted = await tx.settlement.createMany({
       data: [{
