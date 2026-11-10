@@ -99,8 +99,10 @@ export async function getProjects(_req: Request, res: Response, next: NextFuncti
       limit: limitNum,
     } = res.locals.query as ProjectListQuery;
 
+    // A project whose client is soft-deleted is hidden like a deleted project (docs/domain/README.md).
     const where: Prisma.ProjectWhereInput = {
       deletedAt: null,
+      client: { deletedAt: null },
     };
 
     if (status !== 'ALL') {
@@ -195,7 +197,7 @@ export async function getProjectById(req: Request, res: Response, next: NextFunc
     await closeExpiredOpenProjects();
 
     const project = await prisma.project.findFirst({
-      where: { id: req.params.id, deletedAt: null },
+      where: { id: req.params.id, deletedAt: null, client: { deletedAt: null } },
       include: {
         client: {
           select: { id: true, name: true, companyName: true, profileImage: true, businessField: true },

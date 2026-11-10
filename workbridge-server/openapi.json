@@ -4282,7 +4282,7 @@
           "Users"
         ],
         "summary": "사용자가 받은 리뷰",
-        "description": "`GET /api/reviews/users/{id}`와 같다. 최신순이고, 없는 사용자도 빈 배열이다.",
+        "description": "`GET /api/reviews/users/{id}`와 같다. 최신순이고, 없거나 삭제된 사용자는 빈 배열이다.",
         "security": [],
         "parameters": [
           {
@@ -5563,7 +5563,7 @@
           "Recommendations"
         ],
         "summary": "나에게 맞는 프로젝트(프리랜서)",
-        "description": "기술·카테고리로 점수를 매긴 모집 중인 프로젝트. 이미 지원한 프로젝트는 빠진다. 읽기 전용(수명주기 스윕 없음).",
+        "description": "기술·카테고리로 점수를 매긴 모집 중인 프로젝트. 이미 지원한 프로젝트와 의뢰인이 삭제된 프로젝트는 빠진다. 읽기 전용(수명주기 스윕 없음).",
         "security": [
           {
             "bearerAuth": []
@@ -5725,7 +5725,7 @@
           "Projects"
         ],
         "summary": "프로젝트 목록",
-        "description": "기본은 모집 중(`OPEN`)인 프로젝트의 최신순, 한 페이지 10개(최대 50). **행을 쓴다:** 응답 전에 지연 수명주기 스윕을 돌린다 — 모집 시작일이 지난 `UPCOMING`은 `OPEN`, 마감이 지난 `UPCOMING`·`OPEN`은 `CLOSED`로 바꾸고 그 프로젝트의 대기 중인 지원을 거절한다.",
+        "description": "기본은 모집 중(`OPEN`)인 프로젝트의 최신순, 한 페이지 10개(최대 50). 삭제된 프로젝트와 의뢰인이 삭제된 프로젝트는 빠진다. **행을 쓴다:** 응답 전에 지연 수명주기 스윕을 돌린다 — 모집 시작일이 지난 `UPCOMING`은 `OPEN`, 마감이 지난 `UPCOMING`·`OPEN`은 `CLOSED`로 바꾸고 그 프로젝트의 대기 중인 지원을 거절한다.",
         "security": [],
         "parameters": [
           {
@@ -6259,7 +6259,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트",
             "content": {
               "application/json": {
                 "schema": {
@@ -6999,7 +6999,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트",
             "content": {
               "application/json": {
                 "schema": {
@@ -9917,7 +9917,7 @@
           "Reviews"
         ],
         "summary": "사용자가 받은 리뷰",
-        "description": "최신순이고, 없는 사용자도 빈 배열이다.",
+        "description": "최신순이고, 없거나 삭제된 사용자는 빈 배열이다(삭제된 사용자가 받은 리뷰는 숨긴다).",
         "security": [],
         "parameters": [
           {

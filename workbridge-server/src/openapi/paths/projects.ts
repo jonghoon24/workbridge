@@ -32,6 +32,8 @@ import {
 const tags = ['Projects'];
 
 const PROJECT_NOT_FOUND = notFound('Project not found', '없거나 삭제된 프로젝트');
+/** Public reads also hide a project whose client is soft-deleted. */
+const PUBLIC_PROJECT_NOT_FOUND = notFound('Project not found', '없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트');
 const projectId = pathParams({ id: '프로젝트 ID' });
 const SCHEDULE = '`recruitmentStartDate cannot be after deadline` — 모집 시작일이 마감일보다 늦음';
 
@@ -47,7 +49,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     operationId: 'getProjects',
     tags,
     summary: '프로젝트 목록',
-    description: `기본은 모집 중(\`OPEN\`)인 프로젝트의 최신순, 한 페이지 10개(최대 50). ${LAZY_SWEEP}`,
+    description: `기본은 모집 중(\`OPEN\`)인 프로젝트의 최신순, 한 페이지 10개(최대 50). 삭제된 프로젝트와 의뢰인이 삭제된 프로젝트는 빠진다. ${LAZY_SWEEP}`,
     security: publicRoute,
     request: { query: projectListQuery },
     responses: {
@@ -122,7 +124,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     description: `AI 단가 분석 결과가 있으면 함께 준다. ${LAZY_SWEEP}`,
     security: publicRoute,
     request: { params: projectId },
-    responses: { 200: ok(projectDetail), ...errors(PROJECT_NOT_FOUND) },
+    responses: { 200: ok(projectDetail), ...errors(PUBLIC_PROJECT_NOT_FOUND) },
   });
 
   registry.registerPath({

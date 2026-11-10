@@ -184,7 +184,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     operationId: 'getUserReviewsByUser',
     tags,
     summary: '사용자가 받은 리뷰',
-    description: '`GET /api/reviews/users/{id}`와 같다. 최신순이고, 없는 사용자도 빈 배열이다.',
+    description: '`GET /api/reviews/users/{id}`와 같다. 최신순이고, 없거나 삭제된 사용자는 빈 배열이다.',
     security: publicRoute,
     request: { params: pathParams({ id: '사용자 ID' }) },
     responses: {

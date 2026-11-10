@@ -1207,18 +1207,15 @@ describe('a contract whose project is soft-deleted, on the expansion routes', ()
 });
 
 // ---------------------------------------------------------------------------------------------
-// Review lists for a soft-deleted user — an open product question
+// Review lists for a soft-deleted user
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `getUserReviews` filters on `revieweeId` alone, with no `deletedAt` check on either party. So
- * a user who 404s at `GET /api/users/:id` still has their received reviews served — including
- * the reviewer's name and avatar for a soft-deleted reviewer.
+ * The reviews a soft-deleted user received are hidden with their profile: the public list is
+ * empty, as for an unknown user (`docs/domain/README.md`, 소프트 삭제). The rows stay.
  *
- * This is the same open question as the joined-owner case pinned in `projects-list.test.ts`:
- * the soft-delete rule is written about the record being read, and here the soft-deleted user
- * is a *join target*, not the record. The reviews themselves are not deleted. If the question is
- * decided the strict way, these three tests flip to expecting `[]` (or a 404).
+ * Reviews a soft-deleted user *wrote* are a different case the decision did not cover: they still
+ * appear in the reviewee's list with the stored reviewer snippet (pinned by the last test).
  */
 describe('review lists for a soft-deleted user', () => {
   async function reviewedPair() {
@@ -1251,19 +1248,18 @@ describe('review lists for a soft-deleted user', () => {
     return { client, freelancer, clientReview, freelancerReview };
   }
 
-  it('GET /api/users/:id/reviews still returns reviews received by a soft-deleted user', async () => {
+  it('GET /api/users/:id/reviews hides the reviews received by a soft-deleted user', async () => {
     const { freelancer, clientReview } = await reviewedPair();
     await softDelete(freelancer.id);
 
-    // The profile itself is gone …
+    // The profile is gone, and so is the review list …
     expect((await api().get(`/api/users/${freelancer.id}`)).status).toBe(404);
-
-    // … but the review list is not.
     const res = await api().get(`/api/users/${freelancer.id}/reviews`);
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0]).toMatchObject({ id: clientReview.id, rating: 5 });
+    expect(res.body).toEqual([]);
+    // … while the review row itself is kept.
+    expect(await prisma.review.findUnique({ where: { id: clientReview.id } })).not.toBeNull();
   });
 
   it('GET /api/reviews/users/:id behaves identically — both mount points share the handler', async () => {
@@ -1273,7 +1269,9 @@ describe('review lists for a soft-deleted user', () => {
     const viaUsers = await api().get(`/api/users/${freelancer.id}/reviews`);
     const viaReviews = await api().get(`/api/reviews/users/${freelancer.id}`);
 
+    expect(viaReviews.status).toBe(200);
     expect(viaReviews.status).toBe(viaUsers.status);
+    expect(viaReviews.body).toEqual([]);
     expect(viaReviews.body).toEqual(viaUsers.body);
   });
 

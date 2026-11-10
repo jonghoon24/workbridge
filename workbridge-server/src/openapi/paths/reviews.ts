@@ -40,7 +40,7 @@ export function registerReviewPaths(registry: OpenAPIRegistry): void {
     operationId: 'getUserReviews',
     tags,
     summary: '사용자가 받은 리뷰',
-    description: '최신순이고, 없는 사용자도 빈 배열이다.',
+    description: '최신순이고, 없거나 삭제된 사용자는 빈 배열이다(삭제된 사용자가 받은 리뷰는 숨긴다).',
     security: publicRoute,
     request: { params: pathParams({ id: '사용자 ID' }) },
     responses: { 200: ok(z.array(receivedReview)) },
