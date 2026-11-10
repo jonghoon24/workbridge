@@ -110,7 +110,8 @@ stateDiagram-v2
 6. 수락된 프리랜서에게 `APPLICATION_ACCEPTED`, 거절된 지원자마다 `APPLICATION_REJECTED`.
 7. 계약의 대화방과 참여자 둘을 만들고 `CONTRACT_CREATED` 시스템 메시지를 남긴다.
 
-같은 프로젝트의 서로 다른 지원을 동시에 수락하면 하나만 성공하고 나머지는 충돌로 끝난다(현재 다름: [#15]).
+같은 프로젝트의 서로 다른 지원을 동시에 수락하면 하나만 성공하고 나머지는 충돌로 끝난다(수락은 프로젝트 행을 먼저
+잠가 한 번에 하나씩 진행된다).
 거절은 지원을 `REJECTED`로 바꾸고 프리랜서에게 알리는 것이 한 트랜잭션이다.
 
 ## 계약
@@ -182,7 +183,6 @@ stateDiagram-v2
 | 신선도: 등록 7일까지 10, 30일까지 선형 감소, 이후 0 | 10 |
 | 마감까지 3일 이상 남음 | 10 |
 
-[#15]: https://github.com/jonghoon24/workbridge/issues/15
 [#39]: https://github.com/jonghoon24/workbridge/issues/39
 [#43]: https://github.com/jonghoon24/workbridge/issues/43
 [#46]: https://github.com/jonghoon24/workbridge/issues/46

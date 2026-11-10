@@ -176,6 +176,16 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
       let result;
       try {
         result = await prisma.$transaction(async (tx) => {
+          // Lock the project row first. Accepts of one project then run one at a time: without
+          // it, two accepts each locked their own application and then waited on the other's to
+          // reject it — a deadlock (40P01, a 500). The loser now waits, then hits the unique
+          // contract below (409). A project deleted while this waited is gone (404).
+          const locked = await tx.$queryRaw<{ id: string }[]>`
+            SELECT "id" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR UPDATE`;
+          if (locked.length === 0) {
+            throw new AppError('Project not found', 404);
+          }
+
           const rejectedApplications = await tx.application.findMany({
             where: { projectId, id: { not: appId }, status: 'PENDING' },
             select: { freelancerId: true },
