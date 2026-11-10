@@ -60,7 +60,7 @@ stateDiagram-v2
 
 프리랜서만 쓴다. 추가와 해제는 멱등이다. 이미 있는 북마크를 다시 추가해도, 없는 북마크를 해제해도 성공이다. 동시에
 같은 북마크를 추가해도 하나만 남고 오류가 나지 않는다(현재 다름: [#39]). 프로젝트가 없거나 삭제됐으면
-추가뿐 아니라 조회·해제도 404다(현재 다름: [#14]). 내 북마크 목록에서 삭제된 프로젝트는 빠진다.
+추가뿐 아니라 조회·해제도 404다. 내 북마크 목록에서 삭제된 프로젝트는 빠진다.
 
 ## AI 단가 분석
 
@@ -180,7 +180,6 @@ stateDiagram-v2
 | 마감까지 3일 이상 남음 | 10 |
 
 [#6]: https://github.com/jonghoon24/workbridge/issues/6
-[#14]: https://github.com/jonghoon24/workbridge/issues/14
 [#15]: https://github.com/jonghoon24/workbridge/issues/15
 [#16]: https://github.com/jonghoon24/workbridge/issues/16
 [#18]: https://github.com/jonghoon24/workbridge/issues/18

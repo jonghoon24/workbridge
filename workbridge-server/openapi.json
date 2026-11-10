@@ -5977,7 +5977,7 @@
           "Projects"
         ],
         "summary": "북마크 여부(프리랜서)",
-        "description": "없는 프로젝트도 `bookmarked: false`다.",
+        "description": "프로젝트가 없거나 삭제됐으면 404다.",
         "security": [
           {
             "bearerAuth": []
@@ -6026,6 +6026,16 @@
           },
           "403": {
             "description": "권한 없음\n\n- `Insufficient permissions` — FREELANCER 역할이 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
             "content": {
               "application/json": {
                 "schema": {
@@ -6120,7 +6130,7 @@
           "Projects"
         ],
         "summary": "북마크 해제(프리랜서)",
-        "description": "멱등이다. 북마크가 없어도 200.",
+        "description": "멱등이다. 프로젝트가 있으면 북마크가 없어도 200. 프로젝트가 없거나 삭제됐으면 404다.",
         "security": [
           {
             "bearerAuth": []
@@ -6172,6 +6182,16 @@
           },
           "403": {
             "description": "권한 없음\n\n- `Insufficient permissions` — FREELANCER 역할이 아님",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
             "content": {
               "application/json": {
                 "schema": {

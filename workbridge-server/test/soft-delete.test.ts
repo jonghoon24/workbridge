@@ -613,10 +613,7 @@ async function deletedProjectFixture(): Promise<DeletedProjectFixture> {
   };
 }
 
-/**
- * Every route that resolves a project by id. `GET`/`DELETE /:id/bookmark` are deliberately
- * absent: they do not check the project at all (issue #14).
- */
+/** Every route that resolves a project by id. */
 const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) => PromiseLike<Sent> }[] = [
   {
     label: 'GET /api/projects/:id',
@@ -659,8 +656,16 @@ const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) =
         .send({ status: 'ACCEPTED' }),
   },
   {
+    label: 'GET /api/projects/:id/bookmark',
+    send: (fx) => authed(fx.otherFreelancer).get(`/api/projects/${fx.projectId}/bookmark`),
+  },
+  {
     label: 'POST /api/projects/:id/bookmark',
     send: (fx) => authed(fx.otherFreelancer).post(`/api/projects/${fx.projectId}/bookmark`),
+  },
+  {
+    label: 'DELETE /api/projects/:id/bookmark',
+    send: (fx) => authed(fx.otherFreelancer).delete(`/api/projects/${fx.projectId}/bookmark`),
   },
 ];
 
