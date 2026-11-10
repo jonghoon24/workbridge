@@ -2,17 +2,20 @@
 // so it is not transpiled. The package has no `"type": "module"`, which means `import`
 // syntax here would be a SyntaxError.
 //
-// It also does not load dotenv: run it through `npm run db:seed` / `npx prisma db seed` (Prisma
-// loads `.env`), or export DATABASE_URL and DIRECT_URL yourself before `node prisma/seed.js`.
+// It loads `workbridge-server/.env` with dotenv, which never overrides a variable that is already set
+// (CI and scripts/e2e.sh export theirs). Prisma reads `.env` for its own DATABASE_URL, but does not put
+// other variables into `process.env` — the seed needs PAYOUT_ACCOUNT_ENCRYPTION_KEY from there too.
 //
 // Sample dataset for local development and the shared environments (docs/SEED_DATA.md describes it). Every date is computed from the
 // moment the seed runs, so OPEN projects always have a future deadline and settlement weeks line
 // up with the real calendar. The rows follow the same invariants the services keep (docs/domain/):
 // milestone sums, sequential funding, one payment per funded milestone, fee math, settlement
 // sums, strictly increasing message times, and one system message per contract/milestone event.
+require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const { encryptAccountNumber } = require('./payoutAccountCrypto');
 
 const prisma = new PrismaClient();
 
@@ -465,6 +468,9 @@ async function seedConversation(contract, entries, reads = {}) {
 async function main() {
   console.log('Seeding database...');
 
+  // Fail before wiping anything when the payout account key is missing or malformed.
+  encryptAccountNumber('0000000000', 'key-check', process.env.PAYOUT_ACCOUNT_ENCRYPTION_KEY);
+
   // Clean existing data (역순으로 삭제)
   // Notification must be deleted first: it holds a `userId` foreign key, so the
   // `user.deleteMany()` below fails with Prisma P2003 if any notification rows survive.
@@ -747,7 +753,7 @@ async function main() {
       budget: 6000000,
       deadline: endOfKstDay(inWeek(4, 0, 0)),
       requiredSkills: ['React', 'TypeScript', 'Node.js', 'Prisma'],
-      status: 'CLOSED',
+      status: 'IN_PROGRESS',
       clientId: client3.id,
       createdAt: inWeek(5, 1, 10),
     },
@@ -779,7 +785,7 @@ async function main() {
       budget: 4500000,
       deadline: endOfKstDay(inWeek(4, 2, 0)),
       requiredSkills: ['Figma', 'React', 'Next.js', 'Tailwind CSS'],
-      status: 'CLOSED',
+      status: 'IN_PROGRESS',
       clientId: client2.id,
       createdAt: inWeek(5, 2, 10),
     },
@@ -795,7 +801,7 @@ async function main() {
       budget: 8000000,
       deadline: endOfKstDay(inWeek(3, 0, 0)),
       requiredSkills: ['Python', 'PyTorch', 'SQL', 'FastAPI'],
-      status: 'CLOSED',
+      status: 'IN_PROGRESS',
       clientId: client1.id,
       createdAt: inWeek(4, 0, 10),
     },
@@ -998,15 +1004,23 @@ async function main() {
 
   // ─── Payout accounts ───────────────────────────────
   // 정하은·윤서아는 계좌가 없다. 정하은의 정산이 보류(ON_HOLD)된 이유다.
-  const accountHan = await prisma.payoutAccount.create({
-    data: { userId: freelancer3.id, bankCode: '004', accountNumber: '94820201234567', holderName: '한도윤', createdAt: inWeek(6, 2, 20) },
-  });
-  const accountPark = await prisma.payoutAccount.create({
-    data: { userId: freelancer1.id, bankCode: '090', accountNumber: '3333012345678', holderName: '박지윤', createdAt: inWeek(9, 0, 21) },
-  });
-  const accountSong = await prisma.payoutAccount.create({
-    data: { userId: freelancer5.id, bankCode: '088', accountNumber: '110123456789', holderName: '송민재', createdAt: inWeek(3, 1, 22) },
-  });
+  // Account numbers are stored encrypted with the target environment's key, as the server stores them
+  // (src/lib/payoutAccountCrypto.ts). `account.accountNumber` below stays the plain number for the masks.
+  const payoutAccount = async (user, bankCode, accountNumber, holderName, createdAt) => {
+    const row = await prisma.payoutAccount.create({
+      data: {
+        userId: user.id,
+        bankCode,
+        accountNumber: encryptAccountNumber(accountNumber, user.id, process.env.PAYOUT_ACCOUNT_ENCRYPTION_KEY),
+        holderName,
+        createdAt,
+      },
+    });
+    return { ...row, accountNumber };
+  };
+  const accountHan = await payoutAccount(freelancer3, '004', '94820201234567', '한도윤', inWeek(6, 2, 20));
+  const accountPark = await payoutAccount(freelancer1, '090', '3333012345678', '박지윤', inWeek(9, 0, 21));
+  const accountSong = await payoutAccount(freelancer5, '088', '110123456789', '송민재', inWeek(3, 1, 22));
 
   // ─── project12: 오래전 완료 계약 (김서준 ↔ 박지윤) ────
   // Both milestones approved in week 5, settled together (one settlement, two items) and paid.
