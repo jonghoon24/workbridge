@@ -1,22 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { storageUpload } = vi.hoisted(() => ({ storageUpload: vi.fn() }));
-
-// No test may reach Supabase; attachments are stored through this stub.
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: () => ({
-    storage: {
-      from: () => ({
-        upload: storageUpload,
-        getPublicUrl: (path: string) => ({
-          data: { publicUrl: `https://test.supabase.co/storage/v1/object/public/workbridge/${path}` },
-        }),
-      }),
-    },
-  }),
-}));
+// No test may reach Supabase; attachments go through this in-memory storage.
+vi.mock('@supabase/supabase-js', async () => {
+  const { storage } = await import('./helpers/storageFake.js');
+  return { createClient: () => storage.client };
+});
 
 import { authed } from './helpers/api';
+import { storage } from './helpers/storageFake';
+import { ATTACHMENT_BUCKET, pdf, png, uploadFiles } from './helpers/attachments';
 import { prisma } from './helpers/db';
 import { makeContractScenario, makeMessage } from './helpers/factories';
 import { postSystemMessage } from '../src/services/messaging.service';
@@ -28,9 +20,10 @@ import { DAY_MS, MINUTE_MS } from '../src/lib/time';
  */
 
 beforeEach(() => {
-  storageUpload.mockReset();
-  storageUpload.mockImplementation(async (path: string) => ({ data: { path }, error: null }));
+  storage.reset();
 });
+
+const files = () => storage.bucket(ATTACHMENT_BUCKET);
 
 type Scenario = Awaited<ReturnType<typeof makeContractScenario>>;
 type User = Scenario['client'];
@@ -273,34 +266,40 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(participants.every((p) => p.lastReadAt === null)).toBe(true);
   });
 
-  it('stores files under messages/<conversationId>/ and restores Korean names', async () => {
+  it('attaches uploaded files: rows keep the storage key, the response carries signed URLs', async () => {
     const { freelancer, conversation } = await makeContractScenario();
+    const { ids, keys } = await uploadFiles(storage, freelancer, `/api/conversations/${conversation.id}`, [
+      pdf('최종 시안.pdf', 8),
+      png('shot.png', 3),
+    ]);
 
-    const res = await send(freelancer, conversation.id)
-      .field('body', '시안 첨부합니다')
-      .attach('files', Buffer.from('%PDF-1.4'), { filename: '최종 시안.pdf', contentType: 'application/pdf' })
-      .attach('files', Buffer.from('png'), { filename: 'shot.png', contentType: 'image/png' });
+    const res = await send(freelancer, conversation.id).send({ body: '시안 첨부합니다', uploadIds: ids });
 
     expect(res.status).toBe(201);
     const { attachments } = res.body.message;
-    expect(attachments.map((a: { fileName: string }) => a.fileName).sort()).toEqual(['shot.png', '최종 시안.pdf']);
+    expect(attachments.map((a: { fileName: string }) => a.fileName)).toEqual(['최종 시안.pdf', 'shot.png']);
     expect(Object.keys(attachments[0]).sort()).toEqual(['createdAt', 'fileName', 'id', 'mimeType', 'size', 'url']);
-    expect(attachments.find((a: { fileName: string }) => a.fileName === '최종 시안.pdf'))
-      .toMatchObject({ mimeType: 'application/pdf', size: 8 });
-    const keys = storageUpload.mock.calls.map(([path]) => path as string);
-    expect(keys).toHaveLength(2);
-    for (const key of keys) {
-      expect(key).toMatch(new RegExp(`^messages/${conversation.id}/[0-9a-f-]{36}\\.(pdf|png)$`));
-    }
-    for (const a of attachments) expect(a.url).toMatch(/^https:\/\/test\.supabase\.co\/.+\/messages\//);
-    expect(await prisma.messageAttachment.count()).toBe(2);
+    expect(attachments[0]).toMatchObject({ mimeType: 'application/pdf', size: 8 });
+    for (const key of keys) expect(key).toMatch(new RegExp(`^messages/${conversation.id}/[0-9a-f-]{36}\\.(pdf|png)$`));
+    expect(attachments.map((a: { url: string }) => a.url)).toEqual(
+      keys.map((key) => expect.stringContaining(`/object/sign/${ATTACHMENT_BUCKET}/${key}?`)),
+    );
+    // Keyed by name, not ordered by it: Hangul vs Latin order depends on the database collation.
+    const stored = await prisma.messageAttachment.findMany();
+    expect(Object.fromEntries(stored.map((a) => [a.fileName, [a.storageKey, a.url]]))).toEqual({
+      '최종 시안.pdf': [keys[0], null],
+      'shot.png': [keys[1], null],
+    });
+    expect(await prisma.attachmentUpload.count()).toBe(0);
   });
 
-  it('accepts files with no body, stored as an empty body', async () => {
+  it('accepts uploads with no body, stored as an empty body', async () => {
     const { client, conversation } = await makeContractScenario();
+    const { ids } = await uploadFiles(storage, client, `/api/conversations/${conversation.id}`, [
+      { fileName: '메모.txt', mimeType: 'text/plain', size: 1 },
+    ]);
 
-    const res = await send(client, conversation.id)
-      .attach('files', Buffer.from('a'), { filename: '메모.txt', contentType: 'text/plain' });
+    const res = await send(client, conversation.id).send({ uploadIds: ids });
 
     expect(res.status).toBe(201);
     expect(res.body.message).toMatchObject({ body: '', attachments: [{ fileName: '메모.txt' }] });
@@ -331,36 +330,18 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(await prisma.message.count()).toBe(0);
   });
 
-  it('applies the attachment upload policy before validation: 413 oversized, 400 type and count', async () => {
+  it('a storage failure while checking the uploads is a 502 and writes nothing — no message, no job', async () => {
     const { client, conversation } = await makeContractScenario();
-    const big = Buffer.alloc(10 * 1024 * 1024 + 1, 1);
+    const { ids } = await uploadFiles(storage, client, `/api/conversations/${conversation.id}`, [pdf()]);
+    files().info.mockResolvedValueOnce({ data: null, error: Object.assign(new Error('bucket down'), { status: 503, statusCode: '503' }) });
 
-    const tooBig = await send(client, conversation.id)
-      .attach('files', big, { filename: 'big.zip', contentType: 'application/zip' });
-    const badType = await send(client, conversation.id)
-      .attach('files', Buffer.from('x'), { filename: 'run.exe', contentType: 'application/x-msdownload' });
-    let six = send(client, conversation.id);
-    for (let i = 0; i < 6; i += 1) six = six.attach('files', Buffer.from('x'), { filename: `${i}.txt`, contentType: 'text/plain' });
-    const tooMany = await six;
-
-    expect(tooBig.status).toBe(413);
-    expect(badType.status).toBe(400);
-    expect(tooMany.status).toBe(400);
-    expect(await prisma.message.count()).toBe(0);
-    expect(storageUpload).not.toHaveBeenCalled();
-  });
-
-  it('a storage failure is a 502 and writes nothing — no message, no job', async () => {
-    const { client, conversation } = await makeContractScenario();
-    storageUpload.mockResolvedValue({ data: null, error: new Error('bucket down') });
-
-    const res = await send(client, conversation.id)
-      .field('body', 'x')
-      .attach('files', Buffer.from('a'), { filename: 'a.txt', contentType: 'text/plain' });
+    const res = await send(client, conversation.id).send({ body: 'x', uploadIds: ids });
 
     expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: { message: 'File storage is unavailable' } });
     expect(await prisma.message.count()).toBe(0);
     expect(await prisma.job.count()).toBe(0);
+    expect(await prisma.attachmentUpload.count()).toBe(1);
     expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).lastMessageAt).toBeNull();
   });
 
@@ -369,13 +350,14 @@ describe('POST /api/conversations/:id/messages', () => {
     await prisma.$executeRawUnsafe(`ALTER TABLE "Job" ADD CONSTRAINT "tmp_no_jobs" CHECK (false) NOT VALID`);
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const res = await send(client, conversation.id)
-        .field('body', 'x')
-        .attach('files', Buffer.from('a'), { filename: 'a.txt', contentType: 'text/plain' });
+      const { ids } = await uploadFiles(storage, client, `/api/conversations/${conversation.id}`, [pdf()]);
+      const res = await send(client, conversation.id).send({ body: 'x', uploadIds: ids });
 
       expect(res.status).toBe(500);
       expect(await prisma.message.count()).toBe(0);
       expect(await prisma.messageAttachment.count()).toBe(0);
+      // The upload was not consumed either: it can still be attached.
+      expect(await prisma.attachmentUpload.count()).toBe(1);
       expect((await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } })).lastMessageAt).toBeNull();
     } finally {
       logs.mockRestore();
@@ -402,15 +384,16 @@ describe('POST /api/conversations/:id/messages', () => {
       });
 
       const asClient = await send(client, conversation.id).send({ body: 'still there?' });
-      const asFreelancer = await send(freelancer, conversation.id)
-        .attach('files', Buffer.from('a'), { filename: 'a.txt', contentType: 'text/plain' });
+      const asFreelancer = await authed(freelancer)
+        .post(`/api/conversations/${conversation.id}/uploads`)
+        .send({ files: [pdf()] });
 
       for (const res of [asClient, asFreelancer]) {
         expect(res.status).toBe(409);
         expect(res.body).toEqual({ error: { message: 'This conversation is closed' } });
       }
       expect(await prisma.message.count()).toBe(0);
-      expect(storageUpload).not.toHaveBeenCalled();
+      expect(files().createSignedUploadUrl).not.toHaveBeenCalled();
     });
 
     it.each(['PENDING', 'ACTIVE'] as const)('409s to a soft-deleted counterpart on a %s contract', async (status) => {
@@ -522,7 +505,6 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
     expect(stored.deletedAt).not.toBeNull();
     expect(stored.body).toBe('잘못 보냄'); // soft: the row stays
     expect(await prisma.messageAttachment.count()).toBe(1);
-    expect(storageUpload).not.toHaveBeenCalled();
     const after = await prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
     expect(after.lastMessageAt?.getTime()).toBe(lastMessageAt?.getTime());
     // The other side sees the tombstone too.

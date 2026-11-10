@@ -89,6 +89,13 @@ export const env = {
   get JOB_POLL_INTERVAL_MS(): string {
     return withDefault('JOB_POLL_INTERVAL_MS', '5000');
   },
+  /**
+   * The **private** Supabase Storage bucket of message and milestone-submission attachments
+   * (`lib/attachmentStorage.ts`). Profile and portfolio images stay in the public `workbridge` bucket.
+   */
+  get SUPABASE_ATTACHMENT_BUCKET(): string {
+    return withDefault('SUPABASE_ATTACHMENT_BUCKET', 'workbridge-attachments');
+  },
   /** The `From` of every email. */
   get MAIL_FROM(): string {
     return withDefault('MAIL_FROM', 'WorkBridge <no-reply@workbridge.local>');

@@ -13,8 +13,17 @@ import { renderTemplate } from '../lib/notifications/templates';
 import type { TemplateType, TemplateVars } from '../lib/notifications/templates';
 import { enqueueJob } from '../jobs/queue';
 import { postSystemMessage } from './messaging.service';
-import { storeUploadedFile } from '../middlewares/attachmentUpload';
-import type { StoredFile } from '../middlewares/attachmentUpload';
+import {
+  assertRequestedFiles,
+  attachmentRows,
+  attachmentSelect,
+  consumeUploads,
+  downloadUrlFor,
+  issueUploads,
+  presignAttachments,
+  verifyUploads,
+} from './attachments.service';
+import type { RequestedFile } from './attachments.service';
 import type { PrismaTransactionClient } from '../types/index';
 
 /**
@@ -58,9 +67,12 @@ export function defaultMilestoneDueDate(now: Date): Date {
 // Serialization
 // ---------------------------------------------------------------------------
 
-/** An attachment is exactly `{ id, url, fileName, mimeType, size, createdAt }`. */
+/**
+ * An attachment row; `presignAttachments` turns it into exactly
+ * `{ id, url, fileName, mimeType, size, createdAt }` before it leaves the service.
+ */
 const attachmentQuery = {
-  select: { id: true, url: true, fileName: true, mimeType: true, size: true, createdAt: true },
+  select: attachmentSelect,
   orderBy: { createdAt: 'asc' },
 } satisfies Prisma.MilestoneSubmission$attachmentsArgs;
 
@@ -249,10 +261,10 @@ export async function listContractMilestones(contractId: string, userId: string)
     include: milestoneInclude,
     orderBy: { sequence: 'asc' },
   });
-  return {
+  return presignAttachments({
     milestones: milestones.map(serializeMilestone),
     milestoneSummary: milestoneSummary(milestones, contract.amount),
-  };
+  });
 }
 
 export interface PlanItem {
@@ -364,7 +376,7 @@ export async function getMilestoneDetail(milestoneId: string, userId: string) {
   });
 
   const { contract, ...rest } = milestone;
-  return { ...serializeMilestone(rest), submissions, contract };
+  return presignAttachments({ ...serializeMilestone(rest), submissions, contract });
 }
 
 // ---------------------------------------------------------------------------
@@ -424,28 +436,47 @@ export async function markFunded(
 export interface SubmissionInput {
   message: string;
   links: string[];
+  /** Uploads issued by `POST /api/milestones/:id/uploads`, in display order. */
+  uploadIds: string[];
+}
+
+/** The submitting freelancer of a submittable milestone: 404, 403, then 409. */
+async function findSubmittableMilestone(milestoneId: string, actorId: string): Promise<MilestoneWithContext> {
+  const milestone = await findMilestoneForRoute(milestoneId);
+  if (milestone.contract.freelancerId !== actorId) throw new AppError('Not authorized', 403);
+  if (!SUBMITTABLE.includes(milestone.status)) throw new AppError(NOT_AWAITING_SUBMISSION, 409);
+  return milestone;
+}
+
+/**
+ * `POST /api/milestones/:id/uploads`: the file policy (before any lookup), the submission checks,
+ * then one signed upload URL per file.
+ */
+export async function requestSubmissionUploads(
+  milestoneId: string,
+  actorId: string,
+  files: readonly RequestedFile[],
+  now: Date,
+) {
+  assertRequestedFiles(files);
+  await findSubmittableMilestone(milestoneId, actorId);
+  return issueUploads(actorId, 'MILESTONE_SUBMISSION', milestoneId, `milestones/${milestoneId}`, files, now);
 }
 
 export async function submitMilestone(
   milestoneId: string,
   actorId: string,
   input: SubmissionInput,
-  files: readonly Express.Multer.File[],
   now: Date = new Date(),
 ) {
-  const milestone = await findMilestoneForRoute(milestoneId);
-  if (milestone.contract.freelancerId !== actorId) throw new AppError('Not authorized', 403);
-  if (!SUBMITTABLE.includes(milestone.status)) throw new AppError(NOT_AWAITING_SUBMISSION, 409);
+  const milestone = await findSubmittableMilestone(milestoneId, actorId);
 
-  // Store files before the transaction; a 409 below leaves them unreferenced.
-  const stored: StoredFile[] = [];
-  for (const file of files) {
-    stored.push(await storeUploadedFile(file, `milestones/${milestoneId}`));
-  }
+  // Storage is read before the transaction; a storage failure is a 502 before anything is written.
+  const uploads = await verifyUploads(actorId, 'MILESTONE_SUBMISSION', milestoneId, input.uploadIds, now);
 
   const autoApproveAt = new Date(now.getTime() + autoApproveDays() * DAY_MS);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // The conditional status write comes first and holds the milestone's row lock, so
     // the round below is computed by one submission at a time (never a P2002 → 500).
     const { count } = await tx.milestone.updateMany({
@@ -453,6 +484,7 @@ export async function submitMilestone(
       data: { status: 'SUBMITTED', submittedAt: now, autoApproveAt },
     });
     if (count === 0) throw new AppError(NOT_AWAITING_SUBMISSION, 409);
+    await consumeUploads(tx, actorId, uploads);
 
     const last = await tx.milestoneSubmission.findFirst({
       where: { milestoneId },
@@ -468,14 +500,7 @@ export async function submitMilestone(
         message: input.message,
         links: input.links,
         submittedAt: now,
-        attachments: {
-          create: stored.map((file) => ({
-            url: file.url,
-            fileName: file.fileName,
-            mimeType: file.mimeType,
-            size: file.size,
-          })),
-        },
+        attachments: { create: attachmentRows(uploads, now) },
       },
       include: { attachments: attachmentQuery },
     });
@@ -502,6 +527,27 @@ export async function submitMilestone(
     const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
     return { milestone: serializeMilestone(updated), submission };
   });
+  return presignAttachments(result);
+}
+
+/**
+ * `GET /api/milestones/:id/attachments/:attachmentId/download`: either party, an attachment of
+ * any submission of the milestone.
+ */
+export async function getSubmissionAttachmentDownload(
+  milestoneId: string,
+  attachmentId: string,
+  userId: string,
+  now: Date,
+) {
+  const milestone = await findMilestoneForRoute(milestoneId);
+  assertParty(milestone, userId);
+  const attachment = await prisma.milestoneAttachment.findFirst({
+    where: { id: attachmentId, submission: { milestoneId } },
+    select: { storageKey: true, url: true, fileName: true },
+  });
+  if (!attachment) throw new AppError('Attachment not found', 404);
+  return downloadUrlFor(attachment, now);
 }
 
 // ---------------------------------------------------------------------------
@@ -544,7 +590,7 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
     contractId = milestone.contractId;
   }
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // Lock the contract row first, so approvals of different milestones of one contract
     // serialize and the completion count below sees the other's committed approval.
     await tx.$queryRaw`SELECT "id" FROM "Contract" WHERE "id" = ${contractId} FOR UPDATE`;
@@ -639,6 +685,8 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
     });
     return { milestone: serializeMilestone(updated), contract: contractAfter };
   }, { timeout: 15_000 });
+  // Only a person reads the result; the auto-approval job ignores it.
+  return result && kind === 'MANUAL' ? presignAttachments(result) : result;
 }
 
 // ---------------------------------------------------------------------------
@@ -654,7 +702,7 @@ export async function rejectMilestone(
   if (milestone.contract.clientId !== actorId) throw new AppError('Not authorized', 403);
   if (milestone.status !== 'SUBMITTED') throw new AppError(NOT_AWAITING_REVIEW, 409);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     // The conditional write first; the latest submission is read after it.
     const { count } = await tx.milestone.updateMany({
       where: { id: milestoneId, status: 'SUBMITTED' },
@@ -680,6 +728,7 @@ export async function rejectMilestone(
     const updated = await tx.milestone.findUniqueOrThrow({ where: { id: milestoneId }, include: milestoneInclude });
     return { milestone: serializeMilestone(updated) };
   });
+  return presignAttachments(result);
 }
 
 // ---------------------------------------------------------------------------

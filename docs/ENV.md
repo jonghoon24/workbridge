@@ -23,7 +23,8 @@
 | `CLIENT_URL` | 프론트엔드 **출처 하나**(예: `https://app.example.com`, 끝의 `/`는 괜찮다). Google 로그인 리디렉션(`/auth/callback`, `/login?error=…`), 메일 본문 링크, CORS 허용 출처가 모두 이 값을 쓴다(`src/lib/clientUrl.ts`). 쉼표·공백 목록, 경로, 스킴 없는 값은 받지 않는다. 값이 없거나 이런 형태면 서버는 뜨지만 시작 때 `warn` 한 줄을 남기고 CORS에서 빠지며, 쓰는 곳에서 이유를 밝히고 실패한다: Google 로그인 시작·콜백은 500(응답 본문은 일반 메시지, 이유는 `CLIENT_URL`을 적은 오류 로그 한 줄), 메일은 발송 기록이 `FAILED`(이유 기록, 발송 작업 없음)이고 `warn` 로그를 남긴다. 알림과 원인이 된 상태 변경은 그대로 저장된다 |
 | `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 추가 출처는 여기에만 둔다. 개발 환경에서는 `http://localhost:3000`이 항상 허용된다 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL. `OPENAI_API_KEY`처럼 모듈을 읽을 때 쓰이므로 서버를 띄우려면 필요하다(더미 값 가능) |
-| `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음) |
+| `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음). 비공개 첨부 버킷의 서명 URL 발급과 파일 확인·삭제에도 쓴다 |
+| `SUPABASE_ATTACHMENT_BUCKET` | 메시지·결과물 첨부를 두는 **비공개** Storage 버킷 이름(기본 `workbridge-attachments`). 처음 쓸 때 읽는다. 버킷을 기본 이름으로 만들면 넣지 않아도 된다. 프로필·포트폴리오 이미지는 공개 버킷 `workbridge`에 그대로 둔다(아래 "Supabase") |
 | `PAYOUT_ACCOUNT_ENCRYPTION_KEY` | 지급 계좌번호를 저장할 때 쓰는 AES-256-GCM 키. **32바이트를 base64로** 넣는다(`openssl rand -base64 32`). 암호화·복호화할 때마다 읽으므로 없어도 서버는 뜨지만, 지급 계좌 등록, 계좌가 있는 사용자의 계좌 조회, 지급 작업이 500·작업 실패가 되고 시드(`npm run db:seed`)는 아무것도 지우기 전에 멈춘다. 환경마다 다른 키를 쓰고, 한 환경 안에서는 Vercel 서버와 GitHub 시크릿(`PREVIEW_`/`PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY`, `seed.yml`·`payout-encrypt.yml`)이 같은 값이어야 한다. **바꾸거나 잃으면 저장된 계좌번호를 읽지 못한다** — 교체 절차는 [DEPLOYMENT.md](DEPLOYMENT.md#지급-계좌-암호화-키). 테스트(`vitest.config.ts`)와 E2E(`scripts/e2e.sh`)는 고정된 더미 키를 쓴다 |
 | `LOG_LEVEL` | 로그 레벨 `debug`/`info`/`warn`/`error`/`silent` (기본 `info`). JSON 한 줄씩 출력하며 `error`만 stderr로 간다. 테스트는 `error` |
 | `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(레이트 리밋 키)로 쓴다. 비우면 소켓 주소를 쓰고 `X-Forwarded-For`는 무시. Next.js 프록시는 받은 `X-Forwarded-For`를 그대로 넘기므로 `loopback`은 **Next 포트(:3000)에 신뢰하는 클라이언트만 닿을 때만 안전하다**. 그렇지 않으면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다. 로컬 로그인은 어차피 전부 루프백 한 주소로 세어진다 |
@@ -73,8 +74,18 @@
 ### Supabase
 
 1. 프로젝트 생성 후 Settings > API에서 URL과 Secret Key 복사
-2. Storage에서 `workbridge` 버킷 생성 (Public으로 설정)
-3. DATABASE_URL은 Settings > Database > Connection String에서 Transaction mode (포트 6543) 사용
+2. Storage에서 `workbridge` 버킷 생성 (Public으로 설정) — 프로필·포트폴리오 이미지
+3. Storage에서 `workbridge-attachments` 버킷 생성 — 메시지·결과물 첨부. **Public은 끈다.** 버킷 설정에서
+   File size limit `10 MB`, Allowed MIME types는 `image/*`, `application/pdf`, `application/zip`,
+   `application/x-zip-compressed`, `text/plain`, `application/msword`, `application/vnd.ms-excel`,
+   `application/vnd.ms-powerpoint`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`,
+   `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+   `application/vnd.openxmlformats-officedocument.presentationml.presentation`, `application/x-hwp`로 둔다
+   (Supabase는 `image/*` 같은 하위 유형 전체 와일드카드만 받고 `…officedocument.*` 같은 부분 와일드카드는 거부한다)
+   (서버도 같은 정책을 검사한다. 버킷 제한은 서명 URL로 올리는 단계의 두 번째 방어선이다). Storage 정책(RLS)은
+   추가하지 않는다: 서버만 Secret Key로 접근하고, 브라우저는 서버가 발급한 서명 URL로만 올리고 내려받는다.
+   다른 이름을 쓰면 `SUPABASE_ATTACHMENT_BUCKET`에 넣는다
+4. DATABASE_URL은 Settings > Database > Connection String에서 Transaction mode (포트 6543) 사용
 
 ### Google OAuth
 

@@ -1,6 +1,6 @@
 # 데이터베이스 모델
 
-PostgreSQL(운영은 Supabase) + Prisma. 스키마는 `workbridge-server/prisma/schema.prisma` 한 파일이고, 마이그레이션은 `prisma/migrations/`에 있다. 모델 25개, enum 13개. 제품 규칙과 그 이유는 [domain/](domain/README.md)에 있고, 이 문서는 데이터 구조와 불변식, 잠금을 정리한다.
+PostgreSQL(운영은 Supabase) + Prisma. 스키마는 `workbridge-server/prisma/schema.prisma` 한 파일이고, 마이그레이션은 `prisma/migrations/`에 있다. 모델 26개, enum 14개. 제품 규칙과 그 이유는 [domain/](domain/README.md)에 있고, 이 문서는 데이터 구조와 불변식, 잠금을 정리한다.
 
 ## 한눈에 보기
 
@@ -11,6 +11,7 @@ User ─┬─ Project ── Application ── Contract ─┬─ Milestone �
       │     └─ PricingAnalysis                ├─ Review
       │                                       └─ Conversation ─┬─ ConversationParticipant (2명)
       ├─ PayoutAccount (0~1)                                   └─ Message ── MessageAttachment
+      ├─ AttachmentUpload (붙기 전의 첨부 업로드)
       ├─ PortfolioItem, Career
       ├─ Notification ── EmailDelivery
       └─ NotificationPreference
@@ -38,7 +39,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | **Contract** | 지원 수락으로 생기는 계약 | `projectId` unique, `applicationId` unique, `amount Float`(= `expectedRate`, 소수일 수 있음), `startDate`, `endDate`(마지막 마일스톤 기한), `clientSigned`/`freelancerSigned`, `status`, `completedAt`. 인덱스 `[clientId]`, `[freelancerId]` |
 | **Milestone** | 계약을 나눈 작업 단위 | `sequence`(1부터), `amount`(원 단위 정수), `dueDate`(그 KST 날짜의 23:59:59.999), `status`, `fundedAt`, `submittedAt`(최근 제출), `autoApproveAt`(`SUBMITTED`일 때만), `approvedAt`, `approvalType`, `revisionCount`. `(contractId, sequence)` unique, 인덱스 `[status, autoApproveAt]` |
 | **MilestoneSubmission** | 산출물 제출 회차 | `round`(1부터), `message`, `links String[]`, `decision`(null = 검수 대기), `decisionReason`, `decidedAt`, `decidedById`(FK 아님, 자동 승인이면 null), `autoDecided`. `(milestoneId, round)` unique |
-| **MilestoneAttachment** | 제출 첨부 파일 | `url`(공개 URL), `fileName`(원래 이름, UTF-8), `mimeType`, `size` |
+| **MilestoneAttachment** | 제출 첨부 파일 | `storageKey` unique(비공개 첨부 버킷의 키), `url`(예전 행의 공개 URL, 비공개 버킷이면 null), `fileName`(원래 이름, UTF-8), `mimeType`·`size`(저장된 파일에서 읽은 값). `storageKey`와 `url` 중 하나는 있다(CHECK) |
 | **Payment** | 마일스톤 결제 | `contractId`, `milestoneId` unique, `clientId`, `amount Float`(= 마일스톤 금액), `status`, `paymentKey`, `orderId` unique, `confirmStartedAt`(결제 승인 선점 시각, 아래 "동시성"), 인덱스 `[contractId]`, `[clientId]` |
 
 ### 정산
@@ -56,7 +57,8 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | **Conversation** | 계약마다 하나인 대화방 | `contractId` unique, `lastMessageAt`(가장 최근 메시지 시각, 메시지가 없으면 null) |
 | **ConversationParticipant** | 대화방 참여자 | `(conversationId, userId)` unique, `lastReadAt`(읽음 워터마크: 읽은 상대 메시지 중 가장 최근 것의 `createdAt`). 인덱스 `[userId]` |
 | **Message** | 메시지 | `kind`(`TEXT`/`SYSTEM`), `senderId`(SYSTEM이면 null), `systemEvent`(SYSTEM만, bare String), `body`(첨부만 있으면 `''`), `deletedAt`(보낸 사람이 5분 안에 삭제), `createdAt`. 인덱스 `[conversationId, createdAt]` |
-| **MessageAttachment** | 메시지 첨부 | `url`, `fileName`, `mimeType`, `size` |
+| **MessageAttachment** | 메시지 첨부 | `MilestoneAttachment`와 같다: `storageKey` unique, `url`(예전 행만), `fileName`, `mimeType`, `size`, CHECK |
+| **AttachmentUpload** | 서명 업로드 URL을 받았지만 아직 메시지·제출에 붙지 않은 파일 | `userId`, `scope`(`MESSAGE`/`MILESTONE_SUBMISSION`), `targetId`(대화방 또는 마일스톤 ID, FK 아님), `storageKey` unique, `fileName`, `mimeType`·`size`(브라우저가 알린 값), `expiresAt`(발급 + 2시간). 붙이는 트랜잭션이 지운다. 만료 행은 `maintenance.cleanup`이 파일과 함께 지운다. 인덱스 `[userId, scope, targetId]`, `[expiresAt]` |
 
 ### 프로필 확장
 
@@ -94,6 +96,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `SettlementStatus` | `SCHEDULED` → `PROCESSING` → `PAID`. 지급 시점에 계좌가 없으면 `ON_HOLD`(계좌 등록 시 `SCHEDULED`), 이체 실패는 `FAILED`(24시간 뒤 재시도, 3회째 실패는 최종). `PROCESSING`에서 멈춘 정산은 자동으로 다시 시도하지 않는다(이중 지급 방지, 운영자 몫) |
 | `MessageKind` | `TEXT`(참여자가 씀), `SYSTEM`(계약·마일스톤 이벤트 기록, 발신자 없음) |
 | `EmploymentType` | `FULL_TIME`, `CONTRACT`, `FREELANCE`, `INTERN` |
+| `AttachmentUploadScope` | `MESSAGE`, `MILESTONE_SUBMISSION` — 업로드를 붙일 수 있는 대상 |
 | `EmailDeliveryStatus` | `PENDING` → `SENT` / `FAILED` / `SKIPPED`(발송 전에 수신자가 탈퇴). 셋 다 최종 |
 | `JobStatus` | `PENDING` → `RUNNING` → `SUCCEEDED` / `FAILED`, 실패 후 재시도면 다시 `PENDING`(지수 백오프). `CANCELLED`는 아직 쓰는 곳이 없다 |
 
@@ -118,8 +121,8 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | Contract ↔ Review | 1 : 0..2 | `(contractId, reviewerId)` unique, 계약 `COMPLETED` 뒤에만 |
 | User ↔ NotificationPreference | 1 : N | `(userId, type)` unique |
 | Conversation ↔ Message | 1 : N | `Message.conversationId`. 인덱스 `[conversationId, createdAt]` |
-| Message ↔ MessageAttachment | 1 : 0..5 | `MessageAttachment.messageId`. 개수는 업로드 미들웨어가 검사 |
-| MilestoneSubmission ↔ MilestoneAttachment | 1 : 0..5 | `MilestoneAttachment.submissionId`. 개수는 업로드 미들웨어가 검사 |
+| Message ↔ MessageAttachment | 1 : 0..5 | `MessageAttachment.messageId`. 개수는 요청 스키마(`uploadIds` 최대 5개)가 검사 |
+| MilestoneSubmission ↔ MilestoneAttachment | 1 : 0..5 | `MilestoneAttachment.submissionId`. 개수는 요청 스키마가 검사 |
 | Notification ↔ EmailDelivery | 1 : 0..1 | `EmailDelivery.notificationId`(선택, `ON DELETE SET NULL`, unique는 아님 — `notify()`가 인앱 row마다 최대 1건 만든다). 이메일 전용 알림(다이제스트)이면 null |
 | User ↔ PortfolioItem | 1 : 0..20 | `PortfolioItem.userId`. 개수는 서비스가 검사 |
 | User ↔ Career | 1 : 0..30 | `Career.userId`. 개수는 서비스가 검사 |
@@ -185,7 +188,7 @@ DB를 통째로 읽은 사람(백업, SQL 접근)도 키 없이는 계좌번호�
 - 확장 리소스는 계약의 프로젝트를 따른다: 프로젝트가 삭제된 계약·마일스톤·대화방은 확장 라우트에서 404이고 목록에서 빠진다. 예외로 정산과 지급 계좌는 프로젝트 삭제와 무관하게 보이고 지급되며, 자동 승인도 진행한다(이미 결제된 돈을 묶지 않는다).
 - 쓰기 라우트와 확장 라우트는 호출자도 다시 확인한다(`requireActiveUser`, 삭제된 사용자는 401).
 - 포트폴리오와 경력은 하드 삭제한다. 사용자가 소프트 삭제되면 보이지 않을 뿐 남아 있다.
-- 메시지의 `deletedAt`은 사용자의 "보낸 메시지 삭제"다. 행과 첨부는 남고 API는 내용 없는 표시(tombstone)로 돌려준다.
+- 메시지의 `deletedAt`은 사용자의 "보낸 메시지 삭제"다. 메시지와 첨부 행은 남고 API는 내용 없는 표시(tombstone)로 돌려준다. 비공개 버킷의 첨부 파일은 `attachment.deleteObjects` 작업이 지운다.
 
 ## 시각과 시간대
 
@@ -255,6 +258,7 @@ DB를 통째로 읽은 사람(백업, SQL 접근)도 키 없이는 계좌번호�
 | `20261110082231_array_columns_reject_null_elements` | 문자열 배열 컬럼 5개에 `NULL` 원소를 막는 CHECK 제약("관계와 불변식"). 제약을 걸기 전에 이미 있던 `NULL` 원소를 `array_remove`로 지운다(원소만 지우고 행과 나머지 원소는 그대로) |
 | `20261110082927_add_payment_confirm_started_at` | `Payment.confirmStartedAt`(nullable) 추가. 기존 행은 null(선점 없음). 데이터 변경 없음 |
 | `20261110084919_normalize_user_email` | 데이터만: 모든 `User.email`(탈퇴 포함)을 앞뒤 공백 제거 + 소문자로 바꾼다. 정규화하면 같아지는 주소가 둘 이상이면 아무것도 바꾸지 않고 이유를 밝히며 실패한다(어느 계정을 남길지는 사람이 정한다). 스키마 변경 없음 |
+| `20261110090000_private_attachment_storage` | 첨부를 비공개 버킷으로: `MessageAttachment`·`MilestoneAttachment`에 `storageKey`(unique), `url`을 nullable로, 둘 중 하나는 있어야 하는 CHECK. `AttachmentUpload`와 `AttachmentUploadScope`. 데이터 변경 없음(예전 행은 공개 URL 그대로, 이전은 `scripts/migrate-legacy-attachments.ts`) |
 
 - **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. float를 그대로 반올림하면 1원 어긋나므로 numeric으로 바꿔 반올림한다(위 "금액이 `Float`인 부채"). 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
 - **정산 원장은 확장 이후 승인분부터다.** 확장 전에 완료된 계약의 마일스톤에는 `SettlementItem`이 없다(화면의 예상 정산액은 현재 요율로 계산해 보여준다).

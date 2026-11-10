@@ -118,6 +118,7 @@ model User {
   careers             Career[]
   notificationPrefs   NotificationPreference[]
   emailDeliveries     EmailDelivery[]
+  attachmentUploads   AttachmentUpload[]
 }
 
 model Project {
@@ -258,7 +259,10 @@ model MilestoneAttachment {
   id           String              @id @default(uuid())
   submissionId String
   submission   MilestoneSubmission @relation(fields: [submissionId], references: [id])
-  url          String
+  /// Key in the private attachment bucket; null for a legacy row stored in the public bucket
+  storageKey   String?             @unique
+  /// Legacy public URL; null once the file lives in the private bucket (`storageKey`)
+  url          String?
   fileName     String
   mimeType     String
   size         Int
@@ -405,17 +409,46 @@ model Message {
 }
 
 model MessageAttachment {
-  id        String   @id @default(uuid())
-  messageId String
-  message   Message  @relation(fields: [messageId], references: [id])
-  url       String
+  id         String   @id @default(uuid())
+  messageId  String
+  message    Message  @relation(fields: [messageId], references: [id])
+  /// Key in the private attachment bucket; null for a legacy row stored in the public bucket
+  storageKey String?  @unique
+  /// Legacy public URL; null once the file lives in the private bucket (`storageKey`)
+  url        String?
   /// Original name restored to UTF-8; never part of the storage key
-  fileName  String
-  mimeType  String
-  size      Int
-  createdAt DateTime @default(now())
+  fileName   String
+  mimeType   String
+  size       Int
+  createdAt  DateTime @default(now())
 
   @@index([messageId])
+}
+
+/// An upload URL issued for one attachment that is not attached yet (docs/domain/messaging-notifications.md
+/// "첨부 파일"). Deleted when a message or submission claims it; expired rows are swept by `maintenance.cleanup`.
+model AttachmentUpload {
+  id         String                @id @default(uuid())
+  userId     String
+  user       User                  @relation(fields: [userId], references: [id])
+  scope      AttachmentUploadScope
+  /// The conversation (MESSAGE) or milestone (MILESTONE_SUBMISSION) the file may be attached to
+  targetId   String
+  storageKey String                @unique
+  fileName   String
+  /// Declared by the browser; the claim re-reads the stored object's type and size
+  mimeType   String
+  size       Int
+  expiresAt  DateTime
+  createdAt  DateTime              @default(now())
+
+  @@index([userId, scope, targetId])
+  @@index([expiresAt])
+}
+
+enum AttachmentUploadScope {
+  MESSAGE
+  MILESTONE_SUBMISSION
 }
 
 // ─── Profile: portfolio and careers (docs/domain/accounts.md) ──────────────

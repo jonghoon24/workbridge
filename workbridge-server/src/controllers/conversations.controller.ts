@@ -1,18 +1,19 @@
 import type { NextFunction, Response } from 'express';
 
-import { AppError } from '../lib/errors';
 import {
   deleteMessage,
   getContractConversation,
   getConversation,
+  getMessageAttachmentDownload,
   listConversations,
   listMessages,
   markRead,
+  requestMessageUploads,
   sendMessage,
   unreadTotal,
 } from '../services/messaging.service';
 import type { ConversationListQuery } from '../services/messaging.service';
-import { MESSAGE_REQUIRED } from '../schemas/conversations';
+import type { RequestedFile } from '../services/attachments.service';
 import type { MessageListQuery } from '../schemas/conversations';
 import type { AuthedRequest } from '../types/index';
 
@@ -52,14 +53,30 @@ export async function getMessages(req: AuthedRequest, res: Response, next: NextF
   }
 }
 
+/** `POST /api/conversations/:id/uploads`. */
+export async function postMessageUploads(req: AuthedRequest, res: Response, next: NextFunction) {
+  try {
+    const { files } = req.body as { files: RequestedFile[] };
+    res.status(201).json(await requestMessageUploads(req.params.id, req.user.id, files, new Date()));
+  } catch (err) {
+    next(err);
+  }
+}
+
 /** `POST /api/conversations/:id/messages`. */
 export async function postMessage(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const files = Array.isArray(req.files) ? req.files : [];
-    const { body } = req.body as { body: string };
-    // The empty-message check, after the schema: it needs `req.files`, which a body schema cannot see.
-    if (body === '' && files.length === 0) throw new AppError(MESSAGE_REQUIRED, 400);
-    res.status(201).json(await sendMessage(req.params.id, req.user.id, body, files));
+    const { body, uploadIds } = req.body as { body: string; uploadIds: string[] };
+    res.status(201).json(await sendMessage(req.params.id, req.user.id, body, uploadIds, new Date()));
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** `GET /api/conversations/:id/attachments/:attachmentId/download`. */
+export async function getMessageAttachment(req: AuthedRequest, res: Response, next: NextFunction) {
+  try {
+    res.json(await getMessageAttachmentDownload(req.params.id, req.params.attachmentId, req.user.id, new Date()));
   } catch (err) {
     next(err);
   }

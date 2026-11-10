@@ -73,7 +73,8 @@ export async function postThing(req: AuthedRequest, res: Response, next: NextFun
 ```ts
 const guard = [authenticate, requireActiveUser, requireRole('FREELANCER')];
 router.post('/things', ...guard, validate({ body: thingBody }), postThing);
-// multipart: ...guard, attachmentUpload /* or imageUpload */, validate({ body }), handler
+// multipart(이미지): ...guard, imageUpload, validate({ body }), handler
+// 파일 첨부는 multipart로 받지 않는다: 서명 업로드 URL + uploadIds(services/attachments.service.ts)
 ```
 
 - 가드는 라우트마다, `router.use`는 쓰지 않는다(같은 접두사의 다음 라우터로 갈 요청까지 가로챈다). 고정 경로를 `/:id`보다 먼저.

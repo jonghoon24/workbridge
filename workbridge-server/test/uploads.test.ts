@@ -21,13 +21,16 @@ import request from 'supertest';
 
 import { getRequestContext } from '../src/lib/requestContext';
 import { buildStorageKey, decodeOriginalName, extensionFor } from '../src/lib/storageKey';
-import { attachmentUpload, imageUpload, storeUploadedFile } from '../src/middlewares/attachmentUpload';
+import { ATTACHMENT_MAX_BYTES, assertAttachmentPolicy, isAllowedAttachmentType } from '../src/lib/attachmentStorage';
+import { imageUpload, storeUploadedFile } from '../src/middlewares/attachmentUpload';
 import { errorHandler } from '../src/middlewares/errorHandler';
 import { bindRequestContext, requestId } from '../src/middlewares/requestId';
 import { uploadToSupabase } from '../src/middlewares/upload';
 
 /**
- * Upload policies for the expansion domains: every rejection is a 413 or a 400, never a 500.
+ * The multipart image upload (portfolio) and the attachment policy. Every rejection is a 413 or a
+ * 400, never a 500. Message and submission attachments are uploaded straight to storage: their
+ * routes are in attachments.test.ts.
  */
 
 const MB = 1024 * 1024;
@@ -36,11 +39,9 @@ const app = express();
 app.use(requestId);
 app.use(express.json());
 app.use(bindRequestContext);
-app.post('/attachments', attachmentUpload, async (req, res, next) => {
+app.post('/stored-image', imageUpload, async (req, res, next) => {
   try {
-    const files = (req.files ?? []) as Express.Multer.File[];
-    const stored = [];
-    for (const file of files) stored.push(await storeUploadedFile(file, 'tests/folder-1'));
+    const stored = req.file ? await storeUploadedFile(req.file, 'tests/folder-1') : null;
     res.json({ stored, body: req.body, requestId: getRequestContext()?.requestId });
   } catch (err) {
     next(err);
@@ -57,94 +58,43 @@ beforeEach(() => {
   storageUpload.mockImplementation(async (path: string) => ({ data: { path }, error: null }));
 });
 
-describe('attachmentUpload', () => {
-  it('stores each file at <folder>/<uuid>.<ext> and returns its metadata', async () => {
-    const res = await request(app)
-      .post('/attachments')
-      .field('message', '산출물입니다')
-      .attach('files', ...pdf())
-      .attach('files', ...png());
+describe('storeUploadedFile', () => {
+  it('stores the file at <folder>/<uuid>.<ext> in the public bucket and returns its metadata', async () => {
+    const res = await request(app).post('/stored-image').field('title', '작업물').attach('image', ...png());
 
     expect(res.status).toBe(200);
-    expect(res.body.body).toEqual({ message: '산출물입니다' });
-    expect(res.body.stored).toHaveLength(2);
-    const [first, second] = res.body.stored;
-    expect(first.key).toMatch(/^tests\/folder-1\/[0-9a-f-]{36}\.pdf$/);
-    expect(second.key).toMatch(/^tests\/folder-1\/[0-9a-f-]{36}\.png$/);
-    expect(first).toMatchObject({ fileName: 'report.pdf', mimeType: 'application/pdf', size: 10 });
-    expect(first.url).toBe(`https://test.supabase.co/storage/v1/object/public/workbridge/${first.key}`);
-    expect(storageUpload.mock.calls.map(([path]) => path)).toEqual([first.key, second.key]);
+    expect(res.body.body).toEqual({ title: '작업물' });
+    const { stored } = res.body;
+    expect(stored.key).toMatch(/^tests\/folder-1\/[0-9a-f-]{36}\.png$/);
+    expect(stored).toMatchObject({ fileName: 'shot.png', mimeType: 'image/png', size: 10 });
+    expect(stored.url).toBe(`https://test.supabase.co/storage/v1/object/public/workbridge/${stored.key}`);
+    expect(storageUpload.mock.calls.map(([path]) => path)).toEqual([stored.key]);
   });
 
   it('restores a Korean file name for display and keeps it out of the key', async () => {
-    const res = await request(app).post('/attachments').attach('files', ...pdf('견적서 최종본.pdf'));
+    const res = await request(app).post('/stored-image').attach('image', ...png('작업 화면.png'));
 
     expect(res.status).toBe(200);
-    expect(res.body.stored[0].fileName).toBe('견적서 최종본.pdf');
-    expect(res.body.stored[0].key).toMatch(/^[\x20-\x7e]+$/);
-    expect(res.body.stored[0].key).toMatch(/\.pdf$/);
+    expect(res.body.stored.fileName).toBe('작업 화면.png');
+    expect(res.body.stored.key).toMatch(/^[\x20-\x7e]+$/);
+    expect(res.body.stored.key).toMatch(/\.png$/);
   });
 
   it('keeps the request context across multer', async () => {
-    const res = await request(app).post('/attachments').set('X-Request-Id', 'upload-trace').attach('files', ...pdf());
+    const res = await request(app).post('/stored-image').set('X-Request-Id', 'upload-trace').attach('image', ...png());
 
     expect(res.body.requestId).toBe('upload-trace');
   });
 
-  it('accepts a request with no files', async () => {
-    const res = await request(app).post('/attachments').field('message', 'text only');
+  it('accepts a request with no file', async () => {
+    const res = await request(app).post('/stored-image').field('title', 'text only');
 
     expect(res.status).toBe(200);
-    expect(res.body.stored).toEqual([]);
-  });
-
-  it.each([
-    ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'a.docx'],
-    ['application/x-hwp', 'a.hwp'],
-    ['application/zip', 'a.zip'],
-    ['text/plain', 'a.txt'],
-    ['image/jpeg', 'a.jpg'],
-  ])('accepts %s', async (contentType, filename) => {
-    const res = await request(app).post('/attachments').attach('files', Buffer.from('x'), { filename, contentType });
-
-    expect(res.status).toBe(200);
-  });
-
-  it('accepts a file of exactly 10 MB', async () => {
-    const res = await request(app).post('/attachments').attach('files', ...pdf('big.pdf', 10 * MB));
-
-    expect(res.status).toBe(200);
-  });
-
-  it('rejects a file over 10 MB with 413', async () => {
-    const res = await request(app).post('/attachments').attach('files', ...pdf('big.pdf', 10 * MB + 1));
-
-    expect(res.status).toBe(413);
-    expect(res.body).toEqual({ error: { message: 'File too large (max 10MB)' } });
-    expect(storageUpload).not.toHaveBeenCalled();
-  });
-
-  it('rejects a disallowed type with 400', async () => {
-    const res = await request(app)
-      .post('/attachments')
-      .attach('files', Buffer.from('MZ'), { filename: 'setup.exe', contentType: 'application/x-msdownload' });
-
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Unsupported file type: application/x-msdownload' } });
-  });
-
-  it('rejects a sixth file with 400', async () => {
-    let req = request(app).post('/attachments');
-    for (let i = 0; i < 6; i += 1) req = req.attach('files', ...pdf(`f${i}.pdf`));
-    const res = await req;
-
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Too many files (max 5)' } });
-    expect(storageUpload).not.toHaveBeenCalled();
+    expect(res.body.stored).toBeNull();
   });
 
   it('rejects an unexpected field name with 400', async () => {
-    const res = await request(app).post('/attachments').attach('file', ...pdf());
+    const res = await request(app).post('/image').attach('file', ...png());
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: { message: 'Unexpected file field: file' } });
@@ -152,9 +102,9 @@ describe('attachmentUpload', () => {
 
   it('rejects a malformed multipart body with 400', async () => {
     const res = await request(app)
-      .post('/attachments')
+      .post('/image')
       .set('Content-Type', 'multipart/form-data; boundary=----nope')
-      .send('------nope\r\nContent-Disposition: form-data; name="files"; filename="a.pdf"\r\n');
+      .send('------nope\r\nContent-Disposition: form-data; name="image"; filename="a.png"\r\n');
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: { message: 'Malformed multipart body' } });
@@ -163,10 +113,45 @@ describe('attachmentUpload', () => {
   it('turns a storage failure into a 502, never a raw 500', async () => {
     storageUpload.mockResolvedValue({ data: null, error: { message: 'Bucket not found', statusCode: '404' } });
 
-    const res = await request(app).post('/attachments').attach('files', ...pdf());
+    const res = await request(app).post('/stored-image').attach('image', ...png());
 
     expect(res.status).toBe(502);
     expect(res.body).toEqual({ error: { message: 'File upload failed' } });
+  });
+});
+
+describe('attachment policy', () => {
+  it.each([
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'application/x-hwp',
+    'application/zip',
+    'text/plain',
+    'image/jpeg',
+    'application/pdf',
+  ])('accepts %s', (mimeType) => {
+    expect(isAllowedAttachmentType(mimeType)).toBe(true);
+    expect(() => assertAttachmentPolicy({ mimeType, size: 1 })).not.toThrow();
+  });
+
+  it('accepts a file of exactly 10 MB and rejects one byte more with 413', () => {
+    expect(ATTACHMENT_MAX_BYTES).toBe(10 * MB);
+    expect(() => assertAttachmentPolicy({ mimeType: 'application/pdf', size: 10 * MB })).not.toThrow();
+    expect(() => assertAttachmentPolicy({ mimeType: 'application/pdf', size: 10 * MB + 1 }))
+      .toThrow(expect.objectContaining({ message: 'File too large (max 10MB)', statusCode: 413 }));
+  });
+
+  it('rejects a disallowed type with 400, before the size', () => {
+    expect(() => assertAttachmentPolicy({ mimeType: 'application/x-msdownload', size: 11 * MB }))
+      .toThrow(expect.objectContaining({ message: 'Unsupported file type: application/x-msdownload', statusCode: 400 }));
+    expect(isAllowedAttachmentType('application/octet-stream')).toBe(false);
+  });
+
+  it('rejects Office Open XML types the bucket does not list', () => {
+    // The bucket's Allowed MIME types cannot hold a partial wildcard, so the server must not
+    // accept a subtype the signed upload would then fail on.
+    expect(isAllowedAttachmentType('application/vnd.openxmlformats-officedocument.wordprocessingml.template')).toBe(false);
   });
 });
 

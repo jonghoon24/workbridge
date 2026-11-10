@@ -1,5 +1,6 @@
 import { z } from '../lib/zod';
 
+import { uploadIdsField } from './attachments';
 import { MAX_MILESTONES, MIN_MILESTONE_AMOUNT, MIN_MILESTONES } from '../lib/money';
 import { kstDateString, kstDateToEndOfDay } from '../lib/time';
 
@@ -76,7 +77,10 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-/** A submission. Multipart fields arrive as strings; a single `links` value is a one-element list. */
+/**
+ * A submission, JSON. The files were uploaded beforehand and are named by `uploadIds`. A single
+ * `links` string is a one-element list.
+ */
 export const submissionBody = z.object({
   message: z
     .string({ required_error: 'Message is required' })
@@ -88,8 +92,9 @@ export const submissionBody = z.object({
     z
       .array(z.string().trim().refine(isHttpUrl, 'Links must be http or https URLs').openapi({ format: 'uri' }))
       .max(5, 'At most 5 links are allowed')
-      .openapi({ description: 'http(s) URL 최대 5개. multipart에서는 같은 필드를 반복하거나 하나만 보낸다.' }),
+      .openapi({ description: 'http(s) URL 최대 5개. 문자열 하나는 한 개짜리 목록이다.' }),
   ),
+  uploadIds: uploadIdsField,
 });
 
 /** A revision request. */

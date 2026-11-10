@@ -122,9 +122,26 @@ Vercel에는 상주 프로세스가 없어서 개발 서버가 띄우는 워커(
 DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
 ```
 
-### 3. 큰 첨부 파일은 Vercel이 막는다
+### 3. 첨부 파일은 저장소로 직접 올린다
 
-로컬에서는 마일스톤 제출과 메시지에 파일을 10MB × 5개까지 올릴 수 있다. Vercel 서버리스 함수의 **요청 본문 한도는 4.5MB**라서 운영에서는 그보다 큰 요청이 플랫폼에서 413으로 막힌다(앱의 오류 형식이 아니다). 브라우저 요청은 Next 프록시와 백엔드 두 함수를 거치므로 두 곳 모두 이 한도에 걸린다. 코드로 우회하지 않았다. 해결은 브라우저가 저장소에 직접 올리는 서명된 업로드 URL 방식이고([#25](https://github.com/jonghoon24/workbridge/issues/25)), 첨부를 비공개 버킷과 서명 URL로 옮기는 문제([#22](https://github.com/jonghoon24/workbridge/issues/22))와 함께 정한다.
+Vercel 서버리스 함수의 **요청 본문 한도는 4.5MB**다(넘으면 플랫폼이 앱의 오류 형식이 아닌 413으로 막는다. 브라우저 요청은 Next 프록시와 백엔드 두 함수를 거치므로 두 곳 모두 걸린다). 그래서 메시지와 마일스톤 결과물 첨부(10MB × 5개)는 서버를 거치지 않는다: 서버가 서명 업로드 URL을 주고, 브라우저가 Supabase Storage의 **비공개 버킷**(`SUPABASE_ATTACHMENT_BUCKET`)에 직접 `PUT`하고, 메시지·제출에는 업로드 ID만 보낸다. 읽을 때는 15분짜리, 내려받을 때는 60초짜리 서명 URL을 준다([domain/messaging-notifications.md "첨부 파일"](domain/messaging-notifications.md#첨부-파일), [#22](https://github.com/jonghoon24/workbridge/issues/22), [#25](https://github.com/jonghoon24/workbridge/issues/25)).
+
+남은 한계:
+
+- 프로필 이미지(`PATCH /api/users/me`)와 포트폴리오 이미지(5MB)는 여전히 multipart로 서버를 거친다. 4.5MB를 넘는 이미지는 운영에서 플랫폼 413이다.
+- 지운 메시지의 파일과 붙지 않고 만료된 업로드의 파일은 작업이 지우므로 1번의 지연(최대 15분, 정리는 매일 04:00 KST)만큼 늦게 사라진다. 그동안에도 서명 URL은 나가지 않는다.
+- 버킷은 프리뷰·운영 Supabase 프로젝트마다 따로 만든다. 만드는 법은 [ENV.md](ENV.md#supabase).
+
+**첨부 파일 저장소 이전(한 번).** 이 방식 전에 올린 첨부는 공개 버킷 `workbridge`에 있고 행에 공개 URL만 있다. 그대로 두어도 화면에서 보이지만(공개 URL을 그대로 내보낸다) 로그인 없이 받을 수 있는 상태가 남는다. 그 환경에 이 코드가 배포된 뒤 프리뷰 → 운영 순서로 수동 워크플로 `attachments-migrate.yml`을 돌린다(원격 DB 접속 문자열과 Supabase 키는 GitHub 시크릿 `*_DIRECT_URL`·`*_SUPABASE_URL`·`*_SUPABASE_SECRET_KEY`에만 있다):
+
+```bash
+gh workflow run attachments-migrate.yml -f environment=preview              # 건수만 센다(found/skipped)
+gh workflow run attachments-migrate.yml -f environment=preview -f apply=true # 비공개 버킷의 같은 키로 복사하고 행을 storageKey로 바꾼다
+```
+
+워크플로는 `workbridge-server/scripts/migrate-legacy-attachments.ts`를 돌린다. 로컬에서 그 환경의 값을 넣고 `npx tsx scripts/migrate-legacy-attachments.ts [--apply]`로 돌려도 같다.
+
+다시 돌려도 안전하다(옮긴 행은 건너뛴다). `failed`가 비고 화면에서 예전 첨부가 열리는 것을 확인한 뒤, 공개 버킷의 `messages/`·`milestones/` 폴더를 Supabase 대시보드에서 지운다(`profiles/`·`portfolio/`는 지우지 않는다). 시드 데이터의 자리표시 이미지(`placehold.co`)는 건너뛴다(`skipped`).
 
 ### 4. 이메일은 로그로만 나간다
 
@@ -148,6 +165,6 @@ DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
 
 ### 6. 그 밖에
 
-- **첨부 파일은 공개 버킷**(`workbridge`)에 추측하기 어려운 키로 저장되고 공개 URL로 나간다. URL을 아는 사람은 로그인 없이 내려받을 수 있고, 메시지를 지워도 파일은 남는다([#22](https://github.com/jonghoon24/workbridge/issues/22)).
+- **프로필·포트폴리오 이미지는 공개 버킷**(`workbridge`)에 추측하기 어려운 키로 저장되고 공개 URL로 나간다. 공개 프로필에 보이는 이미지라 의도된 것이다. 메시지·결과물 첨부는 3번의 비공개 버킷이다.
 - **지급 계좌번호는 저장할 때 암호화**하고(위 "지급 계좌 암호화 키") 응답·로그·정산에는 마스킹한 값만 나간다. 계좌가 회원 본인 것인지 은행 API로 확인하지는 않는다 — 예금주는 프로필 이름과만 비교한다. 은행 확인은 실제 송금을 연동할 때 한다([#28](https://github.com/jonghoon24/workbridge/issues/28)).
 - 로그는 한 줄 JSON이고 `error`만 stderr로 간다. `LOG_LEVEL`로 기준을 정한다.

@@ -40,6 +40,7 @@ export default function MessageBubble({ message, mine, readByCounterpart, now, d
               {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
               <AttachmentList
                 attachments={message.attachments}
+                downloadPath={(attachment) => `/api/conversations/${message.conversationId}/attachments/${attachment.id}/download`}
                 tone={mine ? 'inverted' : 'default'}
                 className={message.body ? 'mt-1.5' : ''}
               />

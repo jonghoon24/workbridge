@@ -21,7 +21,7 @@ paths:
   가드는 **라우트마다** 붙이고 `router.use`는 쓰지 않는다(같은 접두사에 나중에 마운트된 라우터로 가야 할
   요청까지 가드가 가로챈다).
 - `validate()`는 파싱한 값을 `req.body`, `res.locals.query`, `res.locals.params`에 넣는다. multipart
-  라우트에서는 `attachmentUpload` / `imageUpload` **다음에** 마운트한다.
+  라우트(포트폴리오 이미지)에서는 `imageUpload` **다음에** 마운트한다.
 - 컨트롤러는 얇게: 서비스를 부르고 `res.json(...)`, `catch (err) { next(err) }`.
 - 비즈니스 로직, 트랜잭션, `AppError`는 `src/services/<domain>.service.ts`에 둔다.
 - OpenAPI에 등록한다: 경로와 상태 코드별 응답·오류 메시지는 `src/openapi/paths/<domain>.ts`, 응답 모양은
@@ -75,5 +75,7 @@ paths:
 - 타입: 공유 타입은 `src/types/index.ts`, 환경변수는 `src/env.ts`, 모델·enum·`WhereInput`은
   `@prisma/client`에서 import한다. 직접 만들지 않는다.
 - AI 단가 분석(`analyzeProject`): 모델이 준 JSON은 저장하기 전에 항상 정규화한다.
-- 업로드: 기존 프로필 이미지 → `middlewares/upload.ts`(크기·형식 오류가 아직 500이다), 확장 →
-  `middlewares/attachmentUpload.ts`(413/400, 저장소 실패 502).
+- 업로드: 기존 프로필 이미지 → `middlewares/upload.ts`(크기·형식 오류가 아직 500이다), 포트폴리오 이미지 →
+  `middlewares/attachmentUpload.ts`의 `imageUpload`(413/400, 저장소 실패 502). 메시지·결과물 첨부는 서버를 거치지
+  않는다: `services/attachments.service.ts`가 서명 업로드 URL을 주고 `uploadIds`를 검증하며, 응답의 첨부는
+  `presignAttachments()`로 서명 URL을 단다(비공개 버킷, `lib/attachmentStorage.ts`).

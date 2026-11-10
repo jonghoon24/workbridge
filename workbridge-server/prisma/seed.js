@@ -488,6 +488,8 @@ async function main() {
   await prisma.review.deleteMany();
   // Messaging and profile models, children first. The migration backfills a conversation for every contract,
   // so these must go before `contract` or the next seed fails with P2003.
+  // Uploads not attached yet reference their user. Their files in storage are not removed here.
+  await prisma.attachmentUpload.deleteMany();
   await prisma.messageAttachment.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversationParticipant.deleteMany();

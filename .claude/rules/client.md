@@ -11,6 +11,8 @@ paths:
   실패하면 `/login`으로 보낸다. 컴포넌트에서 `axios`/`fetch`를 직접 쓰지 않는다.
   예외: `src/lib/authApi.js`(login, signup, select-role, logout) — 갱신 인터셉터가 없어서 로그인
   실패가 갱신 루프를 일으키지 않는다.
+  첨부 파일의 저장소 업로드는 백엔드가 아니라 Supabase로 가는 `PUT`이라 `src/lib/attachments.js`가 XHR로 직접
+  보낸다(액세스 토큰을 붙이면 안 된다). 컴포넌트는 `uploadAttachments()`·`AttachmentLink`만 쓴다.
 - **base URL이 둘로 나뉜다:** 브라우저에서 `getBaseURL()`은 `''`(같은 출처 `/api/*`, 라우트 핸들러
   `src/app/api/[...path]/route.js`와 `src/app/api/auth/*`가 전달)이고, SSR에서는
   `getApiUrl()`이다. 새 HTTP 메서드는 catch-all 라우트에서 export해야 한다.

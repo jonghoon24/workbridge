@@ -458,6 +458,21 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     gate: null,
   },
   {
+    label: 'GET /api/milestones/:id/attachments/:attachmentId/download',
+    method: 'get',
+    path: (ids) => `/api/milestones/${ids.milestoneId}/attachments/missing-attachment-id/download`,
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'POST /api/milestones/:id/uploads',
+    method: 'post',
+    path: (ids) => `/api/milestones/${ids.milestoneId}/uploads`,
+    body: () => ({ files: [{ fileName: 'a.pdf', mimeType: 'application/pdf', size: 10 }] }),
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
     label: 'POST /api/milestones/:id/submissions',
     method: 'post',
     path: (ids) => `/api/milestones/${ids.milestoneId}/submissions`,
@@ -579,6 +594,21 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     label: 'GET /api/conversations/:id/messages',
     method: 'get',
     path: (ids) => `/api/conversations/${ids.conversationId}/messages`,
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'POST /api/conversations/:id/uploads',
+    method: 'post',
+    path: (ids) => `/api/conversations/${ids.conversationId}/uploads`,
+    body: () => ({ files: [{ fileName: 'a.pdf', mimeType: 'application/pdf', size: 10 }] }),
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'GET /api/conversations/:id/attachments/:attachmentId/download',
+    method: 'get',
+    path: (ids) => `/api/conversations/${ids.conversationId}/attachments/missing-attachment-id/download`,
     role: null,
     gate: null,
   },
@@ -776,8 +806,8 @@ describe('the route table itself', () => {
     expect(mounted.length).toBeGreaterThan(70);
   });
 
-  it('records a role gate for exactly the 33 role-gated routes', () => {
-    expect(ROLE_GATED_ROUTES).toHaveLength(33);
+  it('records a role gate for exactly the 34 role-gated routes', () => {
+    expect(ROLE_GATED_ROUTES).toHaveLength(34);
     expect(ROLE_GATED_ROUTES.every((r) => r.gate !== null)).toBe(true);
     expect(PROTECTED_ROUTES.filter((r) => r.role === null).every((r) => r.gate === null)).toBe(true);
   });
@@ -968,9 +998,9 @@ describe('authorization — role gating', () => {
   const clientOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'CLIENT');
   const freelancerOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'FREELANCER');
 
-  it('splits the role-gated routes into 12 CLIENT-only and 21 FREELANCER-only', () => {
+  it('splits the role-gated routes into 12 CLIENT-only and 22 FREELANCER-only', () => {
     expect(clientOnly).toHaveLength(12);
-    expect(freelancerOnly).toHaveLength(21);
+    expect(freelancerOnly).toHaveLength(22);
   });
 
   it.each(clientOnly)('$label → 403 for a FREELANCER', async (route) => {
@@ -1517,10 +1547,16 @@ describe('ownership is checked after existence', () => {
     ['POST /api/milestones/:id/approve', 'post', '/approve', 'CLIENT'],
     ['POST /api/milestones/:id/reject', 'post', '/reject', 'CLIENT'],
     ['POST /api/milestones/:id/submissions', 'post', '/submissions', 'FREELANCER'],
+    ['POST /api/milestones/:id/uploads', 'post', '/uploads', 'FREELANCER'],
+    ['GET /api/milestones/:id/attachments/:attachmentId/download', 'get', '/attachments/missing-attachment-id/download', 'CLIENT'],
   ] as const)('%s → 404 for a missing milestone, 403 for a non-party', async (_label, method, suffix, role) => {
     const { milestone } = await makeContractChain({ status: 'ACTIVE' });
     const outsider = role === 'CLIENT' ? await makeClient() : await makeFreelancer();
-    const body = { reason: 'Please fix the layout.', message: 'Done' };
+    const body = {
+      reason: 'Please fix the layout.',
+      message: 'Done',
+      files: [{ fileName: 'a.pdf', mimeType: 'application/pdf', size: 10 }],
+    };
 
     const missing = await authed(outsider)[method](`/api/milestones/missing-milestone-id${suffix}`).send(body);
     const foreign = await authed(outsider)[method](`/api/milestones/${milestone.id}${suffix}`).send(body);
@@ -1682,6 +1718,8 @@ describe('ownership is checked after existence', () => {
     ['POST /api/conversations/:id/messages', 'post', '/messages'],
     ['POST /api/conversations/:id/read', 'post', '/read'],
     ['DELETE /api/conversations/:id/messages/:messageId', 'delete', '/messages/:messageId'],
+    ['POST /api/conversations/:id/uploads', 'post', '/uploads'],
+    ['GET /api/conversations/:id/attachments/:attachmentId/download', 'get', '/attachments/missing-attachment-id/download'],
   ] as const)('%s → 404 for a missing conversation, 403 for a non-participant', async (_label, method, suffix) => {
     const { contract, freelancer } = await makeContractChain({ status: 'ACTIVE' });
     const conversation = await makeConversation(contract);
@@ -1689,8 +1727,9 @@ describe('ownership is checked after existence', () => {
     const outsider = await makeClient();
     const path = (id: string) => `/api/conversations/${id}${suffix.replace(':messageId', message.id)}`;
 
-    const missing = await authed(outsider)[method](path('missing-conversation-id')).send({ body: 'Hello' });
-    const foreign = await authed(outsider)[method](path(conversation.id)).send({ body: 'Hello' });
+    const body = { body: 'Hello', files: [{ fileName: 'a.pdf', mimeType: 'application/pdf', size: 10 }] };
+    const missing = await authed(outsider)[method](path('missing-conversation-id')).send(body);
+    const foreign = await authed(outsider)[method](path(conversation.id)).send(body);
 
     expectErrorEnvelope(missing, 404);
     expect(missing.body.error.message).toBe('Conversation not found');

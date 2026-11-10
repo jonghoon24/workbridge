@@ -133,8 +133,9 @@ API 문서 화면은 `http://localhost:4000/api/docs`, 원본은 `http://localho
 - **결제 우회가 켜져 있다**(로컬, 플래그 둘 다). 결제는 마일스톤 단위다:
   `POST /api/payments/dev-complete`가 `{ milestoneId }`를 받고, 순서대로 결제된다.
 - **업로드에는 저장소 스텁이 필요하다.** `SUPABASE_URL=http://localhost:54321`은 아래를 띄우기 전까지 아무것도 가리키지 않는다:
-  `node -e "require('http').createServer((q,r)=>{q.resume();q.on('end',()=>{r.writeHead(200,{'content-type':'application/json'});r.end('{\"Key\":\"stub\"}')})}).listen(54321)" &`
-  없으면 마일스톤 첨부가 502로 답한다. 저장된 URL은 스텁을 가리켜서 이미지가 보이지 않는다.
+  `(cd workbridge-server && node scripts/storage-stub.mjs > /tmp/wb-storage.log 2>&1 &)`.
+  메모리 저장소라 다시 띄우면 파일이 사라진다. 서명 업로드·브라우저의 PUT·서명 다운로드·공개 URL까지 흉내 내므로
+  첨부와 이미지가 화면에서 열린다. 없으면 첨부 업로드 URL 발급이 502로 답한다.
 - **이메일은 로그로만 남는다**: `grep mail.sent /tmp/wb-server.log`(개발 워커가 ~5초 안에 보낸다).
 - **미래 시각의 작업.** 주간 정산은 월요일 03:00 KST, 지급은 수요일 10:00 KST, 읽지 않은 메시지
   다이제스트는 메시지 10분 뒤다. 지금 보려면 `workbridge-server/` 안에서 `tsx` 일회성 스크립트로

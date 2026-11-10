@@ -1,0 +1,49 @@
+# 비공개 버킷 전에 올린 메시지·결과물 첨부를 공개 버킷 `workbridge`에서 비공개 버킷으로 옮긴다
+# (docs/DEPLOYMENT.md 3번 "첨부 파일 저장소 이전"). 원격 DB와 Supabase 키는 GitHub 시크릿에만 있어서 여기서 돌린다.
+# 그 환경에 이 코드가 배포되고 비공개 버킷이 만들어진 뒤에 돌린다. 다시 돌려도 안전하다(옮긴 행은 건너뛴다).
+#   gh workflow run attachments-migrate.yml -f environment=preview              # 건수만 센다
+#   gh workflow run attachments-migrate.yml -f environment=preview -f apply=true # 복사하고 행을 바꾼다
+name: attachments-migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "대상 환경"
+        required: true
+        type: choice
+        options: [preview, production]
+      apply:
+        description: "복사하고 행을 바꾼다(끄면 건수만 센다)"
+        required: false
+        type: boolean
+        default: false
+
+# 마이그레이션·시드와 겹치지 않게 한다.
+concurrency: migrate
+
+jobs:
+  migrate-attachments:
+    name: migrate-legacy-attachments (${{ inputs.environment }}${{ inputs.apply && ', apply' || ', dry run' }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workbridge-server
+    env:
+      DATABASE_URL: ${{ inputs.environment == 'production' && secrets.PROD_DIRECT_URL || secrets.PREVIEW_DIRECT_URL }}
+      DIRECT_URL: ${{ inputs.environment == 'production' && secrets.PROD_DIRECT_URL || secrets.PREVIEW_DIRECT_URL }}
+      SUPABASE_URL: ${{ inputs.environment == 'production' && secrets.PROD_SUPABASE_URL || secrets.PREVIEW_SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ inputs.environment == 'production' && secrets.PROD_SUPABASE_SECRET_KEY || secrets.PREVIEW_SUPABASE_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workbridge-server/package-lock.json
+      - name: 의존성 설치
+        run: npm ci
+      - name: Prisma 클라이언트 생성
+        run: npx prisma generate
+      - name: 첨부 이전
+        run: npx tsx scripts/migrate-legacy-attachments.ts ${{ inputs.apply && '--apply' || '' }}

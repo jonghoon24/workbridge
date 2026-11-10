@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import useLeaveWarning from '@/lib/useLeaveWarning';
 import Button from '@/components/ui/Button';
 import { formatFileSize } from '@/lib/format';
 import { ATTACHMENT_ACCEPT } from '@/constants/milestones';
@@ -8,6 +9,7 @@ import { CLOSED_REASON_TEXT, MESSAGE_LIMITS } from './messageUtils';
 import { PaperclipIcon } from '@/components/ui/Icons';
 
 // 메시지 입력창. Enter 전송, Shift+Enter 줄바꿈. 파일은 최대 5개, 개당 10MB.
+// 파일은 전송할 때 저장소로 직접 올라가고(진행률 표시), 실패하면 선택한 파일을 그대로 두어 다시 보낼 수 있다.
 // 보낼 수 없는 대화방이면 입력창 대신 이유를 보여준다.
 export default function MessageComposer({ canSend, closedReason, onSend }) {
   const [body, setBody] = useState('');
@@ -17,6 +19,8 @@ export default function MessageComposer({ canSend, closedReason, onSend }) {
   const [progress, setProgress] = useState(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const composing = useRef(false);
+  // 파일을 올리는 동안 창을 닫거나 다른 페이지로 가면 업로드가 끊긴다.
+  useLeaveWarning(progress !== null);
 
   if (!canSend) {
     return (

@@ -129,5 +129,6 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 GitHub Actions(`.github/workflows/ci.yml`, `e2e.yml`)가 띄우는 Postgres 서비스 컨테이너, **프리뷰**와 **운영**은
 각각 Vercel Preview·Production 배포에 서로 다른 Supabase 프로젝트(DB)를 쓴다.
 서버는 `@vercel/node`가 `src/index.ts`를 바로 트랜스파일해 서버리스 함수로 돌린다(`workbridge-server/vercel.json`,
-빌드 단계와 `dist/` 없음). 운영에서는 `app.listen()`도 작업 워커도 시작하지 않는다. 파일 업로드는
-Supabase Storage를 쓴다. 환경변수는 [ENV.md](ENV.md), 배포 절차와 운영 환경의 한계는 [DEPLOYMENT.md](DEPLOYMENT.md)에 있다.
+빌드 단계와 `dist/` 없음). 운영에서는 `app.listen()`도 작업 워커도 시작하지 않는다. 파일은
+Supabase Storage에 둔다: 프로필·포트폴리오 이미지는 서버가 받아 공개 버킷에 올리고, 메시지·결과물 첨부는 브라우저가
+서명 업로드 URL로 비공개 버킷에 직접 올린다(읽을 때는 서명 URL). 환경변수는 [ENV.md](ENV.md), 배포 절차와 운영 환경의 한계는 [DEPLOYMENT.md](DEPLOYMENT.md)에 있다.

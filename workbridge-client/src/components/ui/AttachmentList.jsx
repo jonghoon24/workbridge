@@ -3,13 +3,15 @@
 import { useState } from 'react';
 import { formatFileSize } from '@/lib/format';
 import { PaperclipIcon } from '@/components/ui/Icons';
+import AttachmentLink from '@/components/ui/AttachmentLink';
 
 // 메시지 첨부와 마일스톤 결과물 첨부(OpenAPI `Attachment`: url, fileName, mimeType, size)를 그린다.
 // 이미지(`image/*`)는 썸네일로, 나머지는 파일 이름과 크기가 있는 링크로 보여 준다.
 //
-// url은 응답에 온 값을 그대로 쓴다. 공개 버킷 주소든 수명이 짧은 서명 URL이든 형식을 해석하거나
-// 쿼리를 붙이지 않는다(#22). 썸네일을 못 불러오면(만료된 서명 URL, 브라우저가 못 그리는 HEIC 등)
-// 파일 링크로 돌아간다.
+// url은 응답에 온 값을 그대로 쓴다. 공개 버킷 주소든 수명이 짧은 서명 URL(15분)이든 형식을 해석하거나
+// 쿼리를 붙이지 않는다(#22). 썸네일을 못 불러오면(만료된 서명 URL, url이 null인 서명 실패, 브라우저가
+// 못 그리는 HEIC 등) 파일 링크로 돌아간다. 파일 링크는 downloadPath(attachment)가 있으면 누를 때마다
+// 백엔드에서 새 다운로드 URL을 받아 원래 이름으로 내려받는다(AttachmentLink).
 
 const TONES = {
   // 흰 배경(상대 메시지, 제출 이력)
@@ -18,6 +20,7 @@ const TONES = {
     size: 'text-gray-400',
     caption: 'text-gray-500',
     frame: 'border-gray-200 bg-gray-100',
+    error: 'text-red-600',
   },
   // 파란 말풍선(내 메시지)
   inverted: {
@@ -25,6 +28,7 @@ const TONES = {
     size: 'text-primary-100',
     caption: 'text-primary-100',
     frame: 'border-primary-400 bg-primary-500',
+    error: 'text-primary-100',
   },
 };
 
@@ -32,7 +36,22 @@ export function isImageAttachment(attachment) {
   return typeof attachment?.mimeType === 'string' && attachment.mimeType.toLowerCase().startsWith('image/');
 }
 
-function FileLink({ attachment, tone }) {
+function FileLink({ attachment, tone, downloadPath }) {
+  const className = `flex min-w-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${tone.file}`;
+  const content = (
+    <>
+      <PaperclipIcon className="h-4 w-4 shrink-0" />
+      <span className="truncate font-medium">{attachment.fileName}</span>
+      <span className={`shrink-0 ${tone.size}`}>{formatFileSize(attachment.size)}</span>
+    </>
+  );
+  if (downloadPath) {
+    return (
+      <AttachmentLink attachment={attachment} downloadPath={downloadPath(attachment)} className={className} errorClassName={tone.error}>
+        {content}
+      </AttachmentLink>
+    );
+  }
   return (
     <a
       href={attachment.url}
@@ -80,13 +99,13 @@ function ImageThumb({ attachment, tone, single, onError }) {
   );
 }
 
-export default function AttachmentList({ attachments, tone: toneName = 'default', className = '' }) {
+export default function AttachmentList({ attachments, downloadPath, tone: toneName = 'default', className = '' }) {
   // 불러오지 못한 이미지의 id. 그 첨부는 파일 링크로 보여 준다.
   const [broken, setBroken] = useState(() => new Set());
   if (!attachments?.length) return null;
 
   const tone = TONES[toneName] || TONES.default;
-  const images = attachments.filter((a) => isImageAttachment(a) && !broken.has(a.id));
+  const images = attachments.filter((a) => isImageAttachment(a) && a.url && !broken.has(a.id));
   const files = attachments.filter((a) => !images.includes(a));
 
   function markBroken(id) {
@@ -113,7 +132,7 @@ export default function AttachmentList({ attachments, tone: toneName = 'default'
         <ul className="space-y-1">
           {files.map((attachment) => (
             <li key={attachment.id}>
-              <FileLink attachment={attachment} tone={tone} />
+              <FileLink attachment={attachment} tone={tone} downloadPath={downloadPath} />
             </li>
           ))}
         </ul>

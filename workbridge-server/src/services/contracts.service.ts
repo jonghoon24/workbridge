@@ -3,6 +3,7 @@ import type { ContractStatus, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { unreadByContract } from './messaging.service';
 import { milestoneInclude, milestoneSummary, serializeMilestone } from './milestones.service';
+import { presignAttachments } from './attachments.service';
 
 /**
  * Contract reads shared by the contract controller (`GET /:id`, sign) and the contract list
@@ -27,13 +28,16 @@ export const contractInclude = {
 
 export type ContractWithRelations = Prisma.ContractGetPayload<{ include: typeof contractInclude }>;
 
-/** Milestones serialized (each with its own `payment`) plus `milestoneSummary`; the contract has no `payment` key. */
+/**
+ * Milestones serialized (each with its own `payment`) plus `milestoneSummary`; the contract has no
+ * `payment` key. The latest submissions' attachments get signed download URLs.
+ */
 export function serializeContract(contract: ContractWithRelations) {
-  return {
+  return presignAttachments({
     ...contract,
     milestones: contract.milestones.map(serializeMilestone),
     milestoneSummary: milestoneSummary(contract.milestones, contract.amount),
-  };
+  });
 }
 
 export interface ContractListQuery {

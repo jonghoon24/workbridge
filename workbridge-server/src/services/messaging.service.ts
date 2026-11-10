@@ -9,8 +9,17 @@ import { PermanentJobError } from '../jobs/errors';
 import { enqueueJob } from '../jobs/queue';
 import { notify } from '../lib/notifications/notify';
 import { renderTemplate } from '../lib/notifications/templates';
-import { storeUploadedFile } from '../middlewares/attachmentUpload';
-import type { StoredFile } from '../middlewares/attachmentUpload';
+import {
+  assertRequestedFiles,
+  attachmentRows,
+  attachmentSelect,
+  consumeUploads,
+  downloadUrlFor,
+  issueUploads,
+  presignAttachments,
+  verifyUploads,
+} from './attachments.service';
+import type { RequestedFile, VerifiedUpload } from './attachments.service';
 import type { PrismaTransactionClient } from '../types/index';
 import type { MessageListQuery } from '../schemas/conversations';
 
@@ -91,11 +100,11 @@ const SYSTEM_BODIES: Record<MessageSystemEvent, (v: SystemMessageVars) => string
 
 const userCard = { select: { id: true, name: true, profileImage: true } } as const;
 
-/** The attachment keys, in upload order. */
+/** The attachments, in upload order; `presignAttachments` turns each into the public shape. */
 const messageInclude = {
   sender: userCard,
   attachments: {
-    select: { id: true, url: true, fileName: true, mimeType: true, size: true, createdAt: true },
+    select: attachmentSelect,
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   },
 } satisfies Prisma.MessageInclude;
@@ -260,7 +269,7 @@ interface PostInput {
   senderId: string | null;
   systemEvent: MessageSystemEvent | null;
   body: string;
-  attachments?: readonly StoredFile[];
+  attachments?: readonly VerifiedUpload[];
 }
 
 /**
@@ -284,14 +293,7 @@ async function postMessage(tx: PrismaTransactionClient, conversationId: string, 
       systemEvent: input.systemEvent,
       body: input.body,
       createdAt,
-      attachments: {
-        create: (input.attachments ?? []).map((file) => ({
-          url: file.url,
-          fileName: file.fileName,
-          mimeType: file.mimeType,
-          size: file.size,
-        })),
-      },
+      attachments: { create: attachmentRows(input.attachments ?? [], createdAt) },
     },
     include: messageInclude,
   });
@@ -515,7 +517,7 @@ export async function listConversations(userId: string, query: ConversationListQ
   ]);
   const unread = await unreadByConversation(userId, rows.map((r) => r.id));
 
-  return {
+  return presignAttachments({
     conversations: rows.map((row) => {
       const { messages, ...conversation } = row;
       const { counterpartLastReadAt } = sides(conversation, userId);
@@ -525,7 +527,7 @@ export async function listConversations(userId: string, query: ConversationListQ
       };
     }),
     meta: { total, page: query.page, limit: query.limit, totalPages: Math.ceil(total / query.limit) },
-  };
+  });
 }
 
 export async function getConversation(conversationId: string, userId: string, now: Date = new Date()) {
@@ -578,41 +580,59 @@ export async function listMessages(conversationId: string, userId: string, query
   const hasMore = rows.length > query.limit;
   const page = rows.slice(0, query.limit);
   if (cursorField !== 'after') page.reverse();
-  return { messages: page.map((m) => serializeMessage(m, userId, counterpartLastReadAt)), hasMore };
+  return presignAttachments({ messages: page.map((m) => serializeMessage(m, userId, counterpartLastReadAt)), hasMore });
+}
+
+/** Who may post: closed after the window, then an inactive counterpart → 409. */
+function assertCanPost(row: ConversationRow, userId: string, now: Date): void {
+  const { counterpartUser } = sides(row, userId);
+  const state = postingState(row.contract, counterpartUser, now);
+  if (state.closedReason === 'CONTRACT_CLOSED') throw new AppError('This conversation is closed', 409);
+  if (state.closedReason === 'COUNTERPART_INACTIVE') throw new AppError('The other participant is no longer active', 409);
 }
 
 /**
- * Lookup, posting check, file storage, then one transaction for the message and the digest
- * (validation ran before).
+ * `POST /api/conversations/:id/uploads`: the file policy (before any lookup), the lookup, the
+ * posting check, then one signed upload URL per file.
+ */
+export async function requestMessageUploads(
+  conversationId: string,
+  userId: string,
+  files: readonly RequestedFile[],
+  now: Date,
+) {
+  assertRequestedFiles(files);
+  const row = await findConversationForRoute(conversationId, userId);
+  assertCanPost(row, userId, now);
+  return issueUploads(userId, 'MESSAGE', conversationId, `messages/${conversationId}`, files, now);
+}
+
+/**
+ * Lookup, posting check, the uploads' check against storage, then one transaction for the
+ * uploads' claim, the message and the digest (validation ran before).
  */
 export async function sendMessage(
   conversationId: string,
   userId: string,
   body: string,
-  files: readonly Express.Multer.File[],
+  uploadIds: readonly string[],
   now: Date = new Date(),
 ) {
   const row = await findConversationForRoute(conversationId, userId);
   const { counterpartUser, counterpartLastReadAt } = sides(row, userId);
+  assertCanPost(row, userId, now);
 
-  const state = postingState(row.contract, counterpartUser, now);
-  if (state.closedReason === 'CONTRACT_CLOSED') throw new AppError('This conversation is closed', 409);
-  if (state.closedReason === 'COUNTERPART_INACTIVE') throw new AppError('The other participant is no longer active', 409);
-
-  // Step 4: a storage failure is a 502 before anything is written; files stored by a request
-  // whose transaction then fails stay in the bucket unreferenced.
-  const stored: StoredFile[] = [];
-  for (const file of files) {
-    stored.push(await storeUploadedFile(file, `messages/${conversationId}`));
-  }
+  // Storage is read before the transaction; a storage failure is a 502 before anything is written.
+  const uploads = await verifyUploads(userId, 'MESSAGE', conversationId, uploadIds, now);
 
   const message = await prisma.$transaction(async (tx) => {
+    await consumeUploads(tx, userId, uploads);
     const posted = await postMessage(tx, conversationId, {
       kind: 'TEXT',
       senderId: userId,
       systemEvent: null,
       body,
-      attachments: stored,
+      attachments: uploads,
     });
     // Sends to one conversation serialize on the lock above, so this check cannot race another send.
     await scheduleUnreadDigest(
@@ -624,7 +644,7 @@ export async function sendMessage(
     return posted;
   });
 
-  return { message: serializeMessage(message, userId, counterpartLastReadAt) };
+  return presignAttachments({ message: serializeMessage(message, userId, counterpartLastReadAt) });
 }
 
 /** Moves `lastReadAt` up to the newest counterpart message, conditionally, so it never moves back. */
@@ -668,9 +688,17 @@ export async function deleteMessage(conversationId: string, messageId: string, u
   if (!message.deletedAt) {
     const windowStart = new Date(now.getTime() - DELETE_WINDOW_MS);
     if (message.createdAt <= windowStart) throw tooLate();
-    const { count } = await prisma.message.updateMany({
-      where: { id: messageId, deletedAt: null, createdAt: { gt: windowStart } },
-      data: { deletedAt: now },
+    const count = await prisma.$transaction(async (tx) => {
+      const deleted = await tx.message.updateMany({
+        where: { id: messageId, deletedAt: null, createdAt: { gt: windowStart } },
+        data: { deletedAt: now },
+      });
+      // Only the deleting request removes the files: their rows stay (hidden by the tombstone).
+      const keys = message.attachments.flatMap((a) => (a.storageKey ? [a.storageKey] : []));
+      if (deleted.count === 1 && keys.length > 0) {
+        await enqueueJob(tx, { type: 'attachment.deleteObjects', payload: { keys }, runAt: now });
+      }
+      return deleted.count;
     });
     if (count === 0) {
       const again = await prisma.message.findUniqueOrThrow({ where: { id: messageId }, select: { deletedAt: true } });
@@ -680,6 +708,25 @@ export async function deleteMessage(conversationId: string, messageId: string, u
 
   const tombstone = await prisma.message.findUniqueOrThrow({ where: { id: messageId }, include: messageInclude });
   return { message: serializeMessage(tombstone, userId, counterpartLastReadAt) };
+}
+
+/**
+ * `GET /api/conversations/:id/attachments/:attachmentId/download`: a fresh URL for an attachment
+ * of an undeleted message in the conversation.
+ */
+export async function getMessageAttachmentDownload(
+  conversationId: string,
+  attachmentId: string,
+  userId: string,
+  now: Date,
+) {
+  await findConversationForRoute(conversationId, userId);
+  const attachment = await prisma.messageAttachment.findFirst({
+    where: { id: attachmentId, message: { conversationId, deletedAt: null } },
+    select: { storageKey: true, url: true, fileName: true },
+  });
+  if (!attachment) throw new AppError('Attachment not found', 404);
+  return downloadUrlFor(attachment, now);
 }
 
 export async function getContractConversation(contractId: string, userId: string) {

@@ -113,16 +113,33 @@ export function invalid(...lines: string[]): ErrorSpec {
   return { 400: ['`<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)', ...lines] };
 }
 
-/** `attachmentUpload` (field `files`, 5 × 10 MB) and storing the files (502). */
-export const ATTACHMENT_UPLOAD: ErrorSpec = {
+/** Issuing upload URLs: the per-file policy (before any lookup) and the storage call (502). */
+export const UPLOAD_POLICY: ErrorSpec = {
   400: [
-    '`Too many files (max 5)` — 파일이 5개 넘음',
+    '`files: At least one file is required` — 파일 목록이 없거나 비어 있음',
+    '`files: Too many files (max 5)` — 파일이 5개 넘음',
     '`Unsupported file type: <MIME>` — 이미지·문서·압축 파일이 아님',
-    '`Unexpected file field: <필드>` — `files` 말고 다른 필드에 파일을 보냄',
-    '`Malformed multipart body` — multipart 본문이 깨짐',
   ],
   413: ['`File too large (max 10MB)` — 10MB 넘는 파일'],
-  502: ['`File upload failed` — 저장소(Supabase Storage) 업로드 실패'],
+  502: ['`File upload failed` — 저장소(Supabase Storage)가 업로드 URL을 만들지 못함'],
+};
+
+/** Claiming uploads by `uploadIds` on a message or submission: checked against storage. */
+export const UPLOAD_CLAIM: ErrorSpec = {
+  400: [
+    '`uploadIds: Too many files (max 5)` — 업로드가 5개 넘음',
+    '`uploadIds: Upload ids must be unique` — 같은 업로드를 두 번 보냄',
+    '`uploadIds: Upload not found or expired` — 내가 이 대상에 받은 업로드가 아니거나, 만료됐거나, 이미 붙음',
+    '`uploadIds: File has not been uploaded` — 업로드 URL로 파일을 올리지 않음',
+    '`Unsupported file type: <MIME>` — 저장된 파일의 형식이 허용되지 않음',
+  ],
+  413: ['`File too large (max 10MB)` — 저장된 파일이 10MB 넘음'],
+  502: ['`File storage is unavailable` — 저장소(Supabase Storage)에서 파일을 확인하지 못함'],
+};
+
+/** The attachment download routes. */
+export const ATTACHMENT_DOWNLOAD: ErrorSpec = {
+  502: ['`File storage is unavailable` — 저장소(Supabase Storage)가 다운로드 URL을 만들지 못함'],
 };
 
 /** `imageUpload` (field `image`, one 5 MB image) and storing it (502). */

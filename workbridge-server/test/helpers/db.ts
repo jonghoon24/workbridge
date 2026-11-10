@@ -27,6 +27,7 @@ export function sideClient(): PrismaClient {
 const TABLES = [
   'Job',
   'RateLimitCounter',
+  'AttachmentUpload',
   'EmailDelivery',
   'NotificationPreference',
   'Notification',

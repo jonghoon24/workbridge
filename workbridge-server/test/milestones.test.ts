@@ -1,22 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { storageUpload } = vi.hoisted(() => ({ storageUpload: vi.fn() }));
-
-// No test may reach Supabase; submissions store their files through this stub.
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: () => ({
-    storage: {
-      from: () => ({
-        upload: storageUpload,
-        getPublicUrl: (path: string) => ({
-          data: { publicUrl: `https://test.supabase.co/storage/v1/object/public/workbridge/${path}` },
-        }),
-      }),
-    },
-  }),
-}));
+// No test may reach Supabase; submission files go through this in-memory storage.
+vi.mock('@supabase/supabase-js', async () => {
+  const { storage } = await import('./helpers/storageFake.js');
+  return { createClient: () => storage.client };
+});
 
 import { api, authed } from './helpers/api';
+import { storage } from './helpers/storageFake';
+import { ATTACHMENT_BUCKET, pdf, png, uploadFiles } from './helpers/attachments';
 import { prisma } from './helpers/db';
 import { makeContractScenario, makeMilestone, makePayment, makeSubmission } from './helpers/factories';
 import { DAY_MS, HOUR_MS } from '../src/lib/time';
@@ -27,8 +19,7 @@ import { DAY_MS, HOUR_MS } from '../src/lib/time';
  */
 
 beforeEach(() => {
-  storageUpload.mockReset();
-  storageUpload.mockImplementation(async (path: string) => ({ data: { path }, error: null }));
+  storage.reset();
 });
 
 afterEach(() => {
@@ -191,32 +182,38 @@ describe('POST /api/milestones/:id/submissions', () => {
     });
   });
 
-  it('stores multipart files under milestones/<id>/ and restores Korean file names', async () => {
+  it('attaches files uploaded under milestones/<id>/, in upload order, with signed URLs', async () => {
     const { freelancer, milestone } = await funded();
+    const { ids, keys } = await uploadFiles(storage, freelancer, `/api/milestones/${milestone.id}`, [
+      pdf('최종 보고서.pdf', 8),
+      png('shot.png', 3),
+    ]);
 
-    const res = await submit(freelancer, milestone.id)
-      .field('message', '파일 첨부')
-      .field('links', 'https://example.com/a')
-      .attach('files', Buffer.from('%PDF-1.4'), { filename: '최종 보고서.pdf', contentType: 'application/pdf' })
-      .attach('files', Buffer.from('png'), { filename: 'shot.png', contentType: 'image/png' });
+    const res = await submit(freelancer, milestone.id).send({ message: '파일 첨부', links: 'https://example.com/a', uploadIds: ids });
 
     expect(res.status).toBe(201);
     expect(res.body.submission.links).toEqual(['https://example.com/a']);
     const attachments = res.body.submission.attachments;
-    expect(attachments.map((a: { fileName: string }) => a.fileName).sort()).toEqual(['shot.png', '최종 보고서.pdf']);
-    for (const call of storageUpload.mock.calls) {
-      expect(call[0]).toMatch(new RegExp(`^milestones/${milestone.id}/[0-9a-f-]{36}\\.(pdf|png)$`));
-    }
-    expect(await prisma.milestoneAttachment.count()).toBe(2);
+    expect(attachments.map((a: { fileName: string }) => a.fileName)).toEqual(['최종 보고서.pdf', 'shot.png']);
+    expect(attachments[0]).toMatchObject({ mimeType: 'application/pdf', size: 8 });
+    for (const key of keys) expect(key).toMatch(new RegExp(`^milestones/${milestone.id}/[0-9a-f-]{36}\\.(pdf|png)$`));
+    expect(attachments.map((a: { url: string }) => a.url)).toEqual(
+      keys.map((key) => expect.stringContaining(`/object/sign/${ATTACHMENT_BUCKET}/${key}?`)),
+    );
+    expect(res.body.milestone.latestSubmission.attachments.map((a: { id: string }) => a.id))
+      .toEqual(attachments.map((a: { id: string }) => a.id));
+    expect(await prisma.milestoneAttachment.count({ where: { url: null } })).toBe(2);
+    expect(await prisma.attachmentUpload.count()).toBe(0);
   });
 
-  it('a storage failure is a 502 and writes nothing', async () => {
+  it('a storage failure while checking the uploads is a 502 and writes nothing', async () => {
     const { freelancer, milestone } = await funded();
-    storageUpload.mockResolvedValue({ data: null, error: new Error('bucket down') });
+    const { ids } = await uploadFiles(storage, freelancer, `/api/milestones/${milestone.id}`, [pdf()]);
+    storage.bucket(ATTACHMENT_BUCKET).info.mockResolvedValueOnce(
+      { data: null, error: Object.assign(new Error('bucket down'), { status: 503, statusCode: '503' }) },
+    );
 
-    const res = await submit(freelancer, milestone.id)
-      .field('message', 'x')
-      .attach('files', Buffer.from('a'), { filename: 'a.txt', contentType: 'text/plain' });
+    const res = await submit(freelancer, milestone.id).send({ message: 'x', uploadIds: ids });
 
     expect(res.status).toBe(502);
     expect(await prisma.milestoneSubmission.count()).toBe(0);
@@ -238,16 +235,18 @@ describe('POST /api/milestones/:id/submissions', () => {
     ]);
   });
 
-  it.each(['PENDING', 'SUBMITTED', 'APPROVED'] as const)('409s for a %s milestone', async (status) => {
+  it.each(['PENDING', 'SUBMITTED', 'APPROVED'] as const)('409s for a %s milestone, before touching storage', async (status) => {
     const { freelancer, milestone } = await funded();
+    const { ids } = await uploadFiles(storage, freelancer, `/api/milestones/${milestone.id}`, [pdf()]);
     await prisma.milestone.update({ where: { id: milestone.id }, data: { status } });
 
-    const res = await submit(freelancer, milestone.id).send({ message: 'x' });
+    const res = await submit(freelancer, milestone.id).send({ message: 'x', uploadIds: ids });
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: { message: 'Milestone is not awaiting a submission' } });
     expect(await prisma.milestoneSubmission.count()).toBe(0);
-    expect(storageUpload).not.toHaveBeenCalled();
+    expect(storage.bucket(ATTACHMENT_BUCKET).info).not.toHaveBeenCalled();
+    expect(await prisma.attachmentUpload.count()).toBe(1);
   });
 
   it.each<[string, Record<string, unknown>, string]>([

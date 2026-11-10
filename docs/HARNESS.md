@@ -90,6 +90,7 @@ rules로 보냈다. 80줄 안팎으로 유지한다.
 | `claude.yml` | 이슈·PR 코멘트, PR 리뷰·리뷰 코멘트의 `@claude` 멘션, 이슈 opened·assigned(제목이나 본문에 `@claude`) | 멘션에 답하거나, 작업을 맡아 새 브랜치에 커밋·푸시하고 PR 템플릿을 채운 **드래프트 PR**을 연다(이미 열린 PR에서는 그 브랜치에 푸시만). 저장소의 `CLAUDE.md`·rules·스킬을 그대로 읽는다. 의존성 설치·Prisma 생성 단계가 있어 허용 커맨드 typecheck·lint와 `npm run openapi`가 실제로 돈다. 스키마나 `src/openapi/`를 바꿨으면 `openapi.json`을 다시 생성해 같은 커밋에 넣으라고 지시한다(`ci.yml`의 최신 검사를 통과하도록). 그 밖의 허용은 읽기 전용 git, `gh pr view`·`gh pr diff`·`gh pr create`, `gh issue view`. DB가 없어 vitest는 허용하지 않는다(테스트는 PR의 `ci.yml`). 트리거한 사람에게 쓰기 권한이 있어야 돈다 |
 | `migrate.yml` | `main` 푸시 중 `workbridge-server/prisma/migrations/**` 변경, 수동 | 원격 DB에 마이그레이션을 적용하는 유일한 경로. 프리뷰 → 운영 순서로 `prisma migrate deploy`, `concurrency: migrate`. 권한 규칙이 Supabase 접속을 막으므로 로컬 세션은 원격 DB에 닿지 못한다 |
 | `seed.yml` | 수동 전용(`environment`, `confirm=seed`) | 프리뷰·운영 DB를 시드로 되돌린다. 모든 테이블을 비우므로 확인 입력이 있어야 돈다 |
+| `attachments-migrate.yml` | 수동 전용(`environment`, `apply`) | 비공개 버킷 전에 올린 첨부를 공개 버킷에서 옮기는 한 번짜리 이전(`docs/DEPLOYMENT.md` 3번). 원격 DB와 Supabase 키가 GitHub 시크릿에만 있어서 여기서 돈다. `apply`를 끄면 건수만 센다 |
 
 두 Claude 워크플로는 구독 토큰 시크릿 `CLAUDE_CODE_OAUTH_TOKEN`으로 `anthropics/claude-code-action@v1`을 돌린다.
 

@@ -18,7 +18,7 @@
 | 작업 | 넣는 때 | 실행 시각 | 하는 일 |
 | --- | --- | --- | --- |
 | `project.lifecycleSweep` | 반복 | 10분 경계(:00, :10, …) | 프로젝트 지연 스윕과 같은 일([projects-contracts.md](projects-contracts.md#지연-스윕-읽기가-행을-쓴다)) |
-| `maintenance.cleanup` | 반복 | 매일 04:00 KST | 14일 넘은 성공·취소 작업과 끝난 요청 제한 카운터를 지운다. 실패 작업은 조사용으로 남긴다(`JOB_RETENTION_DAYS`) |
+| `maintenance.cleanup` | 반복 | 매일 04:00 KST | 14일 넘은 성공·취소 작업과 끝난 요청 제한 카운터를 지운다. 실패 작업은 조사용으로 남긴다(`JOB_RETENTION_DAYS`). 아무 데도 붙지 않고 만료된 첨부 업로드를 지우고 그 파일을 지울 `attachment.deleteObjects`를 같은 트랜잭션에서 넣는다 |
 | `milestone.autoApprove` | 결과물 제출 | 자동 승인 시각(제출 + 7일) | 마일스톤이 아직 그 회차로 검수 대기면 자동 승인 |
 | `milestone.autoApproveReminder` | 결과물 제출(예고 시각이 미래일 때) | 자동 승인 48시간 전 | 의뢰인에게 자동 승인 예고 |
 | `milestone.dueSoon` | 결제 완료(시각이 미래일 때) | 기한 24시간 전 | 아직 작업 중이면 프리랜서에게 기한 임박 |
@@ -27,6 +27,7 @@
 | `settlement.payout` | 주간 배치, 지급 계좌 등록, 남은 시도가 있는 이체 실패 | 정산의 지급 예정 시각 | 지급 실행 |
 | `message.unreadDigest` | 텍스트 메시지(대기 중인 것이 없을 때) | 메시지 + 10분 등 | 미확인 메시지 다이제스트 |
 | `notification.email` | 이메일이 켜진 `notify()` | 즉시 | 이메일 한 통 발송 |
+| `attachment.deleteObjects` | 메시지 삭제(비공개 저장소의 첨부가 있을 때), 만료된 업로드 정리 | 즉시 | 비공개 첨부 버킷에서 파일을 지운다. 이미 없는 파일은 성공으로 친다([messaging-notifications.md](messaging-notifications.md#첨부-파일)) |
 
 세부 규칙은 각 도메인 문서에 있다: 마일스톤 작업은 [milestones-payments.md](milestones-payments.md#자동-승인과-기한-알림),
 정산과 지급은 [milestones-payments.md](milestones-payments.md#정산), 다이제스트와 이메일은
@@ -73,4 +74,5 @@
 | `notification.email` | `JOB_EMAIL_ENABLED` | **건너뜀**: 작업은 돌고 발송 기록을 `SKIPPED`로 끝낸다 | 메일은 제때여야 의미가 있다. 쌓아 두면 켜는 날 오래된 알림이 한꺼번에 나간다 |
 
 다이제스트 작업 자체는 메일 플래그와 상관없이 돌고 빈도 제한도 유지한다. 메일만 건너뛴다. 새 작업 타입이 외부로
-무언가를 보내면 같은 방식의 플래그를 둔다.
+무언가를 보내면 같은 방식의 플래그를 둔다. `attachment.deleteObjects`는 플래그가 없다: 실제 저장소에 대해 운영에서
+그대로 돌려도 되는 일이고(가짜 provider가 아니다), 꺼 두면 지운 메시지의 파일이 남는다.

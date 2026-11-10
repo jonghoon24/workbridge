@@ -62,7 +62,11 @@ export const milestonePayment = payment
 export const attachment = z
   .object({
     id,
-    url: z.string(),
+    url: z.string().nullable().openapi({
+      description:
+        '15분 동안 유효한 서명 다운로드 URL(비공개 버킷). 오래된 첨부는 공개 URL 그대로. 서명에 실패하면 `null` — '
+        + '내려받을 때는 첨부 다운로드 경로로 새 URL을 받는다.',
+    }),
     fileName: z.string(),
     mimeType: z.string(),
     size: z.number().int().min(0).openapi({ description: '바이트' }),
@@ -253,4 +257,26 @@ export const paymentWithContext = z.object({
     freelancer: z.object({ id, name: z.string() }),
   }),
   milestone: z.object({ id, sequence: z.number().int(), title: z.string() }),
+});
+
+/** `POST /api/conversations/:id/uploads`, `POST /api/milestones/:id/uploads`. */
+export const uploadsIssued = z.object({
+  uploads: z.array(
+    z.object({
+      id: id.openapi({ description: '메시지·제출을 만들 때 `uploadIds`에 넣는다' }),
+      fileName: z.string(),
+      mimeType: z.string(),
+      size: z.number().int().min(0).openapi({ description: '바이트(브라우저가 알린 값)' }),
+      uploadUrl: z.string().openapi({
+        description: '서명 업로드 URL. 파일 본문을 `PUT`하고 `Content-Type`에 `mimeType`을 넣는다. 한 번만 쓸 수 있다.',
+      }),
+      expiresAt: dateTime.openapi({ description: '업로드 URL과 이 업로드가 만료되는 시각(2시간)' }),
+    }),
+  ).openapi({ description: '요청한 파일 순서' }),
+});
+
+/** The download routes of message and submission attachments. */
+export const attachmentDownload = z.object({
+  url: z.string().openapi({ description: '원래 파일 이름으로 내려받는 서명 URL(60초). 오래된 첨부는 공개 URL' }),
+  expiresAt: dateTime.nullable().openapi({ description: '만료 시각. 오래된 공개 URL이면 `null`' }),
 });

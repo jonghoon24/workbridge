@@ -48,7 +48,11 @@ export default function SubmissionHistory({ submissions = [] }) {
             </ul>
           )}
 
-          <AttachmentList attachments={submission.attachments} className="mt-2 max-w-md" />
+          <AttachmentList
+            attachments={submission.attachments}
+            downloadPath={(attachment) => `/api/milestones/${submission.milestoneId}/attachments/${attachment.id}/download`}
+            className="mt-2 max-w-md"
+          />
 
           {submission.decision === 'REJECTED' && submission.decisionReason && (
             <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
