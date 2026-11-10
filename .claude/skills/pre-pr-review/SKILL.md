@@ -2,7 +2,7 @@
 name: pre-pr-review
 description: PR을 열기 전에 main 대비 브랜치 diff를 /code-review와 REVIEW.md의 번호 항목으로 리뷰하고(pre-PR review), 수정을 적용해 커밋하고, 사람이 봐야 할 지적을 표시한 뒤 리포지토리 템플릿으로 PR을 연다(open a PR)
 model: sonnet
-allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(npm run typecheck:*), Bash(npm run lint:*), Bash(npm run build:*), Bash(npx vitest run:*), Read, Grep, Glob, Edit, Skill
+allowed-tools: Bash(git:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(npm run typecheck:*), Bash(npm run lint:*), Bash(npm run build:*), Bash(npm run openapi:*), Bash(npx vitest run:*), Read, Grep, Glob, Edit, Skill
 ---
 
 # PR 전 리뷰

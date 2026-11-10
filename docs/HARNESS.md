@@ -40,7 +40,7 @@ rules로 보냈다. 80줄 안팎으로 유지한다.
 | `gh workflow run *seed*` deny | `seed.yml`은 원격(프리뷰·운영) DB의 모든 테이블을 비우고 시드로 되돌린다. `confirm=seed`는 사람용 확인이라 에이전트는 그대로 넣을 수 있다 |
 | `*vercel env pull*`, `*vercel pull*` deny | Vercel 환경변수(운영 비밀값 포함)를 로컬 파일로 내려받는다. 내려받은 파일은 위 `.env` deny 밖에 놓일 수 있다 |
 | `*vercel*--prod*` deny | 로컬에서 운영에 직접 배포한다. 운영 배포는 `main` 머지 → Vercel Git 연동으로만 한다 |
-| allow: 검사 커맨드(typecheck, test, lint, build, vitest, `playwright test`·`playwright cli`, `scripts/*.sh`), 읽기 전용 git(`status`·`diff`·`log`·`show`·`ls-files`·`rev-parse`, `git branch --show-current`, `git remote -v`)·gh | 수정 → 검사 루프가 매번 승인을 묻지 않게 한다. `git branch`·`git remote`는 정확한 읽기 커맨드만 허용한다(`git branch -D`, `git remote set-url`은 묻는다). 쓰는 git, `gh pr create`, `prisma migrate dev`는 일부러 넣지 않았다 |
+| allow: 검사 커맨드(typecheck, test, lint, build, vitest, `playwright test`·`playwright cli`, `scripts/*.sh`), OpenAPI 생성(`npm run openapi`), 읽기 전용 git(`status`·`diff`·`log`·`show`·`ls-files`·`rev-parse`, `git branch --show-current`, `git remote -v`)·gh | 수정 → 검사 루프가 매번 승인을 묻지 않게 한다. `git branch`·`git remote`는 정확한 읽기 커맨드만 허용한다(`git branch -D`, `git remote set-url`은 묻는다). `npm run openapi`는 DB·환경변수·네트워크 없이 `openapi.json` 한 파일만 결정적으로 다시 쓴다. 쓰는 git, `gh pr create`, `prisma migrate dev`는 일부러 넣지 않았다 |
 
 **한계.** Bash 규칙은 커맨드 텍스트만 본다. `bash -c '…'`처럼 다른 형태로 부르면 걸리지 않는다. 보안 경계가 아니라
 흔한 실수를 막는 장치다. `TRUNCATE`·`vercel pull` 규칙은 `grep -rn TRUNCATE` 같은 검색도 막는다(그때는 Grep 툴을 쓴다).
@@ -86,7 +86,7 @@ rules로 보냈다. 80줄 안팎으로 유지한다.
 | `ci.yml` | PR, `main` 푸시 | 서버 typecheck·`prisma validate`·`openapi.json` 최신 검사·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint(`--max-warnings=0`)·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
 | `e2e.yml` | PR, `main` 푸시 | Playwright E2E. 클라이언트에 단위 테스트가 없어서 핵심 흐름은 브라우저로만 확인된다 |
 | `claude-code-review.yml` | PR opened·synchronize·ready_for_review·reopened(드래프트 제외) | Claude가 `REVIEW.md`·`CLAUDE.md`와 바뀐 경로의 rules, PR 본문을 읽고 diff를 리뷰한다. 지적은 인라인 코멘트로 달고 `REVIEW.md` 위반에는 `REVIEW #n`을 붙인다. 푸시마다 다시 돌지만 자신이 이미 단 지적(`gh api …/pulls/<n>/comments`)은 다시 달지 않고, 실행마다 요약 코멘트 하나(새 지적 수와 REVIEW 항목별 건수, 이전 지적의 해결·남음)를 남긴다. 말투는 합니다체, `--max-turns 20`. 승인·변경 요청·코드 수정·푸시는 하지 않는다 — 머지 결정은 사람 몫이다 |
-| `claude.yml` | 이슈·PR 코멘트, PR 리뷰·리뷰 코멘트의 `@claude` 멘션, 이슈 opened·assigned(제목이나 본문에 `@claude`) | 멘션에 답하거나, 작업을 맡아 새 브랜치에 커밋·푸시하고 PR 템플릿을 채운 **드래프트 PR**을 연다(이미 열린 PR에서는 그 브랜치에 푸시만). 저장소의 `CLAUDE.md`·rules·스킬을 그대로 읽는다. 의존성 설치·Prisma 생성 단계가 있어 허용 커맨드 typecheck·lint가 실제로 돈다. 그 밖의 허용은 읽기 전용 git, `gh pr view`·`gh pr diff`·`gh pr create`, `gh issue view`. DB가 없어 vitest는 허용하지 않는다(테스트는 PR의 `ci.yml`). 트리거한 사람에게 쓰기 권한이 있어야 돈다 |
+| `claude.yml` | 이슈·PR 코멘트, PR 리뷰·리뷰 코멘트의 `@claude` 멘션, 이슈 opened·assigned(제목이나 본문에 `@claude`) | 멘션에 답하거나, 작업을 맡아 새 브랜치에 커밋·푸시하고 PR 템플릿을 채운 **드래프트 PR**을 연다(이미 열린 PR에서는 그 브랜치에 푸시만). 저장소의 `CLAUDE.md`·rules·스킬을 그대로 읽는다. 의존성 설치·Prisma 생성 단계가 있어 허용 커맨드 typecheck·lint와 `npm run openapi`가 실제로 돈다. 스키마나 `src/openapi/`를 바꿨으면 `openapi.json`을 다시 생성해 같은 커밋에 넣으라고 지시한다(`ci.yml`의 최신 검사를 통과하도록). 그 밖의 허용은 읽기 전용 git, `gh pr view`·`gh pr diff`·`gh pr create`, `gh issue view`. DB가 없어 vitest는 허용하지 않는다(테스트는 PR의 `ci.yml`). 트리거한 사람에게 쓰기 권한이 있어야 돈다 |
 | `migrate.yml` | `main` 푸시 중 `workbridge-server/prisma/migrations/**` 변경, 수동 | 원격 DB에 마이그레이션을 적용하는 유일한 경로. 프리뷰 → 운영 순서로 `prisma migrate deploy`, `concurrency: migrate`. 권한 규칙이 Supabase 접속을 막으므로 로컬 세션은 원격 DB에 닿지 못한다 |
 | `seed.yml` | 수동 전용(`environment`, `confirm=seed`) | 프리뷰·운영 DB를 시드로 되돌린다. 모든 테이블을 비우므로 확인 입력이 있어야 돈다 |
 
