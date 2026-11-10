@@ -49,8 +49,8 @@ const WON_AMOUNT = /\d[\d,]*(?:\.\d+)?\s*(?:억|천만|백만|만|천)?\s*원/;
  * left → `null`.
  */
 function summaryWithoutAmounts(value: unknown): string | null {
-  if (!value) return null;
-  const kept = String(value)
+  if (typeof value !== 'string' || !value) return null;
+  const kept = value
     .trim()
     .split(/(?<=[.!?。])\s+/)
     .filter((sentence) => !WON_AMOUNT.test(sentence))
@@ -78,7 +78,8 @@ function normalizePricingAnalysisData(data: RawPricingAnalysis): PricingAnalysis
     features,
     totalAmount: features.reduce((sum, feature) => sum + feature.estimatedCost, 0),
     summary: summaryWithoutAmounts(data?.summary),
-    marketReference: data?.marketReference ? String(data.marketReference).trim() : null,
+    marketReference:
+      typeof data?.marketReference === 'string' && data.marketReference ? data.marketReference.trim() : null,
   };
 }
 
@@ -392,10 +393,15 @@ export async function deleteProject(req: AuthedRequest, res: Response, next: Nex
   }
 }
 
+/**
+ * The client's manual transitions only. `IN_PROGRESS` has none: signing moves a project there and
+ * approving the last milestone completes it, so a client cannot skip the milestones or cancel
+ * over a running contract.
+ */
 const validTransitions: ProjectStatusTransitions = {
   UPCOMING: ['OPEN', 'CANCELLED', 'CLOSED'],
   OPEN: ['CANCELLED', 'CLOSED'],
-  IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
+  IN_PROGRESS: [],
   COMPLETED: [],
   CANCELLED: [],
   CLOSED: [],

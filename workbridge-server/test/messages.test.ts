@@ -333,7 +333,7 @@ describe('POST /api/conversations/:id/messages', () => {
   it('a storage failure while checking the uploads is a 502 and writes nothing — no message, no job', async () => {
     const { client, conversation } = await makeContractScenario();
     const { ids } = await uploadFiles(storage, client, `/api/conversations/${conversation.id}`, [pdf()]);
-    files().info.mockResolvedValueOnce({ data: null, error: Object.assign(new Error('bucket down'), { status: 503, statusCode: '503' }) } as never);
+    files().info.mockResolvedValueOnce({ data: null, error: Object.assign(new Error('bucket down'), { status: 503, statusCode: '503' }) });
 
     const res = await send(client, conversation.id).send({ body: 'x', uploadIds: ids });
 

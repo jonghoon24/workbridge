@@ -94,8 +94,8 @@ const MESSAGES = {
     '바꿀 프로젝트 상태가 올바르지 않습니다.',
   'Cover letter is required': '지원서를 입력해 주세요.',
   'Cover letter must be a string': '지원서를 다시 입력해 주세요.',
-  'Expected rate is required': '제안 금액을 입력해 주세요.',
-  'Expected rate must be a positive whole number of won': '제안 금액은 1원 이상의 원 단위 정수로 입력해 주세요.',
+  'Expected rate is required': '희망 금액을 입력해 주세요.',
+  'Expected rate must be a positive whole number of won': '희망 금액은 1원 이상의 원 단위 정수로 입력해 주세요.',
   'Expected duration is required': '예상 기간을 입력해 주세요.',
   'Expected duration must be a string': '예상 기간을 다시 입력해 주세요.',
   'Status is required': '처리 방법을 선택해 주세요.',
@@ -112,7 +112,7 @@ const MESSAGES = {
   'maxBudget: must be at least 0': '최대 예산은 0원 이상으로 입력해 주세요.',
   'minBudget: must not be greater than maxBudget': '최소 예산이 최대 예산보다 클 수 없습니다.',
   'sort: must be one of latest, deadline, budget': '정렬 조건이 올바르지 않습니다.',
-  'status: must be one of ALL, UPCOMING, OPEN, CLOSED': '프로젝트 상태 조건이 올바르지 않습니다.',
+  'status: must be one of ALL, UPCOMING, OPEN, CLOSED, IN_PROGRESS': '프로젝트 상태 조건이 올바르지 않습니다.',
   'skills: must be a string or a list of strings': '기술 조건이 올바르지 않습니다.',
   ...Object.fromEntries(
     [

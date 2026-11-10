@@ -96,8 +96,6 @@ const ALLOWED: Array<[ProjectStatus, ProjectStatus]> = [
   ['UPCOMING', 'CLOSED'],
   ['OPEN', 'CANCELLED'],
   ['OPEN', 'CLOSED'],
-  ['IN_PROGRESS', 'COMPLETED'],
-  ['IN_PROGRESS', 'CANCELLED'],
 ];
 
 const FORBIDDEN: Array<[ProjectStatus, ProjectStatus]> = ALL_STATUSES.flatMap((from) =>

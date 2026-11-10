@@ -64,7 +64,7 @@ export function registerPaymentPaths(registry: OpenAPIRegistry): void {
         {
           403: ['`Not authorized` — 결제한 의뢰인이 아님'],
           404: ['`Payment not found` — 없는 주문, 또는 프로젝트가 삭제됨'],
-          409: ['`Payment has already been processed` — 대기 중인 결제가 아님'],
+          409: ['`Payment has already been processed` — 대기 중인 결제가 아니거나, 같은 결제의 다른 승인 요청이 진행 중'],
         },
       ),
     },

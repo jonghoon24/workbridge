@@ -89,6 +89,9 @@ mkdir -p "$LOG_DIR"
 # --- Database ---------------------------------------------------------------
 export DATABASE_URL="$DB_URL"
 export DIRECT_URL="$DB_URL"
+# The seed and the server must share it: the seed stores payout account numbers encrypted with it.
+# A fixed E2E-only key (base64 of the 32 ASCII bytes `e2e-payout-account-key-32-bytes!`).
+export PAYOUT_ACCOUNT_ENCRYPTION_KEY=ZTJlLXBheW91dC1hY2NvdW50LWtleS0zMi1ieXRlcyE=
 
 if [[ "${E2E_SKIP_SEED:-}" != "1" ]]; then
   log "database $DB_NAME"
@@ -116,6 +119,7 @@ SERVER_ENV=(
   TOSS_SECRET_KEY=test_sk_dummy
   SUPABASE_URL=https://dummy.supabase.co
   SUPABASE_SECRET_KEY=sb_secret_dummy
+  PAYOUT_ACCOUNT_ENCRYPTION_KEY="$PAYOUT_ACCOUNT_ENCRYPTION_KEY"
   ALLOW_PAYMENT_BYPASS=true
   TRUST_PROXY=loopback
   RATE_LIMIT_ENABLED=false

@@ -210,7 +210,7 @@ describe('POST /api/milestones/:id/submissions', () => {
     const { freelancer, milestone } = await funded();
     const { ids } = await uploadFiles(storage, freelancer, `/api/milestones/${milestone.id}`, [pdf()]);
     storage.bucket(ATTACHMENT_BUCKET).info.mockResolvedValueOnce(
-      { data: null, error: Object.assign(new Error('bucket down'), { status: 503, statusCode: '503' }) } as never,
+      { data: null, error: Object.assign(new Error('bucket down'), { status: 503, statusCode: '503' }) },
     );
 
     const res = await submit(freelancer, milestone.id).send({ message: 'x', uploadIds: ids });
@@ -379,8 +379,8 @@ describe('POST /api/milestones/:id/approve', () => {
     expect(res.body.contract.completedAt).not.toBeNull();
     const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(storedContract.status).toBe('COMPLETED');
-    // Directly from CLOSED, bypassing validTransitions.
-    expect(project.status).toBe('CLOSED');
+    // From IN_PROGRESS (where signing put it), bypassing validTransitions.
+    expect(project.status).toBe('IN_PROGRESS');
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('COMPLETED');
 
     const completed = await prisma.notification.findMany({ where: { type: 'CONTRACT_COMPLETED' } });

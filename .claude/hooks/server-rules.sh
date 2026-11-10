@@ -2,7 +2,7 @@
 # PostToolUse (Edit|Write|MultiEdit): workbridge-server/src/**/*.ts 대상.
 # 막는 것이 아니라 알리는 것이다 — 편집은 이미 일어났다. exit 2면 stderr가 Claude에게 돌아간다.
 # 방금 쓴 텍스트만 본다(Write: content, Edit: new_string, MultiEdit: 모든 new_string). 그래서 파일에
-# 이미 있는 문서화된 예외(googleCallback의 console.error, AI 프롬프트의 toLocaleDateString)가
+# 이미 있는 문서화된 예외(AI 프롬프트의 toLocaleDateString)가
 # 상관없는 편집 때마다 다시 걸리지 않는다. 주석 줄은 무시한다.
 set -euo pipefail
 

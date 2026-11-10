@@ -123,6 +123,7 @@ router.post('/things', ...guard, validate({ body: thingBody }), postThing);
 ```bash
 cd workbridge-server
 npm run typecheck
+npm run lint
 npm run openapi && git diff --stat openapi.json   # 바뀐 경로만 늘었는지 본다
 npx vitest run test/<domain>.test.ts test/authorization.test.ts test/soft-delete.test.ts test/openapi.test.ts
 npm test

@@ -40,7 +40,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | **Milestone** | 계약을 나눈 작업 단위 | `sequence`(1부터), `amount`(원 단위 정수), `dueDate`(그 KST 날짜의 23:59:59.999), `status`, `fundedAt`, `submittedAt`(최근 제출), `autoApproveAt`(`SUBMITTED`일 때만), `approvedAt`, `approvalType`, `revisionCount`. `(contractId, sequence)` unique, 인덱스 `[status, autoApproveAt]` |
 | **MilestoneSubmission** | 산출물 제출 회차 | `round`(1부터), `message`, `links String[]`, `decision`(null = 검수 대기), `decisionReason`, `decidedAt`, `decidedById`(FK 아님, 자동 승인이면 null), `autoDecided`. `(milestoneId, round)` unique |
 | **MilestoneAttachment** | 제출 첨부 파일 | `storageKey` unique(비공개 첨부 버킷의 키), `url`(예전 행의 공개 URL, 비공개 버킷이면 null), `fileName`(원래 이름, UTF-8), `mimeType`·`size`(저장된 파일에서 읽은 값). `storageKey`와 `url` 중 하나는 있다(CHECK) |
-| **Payment** | 마일스톤 결제 | `contractId`, `milestoneId` unique, `clientId`, `amount Float`(= 마일스톤 금액), `status`, `paymentKey`, `orderId` unique, 인덱스 `[contractId]`, `[clientId]` |
+| **Payment** | 마일스톤 결제 | `contractId`, `milestoneId` unique, `clientId`, `amount Float`(= 마일스톤 금액), `status`, `paymentKey`, `orderId` unique, `confirmStartedAt`(결제 승인 선점 시각, 아래 "동시성"), 인덱스 `[contractId]`, `[clientId]` |
 
 ### 정산
 
@@ -48,7 +48,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | --- | --- | --- |
 | **SettlementItem** | 승인된 마일스톤 하나의 정산 원장 | `milestoneId` unique, `contractId`, `freelancerId`, `settlementId`(null = 미정산), `grossAmount`, `feeRateBps`(승인 시점 요율 스냅샷, 1000 = 10%), `feeAmount`, `feeVatAmount`, `netAmount`, `approvedAt`. 인덱스 `[freelancerId, settlementId]`, `[settlementId]` |
 | **Settlement** | 프리랜서별 주간 정산 | `periodStart`(월요일 00:00 KST), `periodEnd`(다음 월요일, 미포함), `scheduledPayoutAt`, `status`, `itemCount`, 금액 합계 4개, `payoutAttempts`(최대 3), 지급 시점 계좌 스냅샷 `bankName`/`accountNumberMasked`/`accountHolder`, `providerReference`, `failureReason`, `paidAt`. `(freelancerId, periodStart)` unique, 인덱스 `[status, scheduledPayoutAt]` |
-| **PayoutAccount** | 프리랜서 지급 계좌 | `userId` unique(1인 1계좌), `bankCode`(`lib/banks.ts` 목록), `accountNumber`(숫자만, **평문 저장**, 응답에서는 마스킹. 저장 시 암호화는 미정: [#28](https://github.com/jonghoon24/workbridge/issues/28)), `holderName` |
+| **PayoutAccount** | 프리랜서 지급 계좌 | `userId` unique(1인 1계좌), `bankCode`(`lib/banks.ts` 목록), `accountNumber`(숫자만, **암호화해 저장**, 응답에서는 마스킹. 아래 "지급 계좌번호 암호화"), `holderName` |
 
 ### 메시지
 
@@ -86,7 +86,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | Enum | 값과 흐름 |
 | --- | --- |
 | `Role` | `CLIENT`, `FREELANCER` |
-| `ProjectStatus` | `UPCOMING` → `OPEN` → `CLOSED` → `COMPLETED`. 모집 시작일·마감일에 따라 지연 스윕(GET 목록·상세)과 `project.lifecycleSweep` 작업이 `UPCOMING`→`OPEN`→`CLOSED`로 바꾸고, 지원 수락도 `CLOSED`로 만든다. 마지막 마일스톤 승인이 `CLOSED`에서 바로 `COMPLETED`로 바꾼다. 의뢰인의 수동 전이(`PATCH /api/projects/:id/status`)는 `UPCOMING`→`OPEN`·`CLOSED`·`CANCELLED`, `OPEN`→`CLOSED`·`CANCELLED`다. **`IN_PROGRESS`는 enum과 수동 전이 표에만 있고 아무것도 쓰지 않는다** |
+| `ProjectStatus` | `UPCOMING` → `OPEN` → `CLOSED` → `IN_PROGRESS` → `COMPLETED`. 모집 시작일·마감일에 따라 지연 스윕(GET 목록·상세)과 `project.lifecycleSweep` 작업이 `UPCOMING`→`OPEN`→`CLOSED`로 바꾸고, 지원 수락도 `CLOSED`로 만든다. 양측 서명으로 계약이 `ACTIVE`가 되는 트랜잭션이 `CLOSED`→`IN_PROGRESS`, 마지막 마일스톤 승인이 `IN_PROGRESS`→`COMPLETED`로 바꾼다. 의뢰인의 수동 전이(`PATCH /api/projects/:id/status`)는 `UPCOMING`→`OPEN`·`CLOSED`·`CANCELLED`, `OPEN`→`CLOSED`·`CANCELLED`뿐이다. 마이그레이션 `20261110091808_backfill_in_progress_projects`가 계약이 `ACTIVE`인 기존 `CLOSED` 프로젝트를 `IN_PROGRESS`로 옮겼다 |
 | `ApplicationStatus` | `PENDING` → `ACCEPTED` / `REJECTED`. 수락하면 같은 프로젝트의 다른 대기 지원은 거절된다. 마감된 프로젝트의 대기 지원도 거절된다 |
 | `ContractStatus` | `PENDING`(서명 대기) → `ACTIVE`(양측 서명, 유효한 계획 필요) → `COMPLETED`(마지막 마일스톤 승인 시 자동). 취소·해지 상태는 없다 |
 | `MilestoneStatus` | `PENDING` → `FUNDED`(결제) → `SUBMITTED`(제출) → `APPROVED`(최종) 또는 `REVISION_REQUESTED`(반려) → `SUBMITTED`(재제출). 계약이 `PENDING`인 동안 계획 교체가 `PENDING` 마일스톤을 지우고 새로 만든다 |
@@ -134,6 +134,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 - **결제 순서**: 마일스톤은 `sequence` 순서대로만 결제된다.
 - **메시지**: `TEXT`는 발신자가 참여자이고 `systemEvent`가 null, `SYSTEM`은 발신자가 null이고 `systemEvent`가 있다. 대화방 안에서 `createdAt`은 커밋 순서대로 엄격히 증가한다(대화방 row를 잠근 뒤 `max(서버 시각, lastMessageAt + 1ms)`, `postMessage`). 커서 폴링과 읽음 워터마크가 이것에 기댄다.
 - **활성 계약 계획 잠금**: 계약이 `ACTIVE`가 되면 마일스톤 계획을 바꿀 수 없다.
+- **문자열 배열에 `NULL` 원소 없음**: `User.skills`, `Project.requiredSkills`, `MilestoneSubmission.links`, `PortfolioItem.skills`, `Review.tags`는 원소가 모두 문자열이다. DB의 CHECK 제약(`<테이블>_<컬럼>_no_null`, `array_position(<컬럼>, NULL) IS NULL`)이 강제한다. Prisma의 `String[]`은 원소가 모두 문자열이라고 가정해서, `NULL` 원소가 든 행 하나를 읽으면 그 쿼리 전체가 변환 오류(`P2032`)로 실패한다 — 프로젝트 하나 때문에 `GET /api/projects`가 500이 된다. API는 zod가 원소를 검사하므로 만들지 않고, 이 제약은 운영자의 수동 SQL, 백필, 시드를 막는다. Prisma 스키마는 CHECK를 표현하지 못하므로 마이그레이션 SQL에만 있다(`schema.prisma`의 해당 필드 주석 참고). 새 `String[]` 컬럼을 만들면 같은 제약을 함께 건다.
 
 ### `Message.sender`의 `onDelete: Restrict`
 
@@ -142,6 +143,25 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 ### 외래 키의 삭제 동작
 
 모든 필수 관계는 `ON DELETE RESTRICT`다. 예외는 선택 관계 두 개뿐이다: `SettlementItem.settlementId`와 `EmailDelivery.notificationId`(`SET NULL`). 그래서 시드처럼 데이터를 지울 때는 자식부터 지워야 한다(`prisma/seed.js`의 `deleteMany` 순서).
+
+### 지급 계좌번호 암호화
+
+`PayoutAccount.accountNumber`는 애플리케이션이 저장 직전에 암호화한다(`src/lib/payoutAccountCrypto.ts`, [#28](https://github.com/jonghoon24/workbridge/issues/28)).
+DB를 통째로 읽은 사람(백업, SQL 접근)도 키 없이는 계좌번호를 알 수 없게 하려는 것이다. 키는 DB 밖의 환경변수
+`PAYOUT_ACCOUNT_ENCRYPTION_KEY`다([ENV.md](ENV.md), 환경별 키와 교체는 [DEPLOYMENT.md](DEPLOYMENT.md#지급-계좌-암호화-키)).
+
+- 형식: `v1:<iv>:<tag>:<암호문>`(각 부분 base64url). AES-256-GCM, 쓸 때마다 새 12바이트 IV, 16바이트 인증 태그.
+  접두어 `v1`이 키를 가리킨다 — 키를 바꿀 때 새 버전을 더하고 옛 버전은 읽기용으로 남긴다.
+- 추가 인증 데이터(AAD)는 그 행의 `userId`다. 다른 사용자 행에 암호문을 옮겨 붙이면 복호화가 실패한다(다른 사람의 정산금이
+  그 계좌로 나가지 않는다). 잘못된 키, 변조된 값, 모르는 형식도 틀린 번호 대신 오류가 된다.
+- 복호화는 응답의 마스킹(`serializePayoutAccount`)과 지급 결정(사용자 행 잠금 안에서, 정산 스냅샷의 마스킹과 이체 요청)에서만 한다.
+  정산 행(`Settlement.accountNumberMasked`)에는 처음부터 마스킹한 값만 남는다.
+- **암호화 전에 저장된 행**은 숫자 그대로다(10~14자리). 서버는 이것도 그대로 읽고, 계좌를 다시 저장하면 암호화한다. 남은 평문
+  행은 한 번 돌리는 백필 `npm run payout:encrypt-accounts`(원격은 `.github/workflows/payout-encrypt.yml`)가 암호화한다.
+  SQL 마이그레이션으로는 키를 쓸 수 없어서 스크립트다. 행마다 사용자 행을 잠그고, 읽은 평문이 그대로일 때만 바꾸므로 서비스 중에
+  돌려도 되고 여러 번 돌려도 된다.
+- 시드(`prisma/seed.js`)는 `prisma/payoutAccountCrypto.js`(같은 형식의 CommonJS 사본)로 암호화해 넣는다. 두 구현이 같은지는
+  `test/payout-account-crypto.test.ts`가 시드 쪽 출력을 서버 코드로 복호화해 확인한다.
 
 ## 인덱스
 
@@ -188,6 +208,11 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `Conversation` | 메시지·시스템 메시지 게시(항상 이벤트 트랜잭션의 마지막 쓰기) |
 | `ConversationParticipant` | 읽음 처리, 미확인 메시지 다이제스트 |
 
+**결제 승인은 잠금 대신 선점(조건부 쓰기)으로 직렬화한다.** 토스페이먼츠 호출을 트랜잭션 안에 두지 않으려고, 승인 요청은
+공급자를 부르기 전에 `status = PENDING`이고 `confirmStartedAt`이 비었거나 60초보다 오래된 결제에만 `confirmStartedAt = now`를
+쓴다. 쓰지 못한 요청은 409다. 60초 임대는 중간에 죽은 요청이 그 주문을 영원히 막지 않게 하려는 것이다. 토스 호출은 30초 타임아웃이라 살아 있는 요청의 선점은 호출 중에 끝나지 않는다. 실패한 결제를
+다시 만들면(`POST /api/payments`) 선점도 지운다.
+
 잠금 순서는 `Contract` → `Milestone` → 이벤트의 다른 쓰기 → `Conversation`이다. 대화방 시스템 메시지
 (`postSystemMessage`, `src/services/messaging.service.ts`)는 언제나 이벤트 트랜잭션의 **마지막 쓰기**라서
 (`MILESTONE_APPROVED` 다음 `CONTRACT_COMPLETED`처럼) `Conversation` 잠금을 가장 늦게 잡고, 대화방을 잠근 트랜잭션이
@@ -230,6 +255,8 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `20261021062933_expansion_messaging_profile` | 대화방·참여자·메시지·첨부, 포트폴리오, 경력 |
 | `20261021071341_expansion_notification_channels` | 알림 설정, 이메일 발송 기록 |
 | `20261108143952_add_list_and_foreign_key_indexes` | 인덱스만 추가: `Project` 4개, `Application[freelancerId]`, `Contract[clientId]`·`[freelancerId]`, `Payment[clientId]`, `Review[revieweeId]`("인덱스" 참고). 데이터 변경 없음 |
+| `20261110082231_array_columns_reject_null_elements` | 문자열 배열 컬럼 5개에 `NULL` 원소를 막는 CHECK 제약("관계와 불변식"). 제약을 걸기 전에 이미 있던 `NULL` 원소를 `array_remove`로 지운다(원소만 지우고 행과 나머지 원소는 그대로) |
+| `20261110082927_add_payment_confirm_started_at` | `Payment.confirmStartedAt`(nullable) 추가. 기존 행은 null(선점 없음). 데이터 변경 없음 |
 | `20261110090000_private_attachment_storage` | 첨부를 비공개 버킷으로: `MessageAttachment`·`MilestoneAttachment`에 `storageKey`(unique), `url`을 nullable로, 둘 중 하나는 있어야 하는 CHECK. `AttachmentUpload`와 `AttachmentUploadScope`. 데이터 변경 없음(예전 행은 공개 URL 그대로, 이전은 `scripts/migrate-legacy-attachments.ts`) |
 
 - **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. float를 그대로 반올림하면 1원 어긋나므로 numeric으로 바꿔 반올림한다(위 "금액이 `Float`인 부채"). 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.

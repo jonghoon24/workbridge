@@ -53,6 +53,7 @@ ALLOW_PAYMENT_BYPASS=true
 CLIENT_URL=http://localhost:3000
 SUPABASE_URL=http://localhost:54321
 SUPABASE_SECRET_KEY=sb_secret_dummy
+PAYOUT_ACCOUNT_ENCRYPTION_KEY=$(openssl rand -base64 32)
 TRUST_PROXY=loopback
 RATE_LIMIT_ENABLED=false
 MAIL_PROVIDER=log
@@ -126,8 +127,9 @@ API 문서 화면은 `http://localhost:4000/api/docs`, 원본은 `http://localho
 ## 주의할 점
 
 - **시드 날짜는 밀린다.** 마감이 지나면 목록을 읽을 때 프로젝트가 닫힌다
-  (`lib/projectLifecycle.ts`). 다시 시드: `(cd workbridge-server && npm run db:seed)` — 그냥
-  `node prisma/seed.js`는 `.env`를 읽지 않는다.
+  (`lib/projectLifecycle.ts`). 다시 시드: `(cd workbridge-server && npm run db:seed)`. 시드는
+  `workbridge-server/.env`를 읽고(이미 셸에 있는 값이 우선), 지급 계좌번호를 `PAYOUT_ACCOUNT_ENCRYPTION_KEY`로 암호화한다 —
+  `.env`의 키를 바꿨다면 다시 시드한다.
 - **결제 우회가 켜져 있다**(로컬, 플래그 둘 다). 결제는 마일스톤 단위다:
   `POST /api/payments/dev-complete`가 `{ milestoneId }`를 받고, 순서대로 결제된다.
 - **업로드에는 저장소 스텁이 필요하다.** `SUPABASE_URL=http://localhost:54321`은 아래를 띄우기 전까지 아무것도 가리키지 않는다:

@@ -27,6 +27,7 @@ export interface JwtUserPayload {
 }
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace -- `Request` is only augmentable through Express's namespace.
   namespace Express {
     interface Request {
       /**

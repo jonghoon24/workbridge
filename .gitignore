@@ -2,8 +2,9 @@
 .DS_Store
 Thumbs.db
 
-# Editor
-.vscode/
+# Editor — 공유 설정은 settings.json 하나만 추적한다(패키지별 ESLint 작업 디렉터리)
+.vscode/*
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo

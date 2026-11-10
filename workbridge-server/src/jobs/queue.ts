@@ -1,5 +1,3 @@
-import type { Prisma } from '@prisma/client';
-
 import { getRequestContext } from '../lib/requestContext';
 import type { PrismaTransactionClient } from '../types/index';
 import type { JobPayloads, JobType } from './types';
@@ -44,7 +42,7 @@ export async function enqueueJobs<T extends JobType>(
   const { count } = await client.job.createMany({
     data: inputs.map((input) => ({
       type: input.type,
-      payload: (input.payload ?? {}) as Prisma.InputJsonValue,
+      payload: input.payload ?? {},
       runAt: input.runAt ?? new Date(),
       dedupeKey: input.dedupeKey,
       maxAttempts: input.maxAttempts,

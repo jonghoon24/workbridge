@@ -38,7 +38,7 @@ type WithHeaders = { headers: Record<string, unknown> };
 function setCookies(res: WithHeaders): string[] {
   const raw = res.headers['set-cookie'];
   if (!raw) return [];
-  return Array.isArray(raw) ? (raw as string[]) : [String(raw)];
+  return Array.isArray(raw) ? (raw as string[]) : [raw as string];
 }
 
 function refreshCookie(res: WithHeaders): string | undefined {
@@ -823,7 +823,7 @@ describe('GET /api/auth/google', () => {
     const res = await api().get('/api/auth/google');
 
     expect(res.status).toBe(302);
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.origin + location.pathname).toBe(
       'https://accounts.google.com/o/oauth2/v2/auth',
     );
@@ -841,7 +841,7 @@ describe('GET /api/auth/google', () => {
     const first = await api().get('/api/auth/google');
     const second = await api().get('/api/auth/google');
 
-    const state = new URL(first.headers.location as string).searchParams.get('state') as string;
+    const state = new URL(first.headers.location).searchParams.get('state') as string;
     expect(state.length).toBeGreaterThanOrEqual(32);
     const cookie = oauthStateCookie(first) as string;
     expect(cookie.split(';')[0]).toBe(`oauthState=${state}`);
@@ -849,7 +849,7 @@ describe('GET /api/auth/google', () => {
     expect(cookie).toMatch(/SameSite=Lax/i);
     expect(cookie).toMatch(/Path=\/api\/auth\/google/);
     expect(cookie).toMatch(/Max-Age=600/);
-    expect(new URL(second.headers.location as string).searchParams.get('state')).not.toBe(state);
+    expect(new URL(second.headers.location).searchParams.get('state')).not.toBe(state);
   });
 
   it('returns a 500 error response — not a crash — when Google env vars are missing', async () => {
@@ -872,6 +872,76 @@ describe('GET /api/auth/google', () => {
 
     // The process is still serving requests.
     expect((await api().get('/health')).status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CLIENT_URL — the one frontend origin the Google login sends the browser back to
+// ---------------------------------------------------------------------------
+
+describe('Google login without a usable CLIENT_URL', () => {
+  const saved = process.env.CLIENT_URL;
+  afterEach(() => {
+    process.env.CLIENT_URL = saved;
+  });
+
+  // Unset, a comma list (extra origins belong in CORS_ORIGINS), a path, and not a URL at all.
+  const unusable: [string, string | undefined][] = [
+    ['unset', undefined],
+    ['a comma-separated list', 'http://localhost:3000,https://app.example.com'],
+    ['an origin with a path', 'http://localhost:3000/app'],
+    ['not a URL', 'localhost:3000'],
+  ];
+
+  it.each(unusable)('the start route answers 500 and logs CLIENT_URL, before sending anyone to Google, when it is %s', async (_label, value) => {
+    if (value === undefined) delete process.env.CLIENT_URL;
+    else process.env.CLIENT_URL = value;
+
+    const res = await api().get('/api/auth/google');
+
+    // The 500 body stays generic; the cause is in the error log for the operator.
+    expect(res.status).toBe(500);
+    expect(res.body.error.message).toBe('Internal Server Error');
+    expect((consoleError as unknown as Mock).mock.calls.map(([line]) => String(line)).join('\n')).toMatch(/CLIENT_URL/);
+    expect(res.headers.location).toBeUndefined();
+    expect(oauthStateCookie(res)).toBeUndefined();
+  });
+
+  it.each(unusable)('the callback answers 500 and logs CLIENT_URL, without exchanging the code, when it is %s', async (_label, value) => {
+    if (value === undefined) delete process.env.CLIENT_URL;
+    else process.env.CLIENT_URL = value;
+    stubGoogle();
+
+    const res = await googleCallback('code');
+
+    // The 500 body stays generic; the cause is in the error log for the operator.
+    expect(res.status).toBe(500);
+    expect(res.body.error.message).toBe('Internal Server Error');
+    expect((consoleError as unknown as Mock).mock.calls.map(([line]) => String(line)).join('\n')).toMatch(/CLIENT_URL/);
+    expect(res.headers.location).toBeUndefined();
+    expect(axiosPost).not.toHaveBeenCalled();
+    expect(refreshCookie(res)).toBeUndefined();
+    expect(await prisma.user.count()).toBe(0);
+  });
+
+  it('logs the misconfiguration once at error level', async () => {
+    delete process.env.CLIENT_URL;
+
+    await googleCallback('code');
+
+    const logged = (consoleError as unknown as Mock).mock.calls.map(([line]) => String(line));
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatch(/CLIENT_URL is not set/);
+  });
+
+  it('redirects to the origin without doubling a trailing slash', async () => {
+    process.env.CLIENT_URL = 'http://localhost:3000/';
+    stubGoogle();
+
+    const res = await googleCallback('code');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toMatch(/^http:\/\/localhost:3000\/auth\/callback\?/);
   });
 });
 
@@ -967,7 +1037,7 @@ describe('GET /api/auth/google/callback', () => {
     const res = await googleCallback('auth-code-123');
 
     expect(res.status).toBe(302);
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.origin + location.pathname).toBe(`${CLIENT_URL}/auth/callback`);
     expect(location.searchParams.get('needsRoleSelection')).toBe('true');
 
@@ -1015,7 +1085,7 @@ describe('GET /api/auth/google/callback', () => {
 
     const res = await googleCallback('code');
 
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.searchParams.get('needsRoleSelection')).toBe('false');
     expect(claims(location.searchParams.get('token') as string).id).toBe(existing.id);
     expect(await prisma.user.count()).toBe(1); // no second account
@@ -1071,7 +1141,7 @@ describe('GET /api/auth/google/callback', () => {
 
     const res = await googleCallback('code');
 
-    const location = new URL(res.headers.location as string);
+    const location = new URL(res.headers.location);
     expect(location.searchParams.get('needsRoleSelection')).toBe('true');
   });
 

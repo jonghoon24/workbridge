@@ -45,7 +45,7 @@ export default function ApplicationsPage() {
         && proposedAmount !== projectBudget
       ) {
         const confirmed = confirm(
-          `프로젝트 예산은 ${formatWon(projectBudget)}이고, ${application.freelancer?.name || '지원자'}님의 제안 금액은 ${formatWon(proposedAmount)}입니다.\n계약 금액은 제안 금액으로 생성됩니다. 수락하시겠습니까?`
+          `프로젝트 예산은 ${formatWon(projectBudget)}이고, ${application.freelancer?.name || '지원자'}님의 희망 금액은 ${formatWon(proposedAmount)}입니다.\n계약 금액은 희망 금액으로 생성됩니다. 수락하시겠습니까?`
         );
         if (!confirmed) return;
       }
@@ -101,7 +101,7 @@ export default function ApplicationsPage() {
                         </p>
                         <p className="text-sm text-gray-700 line-clamp-3">{app.coverLetter}</p>
                         <p className="text-sm text-gray-500 mt-2">
-                          제안 금액: {app.expectedRate?.toLocaleString()}원 · 예상 기간: {app.expectedDuration}
+                          희망 금액: {app.expectedRate?.toLocaleString()}원 · 예상 기간: {app.expectedDuration}
                         </p>
                       </div>
                     </div>

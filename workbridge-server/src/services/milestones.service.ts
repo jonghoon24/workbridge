@@ -78,7 +78,8 @@ const attachmentQuery = {
 
 /**
  * The milestone's payment without the Toss `paymentKey`: both parties read milestones, and no
- * screen uses the key (the payment result page reads it from Toss's redirect).
+ * screen uses the key (the payment result page reads it from Toss's redirect). The confirm claim
+ * (`confirmStartedAt`) is left out too — it only serializes confirms.
  */
 const milestonePaymentQuery = {
   select: {
@@ -650,7 +651,10 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
       });
       completed = done.count === 1;
       if (completed && !projectDeleted) {
-        await tx.project.updateMany({ where: { id: contract.projectId, deletedAt: null }, data: { status: 'COMPLETED' } });
+        await tx.project.updateMany({
+          where: { id: contract.projectId, status: 'IN_PROGRESS', deletedAt: null },
+          data: { status: 'COMPLETED' },
+        });
       }
     }
 

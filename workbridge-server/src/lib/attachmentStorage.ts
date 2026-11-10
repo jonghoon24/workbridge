@@ -113,8 +113,11 @@ export async function statObject(key: string): Promise<{ size: number; mimeType:
     logger.warn('attachment info failed', { key, err: error });
     throw new AppError(STORAGE_UNAVAILABLE, 502);
   }
-  const size = typeof data.size === 'number' ? data.size : Number(data.metadata?.size);
-  const mimeType = data.contentType ?? data.metadata?.mimetype ?? 'application/octet-stream';
+  // `metadata` is untyped in storage-js; read it as unknown values.
+  const metadata: Record<string, unknown> = data.metadata ?? {};
+  const size = typeof data.size === 'number' ? data.size : Number(metadata.size);
+  const metadataType = typeof metadata.mimetype === 'string' ? metadata.mimetype : undefined;
+  const mimeType = data.contentType ?? metadataType ?? 'application/octet-stream';
   return { size: Number.isFinite(size) ? size : 0, mimeType };
 }
 

@@ -143,7 +143,7 @@ describe('POST /api/reviews', () => {
 
     const rows = await prisma.review.findMany({ where: { contractId: contract.id } });
     expect(rows).toHaveLength(1);
-    expect(rows[0]!.content).toBe('First review.');
+    expect(rows[0].content).toBe('First review.');
   });
 
   const requiredFields = [

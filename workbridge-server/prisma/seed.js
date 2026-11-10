@@ -2,17 +2,20 @@
 // so it is not transpiled. The package has no `"type": "module"`, which means `import`
 // syntax here would be a SyntaxError.
 //
-// It also does not load dotenv: run it through `npm run db:seed` / `npx prisma db seed` (Prisma
-// loads `.env`), or export DATABASE_URL and DIRECT_URL yourself before `node prisma/seed.js`.
+// It loads `workbridge-server/.env` with dotenv, which never overrides a variable that is already set
+// (CI and scripts/e2e.sh export theirs). Prisma reads `.env` for its own DATABASE_URL, but does not put
+// other variables into `process.env` — the seed needs PAYOUT_ACCOUNT_ENCRYPTION_KEY from there too.
 //
 // Sample dataset for local development and the shared environments (docs/SEED_DATA.md describes it). Every date is computed from the
 // moment the seed runs, so OPEN projects always have a future deadline and settlement weeks line
 // up with the real calendar. The rows follow the same invariants the services keep (docs/domain/):
 // milestone sums, sequential funding, one payment per funded milestone, fee math, settlement
 // sums, strictly increasing message times, and one system message per contract/milestone event.
+require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
+const { encryptAccountNumber } = require('./payoutAccountCrypto');
 
 const prisma = new PrismaClient();
 
@@ -198,8 +201,9 @@ const SYSTEM_BODIES = {
   CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨 주세요.',
 };
 
-// Email rendering (src/lib/notifications/templates.ts `renderEmail`).
-const LINK_BASE = ((process.env.CLIENT_URL || '').split(',')[0].trim() || 'http://localhost:3000').replace(/\/+$/, '');
+// Email rendering (src/lib/notifications/templates.ts `renderEmail`). `CLIENT_URL` is one origin
+// (src/lib/clientUrl.ts); seed data falls back to the local frontend when it is unset.
+const LINK_BASE = (process.env.CLIENT_URL || '').trim().replace(/\/+$/, '') || 'http://localhost:3000';
 function renderEmail({ title, message, href }) {
   const lines = [message, ''];
   if (href) lines.push(`바로가기: ${LINK_BASE}${href}`, '');
@@ -465,6 +469,9 @@ async function seedConversation(contract, entries, reads = {}) {
 async function main() {
   console.log('Seeding database...');
 
+  // Fail before wiping anything when the payout account key is missing or malformed.
+  encryptAccountNumber('0000000000', 'key-check', process.env.PAYOUT_ACCOUNT_ENCRYPTION_KEY);
+
   // Clean existing data (역순으로 삭제)
   // Notification must be deleted first: it holds a `userId` foreign key, so the
   // `user.deleteMany()` below fails with Prisma P2003 if any notification rows survive.
@@ -676,7 +683,7 @@ async function main() {
     },
   });
 
-  const project4 = await prisma.project.create({
+  await prisma.project.create({
     data: {
       title: '헬스케어 모바일 앱 개발',
       description:
@@ -749,7 +756,7 @@ async function main() {
       budget: 6000000,
       deadline: endOfKstDay(inWeek(4, 0, 0)),
       requiredSkills: ['React', 'TypeScript', 'Node.js', 'Prisma'],
-      status: 'CLOSED',
+      status: 'IN_PROGRESS',
       clientId: client3.id,
       createdAt: inWeek(5, 1, 10),
     },
@@ -781,7 +788,7 @@ async function main() {
       budget: 4500000,
       deadline: endOfKstDay(inWeek(4, 2, 0)),
       requiredSkills: ['Figma', 'React', 'Next.js', 'Tailwind CSS'],
-      status: 'CLOSED',
+      status: 'IN_PROGRESS',
       clientId: client2.id,
       createdAt: inWeek(5, 2, 10),
     },
@@ -797,7 +804,7 @@ async function main() {
       budget: 8000000,
       deadline: endOfKstDay(inWeek(3, 0, 0)),
       requiredSkills: ['Python', 'PyTorch', 'SQL', 'FastAPI'],
-      status: 'CLOSED',
+      status: 'IN_PROGRESS',
       clientId: client1.id,
       createdAt: inWeek(4, 0, 10),
     },
@@ -1000,15 +1007,23 @@ async function main() {
 
   // ─── Payout accounts ───────────────────────────────
   // 정하은·윤서아는 계좌가 없다. 정하은의 정산이 보류(ON_HOLD)된 이유다.
-  const accountHan = await prisma.payoutAccount.create({
-    data: { userId: freelancer3.id, bankCode: '004', accountNumber: '94820201234567', holderName: '한도윤', createdAt: inWeek(6, 2, 20) },
-  });
-  const accountPark = await prisma.payoutAccount.create({
-    data: { userId: freelancer1.id, bankCode: '090', accountNumber: '3333012345678', holderName: '박지윤', createdAt: inWeek(9, 0, 21) },
-  });
-  const accountSong = await prisma.payoutAccount.create({
-    data: { userId: freelancer5.id, bankCode: '088', accountNumber: '110123456789', holderName: '송민재', createdAt: inWeek(3, 1, 22) },
-  });
+  // Account numbers are stored encrypted with the target environment's key, as the server stores them
+  // (src/lib/payoutAccountCrypto.ts). `account.accountNumber` below stays the plain number for the masks.
+  const payoutAccount = async (user, bankCode, accountNumber, holderName, createdAt) => {
+    const row = await prisma.payoutAccount.create({
+      data: {
+        userId: user.id,
+        bankCode,
+        accountNumber: encryptAccountNumber(accountNumber, user.id, process.env.PAYOUT_ACCOUNT_ENCRYPTION_KEY),
+        holderName,
+        createdAt,
+      },
+    });
+    return { ...row, accountNumber };
+  };
+  const accountHan = await payoutAccount(freelancer3, '004', '94820201234567', '한도윤', inWeek(6, 2, 20));
+  const accountPark = await payoutAccount(freelancer1, '090', '3333012345678', '박지윤', inWeek(9, 0, 21));
+  const accountSong = await payoutAccount(freelancer5, '088', '110123456789', '송민재', inWeek(3, 1, 22));
 
   // ─── project12: 오래전 완료 계약 (김서준 ↔ 박지윤) ────
   // Both milestones approved in week 5, settled together (one settlement, two items) and paid.
@@ -1049,7 +1064,7 @@ async function main() {
   const completed12 = inWeek(5, 4, 10);
   const a12b = await approve(contract12, s12b.milestone, s12b.submission, { at: completed12, by: client1 });
   contract12 = await prisma.contract.update({ where: { id: contract12.id }, data: { status: 'COMPLETED', completedAt: completed12 } });
-  const settlementPark5 = await createSettlement(freelancer1, 5, [a12a.item, a12b.item], {
+  await createSettlement(freelancer1, 5, [a12a.item, a12b.item], {
     status: 'PAID',
     payoutAttempts: 1,
     ...accountSnapshot(accountPark),
@@ -1133,10 +1148,10 @@ async function main() {
     attachments: [{ url: placeholder('ERP Grafana Dashboard', '0f766e'), fileName: '운영_모니터링_대시보드.png', mimeType: 'image/png', size: 248331 }],
   });
   const completed7 = recent(0.4);
-  const a7c = await approve(contract7, s7c.milestone, s7c.submission, { at: completed7, by: client2 });
+  await approve(contract7, s7c.milestone, s7c.submission, { at: completed7, by: client2 });
   contract7 = await prisma.contract.update({ where: { id: contract7.id }, data: { status: 'COMPLETED', completedAt: completed7 } });
 
-  const settlementHan3 = await createSettlement(freelancer3, 3, [a7a.item], {
+  await createSettlement(freelancer3, 3, [a7a.item], {
     status: 'PAID',
     payoutAttempts: 1,
     ...accountSnapshot(accountHan),
@@ -1228,7 +1243,7 @@ async function main() {
 
   const accept8 = inWeek(4, 0, 10);
   let contract8 = await createContract({ project: project8, application: app8, client: client3, freelancer: freelancer1, acceptedAt: accept8 });
-  let [m8a, m8b, m8c] = await createPlan(contract8, [
+  let [m8a, m8b] = await createPlan(contract8, [
     { title: '기획·화면 설계', description: '요구사항 정리, IA, 주요 화면 와이어프레임', amount: 1650000, dueDate: endOfKstDay(inWeek(2, 2, 0)) },
     { title: '관리자 기능 개발', description: '상품·주문·회원 관리와 매출 통계 화면 구현', amount: 2750000, dueDate: endOfKstDay(later(5 * DAY)) },
     { title: '배포·QA', description: '운영 배포, QA 이슈 대응, 운영 매뉴얼', amount: 1100000, dueDate: endOfKstDay(later(19 * DAY)) },
@@ -1349,7 +1364,7 @@ async function main() {
   });
   const accept10 = inWeek(4, 1, 11);
   let contract10 = await createContract({ project: project10, application: app10, client: client2, freelancer: freelancer2, acceptedAt: accept10 });
-  let [m10a, m10b, m10c] = await createPlan(contract10, [
+  let [m10a, m10b] = await createPlan(contract10, [
     { title: '디자인 시안', description: '메인·이벤트 응모·완료 화면 시안 2종', amount: 1260000, dueDate: endOfKstDay(inWeek(3, 4, 0)) },
     { title: '퍼블리싱·개발', description: 'Next.js 퍼블리싱, 스크롤 인터랙션, 응모 폼 연동', amount: 2100000, dueDate: endOfKstDay(later(4 * DAY)) },
     { title: 'QA·런칭', description: '크로스 브라우징 QA, 운영 배포', amount: 840000, dueDate: endOfKstDay(later(14 * DAY)) },

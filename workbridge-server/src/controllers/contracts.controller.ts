@@ -78,6 +78,12 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
 
       // Guarded on PENDING so activation can never overwrite a later status.
       if (signed.clientSigned && signed.freelancerSigned && signed.status === 'PENDING') {
+        // The work has started: the project moves from "recruitment closed" to "in progress".
+        // Before the contract re-read below, so the response carries the new project status.
+        await tx.project.updateMany({
+          where: { id: contract.projectId, status: 'CLOSED', deletedAt: null },
+          data: { status: 'IN_PROGRESS' },
+        });
         const activated = await tx.contract.update({
           where: { id: contract.id },
           data: { status: 'ACTIVE' },

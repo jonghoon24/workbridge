@@ -4,7 +4,6 @@ import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import {
   makeContractScenario,
-  makeEmailDelivery,
   makeFreelancer,
   makeNotificationPreference,
   makePayment,
@@ -161,14 +160,42 @@ describe('notify() creates the delivery and its job', () => {
     expect(job.runAt.getTime()).toBe(T0.getTime());
   });
 
-  it('links use the first CLIENT_URL entry, trimmed and without a trailing slash', async () => {
-    process.env.CLIENT_URL = 'http://a.test/, http://b.test';
+  it('links use CLIENT_URL, trimmed and without a trailing slash', async () => {
+    process.env.CLIENT_URL = ' http://a.test/ ';
 
     const { delivery } = await oneDelivery();
 
     expect(delivery.body).toContain('http://a.test/my/notifications/settings');
     expect(delivery.body).toContain('http://a.test/contracts/c/milestones/m');
-    expect(delivery.body).not.toContain('b.test');
+  });
+
+  // No link to a guessed address: the delivery records why it was not sent, the cause still commits.
+  it.each([
+    ['unset', undefined, 'CLIENT_URL is not set'],
+    ['a comma-separated list', 'http://a.test, http://b.test', 'CLIENT_URL must be a single origin'],
+  ])('with CLIENT_URL %s, the delivery is FAILED with the reason and gets no job; the notification stays', async (_label, value, reason) => {
+    if (value === undefined) delete process.env.CLIENT_URL;
+    else process.env.CLIENT_URL = value;
+
+    const { delivery } = await oneDelivery();
+
+    expect(await prisma.notification.count()).toBe(1);
+    expect(delivery).toMatchObject({ status: 'FAILED', attempts: 0, sentAt: null });
+    expect(delivery.error).toContain(reason);
+    expect(delivery.body).not.toMatch(/undefined|localhost/);
+    expect(await jobsOf('notification.email')).toHaveLength(0);
+  });
+
+  it('with CLIENT_URL unset, notify() writes one warn line naming it', async () => {
+    delete process.env.CLIENT_URL;
+    process.env.LOG_LEVEL = 'warn';
+    const out = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await oneDelivery();
+
+    const warns = out.mock.calls.map(([line]) => JSON.parse(String(line))).filter((l) => l.level === 'warn');
+    expect(warns).toHaveLength(1);
+    expect(warns[0].error).toBe('CLIENT_URL is not set');
   });
 
   it('carries no unsubscribe link or token; the last line is the sign-in preferences page', async () => {
@@ -350,7 +377,7 @@ describe('mail provider', () => {
   it('an unsupported MAIL_PROVIDER → FAILED without a provider call or an attempt; the job fails without retry', async () => {
     const { delivery } = await oneDelivery();
     process.env.MAIL_PROVIDER = 'smtp';
-    const errors = quietErrors();
+    quietErrors();
 
     const result = await runJobs(T0);
 
