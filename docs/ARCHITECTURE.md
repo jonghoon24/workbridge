@@ -43,7 +43,8 @@ WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 제품 규칙�
 
 **에러 처리.** 컨트롤러와 서비스는 `throw new AppError(message, status)`(`src/lib/errors.ts`)로 던지고 `next(err)`로 넘긴다.
 `errorHandler`가 `{ error: { message } }`로 응답하고, 500일 때만 `logger.error`로 남기며 `SENTRY_DSN`이 있으면
-Sentry(`src/lib/sentry.ts`)로 보낸다.
+Sentry(`src/lib/sentry.ts`)로 보낸다. 응답은 요청당 한 번이다. 응답을 보낸 뒤에 넘어온 오류는 다시 쓰지 않고
+`logger.error`로 남긴 뒤 Express 기본 핸들러에 넘겨 연결을 닫는다.
 
 ### API 계약: OpenAPI
 

@@ -40,8 +40,8 @@
    - 왜: `Express.Request.user`는 non-optional로 선언돼 컴파일러가 경고하지 않지만, `src/types/index.ts`에 적힌 15개 공개 핸들러(`runJobs`, API 문서 화면 포함)에서는 런타임에 `undefined`다. `test/authorization.test.ts`가 유일한 안전장치다.
    - 확인: `authenticate`가 없는 라우트에 연결된 핸들러의 diff에서 `req.user`를 grep한다. 새 공개 라우트는 `src/types/index.ts`의 목록과 `PUBLIC_ROUTES`에 추가됐는지 본다.
 
-10. **로그는 `lib/logger.ts`로 남기고 `console.*`를 쓰지 않는다. `error` 레벨은 `errorHandler`의 500과 작업 실패 전용이다. 요청 body·query·헤더를 통째로 로그에 남기지 않는다.**
-    - 왜: 스위트가 `console.error` 스파이로 "500은 정확히 한 번 로그된다"를 단언한다. 4xx나 예상된 실패를 `error`로 남기면 그 테스트가 깨지고 운영 경보가 오염된다. 요청 전체를 로그에 넣으면 계좌번호 같은 개인정보와 토큰이 운영 로그에 남는다(로그에는 필요한 필드만).
+10. **로그는 `lib/logger.ts`로 남기고 `console.*`를 쓰지 않는다. `error` 레벨은 `errorHandler`의 500, 응답을 보낸 뒤에 난 예외, 작업 실패 전용이다. 요청 body·query·헤더를 통째로 로그에 남기지 않는다.**
+    - 왜: 스위트가 `console.error` 스파이로 "500은 정확히 한 번 로그된다"를 단언한다. 4xx나 예상된 실패를 `error`로 남기면 그 테스트가 깨지고 운영 경보가 오염된다. 응답을 보낸 뒤의 예외는 사용자에게 500을 보내지 못했을 뿐 서버 버그라서 경보 대상이다(`errorHandler`의 `headersSent` 분기). 요청 전체를 로그에 넣으면 계좌번호 같은 개인정보와 토큰이 운영 로그에 남는다(로그에는 필요한 필드만).
     - 확인: 추가된 줄의 `console.`과 `logger.error(`를 grep한다. 예외는 `googleCallback`과 `jobs/cli.ts`뿐이다. 로그 필드에 `req.body`·`req.query`·`req.headers`가 통째로 들어갔는지 본다.
 
 11. **이미 커밋된 마이그레이션은 수정하지 않는다. 스키마 변경은 새 마이그레이션으로 한다.**
