@@ -66,7 +66,8 @@ const attachmentQuery = {
 
 /**
  * The milestone's payment without the Toss `paymentKey`: both parties read milestones, and no
- * screen uses the key (the payment result page reads it from Toss's redirect).
+ * screen uses the key (the payment result page reads it from Toss's redirect). The confirm claim
+ * (`confirmStartedAt`) is left out too — it only serializes confirms.
  */
 const milestonePaymentQuery = {
   select: {

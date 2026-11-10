@@ -2198,6 +2198,14 @@
           "orderId": {
             "type": "string"
           },
+          "confirmStartedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "결제 승인 요청이 토스페이먼츠 확인을 시작한 시각. 그동안 같은 결제의 다른 승인 요청은 409"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -2212,6 +2220,7 @@
           "status",
           "paymentKey",
           "orderId",
+          "confirmStartedAt",
           "createdAt"
         ]
       },
@@ -8877,6 +8886,14 @@
                       "orderId": {
                         "type": "string"
                       },
+                      "confirmStartedAt": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "date-time",
+                        "description": "결제 승인 요청이 토스페이먼츠 확인을 시작한 시각. 그동안 같은 결제의 다른 승인 요청은 409"
+                      },
                       "createdAt": {
                         "type": "string",
                         "format": "date-time"
@@ -9017,6 +9034,7 @@
                       "status",
                       "paymentKey",
                       "orderId",
+                      "confirmStartedAt",
                       "createdAt",
                       "contract",
                       "milestone"
@@ -9134,7 +9152,7 @@
             }
           },
           "409": {
-            "description": "상태 충돌\n\n- `Payment has already been processed` — 대기 중인 결제가 아님",
+            "description": "상태 충돌\n\n- `Payment has already been processed` — 대기 중인 결제가 아니거나, 같은 결제의 다른 승인 요청이 진행 중",
             "content": {
               "application/json": {
                 "schema": {
