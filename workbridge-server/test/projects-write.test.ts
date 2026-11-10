@@ -1722,15 +1722,47 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(stored.summary).toBe('두 번째 요약');
   });
 
-  it('persists nothing when the provider call fails', async () => {
+  it('returns 502 without echoing the provider error when the provider call fails', async () => {
     openaiCreate.mockRejectedValue(new Error('socket hang up'));
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
+    const errorLogs = consoleError.mock.calls.length;
     consoleError.mockRestore();
 
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: { message: 'AI analysis provider request failed' } });
+    expect(errorLogs).toBe(0);
+    expect(await prisma.pricingAnalysis.count()).toBe(0);
+  });
+
+  it('returns 502 when the model content is not JSON', async () => {
+    openaiCreate.mockResolvedValue(rawContent('not json at all'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
+    const errorLogs = consoleError.mock.calls.length;
+    consoleError.mockRestore();
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({
+      error: { message: 'AI analysis did not return valid feature pricing' },
+    });
+    expect(errorLogs).toBe(0);
+    expect(await prisma.pricingAnalysis.count()).toBe(0);
+  });
+
+  it('returns 502 when the provider response has no choices', async () => {
+    openaiCreate.mockResolvedValue({ choices: [] });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
+    const errorLogs = consoleError.mock.calls.length;
+    consoleError.mockRestore();
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: { message: 'AI analysis did not return a response' } });
+    expect(errorLogs).toBe(0);
     expect(await prisma.pricingAnalysis.count()).toBe(0);
   });
 

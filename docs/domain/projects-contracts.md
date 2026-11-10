@@ -70,7 +70,9 @@ stateDiagram-v2
 - 모델 출력은 믿지 않는다. 기능마다 형태를 맞추고, 예상 금액이 0 이하인 기능은 버리고, **총액은 남은 기능 금액의
   합으로 다시 계산한다.** 요약 문장 중 원 금액을 말하는 문장은 지운다(총액과 어긋나는 숫자를 보여주지 않기 위해).
 - 다시 분석하면 이전 결과를 덮어쓴다. 프로젝트마다 결과는 하나다.
-- 공급자가 응답하지 않거나 쓸 만한 기능이 없으면 외부 서비스 오류로 답하고 서버 오류로 만들지 않는다(현재 다름: [#38]).
+- 공급자 호출이 실패하거나, 응답이 비었거나, JSON이 아니거나, 쓸 만한 기능이 없으면 외부 서비스 오류(502)로 답하고
+  서버 오류로 만들지 않는다. 본문에는 일반 메시지만 싣고 공급자의 원문은 싣지 않으며, 원인은 `warn` 로그로 남긴다.
+  아무것도 저장하지 않는다(이전 결과가 있으면 그대로 둔다).
 - 비용이 요청마다 들기 때문에 사용자당 **시간당 5회, KST 하루 20회**로 제한한다(`ANALYZE_HOURLY_RULE`,
   `ANALYZE_DAILY_RULE`, `src/lib/rateLimitRules.ts`). 역할 확인을 통과한 모든 호출이 센다. 없는 프로젝트, 남의
   프로젝트, 공급자 실패도 포함이다.
@@ -183,7 +185,6 @@ stateDiagram-v2
 [#14]: https://github.com/jonghoon24/workbridge/issues/14
 [#15]: https://github.com/jonghoon24/workbridge/issues/15
 [#18]: https://github.com/jonghoon24/workbridge/issues/18
-[#38]: https://github.com/jonghoon24/workbridge/issues/38
 [#39]: https://github.com/jonghoon24/workbridge/issues/39
 [#43]: https://github.com/jonghoon24/workbridge/issues/43
 [#44]: https://github.com/jonghoon24/workbridge/issues/44

@@ -203,8 +203,9 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
       ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
         429: ['`Too many requests. Try again later.` — 분석 한도 초과'],
         502: [
-          '`AI analysis did not return a response` — 모델이 빈 응답을 줌',
-          '`AI analysis did not return valid feature pricing` — 금액이 있는 기능이 하나도 없음',
+          '`AI analysis provider request failed` — 공급자 호출 실패(네트워크 오류, 공급자 5xx 등). 공급자 메시지는 싣지 않는다',
+          '`AI analysis did not return a response` — 모델이 빈 응답을 줌(`choices`가 비었거나 내용이 없음)',
+          '`AI analysis did not return valid feature pricing` — JSON이 아닌 내용이거나 금액이 있는 기능이 하나도 없음',
         ],
       }),
     },
