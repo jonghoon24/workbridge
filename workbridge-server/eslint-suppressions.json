@@ -9,7 +9,7 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 11
+      "count": 6
     }
   },
   "src/controllers/payments.controller.ts": {
@@ -44,7 +44,7 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 3
+      "count": 2
     },
     "@typescript-eslint/no-unsafe-member-access": {
       "count": 3
