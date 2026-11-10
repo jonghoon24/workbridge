@@ -215,8 +215,24 @@ export async function getProjectById(req: Request, res: Response, next: NextFunc
   }
 }
 
+/** The live project a bookmark route acts on; a missing or soft-deleted project is 404. */
+async function findBookmarkableProject(projectId: string) {
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, deletedAt: null },
+    select: { id: true },
+  });
+
+  if (!project) {
+    throw new AppError('Project not found', 404);
+  }
+
+  return project;
+}
+
 export async function getProjectBookmark(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
+    await findBookmarkableProject(req.params.id);
+
     const bookmark = await prisma.projectBookmark.findUnique({
       where: {
         projectId_userId: {
@@ -235,14 +251,7 @@ export async function getProjectBookmark(req: AuthedRequest, res: Response, next
 
 export async function createProjectBookmark(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const project = await prisma.project.findFirst({
-      where: { id: req.params.id, deletedAt: null },
-      select: { id: true },
-    });
-
-    if (!project) {
-      throw new AppError('Project not found', 404);
-    }
+    await findBookmarkableProject(req.params.id);
 
     await prisma.projectBookmark.upsert({
       where: {
@@ -266,6 +275,9 @@ export async function createProjectBookmark(req: AuthedRequest, res: Response, n
 
 export async function deleteProjectBookmark(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
+    await findBookmarkableProject(req.params.id);
+
+    // No bookmark on a live project is still a success (idempotent).
     await prisma.projectBookmark.deleteMany({
       where: {
         projectId: req.params.id,

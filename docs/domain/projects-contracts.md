@@ -60,7 +60,7 @@ stateDiagram-v2
 
 프리랜서만 쓴다. 추가와 해제는 멱등이다. 이미 있는 북마크를 다시 추가해도, 없는 북마크를 해제해도 성공이다. 동시에
 같은 북마크를 추가해도 하나만 남고 오류가 나지 않는다(현재 다름: [#39]). 프로젝트가 없거나 삭제됐으면
-추가뿐 아니라 조회·해제도 404다(현재 다름: [#14]). 내 북마크 목록에서 삭제된 프로젝트는 빠진다.
+추가뿐 아니라 조회·해제도 404다. 내 북마크 목록에서 삭제된 프로젝트는 빠진다.
 
 ## AI 단가 분석
 
@@ -129,9 +129,10 @@ stateDiagram-v2
   안에서만 일어난다([milestones-payments.md](milestones-payments.md#승인과-계약-완료)).
 - 계약 금액은 저장된 그대로(소수일 수 있다) 두고, 마일스톤에 관한 모든 계산은 원 단위로 반올림한 값을 쓴다.
 - 계약의 종료일은 항상 마지막 마일스톤의 기한이다. 수락 때 정하고, 계획을 바꿀 때마다 다시 정한다.
-- 계약은 당사자(의뢰인, 프리랜서)만 본다. 계약 목록에는 상대방의 이름과 사진만 나오고 이메일은 없다. 계약 상세에
-  양측 이메일을 보여줄지는 정하지 않았다([#18]). 마일스톤의 결제에서 토스 결제 키(`paymentKey`)는 내보내지 않는다
-  (현재 다름: [#44]).
+- 계약은 당사자(의뢰인, 프리랜서)만 본다. 계약 목록과 계약 상세(서명 응답 포함) 모두 당사자의 이메일을
+  내보내지 않는다. 당사자 간 연락은 앱의 메시지로 한다. 플랫폼 밖 직거래를 막고 개인정보를 최소한으로 내보내기
+  위해서다. 마일스톤의 결제에서 토스 결제 키(`paymentKey`)는 내보내지 않는다(양 당사자가 같은 응답을 받고, 결제
+  결과 화면은 토스가 돌려준 값을 쓴다).
 
 ### 서명과 계획 교체
 
@@ -181,10 +182,7 @@ stateDiagram-v2
 | 신선도: 등록 7일까지 10, 30일까지 선형 감소, 이후 0 | 10 |
 | 마감까지 3일 이상 남음 | 10 |
 
-[#14]: https://github.com/jonghoon24/workbridge/issues/14
 [#15]: https://github.com/jonghoon24/workbridge/issues/15
-[#18]: https://github.com/jonghoon24/workbridge/issues/18
 [#39]: https://github.com/jonghoon24/workbridge/issues/39
 [#43]: https://github.com/jonghoon24/workbridge/issues/43
-[#44]: https://github.com/jonghoon24/workbridge/issues/44
 [#46]: https://github.com/jonghoon24/workbridge/issues/46

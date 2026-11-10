@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { User } from '@prisma/client';
+import type { Prisma, User } from '@prisma/client';
 
 import { authed } from './helpers/api';
 import { prisma, sideClient } from './helpers/db';
@@ -604,6 +604,270 @@ describe('settlement.payout', () => {
     const detail = await authed(freelancer).get(`/api/settlements/${settlement.id}`);
     expect(detail.status).toBe(200);
     expect(detail.body.items[0]).toMatchObject({ projectId: project.id, projectDeleted: true });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Races, held open deterministically
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Each test below parks the contenders at a known point — behind row locks held on a side
+ * connection (`sideClient`), or inside a transfer the test controls — and checks that the lock
+ * or conditional write that settles the race actually decides it. `waitingInThisDb` counts this
+ * database's backends queued on a lock (pg_locks is cluster-wide, and transaction-id waits carry
+ * no database, so the count goes through pg_stat_activity).
+ */
+describe('settlement and payout races (deterministic)', () => {
+  type Side = ReturnType<typeof sideClient>;
+
+  const waitingInThisDb = async (side: Side) => (await side.$queryRaw<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM pg_stat_activity
+    WHERE datname = current_database() AND wait_event_type = 'Lock'`)[0].n;
+
+  const until = async (done: () => Promise<boolean> | boolean) => {
+    for (const deadline = Date.now() + 5_000; Date.now() < deadline && !(await done());) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  };
+
+  /** Runs `lock` in a side transaction and keeps it open until `release()`. */
+  function holdLocks(side: Side, lock: (tx: Prisma.TransactionClient) => Promise<unknown>) {
+    let release = () => {};
+    let holding!: () => void;
+    const held = new Promise<void>((resolve) => { holding = resolve; });
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    const done = side.$transaction(async (tx) => {
+      await lock(tx);
+      holding();
+      await released;
+    }, { timeout: 15_000 });
+    return { held, release: () => release(), done };
+  }
+
+  /** A transfer that starts, then waits for `finish()`. */
+  function parkedTransfer() {
+    let started!: () => void;
+    let finish = () => {};
+    const inFlight = new Promise<void>((resolve) => { started = resolve; });
+    const finished = new Promise<void>((resolve) => { finish = resolve; });
+    const transfer = vi.fn(async () => {
+      started();
+      await finished;
+      return { reference: 'parked' };
+    });
+    return { transfer, inFlight, finish: () => finish() };
+  }
+
+  const settled = <T>(promise: Promise<T>) => promise.then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+
+  it('two batches of the same week at once: one settlement with every item, one notice, one payout job', async () => {
+    const freelancer = await makeFreelancer();
+    await approvedItem(freelancer, TUESDAY, 1_000_000);
+    await approvedItem(freelancer, TUESDAY, 2_000_000);
+    const side = sideClient();
+    // Holding the items puts both batch transactions inside the critical section at once: the
+    // first to insert the (freelancer, week) settlement parks on attaching the items, the second
+    // parks on that uncommitted row's unique key.
+    const items = holdLocks(side, (tx) => tx.$queryRaw`
+      SELECT id FROM "SettlementItem" WHERE "freelancerId" = ${freelancer.id} FOR UPDATE`);
+    let runs: Array<Promise<{ ok: true; value: Awaited<ReturnType<typeof runWeeklyBatch>> } | { ok: false; error: unknown }>> = [];
+    try {
+      await items.held;
+      runs = [
+        settled(runWeeklyBatch(PERIOD_START, BATCH_AT)),
+        settled(runWeeklyBatch(PERIOD_START, BATCH_AT)),
+      ];
+      await until(async () => (await waitingInThisDb(side)) >= 2);
+      expect(await waitingInThisDb(side)).toBeGreaterThanOrEqual(2);
+      items.release();
+      await items.done;
+      const results = await Promise.all(runs);
+
+      expect(results.map((r) => r.ok)).toEqual([true, true]);
+      const created = results.map((r) => (r.ok ? r.value.created : -1));
+      expect(created.sort()).toEqual([0, 1]);
+      const settlements = await prisma.settlement.findMany();
+      expect(settlements).toHaveLength(1);
+      expect(settlements[0]).toMatchObject({ itemCount: 2, grossAmount: 3_000_000, netAmount: 890_000 + 1_780_000 });
+      expect(await prisma.settlementItem.count({ where: { settlementId: settlements[0].id } })).toBe(2);
+      expect(await prisma.notification.count({ where: { type: 'SETTLEMENT_SCHEDULED' } })).toBe(1);
+      expect(await prisma.job.count({ where: { type: 'settlement.payout' } })).toBe(1);
+    } finally {
+      items.release();
+      await items.done.catch(() => {});
+      await Promise.all(runs);
+      await side.$disconnect();
+    }
+  });
+
+  it('batches of two weeks at once never settle one item twice', async () => {
+    const freelancer = await makeFreelancer();
+    // Approved in the first week: both the first week's batch and the next week's catch-up see it.
+    await approvedItem(freelancer, TUESDAY, 1_000_000);
+    const side = sideClient();
+    // Each batch inserts and locks its own week's settlement, then both park on the held item.
+    const items = holdLocks(side, (tx) => tx.$queryRaw`
+      SELECT id FROM "SettlementItem" WHERE "freelancerId" = ${freelancer.id} FOR UPDATE`);
+    let runs: Array<Promise<{ ok: true; value: Awaited<ReturnType<typeof runWeeklyBatch>> } | { ok: false; error: unknown }>> = [];
+    try {
+      await items.held;
+      runs = [
+        settled(runWeeklyBatch(PERIOD_START, BATCH_AT)),
+        settled(runWeeklyBatch(PERIOD_END, new Date(BATCH_AT.getTime() + 7 * DAY_MS))),
+      ];
+      await until(async () => (await waitingInThisDb(side)) >= 2);
+      expect(await waitingInThisDb(side)).toBeGreaterThanOrEqual(2);
+      items.release();
+      await items.done;
+      const results = await Promise.all(runs);
+
+      expect(results.map((r) => r.ok)).toEqual([true, true]);
+      const settlements = await prisma.settlement.findMany();
+      expect(settlements).toHaveLength(1);
+      expect(settlements[0]).toMatchObject({ itemCount: 1, grossAmount: 1_000_000, netAmount: 890_000 });
+      const [item] = await prisma.settlementItem.findMany();
+      expect(item.settlementId).toBe(settlements[0].id);
+      expect(await prisma.notification.count({ where: { type: 'SETTLEMENT_SCHEDULED' } })).toBe(1);
+      expect(await prisma.job.count({ where: { type: 'settlement.payout' } })).toBe(1);
+    } finally {
+      items.release();
+      await items.done.catch(() => {});
+      await Promise.all(runs);
+      await side.$disconnect();
+    }
+  });
+
+  /**
+   * Items attached while the payout decides: the transfer must be the `netAmount` of the row its
+   * PROCESSING write produced, not of its earlier read. The side transaction does what a re-run
+   * batch does to a SCHEDULED settlement — attach a late item and rewrite the sums under the
+   * settlement row lock — and holds it while the payout queues on its PROCESSING write.
+   * (The real batch is not used here: today a re-run batch and a payout decision on one
+   * settlement deadlock. The payout holds the user row and waits on the settlement; the batch
+   * holds the settlement and its second UPDATE of the row re-checks `Settlement.freelancerId`,
+   * which waits on the user row.)
+   */
+  it('a payout queued behind items being attached transfers the new total', async () => {
+    const freelancer = await makeFreelancer();
+    await makePayoutAccount(freelancer);
+    const settlement = await scheduled(freelancer, 1_000_000);
+    const late = await approvedItem(freelancer, new Date(PERIOD_END.getTime() - HOUR_MS), 2_000_000);
+    const transfer = vi.fn(async () => ({ reference: 'r' }));
+    setPayoutProvider({ transfer });
+    const side = sideClient();
+    const batch = holdLocks(side, async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Settlement" WHERE id = ${settlement.id} FOR UPDATE`;
+      await tx.settlementItem.update({ where: { id: late.item.id }, data: { settlementId: settlement.id } });
+      await tx.settlement.update({
+        where: { id: settlement.id },
+        data: {
+          itemCount: 2,
+          grossAmount: 3_000_000,
+          feeAmount: 300_000,
+          feeVatAmount: 30_000,
+          netAmount: 890_000 + 1_780_000,
+        },
+      });
+    });
+    let payout: Promise<string> | undefined;
+    try {
+      await batch.held;
+      payout = runPayout(settlement.id, settlement.scheduledPayoutAt.toISOString(), PAYOUT_AT);
+      await until(async () => (await waitingInThisDb(side)) >= 1);
+      expect(await waitingInThisDb(side)).toBeGreaterThanOrEqual(1);
+      batch.release();
+      await batch.done;
+
+      expect(await payout).toBe('paid');
+      expect(transfer).toHaveBeenCalledTimes(1);
+      expect(transfer).toHaveBeenCalledWith(expect.objectContaining({ amount: 890_000 + 1_780_000 }));
+      const stored = await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } });
+      expect(stored).toMatchObject({ status: 'PAID', itemCount: 2, netAmount: 890_000 + 1_780_000 });
+    } finally {
+      batch.release();
+      await batch.done.catch(() => {});
+      await payout?.catch(() => {});
+      await side.$disconnect();
+    }
+  });
+
+  it('a batch run while a transfer is in flight leaves new items for a later settlement', async () => {
+    const freelancer = await makeFreelancer();
+    await makePayoutAccount(freelancer);
+    const settlement = await scheduled(freelancer, 1_000_000);
+    const late = await approvedItem(freelancer, new Date(PERIOD_END.getTime() - HOUR_MS), 2_000_000);
+    const parked = parkedTransfer();
+    setPayoutProvider({ transfer: parked.transfer });
+
+    const payout = runPayout(settlement.id, settlement.scheduledPayoutAt.toISOString(), PAYOUT_AT);
+    try {
+      await parked.inFlight; // PROCESSING is committed; the money is on its way
+      await runWeeklyBatch(PERIOD_START, BATCH_AT);
+    } finally {
+      parked.finish();
+    }
+
+    expect(await payout).toBe('paid');
+    expect(parked.transfer).toHaveBeenCalledWith(expect.objectContaining({ amount: 890_000 }));
+    const stored = await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } });
+    expect(stored).toMatchObject({ status: 'PAID', itemCount: 1, netAmount: 890_000 });
+    expect((await prisma.settlementItem.findUniqueOrThrow({ where: { id: late.item.id } })).settlementId).toBeNull();
+  });
+
+  /**
+   * The account write and the payout decision serialize on the freelancer's user row. Unlike an
+   * account insert (whose foreign-key check already waits on that row), changing or removing an
+   * existing account touches no user row — only `lockUserRow` makes it wait. The test parks the
+   * payout after it has taken the user row and read the account, then fires the write: it must
+   * queue, see the PROCESSING the payout commits, and 409 without touching the account.
+   */
+  it.each([
+    ['PUT', (user: User) => authed(user).put('/api/users/me/payout-account')
+      .send({ bankCode: '088', accountNumber: '9999999999', holderName: user.name })],
+    ['DELETE', (user: User) => authed(user).delete('/api/users/me/payout-account')],
+  ])('an account %s during the payout decision waits for it and 409s on PROCESSING', async (_method, write) => {
+    const freelancer = await makeFreelancer();
+    const account = await makePayoutAccount(freelancer);
+    const settlement = await scheduled(freelancer);
+    const parked = parkedTransfer();
+    setPayoutProvider({ transfer: parked.transfer });
+    await Promise.all([1, 2, 3].map(() => authed(freelancer).get('/api/users/me/payout-account')));
+    const side = sideClient();
+    const row = holdLocks(side, (tx) => tx.$queryRaw`
+      SELECT id FROM "Settlement" WHERE id = ${settlement.id} FOR UPDATE`);
+    let payout: Promise<string> | undefined;
+    try {
+      await row.held;
+      payout = runPayout(settlement.id, settlement.scheduledPayoutAt.toISOString(), PAYOUT_AT);
+      await until(async () => (await waitingInThisDb(side)) >= 1); // parked on its PROCESSING write
+      let writeDone = false;
+      const request = write(freelancer).then((res) => { writeDone = true; return res; });
+      await until(async () => writeDone || (await waitingInThisDb(side)) >= 2);
+      row.release();
+      await row.done;
+      await parked.inFlight;
+      const res = await request;
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: { message: 'Payout account cannot be changed while a payout is processing' } });
+      expect(await prisma.payoutAccount.findUniqueOrThrow({ where: { userId: freelancer.id } })).toMatchObject({
+        bankCode: account.bankCode,
+        accountNumber: account.accountNumber,
+      });
+      expect(parked.transfer).toHaveBeenCalledWith(expect.objectContaining({ bankCode: '004', accountNumber: '110123456789' }));
+    } finally {
+      row.release();
+      parked.finish();
+      await row.done.catch(() => {});
+      await payout?.catch(() => {}); // never let it run on into the next test
+      await side.$disconnect();
+    }
+    expect(await payout).toBe('paid');
+    expect((await prisma.settlement.findUniqueOrThrow({ where: { id: settlement.id } })).status).toBe('PAID');
   });
 });
 

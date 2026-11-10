@@ -19,6 +19,13 @@ function safeRedirect(value) {
   return value;
 }
 
+/** Google 로그인 콜백이 `/login?error=<코드>`로 돌려보낼 때 보여 줄 문구. */
+const OAUTH_ERROR_MESSAGES = {
+  oauth_failed: 'Google 로그인에 실패했습니다. 다시 시도해 주세요.',
+  // 같은 이메일의 기존 계정에 Google 계정을 자동으로 연결하지 않는다(docs/domain/accounts.md).
+  email_account_exists: '이미 이메일로 가입된 계정입니다. 이메일로 로그인해 주세요.',
+};
+
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -26,8 +33,9 @@ export default function LoginForm() {
   const { setAuth } = useAuthStore();
 
   const [form, setForm] = useState({ email: '', password: '' });
+  const oauthError = searchParams.get('error');
   const [error, setError] = useState(
-    searchParams.get('error') === 'oauth_failed' ? 'Google 로그인에 실패했습니다. 다시 시도해 주세요.' : '',
+    oauthError && Object.hasOwn(OAUTH_ERROR_MESSAGES, oauthError) ? OAUTH_ERROR_MESSAGES[oauthError] : '',
   );
   const [loading, setLoading] = useState(false);
 
