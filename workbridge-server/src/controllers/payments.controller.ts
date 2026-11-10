@@ -31,13 +31,19 @@ async function findMilestoneForPayment(milestoneId: string) {
 }
 
 /**
- * How long a confirm's claim on a PENDING payment (`confirmStartedAt`) blocks another confirm. A
- * confirm normally finishes well within this; the lease only matters when one never reports back
- * (the function was killed mid-call), so the client is not locked out of that order for good.
- * Should a claim expire while its confirm is still running, the overlap is still safe: the provider
- * refuses a second confirmation of one payment, and the FAILED write is conditional on PENDING.
+ * How long a confirm's claim on a PENDING payment (`confirmStartedAt`) blocks another confirm. The
+ * provider call is cut off at `CONFIRM_PROVIDER_TIMEOUT_MS`, well inside this, so a live confirm
+ * has always finished calling the provider before its claim can expire; the lease only matters
+ * when a confirm never reports back (the function was killed mid-call), so the client is not
+ * locked out of that order for good.
  */
 const CONFIRM_CLAIM_LEASE_MS = 60_000;
+
+/**
+ * The TossPayments confirm call's timeout — half the claim lease, leaving room for the database
+ * writes after it. A timeout takes the ordinary failure path (FAILED, 400).
+ */
+const CONFIRM_PROVIDER_TIMEOUT_MS = 30_000;
 
 /** Milestones are funded in order: any lower-sequence milestone still PENDING blocks funding this one. */
 async function hasUnfundedPredecessor(contractId: string, sequence: number): Promise<boolean> {
@@ -212,7 +218,10 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
       const { data: tossPayment } = await axios.post(
         'https://api.tosspayments.com/v1/payments/confirm',
         { paymentKey, orderId, amount: requestedAmount },
-        { headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/json' } }
+        {
+          headers: { Authorization: `Basic ${credentials}`, 'Content-Type': 'application/json' },
+          timeout: CONFIRM_PROVIDER_TIMEOUT_MS,
+        }
       );
 
       if (Number(tossPayment.totalAmount) !== payment.amount || tossPayment.status !== 'DONE') {

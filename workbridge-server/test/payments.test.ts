@@ -756,6 +756,29 @@ describe('POST /api/payments/confirm', () => {
     expect(config.headers['Content-Type']).toBe('application/json');
   });
 
+  // The confirm claim expires after 60 s; a provider call that could outlive it would let a second
+  // confirm claim the payment and call the provider again.
+  it('bounds the provider call with a 30 s timeout, well inside the 60 s confirm claim', async () => {
+    const { client, payment } = await pendingPayment();
+    tossPost.mockResolvedValue(tossDone());
+
+    await authed(client).post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
+
+    const [, , config] = tossPost.mock.calls[0] as [string, unknown, any];
+    expect(config.timeout).toBe(30_000);
+  });
+
+  it('a provider call that times out marks the payment FAILED and answers 400', async () => {
+    const { client, payment } = await pendingPayment();
+    tossPost.mockRejectedValue(Object.assign(new Error('timeout of 30000ms exceeded'), { code: 'ECONNABORTED' }));
+
+    const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'Payment verification failed' } });
+    expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe('FAILED');
+  });
+
   it('accepts a numeric string amount and forwards it to the provider as a number', async () => {
     const { client, payment } = await pendingPayment();
     tossPost.mockResolvedValue(tossDone());
