@@ -3014,7 +3014,7 @@
           "Auth"
         ],
         "summary": "이메일 회원가입",
-        "description": "가입과 동시에 로그인된다. 이메일은 앞뒤 공백만 지우고 대소문자는 그대로 둔다.",
+        "description": "가입과 동시에 로그인된다. 이메일은 앞뒤 공백을 지우고 소문자로 바꿔 저장한다. 중복 검사도 그 형태로 한다.",
         "security": [],
         "requestBody": {
           "required": true,
@@ -3085,7 +3085,7 @@
             }
           },
           "409": {
-            "description": "상태 충돌\n\n- `Email already in use` — 이미 쓰는 이메일(탈퇴한 계정 포함)",
+            "description": "상태 충돌\n\n- `Email already in use` — 이미 쓰는 이메일(대소문자만 다른 주소, 탈퇴한 계정 포함)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3104,7 +3104,7 @@
           "Auth"
         ],
         "summary": "이메일 로그인",
-        "description": "이메일은 가입과 같이 앞뒤 공백만 지우고 대소문자는 그대로 비교한다. 레이트 리밋: 같은 IP의 모든 시도 15분에 20회, 같은 이메일+IP의 실패 15분에 5회. 한도 검사는 요청 검증보다 먼저다.",
+        "description": "이메일은 가입과 같이 앞뒤 공백을 지우고 소문자로 바꿔 비교한다. 레이트 리밋: 같은 IP의 모든 시도 15분에 20회, 같은 이메일+IP의 실패 15분에 5회. 한도 검사는 요청 검증보다 먼저다.",
         "security": [],
         "requestBody": {
           "required": true,

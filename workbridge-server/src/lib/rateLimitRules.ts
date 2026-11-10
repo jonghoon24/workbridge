@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 
 import { clientIp } from './clientIp';
+import { normalizeEmail } from './email';
 import { DAY_MS, HOUR_MS, MINUTE_MS } from './time';
 import { hit, isRateLimitEnabled, reset } from './rateLimit';
 import type { JwtUserPayload, RateLimitRule } from '../types/index';
@@ -12,7 +13,7 @@ import type { JwtUserPayload, RateLimitRule } from '../types/index';
 
 function normalizedEmail(req: Request): string | null {
   const email = (req.body as { email?: unknown } | undefined)?.email;
-  return typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null;
+  return typeof email === 'string' && email.trim() ? normalizeEmail(email) : null;
 }
 
 /** Every login attempt from one IP, whatever its outcome. */

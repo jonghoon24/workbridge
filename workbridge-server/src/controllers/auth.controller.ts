@@ -6,6 +6,7 @@ import type { User } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
 import { AppError } from '../lib/errors';
+import { normalizeEmail } from '../lib/email';
 import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
 import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
@@ -212,7 +213,7 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
     }
 
     // Exchange code for tokens
-    const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
+    const tokenResponse = await axios.post<{ access_token: string }>('https://oauth2.googleapis.com/token', {
       code,
       client_id: env.GOOGLE_CLIENT_ID,
       client_secret: env.GOOGLE_CLIENT_SECRET,
@@ -223,11 +224,18 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
     const { access_token } = tokenResponse.data;
 
     // Get user info
-    const userInfoResponse = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${access_token}` },
-    });
+    // Google's userinfo response; `id` and `email` are checked below before anything uses them.
+    const userInfoResponse = await axios.get<{ id?: unknown; email?: unknown; name: string; picture?: string }>(
+      'https://www.googleapis.com/oauth2/v2/userinfo',
+      {
+        headers: { Authorization: `Bearer ${access_token}` },
+      },
+    );
 
-    const { id: googleId, email, name, picture } = userInfoResponse.data;
+    const { id: googleId, email: rawEmail, name, picture } = userInfoResponse.data;
+    // Stored and compared in the same form as signup and login, so the same-email check below also
+    // catches an address that differs from an existing account's only by case or spaces.
+    const email = typeof rawEmail === 'string' ? normalizeEmail(rawEmail) : rawEmail;
 
     // Without both values there is nothing to match on — and Prisma reads `{ googleId: undefined }`
     // as no filter at all, which would match any account.
