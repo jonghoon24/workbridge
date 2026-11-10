@@ -2995,11 +2995,11 @@
             }
           },
           "404": {
-            "description": "`INTERNAL_JOB_TOKEN`이 설정되지 않음 — Express 기본 404 페이지(HTML)",
+            "description": "찾을 수 없음\n\n- `Not found` — `INTERNAL_JOB_TOKEN`이 설정되지 않음. 일치하는 경로가 없는 요청과 같은 응답이다",
             "content": {
-              "text/html": {
+              "application/json": {
                 "schema": {
-                  "type": "string"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -3553,7 +3553,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -4291,7 +4291,7 @@
           "Users"
         ],
         "summary": "사용자가 받은 리뷰",
-        "description": "`GET /api/reviews/users/{id}`와 같다. 최신순이고, 없는 사용자도 빈 배열이다.",
+        "description": "`GET /api/reviews/users/{id}`와 같다. 최신순이고, 없거나 삭제된 사용자는 빈 배열이다.",
         "security": [],
         "parameters": [
           {
@@ -5572,7 +5572,7 @@
           "Recommendations"
         ],
         "summary": "나에게 맞는 프로젝트(프리랜서)",
-        "description": "기술·카테고리로 점수를 매긴 모집 중인 프로젝트. 이미 지원한 프로젝트는 빠진다. 읽기 전용(수명주기 스윕 없음).",
+        "description": "기술·카테고리로 점수를 매긴 모집 중인 프로젝트. 이미 지원한 프로젝트와 의뢰인이 삭제된 프로젝트는 빠진다. 읽기 전용(수명주기 스윕 없음).",
         "security": [
           {
             "bearerAuth": []
@@ -5734,7 +5734,7 @@
           "Projects"
         ],
         "summary": "프로젝트 목록",
-        "description": "기본은 모집 중(`OPEN`)인 프로젝트의 최신순, 한 페이지 10개(최대 50). **행을 쓴다:** 응답 전에 지연 수명주기 스윕을 돌린다 — 모집 시작일이 지난 `UPCOMING`은 `OPEN`, 마감이 지난 `UPCOMING`·`OPEN`은 `CLOSED`로 바꾸고 그 프로젝트의 대기 중인 지원을 거절한다.",
+        "description": "기본은 모집 중(`OPEN`)인 프로젝트의 최신순, 한 페이지 10개(최대 50). 삭제된 프로젝트와 의뢰인이 삭제된 프로젝트는 빠진다. **행을 쓴다:** 응답 전에 지연 수명주기 스윕을 돌린다 — 모집 시작일이 지난 `UPCOMING`은 `OPEN`, 마감이 지난 `UPCOMING`·`OPEN`은 `CLOSED`로 바꾸고 그 프로젝트의 대기 중인 지원을 거절한다.",
         "security": [],
         "parameters": [
           {
@@ -5809,7 +5809,7 @@
           {
             "schema": {
               "type": "string",
-              "description": "제목·설명에 들어 있는 글자(대소문자 무시)"
+              "description": "제목·설명에 들어 있는 글자(대소문자 무시, `%`·`_`도 글자 그대로)"
             },
             "required": false,
             "name": "search",
@@ -5980,7 +5980,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -6125,7 +6125,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -6203,7 +6203,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -6268,7 +6268,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트",
             "content": {
               "application/json": {
                 "schema": {
@@ -6380,7 +6380,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -6455,7 +6455,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -6570,7 +6570,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -6646,7 +6646,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -6978,7 +6978,7 @@
             }
           },
           "400": {
-            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `Project deadline has passed` — 마감이 지남(이때 프로젝트를 마감한다)\n- `Project is not accepting applications` — 모집 중이 아님",
+            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `Project is not accepting applications` — 모집 중이 아님(마감이 지난 프로젝트는 스윕이 먼저 마감한다)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6988,7 +6988,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -7008,7 +7008,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트",
             "content": {
               "application/json": {
                 "schema": {
@@ -7335,7 +7335,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -7990,7 +7990,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -8790,7 +8790,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -9121,7 +9121,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -9227,7 +9227,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -9886,7 +9886,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -9935,7 +9935,7 @@
           "Reviews"
         ],
         "summary": "사용자가 받은 리뷰",
-        "description": "최신순이고, 없는 사용자도 빈 배열이다.",
+        "description": "최신순이고, 없거나 삭제된 사용자는 빈 배열이다(삭제된 사용자가 받은 리뷰는 숨긴다).",
         "security": [],
         "parameters": [
           {
@@ -10120,7 +10120,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -10169,7 +10169,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {

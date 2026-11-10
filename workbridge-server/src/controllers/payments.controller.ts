@@ -12,7 +12,7 @@ import type { AuthedRequest } from '../types/index';
 /**
  * Payments are per milestone (docs/domain/milestones-payments.md "안전결제"). This controller
  * talks to Prisma directly; moving it to a service is #40. Request bodies are parsed by
- * `schemas/payments.ts` in the route, but the routes do not mount `requireActiveUser` yet (#7).
+ * `schemas/payments.ts` in the route, after `requireActiveUser`.
  */
 
 /**

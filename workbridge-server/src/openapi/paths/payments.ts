@@ -2,7 +2,7 @@ import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { z } from '../../lib/zod';
 import { milestonePaymentBody, paymentConfirmBody } from '../../schemas/payments';
-import { AUTHENTICATED, bearer, created, errors, invalid, jsonBody, ok } from '../common';
+import { ACTIVE_USER, AUTHENTICATED, bearer, created, errors, invalid, jsonBody, ok } from '../common';
 import type { ErrorSpec } from '../common';
 import { payment, paymentOrder, paymentWithContext } from '../responses/contracts';
 
@@ -32,7 +32,7 @@ export function registerPaymentPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(paymentOrder, '기존 결제의 주문'),
       201: created(paymentOrder, '새 결제의 주문'),
-      ...errors(invalid(), AUTHENTICATED, FUNDING_CHECKS, {
+      ...errors(invalid(), ACTIVE_USER, FUNDING_CHECKS, {
         409: [
           '`Milestone is already funded` — 이미 결제된 마일스톤',
           '`Payment already completed for this milestone` — 결제는 완료됐는데 마일스톤이 결제 전(데이터 불일치)',
@@ -60,7 +60,7 @@ export function registerPaymentPaths(registry: OpenAPIRegistry): void {
           '`Payment amount does not match the contract amount` — 금액이 결제 금액과 다름',
           '`Payment verification failed` — 토스 승인 실패, 금액·상태 불일치, 또는 승인 뒤 저장 실패',
         ),
-        AUTHENTICATED,
+        ACTIVE_USER,
         {
           403: ['`Not authorized` — 결제한 의뢰인이 아님'],
           404: ['`Payment not found` — 없는 주문, 또는 프로젝트가 삭제됨'],
@@ -87,7 +87,7 @@ export function registerPaymentPaths(registry: OpenAPIRegistry): void {
       ...errors(
         { 403: ['`Payment bypass is disabled` — 결제 우회가 꺼져 있음(요청 검증보다 먼저)'] },
         invalid(),
-        AUTHENTICATED,
+        ACTIVE_USER,
         FUNDING_CHECKS,
         {
           409: [
