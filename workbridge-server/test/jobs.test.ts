@@ -546,8 +546,9 @@ describe('POST /api/internal/jobs/run', () => {
       const unmatched = await api().post('/api/internal/jobs/nope').send({});
 
       expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'Not found' } });
       expect(res.headers['content-type']).toBe(unmatched.headers['content-type']);
-      expect(res.text).toBe(unmatched.text.replace('/api/internal/jobs/nope', '/api/internal/jobs/run'));
+      expect(res.text).toBe(unmatched.text);
       expect(await prisma.job.count()).toBe(0);
     });
   });

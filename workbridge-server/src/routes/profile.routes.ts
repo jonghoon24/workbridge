@@ -37,8 +37,8 @@ import {
  * `GET /api/projects/:id/recommended-freelancers` lives on the projects router instead.
  *
  * Attach guards per route, never with `router.use` — unmatched paths and public GETs pass through
- * here (an unmatched path must still fall through to Express's HTML 404, #19, and the public
- * reads need no token).
+ * here (an unmatched path must still fall through to the final JSON 404 rather than a guard's 401,
+ * and the public reads need no token).
  */
 const router = Router();
 
