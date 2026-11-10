@@ -3354,7 +3354,7 @@
           "Auth"
         ],
         "summary": "구글 로그인 시작",
-        "description": "구글 동의 화면으로 보낸다. 로그인 CSRF를 막는 `state`를 `oauthState` 쿠키(10분)에 둔다.",
+        "description": "구글 동의 화면으로 보낸다. 로그인 CSRF를 막는 `state`를 `oauthState` 쿠키(10분)에 둔다. 서버의 `CLIENT_URL`이 없거나 출처 하나가 아니면 동의 화면으로 보내지 않고 서버 오류로 답한다(설정 오류).",
         "security": [],
         "responses": {
           "302": {
@@ -3379,7 +3379,7 @@
           "Auth"
         ],
         "summary": "구글 로그인 콜백",
-        "description": "언제나 리디렉션으로 끝나고 400을 내지 않는다. 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, 실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다. 기존 계정과는 `googleId`로만 연결한다. 이 Google 계정과 연결되지 않은 계정이 같은 이메일을 쓰고 있으면 연결하지도 세션을 발급하지도 않고 `CLIENT_URL/login?error=email_account_exists`로 보낸다(Google이 이메일을 인증했어도 같다).",
+        "description": "400을 내지 않고 리디렉션으로 끝난다(서버의 `CLIENT_URL`이 없거나 출처 하나가 아닌 설정 오류만 서버 오류로 답한다). 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, 실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다. 기존 계정과는 `googleId`로만 연결한다. 이 Google 계정과 연결되지 않은 계정이 같은 이메일을 쓰고 있으면 연결하지도 세션을 발급하지도 않고 `CLIENT_URL/login?error=email_account_exists`로 보낸다(Google이 이메일을 인증했어도 같다).",
         "security": [],
         "parameters": [
           {
