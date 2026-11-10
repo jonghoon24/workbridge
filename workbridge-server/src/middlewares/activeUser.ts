@@ -4,12 +4,10 @@ import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 
 /**
- * Re-reads the caller and rejects a soft-deleted user with 401. Mounted after `authenticate`.
- * Not every authenticated route mounts it yet — the project (except recommendations),
- * application, payment, review and notification (except preferences) routes, `GET`/`PATCH
- * /api/users/me` and its application, bookmark and project lists, the contract detail, sign and
- * complete routes, and `logout`/`select-role` — so a deleted user's unexpired token still works
- * there (#7).
+ * Re-reads the caller and rejects a soft-deleted user with 401. Mounted after `authenticate` on
+ * every write route and every expansion route. The existing domains' reads do not mount it
+ * (`GET /api/users/me` 404s on its own lookup), nor do `select-role` (404 from its own lookup),
+ * `logout` and the always-410 `PATCH /api/contracts/:id`.
  */
 export async function requireActiveUser(req: Request, res: Response, next: NextFunction) {
   try {

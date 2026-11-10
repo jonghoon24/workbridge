@@ -1,6 +1,5 @@
 import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
-import { z } from '../../lib/zod';
 import { runJobsBody } from '../../schemas/internal';
 import { errors, invalid, ok, publicRoute, SECURITY_SCHEMES } from '../common';
 import { health, runJobsResult } from '../responses/internal';
@@ -32,11 +31,10 @@ export function registerSystemPaths(registry: OpenAPIRegistry): void {
     },
     responses: {
       200: ok(runJobsResult, '이번 실행의 집계'),
-      ...errors(invalid(), { 403: ['`Invalid internal token` — `X-Internal-Token`이 없거나 틀림'] }),
-      404: {
-        description: '`INTERNAL_JOB_TOKEN`이 설정되지 않음 — Express 기본 404 페이지(HTML)',
-        content: { 'text/html': { schema: z.string() } },
-      },
+      ...errors(invalid(), {
+        403: ['`Invalid internal token` — `X-Internal-Token`이 없거나 틀림'],
+        404: ['`Not found` — `INTERNAL_JOB_TOKEN`이 설정되지 않음. 일치하는 경로가 없는 요청과 같은 응답이다'],
+      }),
     },
   });
 }

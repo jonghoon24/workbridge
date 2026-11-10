@@ -22,7 +22,8 @@ paths:
   로그는 한 줄 JSON이고, 필드 안의 `Error`는 `serializeError`가 직렬화한다.
 - 요청 body·query·헤더를 통째로 로그 필드에 넣지 않는다(`{ body: req.body }` 금지). 계좌번호 같은 개인정보와
   토큰이 운영 로그에 남는다. 필요한 필드(id, 상태, 개수)만 골라 넣는다.
-- `error` 레벨은 `errorHandler`의 500과 작업 실패 전용이다. 스위트는 `console.error` 스파이로
+- `error` 레벨은 `errorHandler`의 500, 응답을 보낸 뒤에 난 예외(`headersSent` 분기 — 사용자에게 500을 못 보냈을 뿐
+  서버 버그다), 작업 실패 전용이다. 스위트는 `console.error` 스파이로
   "500은 정확히 한 번 로그된다"와 "4xx는 error로 로그하지 않는다"를 단언한다.
   나머지는 `warn`/`info`를 쓴다.
 - 남겨 두는 예외: `auth.controller.ts`의 `googleCallback`(리다이렉트로 삼키는 실패를 로그로 남긴다)과

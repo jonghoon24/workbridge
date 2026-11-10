@@ -77,7 +77,7 @@ GitHub 이슈로 추적하고(도메인 문서의 `현재 다름: #N`), 고치�
 - 핸들러에 `Promise<void>`를 붙이지 않는다. 함수 중간에 `return res.json(...)`하는 곳이 많다.
 - 여러 행을 바꾸는 상태 변경은 `prisma.$transaction` 하나로 하고, 알림과 작업도 그 안에서 쓴다.
 - 적용된 마이그레이션은 고치지 않는다(훅이 막는다). 스키마를 바꾸고 `prisma migrate dev`.
-- `console.*` 대신 `lib/logger.ts`를 쓴다. `error` 레벨은 500과 작업 실패에만 쓴다.
+- `console.*` 대신 `lib/logger.ts`를 쓴다. `error` 레벨은 500, 응답을 보낸 뒤에 난 예외(서버 버그라 경보 대상), 작업 실패에만 쓴다.
 - 이메일은 로그로만 남는다(`mail.sent` 줄). 결제 우회 플래그는 운영에서 반드시 `false`.
 - 운영에는 상주 작업 워커가 없다. GitHub Actions `jobs.yml`이 15분마다 `POST /api/internal/jobs/run`을
   부른다. 지급(`JOB_PAYOUT_ENABLED`)과 메일(`JOB_EMAIL_ENABLED`) 작업은 플래그로 꺼져 있다.

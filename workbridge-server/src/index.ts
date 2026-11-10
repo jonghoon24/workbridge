@@ -26,6 +26,7 @@ import conversationRoutes from './routes/conversations.routes';
 import internalRoutes from './routes/internal.routes';
 import docsRoutes from './routes/docs.routes';
 import { errorHandler } from './middlewares/errorHandler';
+import { notFound } from './middlewares/notFound';
 import { accessLog } from './middlewares/accessLog';
 import { bindRequestContext, requestId } from './middlewares/requestId';
 import { startJobWorker } from './jobs/worker';
@@ -119,6 +120,8 @@ app.use('/api/internal', internalRoutes);
 // `GET /api/docs` and `GET /api/openapi.json`. Last, and touching no other router's paths.
 app.use('/api', docsRoutes);
 
+// After every router: whatever reaches here matched no route — a JSON 404, not Express's HTML page.
+app.use(notFound);
 app.use(errorHandler);
 
 // Also skipped under test: supertest spins up its own ephemeral server per request, so

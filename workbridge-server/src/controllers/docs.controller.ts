@@ -12,7 +12,7 @@ import { buildOpenApiDocument } from '../openapi/document';
  * whose `NODE_ENV` is not `production` (local and test). Everywhere else (`VERCEL_ENV=production`,
  * an unknown `VERCEL_ENV`, or no `VERCEL_ENV` with `NODE_ENV=production`) it is off: the document
  * lists internal endpoints and every error message, which is more than the public site needs.
- * There the request leaves the router and ends like an unmatched path — Express's HTML 404 — so
+ * There the request leaves the router and ends like an unmatched path — the JSON 404 — so
  * the routes do not reveal they exist. Read per request, like the other flags.
  */
 const DOCS_VERCEL_ENVS = new Set(['preview', 'development']);

@@ -330,7 +330,8 @@ describe('GET /api/users/me/recommended-projects', () => {
 
     const res = await recommendedProjects(freelancer);
 
-    expect(ids(res.body.projects).sort()).toEqual([byAlias.id, byCategory.id, ofDeletedClient.id].sort());
+    expect(ids(res.body.projects).sort()).toEqual([byAlias.id, byCategory.id].sort());
+    expect(ids(res.body.projects)).not.toContain(ofDeletedClient.id);
     const aliasEntry = res.body.projects.find((p: { id: string }) => p.id === byAlias.id);
     expect(aliasEntry.matchedSkills).toEqual(['SQL']);
     // No sweep: the expired project is excluded by its deadline and keeps its status.

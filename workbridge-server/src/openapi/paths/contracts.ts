@@ -146,7 +146,7 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
             '`Cannot sign a contract without a valid milestone plan` — 계획이 없거나 금액 합이 맞지 않음',
           ],
         },
-        AUTHENTICATED,
+        ACTIVE_USER,
         NOT_PARTY,
         CONTRACT_OR_PROJECT_NOT_FOUND,
       ),

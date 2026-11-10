@@ -19,26 +19,18 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
     const { coverLetter, expectedRate, expectedDuration } = req.body;
     const projectId = req.params.id;
 
+    // The sweep closes every project whose deadline has passed (and rejects its pending
+    // applications), so an `OPEN` project read after it is still before its deadline. A past
+    // deadline therefore surfaces as the not-OPEN 400 below — there is no separate deadline check.
     await closeExpiredOpenProjects();
 
+    // A project whose client is soft-deleted takes no applications (and so sends that client nothing).
     const project = await prisma.project.findFirst({
-      where: { id: projectId, deletedAt: null },
+      where: { id: projectId, deletedAt: null, client: { deletedAt: null } },
     });
 
     if (!project) {
       throw new AppError('Project not found', 404);
-    }
-
-    if (project.status === 'OPEN' && project.deadline < new Date()) {
-      await prisma.$transaction(async (tx) => {
-        await tx.project.update({
-          where: { id: projectId },
-          data: { status: 'CLOSED' },
-        });
-
-        await rejectPendingApplicationsForClosedProjects({ projectId }, tx);
-      });
-      throw new AppError('Project deadline has passed', 400);
     }
 
     if (project.status !== 'OPEN') {
@@ -51,8 +43,11 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
     });
     const applicantName = freelancer?.name || freelancer?.email || '프리랜서';
 
+    // Only the transaction is inside this try, so its catch sees database errors only — never a
+    // failure of the response write below.
+    let application;
     try {
-      const application = await prisma.$transaction(async (tx) => {
+      application = await prisma.$transaction(async (tx) => {
         const created = await tx.application.create({
           data: {
             projectId,
@@ -65,7 +60,7 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
         });
 
         // The wording stays inline here (not in the template table); `notify()` applies the channel
-        // policy and preferences. The client is notified even when soft-deleted (joined owners: #20).
+        // policy and preferences. The client is live: a deleted client's project 404s above.
         await notify(tx, {
           userId: project.clientId,
           type: 'APPLICATION_CREATED',
@@ -76,14 +71,14 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
 
         return created;
       });
-
-      res.status(201).json(application);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new AppError('You have already applied to this project', 409);
       }
       throw err;
     }
+
+    res.status(201).json(application);
   } catch (err) {
     next(err);
   }
@@ -176,6 +171,16 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
       let result;
       try {
         result = await prisma.$transaction(async (tx) => {
+          // Lock the project row first. Accepts of one project then run one at a time: without
+          // it, two accepts each locked their own application and then waited on the other's to
+          // reject it — a deadlock (40P01, a 500). The loser now waits, then hits the unique
+          // contract below (409). A project deleted while this waited is gone (404).
+          const locked = await tx.$queryRaw<{ id: string }[]>`
+            SELECT "id" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR UPDATE`;
+          if (locked.length === 0) {
+            throw new AppError('Project not found', 404);
+          }
+
           const rejectedApplications = await tx.application.findMany({
             where: { projectId, id: { not: appId }, status: 'PENDING' },
             select: { freelancerId: true },

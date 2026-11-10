@@ -99,8 +99,10 @@ export async function getProjects(_req: Request, res: Response, next: NextFuncti
       limit: limitNum,
     } = res.locals.query as ProjectListQuery;
 
+    // A project whose client is soft-deleted is hidden like a deleted project (docs/domain/README.md).
     const where: Prisma.ProjectWhereInput = {
       deletedAt: null,
+      client: { deletedAt: null },
     };
 
     if (status !== 'ALL') {
@@ -108,9 +110,13 @@ export async function getProjects(_req: Request, res: Response, next: NextFuncti
     }
 
     if (search) {
+      // Prisma passes `contains` to ILIKE unescaped: `%` and `_` would be wildcards (`search=%`
+      // matched every project). Escape them, and the escape character itself (Postgres' default
+      // `\`), so the search matches literally.
+      const literal = search.replace(/[\\%_]/g, '\\$&');
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
+        { title: { contains: literal, mode: 'insensitive' } },
+        { description: { contains: literal, mode: 'insensitive' } },
       ];
     }
 
@@ -195,7 +201,7 @@ export async function getProjectById(req: Request, res: Response, next: NextFunc
     await closeExpiredOpenProjects();
 
     const project = await prisma.project.findFirst({
-      where: { id: req.params.id, deletedAt: null },
+      where: { id: req.params.id, deletedAt: null, client: { deletedAt: null } },
       include: {
         client: {
           select: { id: true, name: true, companyName: true, profileImage: true, businessField: true },
@@ -253,18 +259,12 @@ export async function createProjectBookmark(req: AuthedRequest, res: Response, n
   try {
     await findBookmarkableProject(req.params.id);
 
-    await prisma.projectBookmark.upsert({
-      where: {
-        projectId_userId: {
-          projectId: req.params.id,
-          userId: req.user.id,
-        },
-      },
-      update: {},
-      create: {
-        projectId: req.params.id,
-        userId: req.user.id,
-      },
+    // `INSERT … ON CONFLICT DO NOTHING`, not `upsert`: Prisma's upsert on a compound key is
+    // find-then-insert, so an overlapping request for the same bookmark hit P2002 (a 500). An
+    // existing row is left as it is (same id and createdAt).
+    await prisma.projectBookmark.createMany({
+      data: [{ projectId: req.params.id, userId: req.user.id }],
+      skipDuplicates: true,
     });
 
     res.status(201).json({ bookmarked: true });

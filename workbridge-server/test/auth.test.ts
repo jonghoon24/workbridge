@@ -855,12 +855,18 @@ describe('GET /api/auth/google', () => {
   it('returns a 500 error response — not a crash — when Google env vars are missing', async () => {
     const saved = process.env.GOOGLE_CLIENT_ID;
     delete process.env.GOOGLE_CLIENT_ID;
+    const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const res = await api().get('/api/auth/google');
 
       expect(res.status).toBe(500);
-      expect(res.body.error.message).toMatch(/GOOGLE_CLIENT_ID/);
+      // A 500's body is generic (docs/domain/README.md "오류 응답"); the missing variable is named
+      // in the error log, where the operator looks.
+      expect(res.body).toEqual({ error: { message: 'Internal Server Error' } });
+      expect(logs.mock.calls).toHaveLength(1);
+      expect(String(logs.mock.calls[0][0])).toMatch(/GOOGLE_CLIENT_ID/);
     } finally {
+      logs.mockRestore();
       process.env.GOOGLE_CLIENT_ID = saved;
     }
 
