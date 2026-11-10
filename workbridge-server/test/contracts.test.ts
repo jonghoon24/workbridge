@@ -511,7 +511,8 @@ describe('POST /api/contracts/:id/sign', () => {
     const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
 
     expect(res.status).toBe(500);
-    expectErrorEnvelope(res.body, INJECTED);
+    // A 500's body is generic; the injected error itself only reaches the log.
+    expectErrorEnvelope(res.body, 'Internal Server Error');
     // Proves the failure landed on the activation and not on the signature write.
     expect(injection.steps).toEqual(['contract.update', 'contract.update']);
     // …and that the signature really was written: inside the transaction, just before the
