@@ -50,6 +50,9 @@ export const payment = z
   })
   .openapi('Payment');
 
+/** A milestone's payment: the `Payment` row without the Toss `paymentKey`. */
+export const milestonePayment = payment.omit({ paymentKey: true }).openapi('MilestonePayment');
+
 /** A stored attachment: exactly these keys. */
 export const attachment = z
   .object({
@@ -103,7 +106,7 @@ export const milestoneFields = {
   revisionCount: count,
   createdAt: dateTime,
   updatedAt: dateTime,
-  payment: payment.nullable(),
+  payment: milestonePayment.nullable(),
   latestSubmission: submission.nullable(),
   payoutPreview: payoutBreakdown.openapi({ description: '승인됐으면 정산 항목의 값, 아니면 지금 수수료율로 계산한 값' }),
 };
