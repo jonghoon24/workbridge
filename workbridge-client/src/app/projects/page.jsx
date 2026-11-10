@@ -10,15 +10,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import { FilterIcon, SearchIcon } from '@/components/ui/Icons';
 import PageLoader from '@/components/ui/PageLoader';
 import { toUserMessage } from '@/lib/errorMessages';
-
-function useDebounce(value, delay) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debounced;
-}
+import useDebounce from '@/lib/useDebounce';
 
 function ProjectsContent() {
   const router = useRouter();

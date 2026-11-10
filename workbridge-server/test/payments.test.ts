@@ -45,7 +45,7 @@ beforeEach(() => {
 });
 
 /**
- * This file is the only one that mutates `ALLOW_PAYMENT_BYPASS`, and `fileParallelism: false`
+ * This file (and one `soft-delete.test.ts` row) mutates `ALLOW_PAYMENT_BYPASS`, and `fileParallelism: false`
  * means sibling files can share the worker process — a leaked `'true'` would silently arm the
  * payment bypass for every test that follows. Every mutation below restores the previous value
  * in a `finally`; this asserts that it worked, so a future test that forgets fails here rather
@@ -167,7 +167,7 @@ async function collideOnPaymentInsert<T>(
 }
 
 /**
- * Markers that must never appear in an error body (issue #9). Matched by *shape* rather than
+ * Markers that must never appear in an error body. Matched by *shape* rather than
  * by the exact text, so the tests survive a Prisma version bump or a controller edit that moves
  * the offending line: the file:line pattern is `\.ts:\d+:\d+`, not `payments.controller.ts:70:42`.
  */
@@ -182,6 +182,7 @@ const INTERNALS_MARKERS: Array<[label: string, pattern: RegExp]> = [
   ['a database constraint detail', /[Uu]nique constraint failed/],
   ['a raw column reference', /`(contractId|milestoneId)`/],
   ['a SQL statement', /\b(SELECT\s|INSERT\s+INTO\s|UPDATE\s+"|DELETE\s+FROM\s)/],
+  ['a raw database error', /ConnectorError|PostgresError|violates \w+ constraint|Failing row contains/],
 ];
 
 function assertNoInternalsLeak(message: unknown) {
@@ -454,31 +455,37 @@ describe('POST /api/payments', () => {
     expect(await prisma.payment.count()).toBe(1);
   });
 
-  // Both requests read "no payment yet" and then insert. The unique `milestoneId` is what keeps
-  // the second row out, so this pins the database invariant only — the losing request's status
-  // is tracked in issue #8.
-  it('keeps a single payment row when two concurrent creates collide on the unique milestoneId', async () => {
+  // Both requests read "no payment yet" and then insert. The unique `milestoneId` keeps the second
+  // row out; the losing request then answers as if it had arrived second — it resumes the
+  // winner's PENDING payment — instead of surfacing the constraint as a 500.
+  it('a concurrent create that loses the insert race resumes the winner: 201 and 200 with one orderId', async () => {
     const { client, milestone } = await activeScenario();
     await warmConnectionPool(client);
-    // The losing insert may surface as a logged 500; silence it.
     const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     try {
       // Both requests read "no payment" before either inserts, every run (see the helper).
-      await collideOnPaymentInsert(2, () => Promise.all([
+      const responses = await collideOnPaymentInsert(2, () => Promise.all([
         authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
         authed(client).post('/api/payments').send({ milestoneId: milestone.id }),
       ]));
 
+      expect(responses.map((r) => r.status).sort()).toEqual([200, 201]);
+      const [first, second] = responses;
+      expect(first.body.orderId).toBe(second.body.orderId);
+      expect(first.body.paymentId).toBe(second.body.paymentId);
       expect(await prisma.payment.count()).toBe(1);
+      const stored = await prisma.payment.findUniqueOrThrow({ where: { milestoneId: milestone.id } });
+      expect(stored).toMatchObject({ status: 'PENDING', orderId: first.body.orderId });
+      expect(logs).not.toHaveBeenCalled();
     } finally {
       logs.mockRestore();
     }
   });
 
   // A non-string `milestoneId` used to survive `!milestoneId` and make Prisma reject the
-  // milestone lookup: a 500 whose body carried the absolute source path. It is a 400 now;
-  // `errorHandler` rendering a Prisma message verbatim on other 500s is tracked in issue #9.
+  // milestone lookup: a 500 whose body carried the absolute source path. It is a 400 now, and a
+  // 500's body is a generic sentence (see the errorHandler tests below).
   it.each([
     ['a number', 12345, 'milestoneId: Milestone ID must be a string'],
     ['an empty string', '', 'milestoneId: Milestone ID is required'],
@@ -1302,6 +1309,39 @@ describe('POST /api/payments/dev-complete', () => {
       expect(after.status).toBe('REFUNDED');
     });
 
+    // The pair both read "no payment yet" and both insert inside their funding transaction. The
+    // loser's transaction rolls back on the unique `milestoneId`, and it answers like the
+    // idempotent repeat it effectively is.
+    it("a concurrent call that loses the insert race returns the winner's payment: 201 and 200, funded once", async () => {
+      const { client, conversation, milestone } = await activeScenario();
+      await warmConnectionPool(client);
+      const logs = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      try {
+        const responses = await withBypassEnabled(() => collideOnPaymentInsert(2, () => Promise.all([
+          authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+          authed(client).post('/api/payments/dev-complete').send({ milestoneId: milestone.id }),
+        ])));
+
+        expect(responses.map((r) => r.status).sort()).toEqual([200, 201]);
+        const [first, second] = responses;
+        expect(first.body.id).toBe(second.body.id);
+        expect(await prisma.payment.count()).toBe(1);
+        const stored = await prisma.payment.findUniqueOrThrow({ where: { milestoneId: milestone.id } });
+        expect(stored.status).toBe('COMPLETED');
+        const after = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
+        expect(after.status).toBe('FUNDED');
+        expect(await prisma.notification.count({ where: { type: 'MILESTONE_FUNDED' } })).toBe(1);
+        expect(await prisma.job.count({ where: { type: 'milestone.overdue' } })).toBe(1);
+        expect(await prisma.message.count({
+          where: { conversationId: conversation.id, kind: 'SYSTEM', systemEvent: 'MILESTONE_FUNDED' },
+        })).toBe(1);
+        expect(logs).not.toHaveBeenCalled();
+      } finally {
+        logs.mockRestore();
+      }
+    });
+
     it('never contacts TossPayments', async () => {
       const { client, milestone } = await activeScenario();
 
@@ -1461,6 +1501,26 @@ describe('errorHandler logging: only a 500 is logged at error level', () => {
         res.status,
         'this vector no longer returns 500, so the 500-logging branch is uncovered — pick a new one',
       ).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('answers a 500 with a generic message and keeps the original error in the log only', async () => {
+    const { client, milestone } = await fundableMilestone();
+
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await withFailingPaymentInsert(() =>
+        authed(client).post('/api/payments').send({ milestoneId: milestone.id }));
+
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({ error: { message: 'Internal Server Error' } });
+      assertNoInternalsLeak(res.body.error.message);
+
+      // The cause is not lost: the one error line carries the database's own message.
+      expect(spy.mock.calls).toHaveLength(1);
+      expect(String(spy.mock.calls[0][0])).toContain('tmp_no_payments');
     } finally {
       spy.mockRestore();
     }

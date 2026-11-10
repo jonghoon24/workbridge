@@ -14,8 +14,32 @@ export const MAX_MESSAGE_PAGE = 100;
 /** At most this many characters after trimming. */
 export const MAX_MESSAGE_LENGTH = 5000;
 
-/** `GET /api/conversations`: the shared `page`/`limit` query (`pageQuery`). */
-export const conversationListQuery = z.object({ ...pageQuery });
+/** Conversation search (`q`): at most this many characters after trimming. */
+export const MAX_CONVERSATION_SEARCH_LENGTH = 100;
+
+/** `GET /api/conversations`: the shared `page`/`limit` query (`pageQuery`) and the search `q`. */
+export const conversationListQuery = z.object({
+  ...pageQuery,
+  q: queryString()
+    .transform((value, ctx) => {
+      // Blank after trimming is the same as absent: list everything.
+      const q = value?.trim();
+      if (!q) return undefined;
+      if (q.length > MAX_CONVERSATION_SEARCH_LENGTH) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `must be at most ${MAX_CONVERSATION_SEARCH_LENGTH} characters`,
+        });
+        return z.NEVER;
+      }
+      return q;
+    })
+    .openapi({
+      description:
+        '프로젝트 제목이나 상대방 이름에 들어 있는 글자(대소문자 무시, 앞뒤 공백 제거). '
+        + `공백뿐이면 없는 것과 같다. 최대 ${MAX_CONVERSATION_SEARCH_LENGTH}자.`,
+    }),
+});
 
 /** `GET /api/conversations/:id/messages`. */
 export const messageListQuery = z

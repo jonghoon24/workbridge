@@ -1,35 +1,7 @@
 'use client';
 
-import { formatFileSize } from '@/lib/format';
+import AttachmentList from '@/components/ui/AttachmentList';
 import { MESSAGE_LIMITS, formatMessageTime } from './messageUtils';
-import { PaperclipIcon } from '@/components/ui/Icons';
-
-function AttachmentList({ attachments, mine }) {
-  if (!attachments?.length) return null;
-  return (
-    <ul className="mt-1.5 space-y-1">
-      {attachments.map((attachment) => (
-        <li key={attachment.id}>
-          <a
-            href={attachment.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            download={attachment.fileName}
-            className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${
-              mine
-                ? 'border-primary-400 bg-primary-500 text-white hover:bg-primary-400'
-                : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <PaperclipIcon className="h-4 w-4 shrink-0" />
-            <span className="truncate font-medium">{attachment.fileName}</span>
-            <span className={`shrink-0 ${mine ? 'text-primary-100' : 'text-gray-400'}`}>{formatFileSize(attachment.size)}</span>
-          </a>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 // 시스템 메시지는 가운데 회색 띠로, 내 메시지는 오른쪽, 상대 메시지는 왼쪽에 그린다.
 // 삭제된 메시지(tombstone)는 내용 없이 "삭제된 메시지입니다"만 보인다.
@@ -66,7 +38,11 @@ export default function MessageBubble({ message, mine, readByCounterpart, now, d
           ) : (
             <>
               {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
-              <AttachmentList attachments={message.attachments} mine={mine} />
+              <AttachmentList
+                attachments={message.attachments}
+                tone={mine ? 'inverted' : 'default'}
+                className={message.body ? 'mt-1.5' : ''}
+              />
             </>
           )}
         </div>

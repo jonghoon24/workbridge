@@ -1143,6 +1143,35 @@ describe('DELETE /api/projects/:id', () => {
     expect(stored.deletedAt).toBeInstanceOf(Date);
   });
 
+  it.each(['PENDING', 'ACTIVE'] as const)(
+    'refuses to delete a project whose contract is %s and leaves both untouched',
+    async (status) => {
+      const { client, project, contract } = await projectWithContract(status);
+
+      const res = await authed(client).delete(`/api/projects/${project.id}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({
+        error: { message: 'Cannot delete a project with an unfinished contract' },
+      });
+
+      const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(stored.deletedAt).toBeNull();
+      const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+      expect(storedContract.status).toBe(status);
+    },
+  );
+
+  it('checks ownership before the contract: a stranger gets 403, not 409', async () => {
+    const { project } = await projectWithContract('ACTIVE');
+    const intruder = await makeClient();
+
+    const res = await authed(intruder).delete(`/api/projects/${project.id}`);
+
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
+  });
+
   async function projectWithContract(status: 'PENDING' | 'ACTIVE' | 'COMPLETED') {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
@@ -1722,15 +1751,47 @@ describe('POST /api/projects/:id/analyze', () => {
     expect(stored.summary).toBe('두 번째 요약');
   });
 
-  it('persists nothing when the provider call fails', async () => {
+  it('returns 502 without echoing the provider error when the provider call fails', async () => {
     openaiCreate.mockRejectedValue(new Error('socket hang up'));
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
+    const errorLogs = consoleError.mock.calls.length;
     consoleError.mockRestore();
 
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: { message: 'AI analysis provider request failed' } });
+    expect(errorLogs).toBe(0);
+    expect(await prisma.pricingAnalysis.count()).toBe(0);
+  });
+
+  it('returns 502 when the model content is not JSON', async () => {
+    openaiCreate.mockResolvedValue(rawContent('not json at all'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
+    const errorLogs = consoleError.mock.calls.length;
+    consoleError.mockRestore();
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({
+      error: { message: 'AI analysis did not return valid feature pricing' },
+    });
+    expect(errorLogs).toBe(0);
+    expect(await prisma.pricingAnalysis.count()).toBe(0);
+  });
+
+  it('returns 502 when the provider response has no choices', async () => {
+    openaiCreate.mockResolvedValue({ choices: [] });
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
+    const errorLogs = consoleError.mock.calls.length;
+    consoleError.mockRestore();
+
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: { message: 'AI analysis did not return a response' } });
+    expect(errorLogs).toBe(0);
     expect(await prisma.pricingAnalysis.count()).toBe(0);
   });
 
