@@ -167,7 +167,7 @@ async function collideOnPaymentInsert<T>(
 }
 
 /**
- * Markers that must never appear in an error body (issue #9). Matched by *shape* rather than
+ * Markers that must never appear in an error body. Matched by *shape* rather than
  * by the exact text, so the tests survive a Prisma version bump or a controller edit that moves
  * the offending line: the file:line pattern is `\.ts:\d+:\d+`, not `payments.controller.ts:70:42`.
  */
@@ -182,6 +182,7 @@ const INTERNALS_MARKERS: Array<[label: string, pattern: RegExp]> = [
   ['a database constraint detail', /[Uu]nique constraint failed/],
   ['a raw column reference', /`(contractId|milestoneId)`/],
   ['a SQL statement', /\b(SELECT\s|INSERT\s+INTO\s|UPDATE\s+"|DELETE\s+FROM\s)/],
+  ['a raw database error', /ConnectorError|PostgresError|violates \w+ constraint|Failing row contains/],
 ];
 
 function assertNoInternalsLeak(message: unknown) {
@@ -483,8 +484,8 @@ describe('POST /api/payments', () => {
   });
 
   // A non-string `milestoneId` used to survive `!milestoneId` and make Prisma reject the
-  // milestone lookup: a 500 whose body carried the absolute source path. It is a 400 now;
-  // `errorHandler` rendering a Prisma message verbatim on other 500s is tracked in issue #9.
+  // milestone lookup: a 500 whose body carried the absolute source path. It is a 400 now, and a
+  // 500's body is a generic sentence (see the errorHandler tests below).
   it.each([
     ['a number', 12345, 'milestoneId: Milestone ID must be a string'],
     ['an empty string', '', 'milestoneId: Milestone ID is required'],
@@ -1500,6 +1501,26 @@ describe('errorHandler logging: only a 500 is logged at error level', () => {
         res.status,
         'this vector no longer returns 500, so the 500-logging branch is uncovered — pick a new one',
       ).toBe(500);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('answers a 500 with a generic message and keeps the original error in the log only', async () => {
+    const { client, milestone } = await fundableMilestone();
+
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const res = await withFailingPaymentInsert(() =>
+        authed(client).post('/api/payments').send({ milestoneId: milestone.id }));
+
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({ error: { message: 'Internal Server Error' } });
+      assertNoInternalsLeak(res.body.error.message);
+
+      // The cause is not lost: the one error line carries the database's own message.
+      expect(spy.mock.calls).toHaveLength(1);
+      expect(String(spy.mock.calls[0][0])).toContain('tmp_no_payments');
     } finally {
       spy.mockRestore();
     }
