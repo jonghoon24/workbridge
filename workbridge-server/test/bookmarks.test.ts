@@ -7,9 +7,9 @@ import { makeClient, makeFreelancer, makeProject } from './helpers/factories';
 /**
  * Bookmarks — `GET|POST|DELETE /api/projects/:id/bookmark`, all FREELANCER-only.
  *
- * Unlike `POST`, `GET` and `DELETE` do not look the project up, so an id that never existed is
- * answered as "no bookmark" rather than 404. Whether they should 404 is an open product
- * question; the tests below pin today's behavior.
+ * All three look the project up first: a project that never existed or is soft-deleted is 404
+ * (`docs/domain/projects-contracts.md`, 북마크). Removing a bookmark that does not exist on a live
+ * project still succeeds — that is the idempotence rule, not a lookup.
  */
 
 /** A project id that is guaranteed not to exist (the db was truncated before this test). */
@@ -73,16 +73,24 @@ describe('GET /api/projects/:id/bookmark', () => {
     expect(theirs.body).toEqual({ bookmarked: true });
   });
 
-  // ---- GET does not verify the project, unlike POST ----------------------------------------
-  // Current behavior: the handler only looks up the (projectId, userId) bookmark row, so an
-  // unknown id simply has no bookmark and answers 200 instead of 404.
-  it('GET bookmark for a non-existent project currently succeeds with { bookmarked: false }', async () => {
+  it('returns 404 for a project that never existed', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).get(bookmarkPath(MISSING_PROJECT_ID));
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ bookmarked: false });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+  });
+
+  it('returns 404 for a soft-deleted project even when the bookmark row is still there', async () => {
+    const { freelancer, project } = await freelancerWithProject();
+    await prisma.projectBookmark.create({ data: { projectId: project.id, userId: freelancer.id } });
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).get(bookmarkPath(project.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
   });
 });
 
@@ -254,15 +262,25 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     expect((await authed(other).get(bookmarkPath(project.id))).body).toEqual({ bookmarked: true });
   });
 
-  // ---- DELETE does not verify the project, unlike POST -------------------------------------
-  // Current behavior: `deleteMany` matches zero rows and the handler answers 200 rather than 404.
-  it('DELETE bookmark for a non-existent project currently succeeds', async () => {
+  it('returns 404 for a project that never existed', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).delete(bookmarkPath(MISSING_PROJECT_ID));
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ bookmarked: false });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+  });
+
+  it('returns 404 for a soft-deleted project and leaves the bookmark row in place', async () => {
+    const { freelancer, project } = await freelancerWithProject();
+    await prisma.projectBookmark.create({ data: { projectId: project.id, userId: freelancer.id } });
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).delete(bookmarkPath(project.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(await countBookmarks({ projectId: project.id, userId: freelancer.id })).toBe(1);
   });
 });
 
