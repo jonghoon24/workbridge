@@ -63,7 +63,7 @@ const STATUS_TITLES: Record<ErrorStatus, string> = {
 export function errors(...specs: ErrorSpec[]): Record<string, ResponseConfig> {
   const merged = new Map<ErrorStatus, string[]>();
   for (const spec of specs) {
-    for (const [key, lines] of Object.entries(spec) as [string, readonly string[]][]) {
+    for (const [key, lines] of Object.entries<readonly string[]>(spec)) {
       const status = Number(key) as ErrorStatus;
       merged.set(status, [...(merged.get(status) ?? []), ...lines]);
     }

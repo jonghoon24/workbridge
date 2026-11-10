@@ -5,7 +5,6 @@ import { prisma } from './helpers/db';
 import {
   makeClient,
   makeContractScenario,
-  makeFreelancer,
   makeMessage,
   makeMilestone,
   makePayment,

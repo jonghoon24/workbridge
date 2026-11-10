@@ -730,7 +730,7 @@ describe('GET /api/projects', () => {
     // expecting the project (or at least the client snippet) to disappear.
     it('still lists a project whose client has been soft-deleted, client snippet included', async () => {
       const client = await prisma.user.findUniqueOrThrow({ where: { id: clientId } });
-      const project = await makeProject(clientId, { title: 'Orphaned' });
+      await makeProject(clientId, { title: 'Orphaned' });
       await prisma.user.update({ where: { id: clientId }, data: { deletedAt: new Date() } });
 
       const list = await api().get('/api/projects');

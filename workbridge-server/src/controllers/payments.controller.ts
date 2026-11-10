@@ -172,7 +172,7 @@ export async function confirmPayment(req: AuthedRequest, res: Response, next: Ne
       });
 
       res.json(updated);
-    } catch (tossError) {
+    } catch {
       // Known bug #3: the cause is discarded. Any failure after capture — including a database write —
       // lands here too. The FAILED write is conditional on PENDING so a confirm that
       // lost a race never turns the winner's COMPLETED payment back into FAILED.

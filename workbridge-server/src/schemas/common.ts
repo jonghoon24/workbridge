@@ -77,7 +77,7 @@ export function queryEnum<const T extends readonly [string, ...string[]]>(values
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: `must be one of ${values.join(', ')}` });
       return z.NEVER;
     }
-    return raw as T[number];
+    return raw;
   });
 }
 
