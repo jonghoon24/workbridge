@@ -314,7 +314,8 @@ export function makeCareer(
 
 /**
  * The full chain most contract, payment, and review tests need: a client, a freelancer, a
- * project whose recruitment has closed, an accepted application, the resulting contract, its
+ * project in the status that follows the contract (`CLOSED` while `PENDING`, `IN_PROGRESS` once
+ * `ACTIVE`, `COMPLETED` with it), an accepted application, the resulting contract, its
  * default milestone (sequence 1, the whole contract amount) and its conversation with both
  * participants — as accepting an application creates them. The
  * conversation has no messages.
@@ -332,7 +333,11 @@ export async function makeContractScenario(overrides: {
 } = {}) {
   const client = await makeClient();
   const freelancer = await makeFreelancer();
-  const project = await makeProject(client.id, { status: 'CLOSED', ...overrides.project });
+  // The project follows the contract: recruitment closed while it awaits signatures, in progress
+  // once both have signed, completed with it.
+  const contractStatus = overrides.contract?.status ?? 'PENDING';
+  const projectStatus = contractStatus === 'ACTIVE' ? 'IN_PROGRESS' : contractStatus === 'COMPLETED' ? 'COMPLETED' : 'CLOSED';
+  const project = await makeProject(client.id, { status: projectStatus, ...overrides.project });
   const application = await makeApplication(project.id, freelancer.id, {
     status: 'ACCEPTED',
     ...overrides.application,

@@ -177,7 +177,8 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     tags,
     summary: '프로젝트 상태 변경(소유 의뢰인)',
     description:
-      '허용 전이: `UPCOMING`→`OPEN`·`CANCELLED`·`CLOSED`, `OPEN`→`CANCELLED`·`CLOSED`, `IN_PROGRESS`→`COMPLETED`·`CANCELLED`. '
+      '허용 전이: `UPCOMING`→`OPEN`·`CANCELLED`·`CLOSED`, `OPEN`→`CANCELLED`·`CLOSED`. '
+      + '`IN_PROGRESS`(계약 서명으로 시작)와 `COMPLETED`(마지막 마일스톤 승인)는 시스템만 바꾼다. '
       + '`CLOSED`로 바꾸면 대기 중인 지원을 거절하고 지원자에게 알린다.',
     security: bearer,
     request: { params: projectId, body: jsonBody(projectStatusBody) },

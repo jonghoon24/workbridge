@@ -84,7 +84,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | Enum | 값과 흐름 |
 | --- | --- |
 | `Role` | `CLIENT`, `FREELANCER` |
-| `ProjectStatus` | `UPCOMING` → `OPEN` → `CLOSED` → `COMPLETED`. 모집 시작일·마감일에 따라 지연 스윕(GET 목록·상세)과 `project.lifecycleSweep` 작업이 `UPCOMING`→`OPEN`→`CLOSED`로 바꾸고, 지원 수락도 `CLOSED`로 만든다. 마지막 마일스톤 승인이 `CLOSED`에서 바로 `COMPLETED`로 바꾼다. 의뢰인의 수동 전이(`PATCH /api/projects/:id/status`)는 `UPCOMING`→`OPEN`·`CLOSED`·`CANCELLED`, `OPEN`→`CLOSED`·`CANCELLED`다. **`IN_PROGRESS`는 enum과 수동 전이 표에만 있고 아무것도 쓰지 않는다** |
+| `ProjectStatus` | `UPCOMING` → `OPEN` → `CLOSED` → `IN_PROGRESS` → `COMPLETED`. 모집 시작일·마감일에 따라 지연 스윕(GET 목록·상세)과 `project.lifecycleSweep` 작업이 `UPCOMING`→`OPEN`→`CLOSED`로 바꾸고, 지원 수락도 `CLOSED`로 만든다. 양측 서명으로 계약이 `ACTIVE`가 되는 트랜잭션이 `CLOSED`→`IN_PROGRESS`, 마지막 마일스톤 승인이 `IN_PROGRESS`→`COMPLETED`로 바꾼다. 의뢰인의 수동 전이(`PATCH /api/projects/:id/status`)는 `UPCOMING`→`OPEN`·`CLOSED`·`CANCELLED`, `OPEN`→`CLOSED`·`CANCELLED`뿐이다. 마이그레이션 `20261110091808_backfill_in_progress_projects`가 계약이 `ACTIVE`인 기존 `CLOSED` 프로젝트를 `IN_PROGRESS`로 옮겼다 |
 | `ApplicationStatus` | `PENDING` → `ACCEPTED` / `REJECTED`. 수락하면 같은 프로젝트의 다른 대기 지원은 거절된다. 마감된 프로젝트의 대기 지원도 거절된다 |
 | `ContractStatus` | `PENDING`(서명 대기) → `ACTIVE`(양측 서명, 유효한 계획 필요) → `COMPLETED`(마지막 마일스톤 승인 시 자동). 취소·해지 상태는 없다 |
 | `MilestoneStatus` | `PENDING` → `FUNDED`(결제) → `SUBMITTED`(제출) → `APPROVED`(최종) 또는 `REVISION_REQUESTED`(반려) → `SUBMITTED`(재제출). 계약이 `PENDING`인 동안 계획 교체가 `PENDING` 마일스톤을 지우고 새로 만든다 |

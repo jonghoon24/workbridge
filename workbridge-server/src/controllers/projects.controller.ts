@@ -392,10 +392,15 @@ export async function deleteProject(req: AuthedRequest, res: Response, next: Nex
   }
 }
 
+/**
+ * The client's manual transitions only. `IN_PROGRESS` has none: signing moves a project there and
+ * approving the last milestone completes it, so a client cannot skip the milestones or cancel
+ * over a running contract.
+ */
 const validTransitions: ProjectStatusTransitions = {
   UPCOMING: ['OPEN', 'CANCELLED', 'CLOSED'],
   OPEN: ['CANCELLED', 'CLOSED'],
-  IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
+  IN_PROGRESS: [],
   COMPLETED: [],
   CANCELLED: [],
   CLOSED: [],

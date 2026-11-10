@@ -164,7 +164,7 @@ describe('GET /api/contracts/:id', () => {
     expect(res.body.project).toMatchObject({
       id: project.id,
       title: project.title,
-      status: 'CLOSED',
+      status: 'IN_PROGRESS',
     });
     expect(res.body.client).toMatchObject({ id: client.id, name: client.name });
     expect(res.body.freelancer).toMatchObject({ id: freelancer.id, name: freelancer.name });
@@ -392,6 +392,33 @@ describe('POST /api/contracts/:id/sign', () => {
     });
   });
 
+  it('moves the project from CLOSED to IN_PROGRESS on activation, in the same response', async () => {
+    const { client, freelancer, project, contract } = await makeContractScenario();
+    expect(project.status).toBe('CLOSED');
+
+    const clientRes = await authed(client).post(`/api/contracts/${contract.id}/sign`);
+    expect(clientRes.body.project.status).toBe('CLOSED');
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
+
+    const freelancerRes = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(freelancerRes.status).toBe(200);
+    expect(freelancerRes.body.status).toBe('ACTIVE');
+    expect(freelancerRes.body.project.status).toBe('IN_PROGRESS');
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('IN_PROGRESS');
+  });
+
+  it('leaves the project IN_PROGRESS when an ACTIVE contract is signed again', async () => {
+    const { freelancer, project, contract } = await makeContractScenario({
+      contract: { status: 'ACTIVE', clientSigned: true, freelancerSigned: true },
+    });
+
+    const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(200);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('IN_PROGRESS');
+  });
+
   it('activates in either signing order', async () => {
     const { client, freelancer, contract } = await makeContractScenario();
 
@@ -538,8 +565,9 @@ describe('POST /api/contracts/:id/sign', () => {
     expect(res.status).toBe(500);
     // A 500's body is generic; the injected error itself only reaches the log.
     expectErrorEnvelope(res.body, 'Internal Server Error');
-    // Proves the failure landed on the activation and not on the signature write.
-    expect(injection.steps).toEqual(['contract.update', 'contract.update']);
+    // Proves the failure landed on the activation and not on the signature write (the project
+    // moved to IN_PROGRESS between the two, in the same transaction).
+    expect(injection.steps).toEqual(['contract.update', 'project.updateMany', 'contract.update']);
     // …and that the signature really was written: inside the transaction, just before the
     // activation failed, both flags were set. So the assertions below observe a rollback, not a
     // write that never happened.
@@ -557,6 +585,8 @@ describe('POST /api/contracts/:id/sign', () => {
     });
     // Whole row, not just the three fields: the signature write left no trace at all.
     expect(after).toEqual(before);
+    // The project's move to IN_PROGRESS rolled back with it.
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: contract.projectId } })).status).toBe('CLOSED');
 
     // And the rolled-back state is still usable: with the injection removed the freelancer's
     // signature succeeds and activates the contract, so nothing was left half-written.
@@ -742,7 +772,7 @@ describe('PATCH /api/contracts/:id', () => {
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after.status).toBe('ACTIVE');
     const projectAfter = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(projectAfter.status).toBe('CLOSED');
+    expect(projectAfter.status).toBe('IN_PROGRESS');
   });
 
   it.each([
