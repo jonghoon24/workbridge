@@ -587,7 +587,10 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
       });
       completed = done.count === 1;
       if (completed && !projectDeleted) {
-        await tx.project.updateMany({ where: { id: contract.projectId, deletedAt: null }, data: { status: 'COMPLETED' } });
+        await tx.project.updateMany({
+          where: { id: contract.projectId, status: 'IN_PROGRESS', deletedAt: null },
+          data: { status: 'COMPLETED' },
+        });
       }
     }
 

@@ -78,7 +78,7 @@ export const PROJECT_LIST_DEFAULT_LIMIT = 10;
 export const projectListQuery = z
   .object({
     sort: queryEnum(['latest', 'deadline', 'budget'] as const, 'latest'),
-    status: queryEnum(['ALL', 'UPCOMING', 'OPEN', 'CLOSED'] as const, 'OPEN'),
+    status: queryEnum(['ALL', 'UPCOMING', 'OPEN', 'CLOSED', 'IN_PROGRESS'] as const, 'OPEN'),
     page: queryInt({ min: 1, max: MAX_PAGE, fallback: 1 }),
     limit: queryInt({ min: 1, fallback: PROJECT_LIST_DEFAULT_LIMIT })
       .transform((limit) => Math.min(limit, MAX_PAGE_SIZE))

@@ -105,6 +105,17 @@ describe('GET /api/projects', () => {
       expect(titles(res.body)).toEqual(['Closed one']);
     });
 
+    it('accepts status=IN_PROGRESS, listing only projects whose contract has started', async () => {
+      await threeStates();
+      await makeProject(clientId, { title: 'In progress one', status: 'IN_PROGRESS' });
+
+      const res = await api().get('/api/projects?status=IN_PROGRESS');
+
+      expect(res.status).toBe(200);
+      expect(titles(res.body)).toEqual(['In progress one']);
+      expect(res.body.meta.total).toBe(1);
+    });
+
     it('accepts status=ALL, which applies no status filter at all', async () => {
       await threeStates();
 
@@ -133,7 +144,9 @@ describe('GET /api/projects', () => {
       const res = await api().get('/api/projects?status=BOGUS');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'status: must be one of ALL, UPCOMING, OPEN, CLOSED' } });
+      expect(res.body).toEqual({
+        error: { message: 'status: must be one of ALL, UPCOMING, OPEN, CLOSED, IN_PROGRESS' },
+      });
     });
 
     it('rejects a lowercase status with 400 — matching is case-sensitive', async () => {
@@ -142,7 +155,7 @@ describe('GET /api/projects', () => {
       expect(res.status).toBe(400);
     });
 
-    it.each(['IN_PROGRESS', 'COMPLETED', 'CANCELLED'])(
+    it.each(['COMPLETED', 'CANCELLED'])(
       'rejects the real-but-unlistable enum value %s with 400',
       async (status) => {
         const res = await api().get(`/api/projects?status=${status}`);

@@ -138,7 +138,7 @@ stateDiagram-v2
 1. 마일스톤을 `APPROVED`로(수동 `MANUAL`, 자동 `AUTO`), 최신 제출을 승인으로 기록한다.
 2. 프리랜서의 **정산 항목**을 만든다(금액, 승인 시점 요율, 수수료, 부가세, 지급액, 승인 시각).
 3. 수동이면 프리랜서에게 `MILESTONE_APPROVED`, 자동이면 양측에 `MILESTONE_AUTO_APPROVED`.
-4. 승인되지 않은 마일스톤이 남지 않았으면 계약을 `COMPLETED`, 프로젝트를 `COMPLETED`로 바꾸고 양측에
+4. 승인되지 않은 마일스톤이 남지 않았으면 계약을 `COMPLETED`, 프로젝트를 `IN_PROGRESS`에서 `COMPLETED`로 바꾸고 양측에
    `CONTRACT_COMPLETED`를 보낸다. 이때부터 리뷰를 쓸 수 있다.
 
 수동 승인과 자동 승인이 겹쳐도, 마지막 두 마일스톤이 동시에 승인돼도 정산 항목은 하나씩, 계약 완료 알림은 당사자당
