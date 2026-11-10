@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { AppError } from '../src/lib/errors';
+import { clientUrl, corsOrigins, readClientUrl } from '../src/lib/clientUrl';
 import { getProfileCompletion, isProfileComplete } from '../src/lib/profileCompletion';
 import { getProjectStatusForRecruitmentStart } from '../src/lib/projectLifecycle';
 import {
@@ -736,5 +737,74 @@ describe('recommendation scoring', () => {
       { id: 'd', score: 71, deadline: later },
     ];
     expect([...projects].sort(compareProjects).map((p) => p.id)).toEqual(['d', 'a', 'b', 'c']);
+  });
+});
+
+describe('CLIENT_URL and CORS origins', () => {
+  const saved = { CLIENT_URL: process.env.CLIENT_URL, CORS_ORIGINS: process.env.CORS_ORIGINS, NODE_ENV: process.env.NODE_ENV };
+  afterEach(() => {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  it.each([
+    ['https://app.example.com', 'https://app.example.com'],
+    ['https://app.example.com/', 'https://app.example.com'],
+    ['  http://localhost:3000  ', 'http://localhost:3000'],
+    ['https://App.Example.com:8443', 'https://app.example.com:8443'],
+  ])('reads %j as the origin %s', (value, origin) => {
+    process.env.CLIENT_URL = value;
+
+    expect(clientUrl()).toBe(origin);
+  });
+
+  it.each([
+    ['unset', undefined, 'CLIENT_URL is not set'],
+    ['empty', '  ', 'CLIENT_URL is not set'],
+    ['a comma list', 'https://a.test,https://b.test', 'CLIENT_URL must be a single origin'],
+    ['a space-separated list', 'https://a.test https://b.test', 'CLIENT_URL must be a single origin'],
+    ['an origin with a path', 'https://a.test/app', 'CLIENT_URL must be a single origin'],
+    ['an origin with a query', 'https://a.test/?x=1', 'CLIENT_URL must be a single origin'],
+    ['without a scheme', 'a.test', 'CLIENT_URL must be a single origin'],
+    ['a non-http scheme', 'ftp://a.test', 'CLIENT_URL must be a single origin'],
+  ])('rejects CLIENT_URL %s with a reason that names it', (_label, value, reason) => {
+    if (value === undefined) delete process.env.CLIENT_URL;
+    else process.env.CLIENT_URL = value;
+
+    const result = readClientUrl();
+    expect(result.ok).toBe(false);
+    expect(result.ok ? '' : result.error).toContain(reason);
+    expect(() => clientUrl()).toThrow(reason);
+  });
+
+  it('allows CLIENT_URL and every CORS_ORIGINS entry, normalized', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.CLIENT_URL = 'https://app.example.com/';
+    process.env.CORS_ORIGINS = ' https://preview.example.com/ ,https://admin.example.com,';
+
+    expect(corsOrigins()).toEqual({
+      origins: new Set(['https://app.example.com', 'https://preview.example.com', 'https://admin.example.com']),
+      problem: null,
+    });
+  });
+
+  it('never splits a CLIENT_URL list into CORS origins; it reports the problem instead', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.CLIENT_URL = 'https://app.example.com,https://other.example.com';
+    process.env.CORS_ORIGINS = '';
+
+    const { origins, problem } = corsOrigins();
+    expect(origins.size).toBe(0);
+    expect(problem).toContain('CORS_ORIGINS');
+  });
+
+  it('always allows http://localhost:3000 outside production', () => {
+    process.env.NODE_ENV = 'test';
+    delete process.env.CLIENT_URL;
+    delete process.env.CORS_ORIGINS;
+
+    expect(corsOrigins()).toEqual({ origins: new Set(['http://localhost:3000']), problem: 'CLIENT_URL is not set' });
   });
 });

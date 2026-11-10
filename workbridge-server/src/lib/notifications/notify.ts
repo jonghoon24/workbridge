@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import type { Notification, PrismaClient } from '@prisma/client';
 
 import { enqueueJobs } from '../../jobs/queue';
+import { readClientUrl } from '../clientUrl';
+import { logger } from '../logger';
 import type { PrismaTransactionClient } from '../../types/index';
 import { effectiveChannels } from './policy';
 import { renderEmail } from './templates';
@@ -127,11 +129,14 @@ function deliver(client: PrismaTransactionClient, inputs: readonly NotifyInput[]
       });
     const createdById = new Map(notifications.map((row) => [row.id, row]));
 
-    // 3. Email: on, to an active (not soft-deleted) recipient with a non-empty address.
+    // 3. Email: on, to an active (not soft-deleted) recipient with a non-empty address. Its links
+    // need the frontend origin; without a usable `CLIENT_URL` the delivery is recorded `FAILED`
+    // with the reason and gets no job — the state change that caused it still commits.
+    const linkBase = readClientUrl();
     const deliveries = planned.flatMap(({ input, channels, notificationId }) => {
       const user = userById.get(input.userId);
       if (!channels.email || !user || user.deletedAt || user.email.trim() === '') return [];
-      const { subject, body } = renderEmail(input);
+      const { subject, body } = renderEmail(input, linkBase.ok ? linkBase.origin : '');
       return [{
         id: randomUUID(),
         userId: input.userId,
@@ -141,12 +146,18 @@ function deliver(client: PrismaTransactionClient, inputs: readonly NotifyInput[]
         subject,
         body,
         contextKey: input.contextKey ?? null,
-        status: 'PENDING' as const,
+        status: linkBase.ok ? 'PENDING' as const : 'FAILED' as const,
+        error: linkBase.ok ? null : linkBase.error,
         createdAt: now,
       }];
     });
     if (deliveries.length > 0) {
       await tx.emailDelivery.createMany({ data: deliveries });
+    }
+    if (!linkBase.ok && deliveries.length > 0) {
+      logger.warn('email not sent: CLIENT_URL is unusable', { error: linkBase.error, deliveries: deliveries.length });
+    }
+    if (linkBase.ok && deliveries.length > 0) {
       await enqueueJobs(tx, deliveries.map((delivery) => ({
         type: 'notification.email' as const,
         payload: { deliveryId: delivery.id },

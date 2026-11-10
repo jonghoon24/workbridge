@@ -91,7 +91,7 @@ model User {
   companyName      String?
   businessField    String?
   website          String?
-  skills           String[]
+  skills           String[] // no NULL elements: CHECK in migration 20261110082231
   activityCategory String?
   experienceYears  Int?
   hourlyRate       Float?
@@ -128,7 +128,7 @@ model Project {
   budget               Float
   recruitmentStartDate DateTime?
   deadline             DateTime
-  requiredSkills       String[]
+  requiredSkills       String[] // no NULL elements: CHECK in migration 20261110082231
   status               ProjectStatus @default(OPEN)
   clientId             String
   client               User          @relation("ClientProjects", fields: [clientId], references: [id])
@@ -241,7 +241,7 @@ model MilestoneSubmission {
   milestone      Milestone           @relation(fields: [milestoneId], references: [id])
   round          Int
   message        String
-  links          String[]
+  links          String[] // no NULL elements: CHECK in migration 20261110082231
   decision       SubmissionDecision? // null = awaiting review
   decisionReason String?
   decidedAt      DateTime?
@@ -279,6 +279,9 @@ model Payment {
   status      PaymentStatus @default(PENDING)
   paymentKey  String?
   orderId     String        @unique
+  // When a confirm claimed this PENDING payment to call TossPayments. Only one confirm holds the
+  // claim at a time; an abandoned claim expires (CONFIRM_CLAIM_LEASE_MS in payments.controller.ts).
+  confirmStartedAt DateTime?
   createdAt   DateTime      @default(now())
 
   @@index([contractId])
@@ -341,7 +344,7 @@ model PayoutAccount {
   userId        String   @unique
   user          User     @relation(fields: [userId], references: [id])
   bankCode      String // lib/banks.ts
-  accountNumber String // digits only, plaintext (#28); never returned unmasked
+  accountNumber String // digits, encrypted at rest (`v1:…`, lib/payoutAccountCrypto.ts); rows from before encryption may still hold plain digits. Never returned unmasked
   holderName    String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -428,7 +431,7 @@ model PortfolioItem {
   /// The freelancer's role in the work, e.g. "프론트엔드 리드"
   role        String?
   /// normalizeSkillList-normalized
-  skills      String[]
+  skills      String[] // no NULL elements: CHECK in migration 20261110082231
   /// First instant of the month in KST; returned as `YYYY-MM`
   startedAt   DateTime?
   endedAt     DateTime?
@@ -467,7 +470,7 @@ model Review {
   reviewee   User     @relation("RevieweeReviews", fields: [revieweeId], references: [id])
   rating     Int
   content    String
-  tags       String[]
+  tags       String[] // no NULL elements: CHECK in migration 20261110082231
   createdAt  DateTime @default(now())
 
   @@unique([contractId, reviewerId])

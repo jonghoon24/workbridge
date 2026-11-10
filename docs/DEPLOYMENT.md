@@ -30,6 +30,30 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 
 Claude Code 세션에서는 이 커맨드가 권한 규칙(deny)으로 막혀 있으므로 사람이 실행한다.
 
+시드는 지급 계좌번호를 그 환경의 키로 암호화해 넣으므로, 이 워크플로는 리포지토리 시크릿
+`PREVIEW_PAYOUT_ACCOUNT_ENCRYPTION_KEY`·`PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY`를 쓴다(아래 "지급 계좌 암호화 키").
+
+### 지급 계좌 암호화 키
+
+지급 계좌번호(`PayoutAccount.accountNumber`)는 저장할 때 AES-256-GCM으로 암호화한다(`src/lib/payoutAccountCrypto.ts`,
+[DATABASE.md](DATABASE.md#지급-계좌번호-암호화)). 키는 환경마다 따로 만든다(`openssl rand -base64 32`, 32바이트 base64).
+**한 환경의 키는 세 곳에 같은 값으로 들어간다.**
+
+| 곳 | 프리뷰 | 운영 |
+| --- | --- | --- |
+| Vercel 서버 프로젝트 환경변수 | Preview의 `PAYOUT_ACCOUNT_ENCRYPTION_KEY` | Production의 `PAYOUT_ACCOUNT_ENCRYPTION_KEY` |
+| GitHub 리포지토리 시크릿(`seed.yml`, `payout-encrypt.yml`) | `PREVIEW_PAYOUT_ACCOUNT_ENCRYPTION_KEY` | `PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY` |
+
+- 키가 없으면 서버는 뜨지만 지급 계좌 등록, 계좌가 있는 사용자의 계좌 조회, 지급 작업이 실패한다(지연 getter). 시드는 아무것도 지우기 전에 멈춘다.
+- **키를 잃으면 저장된 계좌번호를 되살릴 수 없다.** 프리랜서가 계좌를 다시 등록해야 한다. 키 값은 Vercel·GitHub 밖의
+  비밀 보관소에도 둔다.
+- **처음 켤 때(평문 행 백필)**: 키를 Vercel과 GitHub에 넣고 서버를 다시 배포한 뒤, 환경마다 한 번
+  `gh workflow run payout-encrypt.yml -f environment=preview`(그다음 `production`)를 돌린다. 암호화 전에 저장된 행은 숫자
+  그대로라 서버가 그대로 읽을 수 있고(배포와 백필 사이에도 지급이 된다), 계좌를 다시 저장하거나 이 백필이 돌면 암호화된다.
+  백필은 여러 번 돌려도 안전하다. 끝나면 로그 한 줄 `payout account numbers encrypted`의 `encrypted`가 0이 될 때까지 다시 돌려 확인한다.
+- **키 교체**: 저장 형식이 `v1:<iv>:<tag>:<암호문>`이고 접두어가 키를 가리킨다. 새 키는 새 버전(`v2`와 그 변수)으로 코드에
+  추가해 새 쓰기를 그 버전으로 하고, 옛 버전은 읽기용으로 남긴 채 백필로 옛 행을 다시 암호화한 뒤 지운다. 지금 코드는 `v1`만 안다.
+
 ## 백엔드
 
 - `vercel.json`이 이미 설정되어 있음(`src/index.ts`를 `@vercel/node`가 서버리스 함수로 직접 트랜스파일한다. 빌드 단계와 `dist/`는 없다)
@@ -50,7 +74,7 @@ Claude Code 세션에서는 이 커맨드가 권한 규칙(deny)으로 막혀 �
 
 ## 배포 후 업데이트
 
-- 백엔드 `CLIENT_URL` → 프론트엔드 Vercel URL (CORS와 메일 링크 기준 주소. 운영에서 비어 있으면 시작 때 경고하고 브라우저 요청이 CORS로 막힌다)
+- 백엔드 `CLIENT_URL` → 프론트엔드 Vercel URL **하나**(Google 로그인 리디렉션, 메일 링크, CORS의 기준 출처). 다른 출처(예: 커스텀 도메인)도 허용해야 하면 `CORS_ORIGINS`에 쉼표로 넣는다. `CLIENT_URL`이 비었거나 목록이면 시작 때 경고하고, 브라우저 요청이 CORS로 막히며, Google 로그인은 500, 메일은 `FAILED`가 된다([ENV.md](ENV.md))
 - 백엔드 `GOOGLE_CALLBACK_URL` → 프론트엔드 Vercel URL + `/api/auth/google/callback`
 - 프론트엔드 `NEXT_PUBLIC_API_URL` → 백엔드 Vercel URL
 - 서버 `ALLOW_PAYMENT_BYPASS`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`는 반드시 `false`
@@ -125,5 +149,5 @@ DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
 ### 6. 그 밖에
 
 - **첨부 파일은 공개 버킷**(`workbridge`)에 추측하기 어려운 키로 저장되고 공개 URL로 나간다. URL을 아는 사람은 로그인 없이 내려받을 수 있고, 메시지를 지워도 파일은 남는다([#22](https://github.com/jonghoon24/workbridge/issues/22)).
-- **지급 계좌번호는 평문 저장**이고 응답·로그·정산에는 마스킹한 값만 나간다. 저장 시 암호화와 예금주 확인은 미정이다([#28](https://github.com/jonghoon24/workbridge/issues/28)).
+- **지급 계좌번호는 저장할 때 암호화**하고(위 "지급 계좌 암호화 키") 응답·로그·정산에는 마스킹한 값만 나간다. 계좌가 회원 본인 것인지 은행 API로 확인하지는 않는다 — 예금주는 프로필 이름과만 비교한다. 은행 확인은 실제 송금을 연동할 때 한다([#28](https://github.com/jonghoon24/workbridge/issues/28)).
 - 로그는 한 줄 JSON이고 `error`만 stderr로 간다. `LOG_LEVEL`로 기준을 정한다.

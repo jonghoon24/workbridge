@@ -38,7 +38,7 @@ function ProjectsContent() {
       minBudget: searchParams.get('minBudget') || '',
       maxBudget: searchParams.get('maxBudget') || '',
       skills: searchParams.get('skills') || '',
-      status: ['ALL', 'UPCOMING', 'OPEN', 'CLOSED'].includes(queryStatus) ? queryStatus : 'OPEN',
+      status: ['ALL', 'UPCOMING', 'OPEN', 'CLOSED', 'IN_PROGRESS'].includes(queryStatus) ? queryStatus : 'OPEN',
       sort: ['latest', 'deadline', 'budget'].includes(querySort) ? querySort : 'latest',
     }, Number.isInteger(queryPage) && queryPage > 0 ? queryPage : 1);
     setInitialized(true);

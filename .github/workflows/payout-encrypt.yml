@@ -1,0 +1,40 @@
+# 암호화 전에 저장된 지급 계좌번호(평문 숫자)를 그 환경의 키로 암호화한다(docs/DEPLOYMENT.md "지급 계좌 암호화 키").
+# 한 번 돌리는 백필이고 여러 번 돌려도 안전하다(이미 암호화된 행은 건너뛴다). 서비스 중에 돌려도 된다.
+# 그 환경의 서버(Vercel)에 같은 키가 배포된 뒤에 돌린다 — 키가 다르면 서버가 이 결과를 읽지 못한다.
+#   gh workflow run payout-encrypt.yml -f environment=preview
+name: payout-encrypt
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "대상 환경"
+        required: true
+        type: choice
+        options: [preview, production]
+
+# 마이그레이션·시드와 겹치지 않게 한다.
+concurrency: migrate
+
+jobs:
+  encrypt:
+    name: payout:encrypt-accounts (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workbridge-server
+    env:
+      DATABASE_URL: ${{ inputs.environment == 'production' && secrets.PROD_DIRECT_URL || secrets.PREVIEW_DIRECT_URL }}
+      DIRECT_URL: ${{ inputs.environment == 'production' && secrets.PROD_DIRECT_URL || secrets.PREVIEW_DIRECT_URL }}
+      PAYOUT_ACCOUNT_ENCRYPTION_KEY: ${{ inputs.environment == 'production' && secrets.PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY || secrets.PREVIEW_PAYOUT_ACCOUNT_ENCRYPTION_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: workbridge-server/package-lock.json
+      - name: 의존성 설치
+        run: npm ci
+      - name: 평문 계좌번호 암호화
+        run: npm run payout:encrypt-accounts

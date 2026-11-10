@@ -18,6 +18,7 @@ import type {
 } from '@prisma/client';
 
 import { prisma } from './db';
+import { encryptAccountNumber } from '../../src/lib/payoutAccountCrypto';
 
 export const TEST_PASSWORD = 'password123';
 
@@ -180,18 +181,22 @@ export function makeSubmission(
   });
 }
 
-/** A valid payout account for `user` (holder name = the user's name). */
+/**
+ * A valid payout account for `user` (holder name = the user's name). `accountNumber` is the plain
+ * number; it is stored encrypted, as the API stores it.
+ */
 export function makePayoutAccount(
   user: Pick<User, 'id' | 'name'>,
   overrides: Partial<Prisma.PayoutAccountUncheckedCreateInput> = {},
 ): Promise<PayoutAccount> {
+  const { accountNumber = '110123456789', ...rest } = overrides;
   return prisma.payoutAccount.create({
     data: {
       userId: user.id,
       bankCode: '004',
-      accountNumber: '110123456789',
       holderName: user.name,
-      ...overrides,
+      ...rest,
+      accountNumber: encryptAccountNumber(accountNumber, user.id),
     },
   });
 }
@@ -314,7 +319,8 @@ export function makeCareer(
 
 /**
  * The full chain most contract, payment, and review tests need: a client, a freelancer, a
- * project whose recruitment has closed, an accepted application, the resulting contract, its
+ * project in the status that follows the contract (`CLOSED` while `PENDING`, `IN_PROGRESS` once
+ * `ACTIVE`, `COMPLETED` with it), an accepted application, the resulting contract, its
  * default milestone (sequence 1, the whole contract amount) and its conversation with both
  * participants — as accepting an application creates them. The
  * conversation has no messages.
@@ -332,7 +338,11 @@ export async function makeContractScenario(overrides: {
 } = {}) {
   const client = await makeClient();
   const freelancer = await makeFreelancer();
-  const project = await makeProject(client.id, { status: 'CLOSED', ...overrides.project });
+  // The project follows the contract: recruitment closed while it awaits signatures, in progress
+  // once both have signed, completed with it.
+  const contractStatus = overrides.contract?.status ?? 'PENDING';
+  const projectStatus = contractStatus === 'ACTIVE' ? 'IN_PROGRESS' : contractStatus === 'COMPLETED' ? 'COMPLETED' : 'CLOSED';
+  const project = await makeProject(client.id, { status: projectStatus, ...overrides.project });
   const application = await makeApplication(project.id, freelancer.id, {
     status: 'ACCEPTED',
     ...overrides.application,
