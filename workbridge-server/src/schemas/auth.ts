@@ -1,3 +1,4 @@
+import { normalizeEmail } from '../lib/email';
 import { z } from '../lib/zod';
 
 /**
@@ -11,7 +12,7 @@ export const ROLE_MESSAGE = 'Role must be CLIENT or FREELANCER';
 /** Signup only — login takes any password, so accounts created before the rule keep working. */
 export const MIN_PASSWORD_LENGTH = 8;
 
-/** A required, non-empty string, not trimmed (the email fields trim on top of it; passwords are verbatim). */
+/** A required, non-empty string, not trimmed (the email fields normalize on top of it; passwords are verbatim). */
 function requiredString(label: string) {
   return z
     .string({ required_error: `${label} is required`, invalid_type_error: `${label} must be a string` })
@@ -22,12 +23,16 @@ function requiredString(label: string) {
 export const roleField = z.enum(['CLIENT', 'FREELANCER'], { errorMap: () => ({ message: ROLE_MESSAGE }) });
 
 /**
- * `POST /signup`. The email is trimmed and must look like an address; it is **not** lowercased —
- * normalization is still open (#21). The password needs `MIN_PASSWORD_LENGTH` characters,
- * the same rule as the client's signup form.
+ * `POST /signup`. The email must look like an address and is normalized (`normalizeEmail`: trimmed
+ * and lowercased) before it is stored or checked for duplicates. The password needs
+ * `MIN_PASSWORD_LENGTH` characters, the same rule as the client's signup form.
  */
 export const signupBody = z.object({
-  email: requiredString('Email').trim().min(1, 'Email is required').email('Email must be a valid email address'),
+  email: requiredString('Email')
+    .trim()
+    .min(1, 'Email is required')
+    .email('Email must be a valid email address')
+    .transform(normalizeEmail),
   password: requiredString('Password').min(
     MIN_PASSWORD_LENGTH,
     `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
@@ -39,12 +44,12 @@ export const signupBody = z.object({
 /**
  * `POST /login`. Runs after both login rate limits. A non-string `email` or `password` (an
  * object such as `{ "not": "" }` would otherwise reach Prisma as a filter) is a 400. The email is
- * trimmed like signup's (so an address typed with stray spaces at signup still logs in), not
- * lowercased (#21). No format or length rule: a malformed email simply matches no account (401),
- * and older passwords still work.
+ * normalized like signup's (trimmed and lowercased), so the address matches however it is typed.
+ * No format or length rule: a malformed email simply matches no account (401), and older
+ * passwords still work.
  */
 export const loginBody = z.object({
-  email: requiredString('Email').trim().min(1, 'Email is required'),
+  email: requiredString('Email').trim().min(1, 'Email is required').transform(normalizeEmail),
   password: requiredString('Password'),
 });
 

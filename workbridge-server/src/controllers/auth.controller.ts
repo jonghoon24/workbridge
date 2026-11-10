@@ -6,6 +6,7 @@ import type { User } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
 import { AppError } from '../lib/errors';
+import { normalizeEmail } from '../lib/email';
 import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
 import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
@@ -213,7 +214,10 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
       headers: { Authorization: `Bearer ${access_token}` },
     });
 
-    const { id: googleId, email, name, picture } = userInfoResponse.data;
+    const { id: googleId, email: rawEmail, name, picture } = userInfoResponse.data;
+    // Stored and compared in the same form as signup and login. A profile without an email fails
+    // the create below and degrades to `oauth_failed`.
+    const email = typeof rawEmail === 'string' ? normalizeEmail(rawEmail) : rawEmail;
 
     // Upsert user
     let user = await prisma.user.findFirst({

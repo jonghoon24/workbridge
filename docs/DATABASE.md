@@ -23,7 +23,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 
 | 모델 | 설명 | 주요 필드 |
 | --- | --- | --- |
-| **User** | 의뢰인(`CLIENT`) 또는 프리랜서(`FREELANCER`) | `email` unique, `password`(OAuth 전용 계정은 null), `googleId` unique, `roleSelected`(OAuth 첫 로그인 역할 선택 여부), 의뢰인 필드 `companyName`/`businessField`/`website`, 프리랜서 필드 `skills String[]`/`activityCategory`/`experienceYears`/`hourlyRate Float`/`portfolioUrl`, `deletedAt`(소프트 삭제) |
+| **User** | 의뢰인(`CLIENT`) 또는 프리랜서(`FREELANCER`) | `email` unique(앞뒤 공백 없는 소문자로만 저장 — `normalizeEmail`), `password`(OAuth 전용 계정은 null), `googleId` unique, `roleSelected`(OAuth 첫 로그인 역할 선택 여부), 의뢰인 필드 `companyName`/`businessField`/`website`, 프리랜서 필드 `skills String[]`/`activityCategory`/`experienceYears`/`hourlyRate Float`/`portfolioUrl`, `deletedAt`(소프트 삭제) |
 | **Project** | 의뢰인이 올린 외주 프로젝트 | `budget Float`, `recruitmentStartDate`, `deadline`, `requiredSkills String[]`, `status`, `deletedAt`. 인덱스 `[status, createdAt]`, `[status, deadline]`, `[status, budget]`, `[clientId]`(아래 "인덱스") |
 | **ProjectBookmark** | 프리랜서의 북마크 | `(projectId, userId)` unique |
 | **Application** | 프리랜서의 지원 | `expectedRate Float`(계약 금액이 된다), `expectedDuration`, `status`, `(projectId, freelancerId)` unique, 인덱스 `[freelancerId]` |
@@ -220,6 +220,7 @@ Job, RateLimitCounter  (FK 없음, 인프라)
 | `20261021062933_expansion_messaging_profile` | 대화방·참여자·메시지·첨부, 포트폴리오, 경력 |
 | `20261021071341_expansion_notification_channels` | 알림 설정, 이메일 발송 기록 |
 | `20261108143952_add_list_and_foreign_key_indexes` | 인덱스만 추가: `Project` 4개, `Application[freelancerId]`, `Contract[clientId]`·`[freelancerId]`, `Payment[clientId]`, `Review[revieweeId]`("인덱스" 참고). 데이터 변경 없음 |
+| `20261110084919_normalize_user_email` | 데이터만: 모든 `User.email`(탈퇴 포함)을 앞뒤 공백 제거 + 소문자로 바꾼다. 정규화하면 같아지는 주소가 둘 이상이면 아무것도 바꾸지 않고 이유를 밝히며 실패한다(어느 계정을 남길지는 사람이 정한다). 스키마 변경 없음 |
 
 - **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. float를 그대로 반올림하면 1원 어긋나므로 numeric으로 바꿔 반올림한다(위 "금액이 `Float`인 부채"). 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
 - **정산 원장은 확장 이후 승인분부터다.** 확장 전에 완료된 계약의 마일스톤에는 `SettlementItem`이 없다(화면의 예상 정산액은 현재 요율로 계산해 보여준다).
