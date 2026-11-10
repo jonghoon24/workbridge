@@ -4,7 +4,6 @@ import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import {
   makeContractScenario,
-  makeEmailDelivery,
   makeFreelancer,
   makeNotificationPreference,
   makePayment,
@@ -378,7 +377,7 @@ describe('mail provider', () => {
   it('an unsupported MAIL_PROVIDER → FAILED without a provider call or an attempt; the job fails without retry', async () => {
     const { delivery } = await oneDelivery();
     process.env.MAIL_PROVIDER = 'smtp';
-    const errors = quietErrors();
+    quietErrors();
 
     const result = await runJobs(T0);
 

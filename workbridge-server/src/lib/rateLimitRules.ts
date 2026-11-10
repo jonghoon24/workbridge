@@ -11,7 +11,7 @@ import type { JwtUserPayload, RateLimitRule } from '../types/index';
  */
 
 function normalizedEmail(req: Request): string | null {
-  const email: unknown = req.body?.email;
+  const email = (req.body as { email?: unknown } | undefined)?.email;
   return typeof email === 'string' && email.trim() ? email.trim().toLowerCase() : null;
 }
 

@@ -681,7 +681,7 @@ async function main() {
     },
   });
 
-  const project4 = await prisma.project.create({
+  await prisma.project.create({
     data: {
       title: '헬스케어 모바일 앱 개발',
       description:
@@ -1062,7 +1062,7 @@ async function main() {
   const completed12 = inWeek(5, 4, 10);
   const a12b = await approve(contract12, s12b.milestone, s12b.submission, { at: completed12, by: client1 });
   contract12 = await prisma.contract.update({ where: { id: contract12.id }, data: { status: 'COMPLETED', completedAt: completed12 } });
-  const settlementPark5 = await createSettlement(freelancer1, 5, [a12a.item, a12b.item], {
+  await createSettlement(freelancer1, 5, [a12a.item, a12b.item], {
     status: 'PAID',
     payoutAttempts: 1,
     ...accountSnapshot(accountPark),
@@ -1146,10 +1146,10 @@ async function main() {
     attachments: [{ url: placeholder('ERP Grafana Dashboard', '0f766e'), fileName: '운영_모니터링_대시보드.png', mimeType: 'image/png', size: 248331 }],
   });
   const completed7 = recent(0.4);
-  const a7c = await approve(contract7, s7c.milestone, s7c.submission, { at: completed7, by: client2 });
+  await approve(contract7, s7c.milestone, s7c.submission, { at: completed7, by: client2 });
   contract7 = await prisma.contract.update({ where: { id: contract7.id }, data: { status: 'COMPLETED', completedAt: completed7 } });
 
-  const settlementHan3 = await createSettlement(freelancer3, 3, [a7a.item], {
+  await createSettlement(freelancer3, 3, [a7a.item], {
     status: 'PAID',
     payoutAttempts: 1,
     ...accountSnapshot(accountHan),
@@ -1241,7 +1241,7 @@ async function main() {
 
   const accept8 = inWeek(4, 0, 10);
   let contract8 = await createContract({ project: project8, application: app8, client: client3, freelancer: freelancer1, acceptedAt: accept8 });
-  let [m8a, m8b, m8c] = await createPlan(contract8, [
+  let [m8a, m8b] = await createPlan(contract8, [
     { title: '기획·화면 설계', description: '요구사항 정리, IA, 주요 화면 와이어프레임', amount: 1650000, dueDate: endOfKstDay(inWeek(2, 2, 0)) },
     { title: '관리자 기능 개발', description: '상품·주문·회원 관리와 매출 통계 화면 구현', amount: 2750000, dueDate: endOfKstDay(later(5 * DAY)) },
     { title: '배포·QA', description: '운영 배포, QA 이슈 대응, 운영 매뉴얼', amount: 1100000, dueDate: endOfKstDay(later(19 * DAY)) },
@@ -1362,7 +1362,7 @@ async function main() {
   });
   const accept10 = inWeek(4, 1, 11);
   let contract10 = await createContract({ project: project10, application: app10, client: client2, freelancer: freelancer2, acceptedAt: accept10 });
-  let [m10a, m10b, m10c] = await createPlan(contract10, [
+  let [m10a, m10b] = await createPlan(contract10, [
     { title: '디자인 시안', description: '메인·이벤트 응모·완료 화면 시안 2종', amount: 1260000, dueDate: endOfKstDay(inWeek(3, 4, 0)) },
     { title: '퍼블리싱·개발', description: 'Next.js 퍼블리싱, 스크롤 인터랙션, 응모 폼 연동', amount: 2100000, dueDate: endOfKstDay(later(4 * DAY)) },
     { title: 'QA·런칭', description: '크로스 브라우징 QA, 운영 배포', amount: 840000, dueDate: endOfKstDay(later(14 * DAY)) },

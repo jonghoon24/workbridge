@@ -60,6 +60,12 @@ jobs:
       - name: 타입 체크
         run: npx tsc --noEmit
 
+      # 타입 기반 규칙(typescript-eslint)이라 Prisma 클라이언트 생성 뒤에 돈다. 기존 `any` 사용은
+      # `eslint-suppressions.json`에 기록돼 통과하고, 새로 생기면 실패한다. 기록된 위반을 고쳤으면
+      # `npx eslint . --prune-suppressions`로 기록을 줄여 함께 커밋한다.
+      - name: 린트
+        run: npm run lint
+
       - name: Prisma 스키마 검증
         run: npx prisma validate
 

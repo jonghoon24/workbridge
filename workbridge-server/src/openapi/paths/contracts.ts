@@ -9,7 +9,6 @@ import {
   errors,
   invalid,
   jsonBody,
-  NOT_OWNER,
   notFound,
   ok,
   pathParams,

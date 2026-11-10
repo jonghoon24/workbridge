@@ -12,7 +12,9 @@ export function normalizeSkill(skill: string): string {
 export function normalizeSkillList(value: unknown): string[] {
   const skills: string[] = Array.isArray(value)
     ? value
-    : String(value || '').split(',');
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
 
   const normalized = skills
     .map((skill) => normalizeSkill(skill.trim()))

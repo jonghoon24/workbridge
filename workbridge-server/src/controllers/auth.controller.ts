@@ -9,6 +9,7 @@ import { AppError } from '../lib/errors';
 import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
 import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
+import { logger } from '../lib/logger';
 import { clientUrl } from '../lib/clientUrl';
 import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index';
 import type { GoogleCallbackQuery, LoginInput, SelectRoleInput, SignupInput } from '../schemas/auth';
@@ -175,7 +176,7 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
     });
 
     res.cookie(OAUTH_STATE_COOKIE, state, { ...oauthStateCookieOptions(), maxAge: OAUTH_STATE_MAX_AGE_MS });
-    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
   } catch (err) {
     next(err);
   }
@@ -276,9 +277,9 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
       needsRoleSelection: String(needsRoleSelection),
     });
 
-    res.redirect(`${client}/auth/callback?${params}`);
+    res.redirect(`${client}/auth/callback?${params.toString()}`);
   } catch (err) {
-    console.error('Google OAuth error:', err);
+    logger.warn('google oauth failed', { err });
     res.redirect(`${client}/login?error=oauth_failed`);
   }
 }

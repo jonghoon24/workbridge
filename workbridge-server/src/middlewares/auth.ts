@@ -22,7 +22,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     const context = getRequestContext();
     if (context) context.userId = decoded.id;
     next();
-  } catch (err) {
+  } catch {
     return next(new AppError('Invalid or expired token', 401));
   }
 }
