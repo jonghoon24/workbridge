@@ -20,7 +20,7 @@
 | `OPENAI_API_KEY` | OpenAI API 키. **모듈을 읽을 때 클라이언트를 만들므로 비어 있으면 서버가 뜨지 않는다**(테스트처럼 더미 값이면 된다) |
 | `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키 (test_sk_...) |
 | `ALLOW_PAYMENT_BYPASS` | 로컬·E2E에서 `true`로 설정하면 토스 결제창 없이 결제 완료 처리 가능. 실제 운영 서비스에서는 `false` 유지 |
-| `CLIENT_URL` | 프론트엔드 URL. CORS 허용 출처이자 OAuth 리디렉션 대상이다. CORS와 메일 링크는 쉼표 목록을 받지만, **OAuth 리디렉션은 값을 그대로 이어 붙인다**(`${CLIENT_URL}/auth/callback…`). 그래서 쉼표 목록이면 OAuth 리디렉션이 깨진다 — 여러 출처가 필요하면 `CLIENT_URL`은 하나로 두고 나머지는 `CORS_ORIGINS`에 둔다. 메일 본문 링크의 기준 주소는 **첫 항목**에서 끝의 `/`를 뗀 값이다(비어 있으면 `http://localhost:3000`). 비어 있으면 OAuth 리디렉션이 `undefined/…`가 된다 |
+| `CLIENT_URL` | 프론트엔드 URL. CORS 허용 출처이자 OAuth 리디렉션 대상이다. CORS와 메일 링크는 쉼표 목록을 받지만, **OAuth 리디렉션은 값을 그대로 이어 붙인다**(`${CLIENT_URL}/auth/callback…`). 그래서 쉼표 목록이면 OAuth 리디렉션이 깨진다 — 여러 출처가 필요하면 `CLIENT_URL`은 하나로 두고 나머지는 `CORS_ORIGINS`에 둔다. 메일 본문 링크의 기준 주소는 **첫 항목**에서 끝의 `/`를 뗀 값이다(비어 있으면 `http://localhost:3000`). 비어 있으면 OAuth 리디렉션이 `undefined/…`가 된다. 단일 출처로 정리하고 값이 없을 때 분명한 오류를 내는 일은 [#49](https://github.com/jonghoon24/workbridge/issues/49) |
 | `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 개발 환경에서는 `http://localhost:3000`이 항상 허용된다 |
 | `SUPABASE_URL` | Supabase 프로젝트 URL. `OPENAI_API_KEY`처럼 모듈을 읽을 때 쓰이므로 서버를 띄우려면 필요하다(더미 값 가능) |
 | `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음) |

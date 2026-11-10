@@ -58,6 +58,7 @@ stateDiagram-v2
 ```
 
 - `APPROVED`는 최종이다. 환불, 분쟁, 취소 경로는 없다(`PaymentStatus.REFUNDED`도 읽기만 하고 아무것도 쓰지 않는다).
+  이 경로를 둘지는 정하지 않았다([#47]).
 - 모든 전이는 기대 상태를 조건으로 거는 쓰기다. 동시에 두 요청이 같은 전이를 시도하면 하나만 이기고, 진 사용자
   요청은 충돌로 끝난다. 예외는 결제로 인한 `PENDING → FUNDED`로, 지면 조용히 아무것도 하지 않는다(아래 "결제 확인").
 
@@ -208,3 +209,4 @@ stateDiagram-v2
 [#17]: https://github.com/jonghoon24/workbridge/issues/17
 [#22]: https://github.com/jonghoon24/workbridge/issues/22
 [#28]: https://github.com/jonghoon24/workbridge/issues/28
+[#47]: https://github.com/jonghoon24/workbridge/issues/47
