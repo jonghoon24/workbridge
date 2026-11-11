@@ -33,7 +33,7 @@ git log --oneline origin/main..HEAD
 
 - 위반은 고치는 방법이 국소적이고 분명할 때만 고친다(예: `console.log` → `logger.info`,
   빠진 `deletedAt: null`, `guardedMutations`에 빠진 라우트).
-- 기존 테스트의 단언을 코드에 맞춰 약하게 고치거나, 기존 컨트롤러를 서비스 레이어로 옮기거나 `requireActiveUser`를
+- 기존 테스트의 단언을 코드에 맞춰 약하게 고치거나, 로직을 다른 레이어로 옮기거나 `requireActiveUser`를
   붙이는 것으로 "수정"하지 않는다 — 그런 것은 사람에게 넘길 지적이다.
 - 응답 모양이나 상태 코드가 바뀌었는데 `src/openapi/`나 `openapi.json`이 그대로면 위반이다. 등록을 고치고
   `npm run openapi`를 돌리는 것은 국소적인 수정이다.

@@ -13,29 +13,27 @@ OpenAPI 문서(아래 "API 계약: OpenAPI")가 기준이다.
 `/api/projects`)은 경로가 겹치면 먼저 마운트된 쪽이 이긴다. 오류는 `AppError`로 던져 `errorHandler`가
 `{ error: { message } }`로 응답한다.
 
-### 레이어: 기존 도메인과 확장 도메인
+### 레이어
 
-| | 기존 도메인 | 확장 도메인 |
-| --- | --- | --- |
-| 도메인 | auth, users, projects, applications, contracts, payments, notifications | milestones, settlements, payout account, contract list, conversations, portfolio/careers, recommendations, notification preferences, bookmark ids, reviews |
-| 흐름 | `routes → controllers → lib` | `routes → controllers → services → lib` |
-| 로직 | 컨트롤러 안 | `src/services/*.service.ts`, 일부는 `src/lib/`(추천은 `lib/recommendations.ts`) |
-| 소프트 삭제된 호출자 | 쓰기 라우트만 `requireActiveUser`가 401. 읽기 라우트는 다시 확인하지 않는다 | 모든 라우트에서 `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |
+모든 도메인이 `routes → controllers → services → lib` 구조다.
 
-요청 검증은 양쪽 모두 zod 스키마(`src/schemas/`)와 `validate()`(`src/middlewares/validate.ts`)가 맡는다. 확장 라우트가 기존
-라우터 파일에 들어간 곳도 있다(지급 계좌 `users.routes.ts`, 계약 목록 `contracts.routes.ts`).
-두 방식이 섞여 있는 것은 의도된 과도기이고, 기존 도메인을 서비스 레이어로 옮기는 계획과 순서는
-[#40](https://github.com/jonghoon24/workbridge/issues/40)에 있다. #40에서 옮긴 auth, users, projects, applications, notifications(설정 제외),
-payments는 로직이 `src/services/`에 있지만, 읽기 라우트와 역할 선택에는 `requireActiveUser`가 없어(#7은 쓰기만 막고, 역할 선택은
-서비스가 직접 404로 막는다) 표에서는 기존 도메인에 둔다.
+- **라우트**(`src/routes/`): 가드와 요청 검증. 검증은 zod 스키마(`src/schemas/`)와 `validate()`(`src/middlewares/validate.ts`)가
+  맡는다.
+- **컨트롤러**(`src/controllers/`): 검증된 입력, `req.user`, 요청 시각(`now`)을 서비스에 넘기고 응답(상태 코드, 쿠키,
+  리다이렉트)만 쓴다.
+- **서비스**(`src/services/*.service.ts`): 쿼리, 트랜잭션과 잠금, 알림·작업 생성, `AppError`. 여러 서비스가 함께 쓰는 로직은
+  `src/lib/`에 있다(지연 스윕 `lib/projectLifecycle.ts`, 추천 `lib/recommendations.ts` 등).
+- **소프트 삭제된 호출자**: 쓰기 라우트는 `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401로 막는다. 일부 읽기
+  라우트(알림 목록, 결제 내역, 계약 상세 등)와 역할 선택에는 이 가드가 없다(#7은 쓰기만 막는다). 역할 선택은 서비스가 탈퇴한
+  사용자를 404로 막는다.
 
 ### 인증과 권한
 
 - `authenticate`(`src/middlewares/auth.ts`): `Authorization: Bearer <access token>`을 검증해 `req.user`를 채운다(실패 401).
   공개 핸들러에서는 `req.user`가 없다(목록은 `src/types/index.ts`).
-- 확장 라우트의 체인: `authenticate → requireActiveUser → requireRole(...) → [업로드] → validate → controller`.
-- 기존 라우트는 `authenticate → requireRole(...) → validate` 뒤에 컨트롤러가 소유권을 직접 확인한다.
-  프로젝트 등록은 `requireCompleteProfile`(`src/middlewares/profile.ts`)도 거친다.
+- 라우트 체인: `authenticate → requireActiveUser → requireRole(...) → [업로드] → validate → controller`. 소유권은 서비스가
+  확인한다. 프로필 완성이 필요한 라우트(프로젝트 등록, 지원, 추천 프로젝트)는 `requireCompleteProfile`(`src/middlewares/profile.ts`)도
+  거친다.
 - 되돌릴 수 없는 작업 직전의 본인 재확인: 비밀번호 계정은 현재 비밀번호, Google 전용 계정은 Google 재인증
   (`src/services/reauth.service.ts`). 재인증의 결과는 저장하지 않고 짧게 사는 서명 토큰(`src/lib/reauth.ts`)으로 브라우저에
   주며, 그 작업의 서비스가 `assertRecentGoogleReauth`로 검사한다. 지금은 회원 탈퇴만 쓴다.

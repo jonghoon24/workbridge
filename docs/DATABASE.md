@@ -173,7 +173,7 @@ Storage는 secret 키로만 다룬다. 그래서 **모든 테이블에 RLS를 �
 **같은 트랜잭션에서 한 행을 두 번 쓰면 FK가 가리키는 부모 행도 잠긴다**는 점을 잠금 순서에 넣어 둔다.
 
 **계약 서명은 `FOR UPDATE` 없이 직렬화된다.** `UPDATE`가 잡는 행 잠금으로 두 당사자의 동시 서명이 차례로 커밋되고, 나중
-서명자가 두 플래그가 모두 켜진 것을 보고 계약을 `ACTIVE`로 만든다(`signContract`, `src/controllers/contracts.controller.ts` 주석).
+서명자가 두 플래그가 모두 켜진 것을 보고 계약을 `ACTIVE`로 만든다(`recordSignature`, `src/services/contracts.service.ts` 주석).
 
 **서명 전 철회도 계약 행의 조건부 쓰기 하나로 직렬화된다**(`cancelContract`, `src/services/contracts.service.ts`). 순서는
 `Contract` → (알림의 FK로 상대방 `User`에 `FOR KEY SHARE`) → `Conversation`이고 프로젝트 행은 잡지 않는다. 철회 트랜잭션은
@@ -187,7 +187,7 @@ Storage는 secret 키로만 다룬다. 그래서 **모든 테이블에 RLS를 �
 `User.hourlyRate`, `PricingAnalysis.totalAmount`가 모두 `Float`(double)이다. 확장 이전부터 있던 부채이고 마이그레이션하지
 않는다. 컬럼 대신 쓰는 값을 막는다.
 
-- 확장 도메인은 원 단위 정수만 받는다(소수 금액 입력은 400). 수수료 계산은 basis point 정수 연산이다.
+- 요청 본문의 금액은 원 단위 정수만 받는다(소수 금액 입력은 400). 수수료 계산은 basis point 정수 연산이다.
 - 계약 금액은 지원의 `expectedRate`라 소수일 수 있다. 마일스톤 관련 계산(기본 마일스톤, 계획 합계, 서명 때의 계획 검사)은
   `wholeWon(contract.amount)`(`Math.round`, 0.5는 올림)를 쓴다.
 - SQL에서 금액을 반올림할 때는 `ROUND(x::numeric)`이어야 한다. Postgres의 `round()`는 `float8`에서 0.5를 짝수 쪽으로 보내서

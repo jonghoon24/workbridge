@@ -4,13 +4,13 @@
 항목 번호를 붙인다(예: `REVIEW #4`). 제품 결정과 그 이유는 `docs/domain/`, API 계약은 OpenAPI 문서(`workbridge-server/openapi.json`), 경로별 편집 지침은 `.claude/rules/`에 있다.
 일반적인 버그·가독성 지적은 이 목록 밖에서도 하되, 아래 항목 위반은 반드시 짚는다.
 
-1. **새 라우트는 확장 방식으로 만든다: `authenticate → requireActiveUser → requireRole → validate → controller`, 로직은 `src/services/`.**
-   - 왜: 이 체인이 검사 순서(역할 403 → 업로드 413/400 → 검증 400 `<path>: <문장>` → 존재 404 → 소유권 403 → 상태 409)를 보장하고, 탈퇴한 사용자가 남은 토큰으로 쓰는 것을 막는다. 새 라우트를 기존 방식(컨트롤러 안의 로직, `requireActiveUser` 없음)으로 쓰면 #40에서 옮길 대상만 늘어난다.
+1. **새 라우트는 `authenticate → requireActiveUser → requireRole → validate → controller` 체인으로 만들고, 로직은 `src/services/`에 둔다.**
+   - 왜: 이 체인이 검사 순서(역할 403 → 업로드 413/400 → 검증 400 `<path>: <문장>` → 존재 404 → 소유권 403 → 상태 409)를 보장하고, 탈퇴한 사용자가 남은 토큰으로 쓰는 것을 막는다.
    - 확인: `git diff origin/main...HEAD -- workbridge-server/src/routes`에서 새 `router.<method>(`마다 가드 순서와 `validate(`를 본다. `router.use(`로 가드를 거는 것도 위반이다 — 같은 접두사에 나중에 마운트된 라우터로 가야 할 요청까지 가드가 가로챈다.
 
-2. **기존 컨트롤러(auth, users, projects, applications, contracts, payments, reviews, notifications)를 서비스 레이어로 옮기는 일은 다른 변경에 섞지 않는다.**
-   - 왜: 이 이전은 #40에서 도메인 단위로 한다. 버그 수정이나 기능 PR에 일부만 섞이면 한 도메인 안에 두 방식이 생긴다.
-   - 확인: #40이 아닌 PR의 diff에서 위 8개 도메인의 `*.controller.ts`에서 지워진 로직이 `src/services/`에 새로 생겼는지 본다. 새 `from '../services/` import가 단서다(확장 서비스의 기존 함수를 부르기만 하는 것은 위반이 아니다).
+2. **컨트롤러는 얇게 둔다: 쿼리, 트랜잭션, `AppError`는 서비스에 있고, 컨트롤러는 검증된 입력과 `req.user.id`, 요청 시각(`now`)을 넘긴 뒤 응답만 쓴다.**
+   - 왜: 모든 도메인이 `routes → controllers → services → lib` 구조다(`docs/ARCHITECTURE.md` "레이어"). 컨트롤러에 로직이 생기면 한 도메인 안에 두 구조가 생기고, 작업 핸들러나 다른 서비스가 그 로직을 다시 쓸 수 없다. 상태 코드, 쿠키, 리다이렉트처럼 HTTP에 속한 것만 컨트롤러에 남는다.
+   - 확인: `git diff origin/main...HEAD -- workbridge-server/src/controllers`의 추가된 줄에서 `prisma.`, `$transaction`, `new AppError(`를 grep한다.
 
 3. **금액 계산(수수료, 부가세, 반올림)은 `lib/money.ts`만 쓴다.**
    - 왜: 금액은 원 단위 정수이고 `payoutBreakdown`(수수료 floor → 부가세 floor → 실지급)과 `sumBreakdowns`(합계는 항목의 합)가 정산 금액의 기준이다(`docs/domain/milestones-payments.md` "돈 규칙"). 인라인 `* 0.1`이나 `Math.round`는 1원 어긋남을 만든다. `Float` 컬럼은 의도된 부채라 마이그레이션하지 않는다.
