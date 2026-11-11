@@ -20,7 +20,7 @@ description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 
 
 ## 준비물
 
-- Node ≥ 18, npm. **localhost**의 PostgreSQL(`brew services start postgresql@14`, 슈퍼유저 =
+- Node 22.x(`package.json`의 `engines`), npm. **localhost**의 PostgreSQL(`brew services start postgresql@14`, 슈퍼유저 =
   macOS 사용자, 비밀번호 없음).
 - 2와 3에는 Playwright Chromium: `(cd workbridge-client && npx playwright install chromium)`.
 - 외부 서비스(Google OAuth, OpenAI, 토스페이먼츠, Supabase Storage)는 더미 값을 쓴다:
@@ -29,9 +29,7 @@ description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 
 ## 설정 (한 번만)
 
 `.env` 파일은 Claude의 파일 툴에 대해 거부 목록에 있다(`.claude/settings.json`). 쓰기가 거부되면
-아래 블록을 사용자에게 보여 주고 직접 만들게 한다.
-URL은 모두 `localhost`를 쓴다 — `supabase.co`가 들어간 커맨드는 거부된다. 실제 preview/production
-DB가 거기 있기 때문이다.
+아래 블록을 사용자에게 보여 주고 직접 만들게 한다. URL은 모두 `localhost`를 쓴다.
 
 ```bash
 createdb workbridge 2>/dev/null || echo "db exists (ok)"
@@ -73,8 +71,8 @@ EOF
 ```
 
 `RATE_LIMIT_ENABLED=false`로 두는 이유: 로컬 로그인은 모두 loopback에서 오므로 15분에 20회 한도 하나를
-나눠 쓴다(`docs/domain/accounts.md` "로그인 요청 제한"). 시드: 사용자 8명, 프로젝트 16개, 계약 6개로 마일스톤/정산/대화의
-모든 상태를 덮고, 날짜는 지금 기준이다. **시드 계정 비밀번호는 모두 `password123`**
+나눠 쓴다(`docs/domain/accounts.md` "로그인 요청 제한"). 시드는 마일스톤/정산/대화의 모든 상태를 덮고, 날짜는
+지금 기준이다. **시드 계정 비밀번호는 모두 `password123`**
 (`kim@example.com` CLIENT, `park@example.com` FREELANCER. 화면별로 어떤 계정을 쓸지는 `docs/SEED_DATA.md`).
 
 ## 실행
@@ -102,7 +100,7 @@ tail -n2 /tmp/wb-server.log /tmp/wb-client.log
    돌린다. 스펙은 화면의 한국어 텍스트로 요소를 찾으므로, 클라이언트 문구를 바꾸면 같은 변경에서
    스펙도 고친다.
 
-화면 하나를 그때그때 볼 때는 리포지토리의 Playwright(1.65)에 들어 있는 CLI로 실제 브라우저를 조작한다.
+화면 하나를 그때그때 볼 때는 리포지토리의 Playwright에 들어 있는 CLI로 실제 브라우저를 조작한다.
 루트에는 `package.json`이 없으므로 `workbridge-client/` 안에서 돌린다:
 
 ```bash
@@ -137,8 +135,7 @@ API 문서 화면은 `http://localhost:4000/api/docs`, 원본은 `http://localho
   메모리 저장소라 다시 띄우면 파일이 사라진다. 서명 업로드·브라우저의 PUT·서명 다운로드·공개 URL까지 흉내 내므로
   첨부와 이미지가 화면에서 열린다. 없으면 첨부 업로드 URL 발급이 502로 답한다.
 - **이메일은 로그로만 남는다**: `grep mail.sent /tmp/wb-server.log`(개발 워커가 ~5초 안에 보낸다).
-- **미래 시각의 작업.** 주간 정산은 월요일 03:00 KST, 지급은 수요일 10:00 KST, 읽지 않은 메시지
-  다이제스트는 메시지 10분 뒤다. 지금 보려면 `workbridge-server/` 안에서 `tsx` 일회성 스크립트로
+- **미래 시각의 작업.** 주간 정산, 지급, 읽지 않은 메시지 다이제스트는 미래 시각에 잡힌다. 지금 보려면 `workbridge-server/` 안에서 `tsx` 일회성 스크립트로
   `runDueJobs({ now: <future>, types: ['settlement.weeklyBatch', 'settlement.payout'] })`를 두 번
   부른다(첫 번째가 다음 작업을 넣는다). `types`는 항상 제한한다. 그러지 않으면 수명주기 스윕이 마감이
   그 날짜 전인 프로젝트를 모두 닫는다.

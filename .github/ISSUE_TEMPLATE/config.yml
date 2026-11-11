@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 도메인 규칙 (docs/domain/)
+  - name: 도메인 문서 (docs/domain/)
     url: https://github.com/jonghoon24/workbridge/blob/main/docs/domain/README.md
-    about: "의도한 동작과 그 이유. 코드가 다른 곳에는 이슈가 링크돼 있다(현재 다름 표시). 이슈를 열기 전에 이미 기록된 항목인지 확인한다."
+    about: "제품 결정과 그 이유. 버그인지 의도된 동작인지 헷갈리면 먼저 읽는다."
