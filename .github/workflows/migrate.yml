@@ -13,6 +13,9 @@ on:
 # 두 실행이 겹치면 같은 마이그레이션을 두 번 적용하려 든다.
 concurrency: migrate
 
+permissions:
+  contents: read
+
 jobs:
   preview:
     name: prisma migrate deploy (preview)

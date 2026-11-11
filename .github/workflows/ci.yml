@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# PR에 푸시가 이어지면 이전 실행을 취소한다. main 푸시는 끝까지 돈다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
   server:
     name: workbridge-server
@@ -76,6 +84,11 @@ jobs:
 
       - name: 테스트 DB에 마이그레이션 적용
         run: npx prisma migrate deploy
+
+      # schema.prisma만 고치고 마이그레이션을 만들지 않았으면(또는 마이그레이션을 손으로 고쳐 어긋났으면) 실패한다.
+      # 마이그레이션을 적용한 DB와 schema.prisma를 비교한다. 고치는 법: `npx prisma migrate dev --name <name>`.
+      - name: schema.prisma와 마이그레이션이 맞는지 확인
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
 
       - name: 테스트
         run: npm test

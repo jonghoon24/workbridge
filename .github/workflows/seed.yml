@@ -18,6 +18,9 @@ on:
 
 concurrency: migrate
 
+permissions:
+  contents: read
+
 jobs:
   seed:
     name: db:seed (${{ inputs.environment }})

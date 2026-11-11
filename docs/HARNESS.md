@@ -93,9 +93,9 @@ PostToolUse 훅은 두지 않는다 — 위반은 같은 턴의 Stop 훅 lint에
 
 | 파일 | 왜 있는가 |
 |---|---|
-| `ci.yml` | 서버 typecheck·lint·`prisma validate`·`openapi.json` 최신 검사·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
+| `ci.yml` | 서버 typecheck·lint·`prisma validate`·`openapi.json` 최신 검사·`schema.prisma`와 마이그레이션의 drift 검사(`prisma migrate diff`)·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
 | `e2e.yml` | Playwright E2E. 클라이언트에 단위 테스트가 없어서 핵심 흐름은 브라우저로만 확인된다 |
-| `claude-code-review.yml` | Claude가 `REVIEW.md`·`CLAUDE.md`와 바뀐 경로의 rules를 읽고 diff를 인라인 코멘트로 리뷰한다(`REVIEW.md` 위반에는 `REVIEW #n`). 드래프트는 건너뛰고, 이미 단 지적은 다시 달지 않는다. 승인·변경 요청·코드 수정은 하지 않는다 — 머지 결정은 사람 몫이다 |
+| `claude-code-review.yml` | Claude가 `REVIEW.md`·`CLAUDE.md`와 바뀐 경로의 rules를 읽고 diff를 인라인 코멘트로 리뷰한다(`REVIEW.md` 위반에는 `REVIEW #n`). 드래프트와 포크에서 온 PR(시크릿이 전달되지 않는다)은 건너뛰고, 이미 단 지적은 다시 달지 않는다. 승인·변경 요청·코드 수정은 하지 않는다 — 머지 결정은 사람 몫이다 |
 | `claude.yml` | `@claude` 멘션에 답하거나 작업을 맡아 **드래프트 PR**을 연다(이미 열린 PR에서는 그 브랜치에 푸시만). 저장소의 `CLAUDE.md`·rules·스킬을 그대로 읽는다. DB가 없어 vitest는 허용하지 않는다(테스트는 PR의 `ci.yml`). 트리거한 사람에게 쓰기 권한이 있어야 돈다 |
 
 두 Claude 워크플로는 구독 토큰 시크릿 `CLAUDE_CODE_OAUTH_TOKEN`으로 `anthropics/claude-code-action@v1`을 돌린다.

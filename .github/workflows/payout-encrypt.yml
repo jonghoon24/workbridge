@@ -16,6 +16,9 @@ on:
 # 마이그레이션·시드와 겹치지 않게 한다.
 concurrency: migrate
 
+permissions:
+  contents: read
+
 jobs:
   encrypt:
     name: payout:encrypt-accounts (${{ inputs.environment }})

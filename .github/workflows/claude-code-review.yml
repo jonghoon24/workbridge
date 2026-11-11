@@ -17,7 +17,8 @@ concurrency:
 
 jobs:
   review:
-    if: github.event.pull_request.draft == false
+    # 포크에서 온 PR에는 시크릿이 전달되지 않아 액션이 실패하므로 같은 리포지토리의 브랜치만 리뷰한다.
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     # 한도 둘: 시간은 GitHub Actions가(명령이 멈춰 턴이 넘어가지 않을 때), 턴 수는 아래 --max-turns가 막는다.
     # 지금까지 가장 큰 PR(#83, 파일 64개)의 리뷰가 20턴 근처를 썼다. 한도에 걸리면 요약 없이 실패하므로 여유를 둔다.
