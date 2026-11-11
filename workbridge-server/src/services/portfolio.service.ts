@@ -134,6 +134,10 @@ export async function updatePortfolioItem(
   input: PortfolioPatchInput,
   image: Express.Multer.File | undefined,
 ) {
+  // Still validation, so before the existence check — the schema cannot see the file.
+  if (image && input.removeImage) {
+    throw invalidField('removeImage', 'CONFLICT', 'removeImage: Cannot upload and remove an image at once');
+  }
   const stored = assertOwnItem(await prisma.portfolioItem.findUnique({ where: { id: itemId } }), userId);
 
   // The month order is checked on the stored row merged with the patch.

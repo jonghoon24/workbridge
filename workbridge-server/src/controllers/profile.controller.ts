@@ -1,7 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
 
-import { AppError, invalidField } from '../lib/errors';
-import { loadProfileCompletion } from '../lib/profileCompletion';
 import {
   createCareer,
   deleteCareer,
@@ -15,6 +13,7 @@ import {
   reorderPortfolio,
   updatePortfolioItem,
 } from '../services/portfolio.service';
+import { getProfileCompletion } from '../services/users.service';
 import type {
   CareerCreateInput,
   CareerPatchInput,
@@ -63,12 +62,7 @@ export async function postPortfolioItem(req: AuthedFileRequest, res: Response, n
 /** `PATCH /api/users/me/portfolio/:itemId`. */
 export async function patchPortfolioItem(req: AuthedFileRequest, res: Response, next: NextFunction) {
   try {
-    const input = req.body as PortfolioPatchInput;
-    // Still validation, so before the existence check — the schema cannot see the file.
-    if (req.file && input.removeImage) {
-      throw invalidField('removeImage', 'CONFLICT', 'removeImage: Cannot upload and remove an image at once');
-    }
-    res.json(await updatePortfolioItem(req.user.id, req.params.itemId, input, req.file));
+    res.json(await updatePortfolioItem(req.user.id, req.params.itemId, req.body as PortfolioPatchInput, req.file));
   } catch (err) {
     next(err);
   }
@@ -130,10 +124,7 @@ export async function removeCareer(req: AuthedRequest, res: Response, next: Next
 /** `GET /api/users/me/profile-completion`. Scored on the stored role, not the token's. */
 export async function getMyProfileCompletion(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    const completion = await loadProfileCompletion(req.user.id);
-    // `requireActiveUser` has just read the row, so this is only a delete in between.
-    if (!completion) throw new AppError('USER_NOT_FOUND', 'User not found');
-    res.json(completion);
+    res.json(await getProfileCompletion(req.user.id));
   } catch (err) {
     next(err);
   }

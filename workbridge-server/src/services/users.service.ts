@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { ACCOUNT_INACTIVE } from '../lib/locks';
+import { loadProfileCompletion } from '../lib/profileCompletion';
 import { isFromEndedRound, latestCancelledContractAt } from '../lib/reapplication';
 import { enqueueJob } from '../jobs/queue';
 import {
@@ -58,11 +59,20 @@ export async function getMyProfile(userId: string) {
     select: myProfileSelect,
   });
 
+  // `requireActiveUser` has just read the row, so this is only a withdrawal in between.
   if (!user) {
-    throw new AppError('USER_NOT_FOUND', 'User not found');
+    throw new AppError('ACCOUNT_INACTIVE', ACCOUNT_INACTIVE);
   }
 
   return toMyProfile(user);
+}
+
+/** `GET /me/profile-completion`. Scored on the stored role, not the token's. */
+export async function getProfileCompletion(userId: string) {
+  const completion = await loadProfileCompletion(userId);
+  // `requireActiveUser` has just read the row, so this is only a withdrawal in between.
+  if (!completion) throw new AppError('ACCOUNT_INACTIVE', ACCOUNT_INACTIVE);
+  return completion;
 }
 
 /**

@@ -11,7 +11,6 @@ import {
 } from '../../schemas/auth';
 import {
   ACTIVE_USER,
-  AUTHENTICATED,
   bearer,
   cause,
   created,
@@ -116,7 +115,7 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     request: { body: jsonBody(selectRoleBody) },
     responses: {
       200: { ...ok(authSession, '역할이 정해지고 토큰이 다시 발급됨'), headers: setsRefreshCookie },
-      ...errors(invalid(), cause('ROLE_ALREADY_SELECTED', '이미 역할을 골랐음'), AUTHENTICATED, cause('USER_NOT_FOUND', '탈퇴한 사용자')),
+      ...errors(invalid(), cause('ROLE_ALREADY_SELECTED', '이미 역할을 골랐음'), ACTIVE_USER),
     },
   });
 

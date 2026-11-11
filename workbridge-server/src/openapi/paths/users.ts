@@ -54,7 +54,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     security: bearer,
     responses: {
       200: ok(myProfile),
-      ...errors(AUTHENTICATED, cause('USER_NOT_FOUND', '탈퇴한 사용자')),
+      ...errors(ACTIVE_USER),
     },
   });
 

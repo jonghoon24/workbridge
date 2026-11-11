@@ -38,7 +38,7 @@ function validateProfileUpdate(req: Request, res: Response, next: NextFunction) 
   return validate({ body })(req, res, next);
 }
 
-router.get('/me', authenticate, getMe);
+router.get('/me', authenticate, requireActiveUser, getMe);
 // The upload runs before validation (multer fills `req.body`); its errors come first. A
 // non-image or oversized file is currently a 500, not a 400.
 router.patch('/me', authenticate, requireActiveUser, upload.single('profileImage'), validateProfileUpdate, updateMe);

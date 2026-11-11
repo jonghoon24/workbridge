@@ -796,7 +796,7 @@ describe('POST /api/auth/select-role', () => {
     expect(stored.roleSelected).toBe(false);
   });
 
-  it('returns 404 when the token identifies a user that does not exist', async () => {
+  it('returns 401 ACCOUNT_INACTIVE when the token identifies a user that does not exist', async () => {
     const res = await authed({
       id: randomUUID(),
       email: 'ghost@test.local',
@@ -805,8 +805,8 @@ describe('POST /api/auth/select-role', () => {
       .post('/api/auth/select-role')
       .send({ role: 'CLIENT' });
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
   });
 
   it('rejects a second selection with 400 and leaves the role untouched', async () => {
@@ -825,7 +825,7 @@ describe('POST /api/auth/select-role', () => {
   it.each([
     ['right before the role is written', 'before'],
     ['right after the role is written', 'after'],
-  ] as const)('answers 404 and issues no session when the account withdraws %s', async (_label, timing) => {
+  ] as const)('answers 401 ACCOUNT_INACTIVE and issues no session when the account withdraws %s', async (_label, timing) => {
     const user = await makeUser({ role: 'FREELANCER', roleSelected: false });
     const withdraw = () =>
       prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), name: '탈퇴한 회원' } });
@@ -861,8 +861,8 @@ describe('POST /api/auth/select-role', () => {
       const res = await authed(user).post('/api/auth/select-role').send({ role: 'CLIENT' });
 
       expect(withdrawn).toBe(true);
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
       expect(refreshCookie(res)).toBeUndefined();
     } finally {
       spies.forEach((spy) => spy.mockRestore());

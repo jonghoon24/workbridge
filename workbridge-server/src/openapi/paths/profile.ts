@@ -205,7 +205,7 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     security: bearer,
     responses: {
       200: ok(profileCompletion),
-      ...errors(ACTIVE_USER, cause('USER_NOT_FOUND', '요청 도중 탈퇴함')),
+      ...errors(ACTIVE_USER),
     },
   });
 

@@ -111,16 +111,19 @@ describe('a soft-deleted principal holding a pre-deletion token', () => {
     expect(stored.name).toBe('복구됨');
   });
 
-  /** `selectRole` looks the caller up with `findFirst … deletedAt: null`, so it 404s. */
-  it('POST /api/auth/select-role is guarded: 404, role unchanged', async () => {
+  /**
+   * `selectRole` looks the caller up with `findFirst … deletedAt: null`, and answers a withdrawn
+   * caller like `requireActiveUser` does: 401 `ACCOUNT_INACTIVE`.
+   */
+  it('POST /api/auth/select-role is guarded: 401 ACCOUNT_INACTIVE, role unchanged', async () => {
     const actor = await makeUser({ role: 'FREELANCER', roleSelected: false });
     const token = tokenFor(actor);
     await softDelete(actor.id);
 
     const res = await bearer(token).post('/api/auth/select-role').send({ role: 'CLIENT' });
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
     expect(stored.role).toBe('FREELANCER');
     expect(stored.roleSelected).toBe(false);
@@ -139,7 +142,7 @@ describe('a soft-deleted principal holding a pre-deletion token', () => {
  *
  * Every new mutating route gets a row here. Rows are grouped by domain: milestones, plan and
  * payout account; conversations and messages; portfolio and careers; notification preferences;
- * then the existing domains. `POST /api/auth/select-role` is covered above (404 from its own
+ * then the existing domains. `POST /api/auth/select-role` is covered above (401 from its own
  * lookup); `POST /api/auth/logout` writes no row of the caller's.
  */
 type MutationCase = {
@@ -877,15 +880,15 @@ describe('a soft-deleted user cannot authenticate or be looked up', () => {
     expect(res.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'User not found' } });
   });
 
-  it('404s at GET /api/users/me with a pre-deletion access token', async () => {
+  it('401s at GET /api/users/me with a pre-deletion access token — the caller\'s own account is inactive', async () => {
     const user = await makeFreelancer();
     const token = tokenFor(user);
     await softDelete(user.id);
 
     const res = await bearer(token).get('/api/users/me');
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
   });
 
   it('404s at GET /api/users/:id — invisible to the public profile lookup', async () => {

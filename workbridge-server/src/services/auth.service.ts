@@ -6,6 +6,7 @@ import type { User } from '@prisma/client';
 
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
+import { ACCOUNT_INACTIVE } from '../lib/locks';
 import { normalizeEmail } from '../lib/email';
 import { env } from '../env';
 import { exchangeGoogleCode, GOOGLE_AUTH_URL } from '../lib/googleOAuth';
@@ -222,15 +223,17 @@ export async function chooseRole(userId: string, role: SelectRoleInput['role']):
 
   if (count === 0) {
     const user = await prisma.user.findFirst({ where: active, select: { id: true } });
+    // Withdrawn (or gone) before or while choosing: the caller's own account, so 401 like every
+    // route behind `requireActiveUser`, not the 404 of someone else's missing profile.
     if (!user) {
-      throw new AppError('USER_NOT_FOUND', 'User not found');
+      throw new AppError('ACCOUNT_INACTIVE', ACCOUNT_INACTIVE);
     }
     throw new AppError('ROLE_ALREADY_SELECTED', 'Role has already been selected');
   }
 
   const updated = await prisma.user.findFirst({ where: active });
   if (!updated) {
-    throw new AppError('USER_NOT_FOUND', 'User not found');
+    throw new AppError('ACCOUNT_INACTIVE', ACCOUNT_INACTIVE);
   }
   return updated;
 }

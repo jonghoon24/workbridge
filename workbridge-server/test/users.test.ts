@@ -118,15 +118,15 @@ describe('GET /api/users/me', () => {
     expect(JSON.stringify(first.body)).not.toContain(stored.password);
   });
 
-  it('404s when the record behind a still-valid token is gone', async () => {
+  it('401s ACCOUNT_INACTIVE when the record behind a still-valid token is gone — the caller\'s own account', async () => {
     const user = await makeFreelancer();
     const token = tokenFor(user);
     await prisma.user.delete({ where: { id: user.id } });
 
     const res = await api().get('/api/users/me').set('Authorization', `Bearer ${token}`);
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
   });
 });
 

@@ -4306,7 +4306,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `AUTH_REQUIRED` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `TOKEN_INVALID` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `AUTH_REQUIRED` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `TOKEN_INVALID` — 토큰이 위조됐거나 만료됨\n- `ACCOUNT_INACTIVE` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -4319,40 +4319,8 @@
                           "type": "string",
                           "enum": [
                             "AUTH_REQUIRED",
-                            "TOKEN_INVALID"
-                          ]
-                        },
-                        "message": {
-                          "$ref": "#/components/schemas/ErrorMessage"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "찾을 수 없음\n\n- `USER_NOT_FOUND` — 탈퇴한 사용자",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string",
-                          "enum": [
-                            "USER_NOT_FOUND"
+                            "TOKEN_INVALID",
+                            "ACCOUNT_INACTIVE"
                           ]
                         },
                         "message": {
@@ -5211,7 +5179,7 @@
             }
           },
           "401": {
-            "description": "인증 실패\n\n- `AUTH_REQUIRED` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `TOKEN_INVALID` — 토큰이 위조됐거나 만료됨",
+            "description": "인증 실패\n\n- `AUTH_REQUIRED` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `TOKEN_INVALID` — 토큰이 위조됐거나 만료됨\n- `ACCOUNT_INACTIVE` — 탈퇴(소프트 삭제)한 사용자",
             "content": {
               "application/json": {
                 "schema": {
@@ -5224,40 +5192,8 @@
                           "type": "string",
                           "enum": [
                             "AUTH_REQUIRED",
-                            "TOKEN_INVALID"
-                          ]
-                        },
-                        "message": {
-                          "$ref": "#/components/schemas/ErrorMessage"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "찾을 수 없음\n\n- `USER_NOT_FOUND` — 탈퇴한 사용자",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string",
-                          "enum": [
-                            "USER_NOT_FOUND"
+                            "TOKEN_INVALID",
+                            "ACCOUNT_INACTIVE"
                           ]
                         },
                         "message": {
@@ -10399,39 +10335,6 @@
                             "AUTH_REQUIRED",
                             "TOKEN_INVALID",
                             "ACCOUNT_INACTIVE"
-                          ]
-                        },
-                        "message": {
-                          "$ref": "#/components/schemas/ErrorMessage"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ]
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "찾을 수 없음\n\n- `USER_NOT_FOUND` — 요청 도중 탈퇴함",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "object",
-                      "properties": {
-                        "code": {
-                          "type": "string",
-                          "enum": [
-                            "USER_NOT_FOUND"
                           ]
                         },
                         "message": {
