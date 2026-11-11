@@ -27,7 +27,7 @@ export function registerReviewPaths(registry: OpenAPIRegistry): void {
         ACTIVE_USER,
         {
           403: ['`Not authorized` — 계약 당사자가 아님'],
-          404: ['`Contract not found` — 없는 계약'],
+          404: ['`Contract not found` — 없는 계약, 또는 프로젝트가 삭제됨'],
           409: ['`You have already reviewed this contract` — 이 계약에 이미 리뷰를 씀'],
         },
       ),

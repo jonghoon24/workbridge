@@ -36,7 +36,13 @@ export default function ProjectDetailPage() {
   const [recommendations, setRecommendations] = useState([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   // 프리랜서가 이 프로젝트에 이미 지원했는지. 지원했으면 '지원하기' 대신 '지원 완료'를 보여 준다.
-  const [myApplication, setMyApplication] = useState(null);
+  // status: 'loading' | 'done' | 'error'. 확인하기 전이나 확인하지 못했을 때는 '지원하기'를 보여 주지
+  // 않는다 — 이미 지원한 프리랜서에게 폼을 다시 열어 주게 된다(서버는 409로 막는다). 결과는 조회한
+  // 프로젝트 id와 묶어 두어 다른 프로젝트로 옮겨 갈 때 이전 결과를 쓰지 않는다.
+  const [applicationLookup, setApplicationLookup] = useState({ projectId: null, status: 'loading', application: null });
+  const [applicationRetry, setApplicationRetry] = useState(0);
+  const applicationCheck = applicationLookup.projectId === id ? applicationLookup.status : 'loading';
+  const myApplication = applicationLookup.projectId === id ? applicationLookup.application : null;
 
   useEffect(() => {
     const store = useAuthStore.getState();
@@ -57,20 +63,22 @@ export default function ProjectDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    if (user?.role !== 'FREELANCER') {
-      setMyApplication(null);
-      return undefined;
-    }
+    if (user?.role !== 'FREELANCER') return undefined;
     let ignore = false;
+    setApplicationLookup({ projectId: id, status: 'loading', application: null });
     api.get('/api/users/me/applications')
       .then(({ data }) => {
-        if (!ignore) setMyApplication(data.find((application) => application.project?.id === id) || null);
+        if (ignore) return;
+        const application = data.find((item) => item.project?.id === id) || null;
+        setApplicationLookup({ projectId: id, status: 'done', application });
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!ignore) setApplicationLookup({ projectId: id, status: 'error', application: null });
+      });
     return () => {
       ignore = true;
     };
-  }, [id, user?.role]);
+  }, [id, user?.role, applicationRetry]);
 
   useEffect(() => {
     if (!project?.id) {
@@ -246,7 +254,7 @@ export default function ProjectDetailPage() {
   const isOwner = user?.id === project.clientId;
   const isFreelancer = user?.role === 'FREELANCER';
   const isGuest = !user;
-  const canApply = isFreelancer && project.status === 'OPEN' && !myApplication;
+  const canApply = isFreelancer && project.status === 'OPEN' && applicationCheck === 'done' && !myApplication;
   const loginHref = `/login?redirect=${encodeURIComponent(`/projects/${id}`)}`;
   const canClose = isOwner && project.status === 'OPEN';
 
@@ -285,6 +293,14 @@ export default function ProjectDetailPage() {
             <Link href="/my/applications">
               <Button variant="secondary">지원 완료 · 내 지원 현황</Button>
             </Link>
+          )}
+          {isFreelancer && applicationCheck === 'error' && (
+            <>
+              <span className="text-sm text-red-600" role="alert">지원 여부를 확인하지 못했습니다.</span>
+              <Button variant="secondary" size="sm" onClick={() => setApplicationRetry((count) => count + 1)}>
+                다시 시도
+              </Button>
+            </>
           )}
           {isOwner && (
             <>

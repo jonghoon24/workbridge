@@ -44,7 +44,7 @@ function isHttpUrl(value) {
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { setAuth } = useAuthStore();
+  const { setUser } = useAuthStore();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -181,7 +181,7 @@ export default function ProfilePage() {
       });
 
       setProfile(data);
-      setAuth(data, useAuthStore.getState().accessToken);
+      setUser(data);
       setSuccess('프로필이 저장되었습니다.');
       setCompletionKey((key) => key + 1);
     } catch (err) {
