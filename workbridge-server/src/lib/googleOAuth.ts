@@ -3,7 +3,7 @@ import axios from 'axios';
 import { env } from '../env';
 
 /**
- * What the Google login (`auth.controller.ts`) and the Google re-authentication
+ * What the Google login (`services/auth.service.ts`) and the Google re-authentication
  * (`services/reauth.service.ts`) share: Google's endpoints, the `state` cookie and the code exchange.
  */
 

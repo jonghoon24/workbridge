@@ -4,14 +4,6 @@
       "count": 5
     }
   },
-  "src/controllers/auth.controller.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 1
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 1
-    }
-  },
   "src/controllers/projects.controller.ts": {
     "@typescript-eslint/no-unsafe-argument": {
       "count": 1
