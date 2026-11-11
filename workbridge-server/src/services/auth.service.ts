@@ -173,15 +173,18 @@ export async function completeGoogleLogin(code: string): Promise<GoogleLoginResu
   let needsRoleSelection: boolean;
 
   if (user) {
-    // Only while still active: a withdrawal that commits in between must not get a picture back.
+    // Only while still active: a withdrawal that commits in between must not get a picture back,
+    // and one that commits after the write must not get a session — so the read-back has the same
+    // condition, and either case is the same failure (the login screen's `oauth_failed`).
+    const active = { id: user.id, deletedAt: null };
     const { count } = await prisma.user.updateMany({
-      where: { id: user.id, deletedAt: null },
+      where: active,
       data: { profileImage: user.profileImage || picture },
     });
-    if (count === 0) {
+    user = count === 0 ? null : await prisma.user.findFirst({ where: active });
+    if (!user) {
       throw new Error('Google account was withdrawn during login');
     }
-    user = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     needsRoleSelection = !user.roleSelected;
   } else {
     user = await prisma.user.create({

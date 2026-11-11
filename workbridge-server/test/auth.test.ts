@@ -1283,6 +1283,30 @@ describe('GET /api/auth/google/callback', () => {
     expect(stored.profileImage).toBe('https://cdn.test.local/mine.png');
   });
 
+  it('degrades to oauth_failed and issues no session when the account withdraws right after the profile write', async () => {
+    const existing = await makeFreelancer({ googleId: 'google-uid-1', roleSelected: true });
+    stubGoogle();
+    // Deterministic stand-in for the race: the withdrawal commits right after the conditional
+    // profile-image write succeeds and before the account is read back.
+    const updateMany = prisma.user.updateMany.bind(prisma.user);
+    const spy = vi.spyOn(prisma.user, 'updateMany').mockImplementation((async (args: Parameters<typeof updateMany>[0]) => {
+      const written = await updateMany(args);
+      await prisma.user.update({ where: { id: existing.id }, data: { deletedAt: new Date(), name: '탈퇴한 회원' } });
+      return written;
+    }) as unknown as typeof prisma.user.updateMany);
+
+    try {
+      const res = await googleCallback('code');
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(res.status).toBe(302);
+      expect(res.headers.location).toBe(oauthFailed);
+      expect(refreshCookie(res)).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('degrades to oauth_failed when the token exchange fails', async () => {
     axiosPost.mockRejectedValue(new Error('502 from Google'));
 
