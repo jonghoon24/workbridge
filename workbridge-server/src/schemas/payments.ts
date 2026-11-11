@@ -21,3 +21,6 @@ export const paymentConfirmBody = z.object({
   orderId: requiredString('Order ID'),
   amount: bodyWholeWon('Amount', { min: 1 }),
 });
+
+export type MilestonePaymentInput = z.infer<typeof milestonePaymentBody>;
+export type PaymentConfirmInput = z.infer<typeof paymentConfirmBody>;
