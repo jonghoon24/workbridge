@@ -132,7 +132,7 @@ export async function registerProject(clientId: string, input: ProjectCreateInpu
       deadline,
       requiredSkills,
       clientId,
-      status: getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate),
+      status: getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate, now),
     },
   });
 }
@@ -202,7 +202,7 @@ export async function editProject(projectId: string, clientId: string, input: Pr
       ['UPCOMING', 'OPEN'].includes(project.status)
       && (deadline !== undefined || recruitmentStartDate !== undefined)
     ) {
-      updateData.status = getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate);
+      updateData.status = getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate, now);
     }
   }
 

@@ -41,7 +41,7 @@ export async function submitApplication(
   // The sweep closes every project whose deadline has passed (and rejects its pending
   // applications), so an `OPEN` project read after it is still before its deadline. A past
   // deadline therefore surfaces as the not-OPEN 400 below — there is no separate deadline check.
-  await closeExpiredOpenProjects();
+  await closeExpiredOpenProjects(now);
 
   // A project whose client is soft-deleted takes no applications (and so sends that client nothing).
   const project = await prisma.project.findFirst({
@@ -122,7 +122,7 @@ export async function submitApplication(
         title: '새 지원자가 있습니다',
         message: `${applicantName}님이 '${project.title}' 프로젝트에 지원했습니다.`,
         href: `/projects/${projectId}/applications`,
-      });
+      }, now);
 
       return created;
     });
@@ -334,7 +334,7 @@ export async function decideApplication(
       title: '지원 결과를 알려 드립니다',
       message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
       href: '/my/applications',
-    });
+    }, now);
 
     return rejected;
   });
