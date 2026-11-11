@@ -98,7 +98,8 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 - **프록시**: `src/app/api/[...path]/route.js`가 `/api/*`를 서버로 전달하고, `src/app/api/auth/*`는
   `src/lib/server/authProxy.js`로 리프레시 토큰을 프론트엔드 쪽 `refreshToken` 쿠키로 다룬다. 서버 주소는 서버 쪽 코드에서만
   `src/lib/apiUrl.js`의 `getApiUrl()`이 정한다(우선순위는 그 파일 머리 주석).
-- **상태**: Zustand 스토어 `src/store/authStore.js`(토큰과 사용자, `localStorage`에 복사)와
+- **상태**: Zustand 스토어 `src/store/authStore.js`(사용자, `localStorage`에 복사. 액세스 토큰은 `localStorage`에만
+  두고 `src/lib/api.js`의 인터셉터가 읽고 갱신한다)와
   `src/store/projectStore.js`(목록 필터와 페이지).
 - **`src/middleware.js`**: 보호 경로에 `refreshToken` 쿠키가 없으면 `/login`으로 보낸다. 쿠키가 있는지만 보고,
   실제 권한 확인은 서버가 한다.
