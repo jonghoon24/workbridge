@@ -6,11 +6,12 @@ paths:
 # 클라이언트 (Next.js 14 App Router, JSX)
 
 - **TypeScript가 아니라 JSX.** `.ts/.tsx` 파일이나 TS 설정을 추가하지 않는다.
-- 백엔드 호출은 `src/lib/api.js`를 거친다. 컴포넌트에서 `axios`/`fetch`를 직접 쓰지 않는다.
-  예외: `src/lib/authApi.js`(login, signup, select-role, logout) — 갱신 인터셉터가 없어서 로그인
-  실패가 갱신 루프를 일으키지 않는다.
-- 첨부 파일의 저장소 업로드는 `src/lib/attachments.js`가 Supabase로 직접 보내는 `PUT`이다. 여기에 액세스 토큰을
-  붙이지 않는다. 컴포넌트는 `uploadAttachments()`와 `AttachmentLink`만 쓴다.
+- 백엔드 호출은 `src/lib/api.js`를 거친다. 컴포넌트에서 `axios`/`fetch`를 직접 쓰지 않는다. ESLint가 검사하고,
+  직접 네트워크를 써도 되는 파일 목록은 `.eslintrc.json`에 있다.
+- 예외: 로그인, 가입, 역할 선택, 로그아웃 요청은 `src/lib/authApi.js`를 쓴다. 이유는 그 파일 머리 주석에 있다.
+- 첨부 파일은 `src/lib/attachments.js`가 서명 URL로 Supabase Storage에 직접 `PUT`한다. 이 요청에는 액세스 토큰을
+  붙이지 않는다. 백엔드가 아닌 제3자 저장소로 가는 요청이기 때문이다. 컴포넌트는 `uploadAttachments()`와
+  `AttachmentLink`만 쓴다.
 - 백엔드 주소는 `src/lib/apiUrl.js`의 `getApiUrl()`로만 정하고, 서버 쪽(라우트 핸들러, SSR)에서만 부른다.
   브라우저 코드는 같은 출처 `/api/*`를 부른다.
 - 로그인이 필요한 페이지를 추가하면 그 경로 접두사를 `src/middleware.js`의 `protectedRoutes`에 넣는다.
@@ -21,4 +22,5 @@ paths:
   `openapi.json`과 대조한다(CI).
 - **사용자에게 보이는 한국어 문구는 함부로 바꾸지 않는다.** E2E 테스트가 텍스트로 요소를 찾으므로
   라벨이나 메시지를 바꾸면 깨진다. 꼭 바꿔야 하면 같은 변경에서 `workbridge-client/e2e/`도 고친다.
-- 검사(단위 테스트 없음): `npm run lint`, `npm run check:error-codes`, `npm run build`. 화면 확인과 E2E는 `run-workbridge` 스킬을 따른다.
+- 검사: `npm run lint`, `npm run check:error-codes`, `npm run build`. 화면 확인은 `run-workbridge` 스킬을 따른다. E2E 스펙을 쓰거나 고칠 때는
+  `workbridge-client/e2e/README.md`(실행 방법, 픽스처, 데이터를 만드는 방식)를 읽는다.

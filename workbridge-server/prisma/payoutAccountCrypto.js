@@ -7,7 +7,7 @@ const { createCipheriv, randomBytes } = require('node:crypto');
 function encryptAccountNumber(accountNumber, userId, keyBase64) {
   const key = Buffer.from(keyBase64 || '', 'base64');
   if (key.length !== 32) {
-    throw new Error('PAYOUT_ACCOUNT_ENCRYPTION_KEY must be set to 32 bytes, base64-encoded (docs/ENV.md)');
+    throw new Error('PAYOUT_ACCOUNT_ENCRYPTION_KEY must be set to 32 bytes, base64-encoded (workbridge-server/.env.example)');
   }
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });

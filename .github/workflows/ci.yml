@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# PR에 푸시가 이어지면 이전 실행을 취소한다. main 푸시는 끝까지 돈다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
   server:
     name: workbridge-server
@@ -43,12 +51,39 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 아래 마이그레이션 검사가 PR의 base 커밋과 비교한다.
+          fetch-depth: 0
+
+      # 커밋된 마이그레이션은 고치지도, 지우지도, 이름을 바꾸지도 않는다(.claude/rules/prisma.md). 고쳐도
+      # `migrate deploy`는 이미 적용한 마이그레이션을 다시 돌리지 않고 오류 없이 넘어간다. 그래서 고친 내용은
+      # 프리뷰·운영 DB에 들어가지 않고, 빈 DB에 처음부터 적용하는 뒤의 테스트 단계에서만 쓰여 통과해 버린다.
+      # 새 마이그레이션 폴더를 더하는 것만 통과한다.
+      # 실패하면 기존 파일을 되돌리고 바꿀 내용은 `npx prisma migrate dev --name <name>`으로 새 마이그레이션에 담는다.
+      # main은 PR로만 바뀌므로 push에서는 건너뛴다.
+      - name: 커밋된 마이그레이션을 고치지 않았는지 확인
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          diff=$(git diff --name-status --no-renames "$BASE_SHA"...HEAD -- prisma/migrations)
+          changed=$(printf '%s\n' "$diff" | awk -F'\t' 'NF && $1 != "A" && $NF !~ /\/migration_lock\.toml$/')
+          if [ -n "$changed" ]; then
+            echo "::error::이미 커밋된 마이그레이션을 고치거나 지웠습니다. 되돌리고 변경은 새 마이그레이션으로 만듭니다."
+            echo "$changed"
+            exit 1
+          fi
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: workbridge-server/package-lock.json
+
+      # 코드가 읽는 환경변수와 `.env.example`이 양쪽으로 맞는지 본다. `.env.example`이 변수 설명의 원본이라,
+      # 새 변수를 읽거나 더 이상 읽지 않으면 같은 변경에서 예시 파일도 고친다. 규칙은 스크립트 머리 주석에 있다.
+      - name: .env.example이 코드와 맞는지 확인
+        run: node ../scripts/check-env-example.mjs server
 
       - name: 의존성 설치
         run: npm ci
@@ -77,6 +112,11 @@ jobs:
       - name: 테스트 DB에 마이그레이션 적용
         run: npx prisma migrate deploy
 
+      # schema.prisma만 고치고 마이그레이션을 만들지 않았으면(또는 마이그레이션을 손으로 고쳐 어긋났으면) 실패한다.
+      # 마이그레이션을 적용한 DB와 schema.prisma를 비교한다. 고치는 법: `npx prisma migrate dev --name <name>`.
+      - name: schema.prisma와 마이그레이션이 맞는지 확인
+        run: npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
       - name: 테스트
         run: npm test
 
@@ -96,11 +136,15 @@ jobs:
           cache: npm
           cache-dependency-path: workbridge-client/package-lock.json
 
+      # 서버 잡의 같은 단계와 같다. 클라이언트는 src/와 next.config를 본다.
+      - name: .env.example이 코드와 맞는지 확인
+        run: node ../scripts/check-env-example.mjs client
+
       - name: 의존성 설치
         run: npm ci
 
       - name: 린트
-        run: npm run lint -- --max-warnings=0
+        run: npm run lint
 
       # 서버의 오류 코드(openapi.json의 ErrorCode)마다 화면 문구가 있고, 화면이 없는 코드로 분기하지 않는지 본다.
       # 서버만 바꾼 PR에서도 돌아서, 문구 없는 새 코드가 머지되지 않는다.

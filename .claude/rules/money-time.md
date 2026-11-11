@@ -27,6 +27,9 @@ paths:
 - 달력 규칙("오늘", 마감일, 일·월 단위 구간, KST 기준 정기 일정)은 `lib/time.ts`의 함수로 계산한다.
   시간대 라이브러리는 쓰지 않는다.
 - 달력 로직에 호스트 시간대 getter/setter(`getDate()`, `getDay()`, `getHours()`, `getMonth()`, `getFullYear()`,
-  같은 이름의 `set*()`, `toLocaleDateString()`)를 쓰지 않는다 — CI와 Vercel은 UTC, 개발 PC는 KST라서 기기마다 답이 달라진다.
-- 시간에 따라 달라지는 함수는 `now: Date`를 인자로 받는다. 서비스와 작업 핸들러는 `new Date()`를 직접 부르지 않는다:
-  HTTP 경계의 컨트롤러가 `new Date()`를 넘기고, 작업 핸들러는 `ctx.now`를 쓴다.
+  같은 이름의 `set*()`, `toLocaleDateString()`)를 쓰지 않는다. CI와 Vercel은 UTC, 개발 PC는 KST라서 기기마다 답이 달라진다.
+- 시간에 따라 달라지는 함수는 `now: Date`를 인자로 받는다. 테스트는 가짜 타이머 대신 `now`를 넘겨 시각을 정한다.
+  서비스와 작업 핸들러는 `new Date()`를 직접 부르지 않는다. HTTP 경계의 컨트롤러가 `new Date()`를 넘기고, 작업 핸들러는
+  `ctx.now`를 쓴다. `now: Date = new Date()` 기본 매개변수는 허용한다.
+- 위 두 항목은 ESLint `no-restricted-syntax`(`eslint.config.mjs`)가 검사한다. 정말 예외면 `// eslint-disable-next-line no-restricted-syntax -- <이유>`로
+  이유를 남긴다(예: `messaging.service.ts`의 `postMessage`).

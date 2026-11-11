@@ -2,7 +2,7 @@ import { env } from '../env';
 
 /**
  * The frontend's address, from `CLIENT_URL`, for everything that sends a browser there: the Google
- * login redirects, the links in emails, and the CORS allow-list (docs/ENV.md).
+ * login redirects, the links in emails, and the CORS allow-list. What fails without it: `.env.example`.
  *
  * `CLIENT_URL` is **one origin** (`https://app.example.com`, a trailing `/` is fine). Extra CORS
  * origins go in `CORS_ORIGINS`, never here. A missing or malformed value does not stop the server

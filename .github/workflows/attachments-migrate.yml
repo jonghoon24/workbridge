@@ -22,6 +22,9 @@ on:
 # 마이그레이션·시드와 겹치지 않게 한다.
 concurrency: migrate
 
+permissions:
+  contents: read
+
 jobs:
   migrate-attachments:
     name: migrate-legacy-attachments (${{ inputs.environment }}${{ inputs.apply && ', apply' || ', dry run' }})

@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
 
+# PR에 푸시가 이어지면 이전 실행을 취소한다. main 푸시는 끝까지 돈다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
   e2e:
     name: playwright (chromium)

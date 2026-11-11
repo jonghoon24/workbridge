@@ -13,9 +13,11 @@ preview와 production DB에는 `main`에 머지될 때 CI(`migrate.yml`)가 적�
 
 ## 1. `prisma/schema.prisma` 수정
 
-- 이웃 모델을 따른다: `String @id @default(uuid())`, `createdAt DateTime @default(now())`,
-  모든 관계에 `onDelete`를 명시(`docs/DATABASE.md`의 "외래 키의 삭제 동작" 참고), 코드가 기대는
+- 이웃 모델을 따른다: `String @id @default(uuid())`, `createdAt DateTime @default(now())`, 코드가 기대는
   불변식에는 `@@unique`(충돌하면 409), 목록 필터에는 `@@index`.
+- 관계의 삭제 동작은 Prisma 기본값을 따른다. 필수 관계는 `RESTRICT`, 선택 관계는 `SET NULL`이다. 기본값과 다르게 할
+  때만 `onDelete`를 적고 이유를 필드 옆 주석에 단다(예: `Message.sender`). 그때는 `docs/DATABASE.md` "외래 키의 삭제
+  동작"도 고친다.
 - 행이 있는 테이블에 필수 컬럼을 추가하려면 기본값이나 백필(3단계)이 필요하다.
 
 ```bash
@@ -49,7 +51,7 @@ RLS를 빠뜨리면 `test/db-constraints.test.ts`가 실패한다. `String[]` CH
 백필은 같은 새 마이그레이션에 넣는다: `npx prisma migrate dev --create-only --name <name>`이 적용하지
 않고 SQL만 쓴다. 거기에 `UPDATE …` 문을 붙인 뒤 `npx prisma migrate dev`로 적용한다. 훅은
 마이그레이션 폴더가 git에 추적되지 않는 동안만 편집을 허용한다. 커밋하면 적용된 것으로 보고 고정된다.
-금액은 float이 아니라 numeric으로 반올림한다(`ROUND(x::numeric)`) — `docs/DATABASE.md` "마이그레이션과 백필 메모" 참고.
+금액은 float이 아니라 numeric으로 반올림한다(`ROUND(x::numeric)`, 이유는 `docs/DATABASE.md` "금액이 `Float`인 부채").
 
 ## 4. 타입 체크
 
@@ -74,8 +76,8 @@ npm test
 
 ## 6. 시드
 
-모델이나 컬럼이 시드 데이터에 나오면 `prisma/seed.js`를 고친다 — 트랜스파일 없이 `node`로 도는
-**순수 CommonJS**다(`lib/time.ts`/`lib/money.ts`를 손으로 따라 해 두었으니 함께 맞춘다).
+모델이나 컬럼이 시드 데이터에 나오면 `prisma/seed.js`를 고친다. 이 파일은 `lib/time.ts`와 `lib/money.ts`의 계산을
+손으로 옮겨 두었으므로, 그 계산이 바뀌었으면 함께 맞춘다.
 `docs/SEED_DATA.md`도 고친다. 확인: `npm run db:seed`.
 
 ## 7. 문서
@@ -93,10 +95,10 @@ npm test
 - `schema.prisma`와 새 마이그레이션 폴더 전체를 그것을 쓰는 코드와 함께 커밋한다.
 - `main`에 머지되면 `.github/workflows/migrate.yml`이 **preview와 production** DB(서로 다른 Supabase
   프로젝트)에 차례로 `prisma migrate deploy`를 돌린다.
-- 이전 코드와 새 코드 어느 쪽이 먼저 떠 있어도 안전한 마이그레이션이어야 한다. 같은 `main` 푸시에서
-  Vercel 배포와 `migrate.yml`이 따로 돌고 둘의 순서를 맞추는 장치가 없다 — 새 코드가 마이그레이션
-  전의 DB를 잠깐 상대할 수 있다. 컬럼은 nullable이나 기본값을 두고 추가하고, 옛 컬럼은 다음 릴리스에서
-  지운다. 스키마를 바꾸는 PR의 서버 프리뷰도 머지 전까지는 마이그레이션되지 않은 프리뷰 DB를 상대한다.
+- 마이그레이션은 이전 코드와 새 코드 어느 쪽이 떠 있어도 안전해야 한다. 같은 `main` 푸시에서 Vercel 배포와
+  `migrate.yml`이 따로 돌고, 둘의 순서를 맞추는 장치가 없다. 그래서 새 코드가 마이그레이션 전의 DB를 잠깐 상대할 수
+  있다. 컬럼은 nullable이나 기본값을 두고 추가하고, 옛 컬럼은 다음 릴리스에서 지운다.
+- 스키마를 바꾸는 PR의 서버 프리뷰도 머지 전까지는 마이그레이션되지 않은 프리뷰 DB를 상대한다.
 
 ## 9. 보고
 

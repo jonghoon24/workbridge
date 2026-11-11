@@ -291,6 +291,7 @@ async function postMessage(tx: PrismaTransactionClient, conversationId: string, 
   if (!locked) throw new Error(`postMessage: conversation ${conversationId} does not exist`);
 
   const floor = locked.lastMessageAt ? locked.lastMessageAt.getTime() + 1 : 0;
+  // eslint-disable-next-line no-restricted-syntax -- server clock read under the lock, see the doc comment
   const createdAt = new Date(Math.max(Date.now(), floor));
 
   const message = await tx.message.create({

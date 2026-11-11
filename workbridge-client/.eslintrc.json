@@ -1,3 +1,90 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "overrides": [
+    {
+      // 백엔드 호출은 src/lib/api.js를 거친다(.claude/rules/client.md). 직접 네트워크를 쓰는 파일만 뺀다:
+      // api.js·authApi.js(axios 인스턴스), lib/server/·app/api/(서버에서 백엔드로 전달하는 fetch),
+      // attachments.js(Supabase 저장소로 보내는 XMLHttpRequest PUT, 아래 override).
+      "files": ["src/**/*.{js,jsx,ts,tsx}"],
+      "excludedFiles": [
+        "src/lib/api.js",
+        "src/lib/authApi.js",
+        "src/lib/server/**",
+        "src/app/api/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "axios",
+                "message": "백엔드 호출은 src/lib/api.js의 인스턴스를 쓴다(.claude/rules/client.md)."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["axios/*"],
+                "message": "백엔드 호출은 src/lib/api.js의 인스턴스를 쓴다(.claude/rules/client.md)."
+              }
+            ]
+          }
+        ],
+        // no-restricted-imports는 정적 import만 본다. require()와 동적 import()의 axios는 여기서 막는다.
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "ImportExpression[source.value='axios'], ImportExpression[source.value=/^axios\\u002F/]",
+            "message": "백엔드 호출은 src/lib/api.js의 인스턴스를 쓴다(.claude/rules/client.md)."
+          },
+          {
+            "selector": "CallExpression[callee.name='require'][arguments.0.value='axios'], CallExpression[callee.name='require'][arguments.0.value=/^axios\\u002F/]",
+            "message": "백엔드 호출은 src/lib/api.js의 인스턴스를 쓴다(.claude/rules/client.md)."
+          }
+        ],
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "fetch",
+            "message": "백엔드 호출은 src/lib/api.js를 거친다(.claude/rules/client.md)."
+          },
+          {
+            "name": "XMLHttpRequest",
+            "message": "백엔드 호출은 src/lib/api.js를 거친다. 저장소 업로드는 src/lib/attachments.js만 한다(.claude/rules/client.md)."
+          }
+        ],
+        "no-restricted-properties": [
+          "error",
+          {
+            "object": "window",
+            "property": "fetch",
+            "message": "백엔드 호출은 src/lib/api.js를 거친다(.claude/rules/client.md)."
+          },
+          {
+            "object": "globalThis",
+            "property": "fetch",
+            "message": "백엔드 호출은 src/lib/api.js를 거친다(.claude/rules/client.md)."
+          },
+          {
+            "object": "self",
+            "property": "fetch",
+            "message": "백엔드 호출은 src/lib/api.js를 거친다(.claude/rules/client.md)."
+          }
+        ]
+      }
+    },
+    {
+      // attachments.js는 서명 URL로 Supabase에 직접 PUT한다. XMLHttpRequest만 허용한다.
+      "files": ["src/lib/attachments.js"],
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          {
+            "name": "fetch",
+            "message": "백엔드 호출은 src/lib/api.js를 거친다(.claude/rules/client.md)."
+          }
+        ]
+      }
+    }
+  ]
 }

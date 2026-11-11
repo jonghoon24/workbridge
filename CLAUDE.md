@@ -4,7 +4,7 @@ WorkBridge(프리랜서 매칭 플랫폼)는 의뢰인(`CLIENT`)과 프리랜서
 → 지원 → 계약 → 마일스톤 결제(토스페이먼츠) → 정산 → 상호 리뷰가 기본 흐름이고, 메시지, 포트폴리오,
 프로젝트 추천이 붙어 있다.
 
-npm 패키지 두 개가 따로 있다(워크스페이스 툴 없음 — 커맨드는 각 패키지 안에서 실행한다).
+npm 패키지 두 개가 따로 있다. 루트에는 `package.json`이 없으므로 커맨드는 각 패키지 안에서 실행한다.
 - `workbridge-server/` — Express + Prisma + PostgreSQL API, **TypeScript**, Vercel 배포.
 - `workbridge-client/` — Next.js 14 App Router, **JSX(TS 아님)**, Tailwind, Zustand.
 
@@ -40,9 +40,10 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 | 레이어, 요청 흐름, 작업 큐, 클라이언트 구조, 환경 | `docs/ARCHITECTURE.md` |
 | 엔드포인트, 요청·응답, 상태 코드와 오류 코드 | `GET /api/docs`(로컬 서버) / `workbridge-server/openapi.json` |
 | 제품 결정과 그 이유, 용어, 상태 전이 / DB 불변식, 잠금, FK 삭제 동작 | `docs/domain/` / `docs/DATABASE.md` |
-| 환경변수 / 배포와 운영 환경의 한계 | `docs/ENV.md` / `docs/DEPLOYMENT.md` |
+| 환경변수 목록과 뜻 / 값을 넣는 곳과 외부 서비스 설정 | 각 패키지의 `.env.example` / `docs/ENV.md` |
+| 배포와 운영 환경의 한계 | `docs/DEPLOYMENT.md` |
 | 시드 계정과 화면별 시나리오 | `docs/SEED_DATA.md` |
-| 이 하네스(지침, 권한, 훅, 스킬) / 리뷰 기준 | `docs/HARNESS.md` / `REVIEW.md` |
+| 문서·규칙을 어디에 둘지, 권한 설정의 이유, main 보호 / 리뷰 기준 | `docs/HARNESS.md` / `.github/REVIEW.md` |
 
 ## 구조 요약
 
@@ -55,7 +56,8 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 
 - 실패한 테스트를 통과시키려고 단언을 지우거나 약하게 바꾸지 않는다. 동작을 바꾸는 것이 요청받은 변경일 때만 테스트를 고친다.
 - 기존 코드에 테스트를 붙이다가 버그로 보이는 동작을 만나면 그 동작을 단언으로 고정하지 않고 보고한다.
-- 버그를 고치는 PR에는 고치기 전 코드에서 실패하는 회귀 테스트를 넣는다.
+- 버그를 고치는 PR에는 고치기 전 코드에서 실패하는 회귀 테스트를 넣는다. 자동 테스트로 재현할 수 없으면
+  그 이유와 수동 재현 절차를 PR에 적는다.
 
 ## 컨벤션
 
@@ -64,9 +66,10 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 
 ## 함정 (바로 사고가 나는 것)
 
-- 프로젝트를 읽는 GET 중 일부는 **행을 쓴다.** `workbridge-server/src/lib/projectLifecycle.ts`의 지연 수명주기 스윕
-  (`closeExpiredOpenProjects`, `rejectPendingApplicationsForClosedProjects`)이 마감된 프로젝트를 닫고 그 대기 중
-  지원을 거절한다. 어느 핸들러인지는 두 함수의 호출처로 확인한다. 읽기 전용으로 다루지 않는다 — 캐시, 빌드 때의
-  정적 렌더링, 원격 환경에 대한 "확인용" 호출도 그 환경의 행을 바꾼다.
+- 프로젝트를 읽는 GET 중 일부는 **DB 행을 바꾼다**(`workbridge-server/src/lib/projectLifecycle.ts`, 무엇을 바꾸는지는
+  `docs/domain/projects-contracts.md` "지연 스윕"). 어느 핸들러인지는 `closeExpiredOpenProjects`와
+  `rejectPendingApplicationsForClosedProjects`의 호출처로 확인한다. 이 GET을 캐시하거나, 빌드 때 정적 렌더링으로
+  부르거나, "확인만 하려고" 원격 환경에 호출하면 그 환경의 행이 바뀐다.
 - 운영에는 상주 작업 워커가 없다. GitHub Actions `jobs.yml`이 15분마다 `POST /api/internal/jobs/run`을
-  부르므로 작업은 최대 15분 늦게 돈다. 지급(`JOB_PAYOUT_ENABLED`)과 메일(`JOB_EMAIL_ENABLED`) 작업은 플래그로 꺼져 있다.
+  부르므로 작업은 최대 15분 늦게 돈다. 지급(`JOB_PAYOUT_ENABLED`)과 메일(`JOB_EMAIL_ENABLED`) 작업은 플래그로 꺼져 있다
+  (`docs/DEPLOYMENT.md` "운영 환경의 한계").

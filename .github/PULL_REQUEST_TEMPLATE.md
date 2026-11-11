@@ -4,7 +4,7 @@
 
 ## 관련 이슈
 
-<!-- 버그 수정이면 그 이슈를 닫는다. -->
+<!-- 이슈가 있으면 그 이슈를 닫는다. 없으면 아래 줄을 지운다. -->
 Closes #
 
 ## 확인한 것
@@ -15,7 +15,7 @@ Closes #
 - [ ] `npm run build` (workbridge-client, 클라이언트를 건드린 경우)
 - [ ] E2E / 화면 확인 (클라이언트 흐름을 건드린 경우, 스크린샷 첨부)
 - [ ] (API 변경) `src/openapi/`의 경로·응답 스키마를 고치고 `npm run openapi`로 만든 `openapi.json`을 포함했다
-- [ ] 문서 — `docs/domain/`(제품 결정과 그 이유), `docs/DATABASE.md`(불변식·제약·잠금), `docs/ENV.md`(환경변수)
+- [ ] 문서 — `docs/domain/`(제품 결정과 그 이유), `docs/DATABASE.md`(불변식·제약·잠금), 해당 패키지의 `.env.example`(새 환경변수)
 - [ ] 스키마 변경 시 마이그레이션 포함
 
 ## 리뷰어가 볼 곳
