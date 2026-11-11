@@ -185,8 +185,8 @@ export async function editProject(projectId: string, clientId: string, input: Pr
     if (!locked) {
       throw new AppError('Project not found', 404);
     }
-    const current = await tx.project.findUniqueOrThrow({
-      where: { id: projectId },
+    const current = await tx.project.findFirstOrThrow({
+      where: { id: projectId, deletedAt: null },
       include: { _count: { select: { applications: true } } },
     });
 
