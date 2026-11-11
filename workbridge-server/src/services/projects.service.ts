@@ -37,6 +37,17 @@ function validateRecruitmentSchedule(
   }
 }
 
+const DEADLINE_PAST = 'Deadline must not be in the past';
+
+/**
+ * A deadline the caller sends must not be in the past: the lifecycle sweep would close the project
+ * at once (the same `deadline < now` rule). A KST date lasts until that day ends, so today passes.
+ * Creating, editing and reopening share it (#140).
+ */
+function assertDeadlineNotPast(deadline: Date, now: Date) {
+  if (deadline < now) throw invalidField('deadline', 'TOO_SMALL', DEADLINE_PAST);
+}
+
 /** `GET /api/projects`. **Writes rows**: the lifecycle sweep runs first. */
 export async function listProjects(query: ProjectListQuery) {
   await closeExpiredOpenProjects();
@@ -128,6 +139,7 @@ export async function listProjects(query: ProjectListQuery) {
 export async function registerProject(clientId: string, input: ProjectCreateInput, now: Date) {
   const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = input;
   const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? now;
+  assertDeadlineNotPast(deadline, now);
   validateRecruitmentSchedule(parsedRecruitmentStartDate, deadline);
 
   return prisma.project.create({
@@ -216,6 +228,7 @@ export async function editProject(projectId: string, clientId: string, input: Pr
       const parsedDeadline: Date = deadline ?? current.deadline;
       const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? current.recruitmentStartDate ?? now;
 
+      if (deadline !== undefined) assertDeadlineNotPast(deadline, now);
       validateRecruitmentSchedule(
         parsedRecruitmentStartDate,
         parsedDeadline,
@@ -303,7 +316,6 @@ const validTransitions: ProjectStatusTransitions = {
 };
 
 const REOPEN_DEADLINE_REQUIRED = 'Deadline is required to reopen recruitment';
-const REOPEN_DEADLINE_PAST = 'Deadline must not be in the past';
 const DEADLINE_ONLY_ON_REOPEN = 'Deadline can only be set when reopening recruitment';
 const REOPEN_WITH_CONTRACT = 'Cannot reopen recruitment while the project has a contract';
 
@@ -336,8 +348,7 @@ export async function changeProjectStatus(projectId: string, clientId: string, i
   }
   if (reopening) {
     if (deadline === undefined) throw invalidField('deadline', 'REQUIRED', REOPEN_DEADLINE_REQUIRED);
-    // The lifecycle sweep would close it again at once (the same `deadline < now` rule).
-    if (deadline < now) throw invalidField('deadline', 'TOO_SMALL', REOPEN_DEADLINE_PAST);
+    assertDeadlineNotPast(deadline, now);
     // The schedule every other deadline write keeps: a project closed while still UPCOMING may
     // start recruiting later than the new deadline.
     if (project.recruitmentStartDate) validateRecruitmentSchedule(project.recruitmentStartDate, deadline);

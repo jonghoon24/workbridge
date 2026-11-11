@@ -32,6 +32,7 @@ const PROJECT_NOT_FOUND = cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로
 /** Public reads also hide a project whose client is soft-deleted. */
 const PUBLIC_PROJECT_NOT_FOUND = cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트');
 const projectId = pathParams({ id: '프로젝트 ID' });
+const DEADLINE_PAST = '`deadline` `TOO_SMALL` — 마감일이 이미 지남(오늘 KST 날짜는 됨)';
 const SCHEDULE = '`deadline` `CONFLICT` — 모집 시작일이 마감일보다 늦음';
 
 /** Rule 7: the read path closes what the scheduler may not have yet. */
@@ -66,7 +67,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { body: jsonBody(projectCreateBody) },
     responses: {
       201: created(project),
-      ...errors(invalid(SCHEDULE), ACTIVE_USER, role('CLIENT'), COMPLETE_PROFILE),
+      ...errors(invalid(DEADLINE_PAST, SCHEDULE), ACTIVE_USER, role('CLIENT'), COMPLETE_PROFILE),
     },
   });
 
@@ -137,6 +138,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
       200: ok(project, '수정된 프로젝트'),
       ...errors(
         invalid(
+          '`deadline` `TOO_SMALL` — 보낸 마감일이 이미 지남(오늘 KST 날짜는 됨)',
           '`deadline` `CONFLICT` — 모집 시작일이 마감일보다 늦음(`deadline`을 보냈으면)',
           '`recruitmentStartDate` `CONFLICT` — `recruitmentStartDate`만 보냈는데 저장된 마감일보다 늦음',
         ),
