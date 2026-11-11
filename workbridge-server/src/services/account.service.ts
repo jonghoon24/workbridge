@@ -146,9 +146,10 @@ function isDeadlock(err: unknown): boolean {
  *    concurrent accept either finishes first (and this sees its contract: 409) or finds its
  *    application gone (404). Never a contract with a withdrawn user.
  * 2. Refuses with 409 while a contract is unfinished or money is still owed (`countBlockers`).
- * 3. Closes what is not a transaction yet: the client's contract-less projects are deleted and
- *    their pending applications rejected (applicants are told, like a manual close); the
- *    freelancer's undecided applications are withdrawn.
+ * 3. Closes what is not a transaction yet: the client's projects without a live contract stop
+ *    recruiting — their pending applications are rejected (applicants are told, like a manual
+ *    close); those without any contract are deleted, those with only cancelled ones are closed and
+ *    kept as the freelancer's record. The freelancer's undecided applications are withdrawn.
  * 4. Deletes the personal data (portfolio, careers, payout account, bookmarks, inbox, notification
  *    settings), blanks the email records, scrubs the user row and soft-deletes it, and enqueues
  *    the deletion of the public images. Transaction records stay.
@@ -194,24 +195,37 @@ async function withdrawInTransaction(tx: PrismaTransactionClient, userId: string
   // 2. Nothing may be left in progress or owed.
   if (isBlocked(await countBlockers(tx, userId))) throw new AppError(WITHDRAWAL_BLOCKED, 409);
 
-  // 3a. The client's projects that never reached a contract: deleted; their pending applicants are
-  // told the recruitment closed (the manual close's wording) and their applications rejected.
-  // Projects with a (completed) contract stay: they are the counterpart's contract record.
-  const openProjects = await tx.project.findMany({
-    where: { id: { in: projectIds }, contract: { is: null } },
-    select: { id: true, title: true },
+  // 3a. The client's projects with no live contract (none at all, or only cancelled ones): their
+  // pending applicants are told the recruitment closed (the manual close's wording) and their
+  // applications rejected. A project without any contract is deleted. One whose contracts were all
+  // cancelled stays, closed: the cancelled contract and its conversation are the freelancer's record
+  // (docs/domain/accounts.md "막지 않고 정리하는 것"). Projects with a completed contract stay as
+  // they are, for the same reason.
+  const recruiting = await tx.project.findMany({
+    where: { id: { in: projectIds }, contracts: { none: { status: { not: 'CANCELLED' } } } },
+    select: { id: true, title: true, _count: { select: { contracts: true } } },
   });
-  const openProjectIds = openProjects.map((p) => p.id);
+  const recruitingIds = recruiting.map((p) => p.id);
   const pending = await tx.application.findMany({
-    where: { projectId: { in: openProjectIds }, status: 'PENDING' },
+    where: { projectId: { in: recruitingIds }, status: 'PENDING' },
     select: { projectId: true, freelancer: { select: { id: true, deletedAt: true } } },
   });
   await tx.application.updateMany({
-    where: { projectId: { in: openProjectIds }, status: 'PENDING' },
+    where: { projectId: { in: recruitingIds }, status: 'PENDING' },
     data: { status: 'REJECTED' },
   });
-  await tx.project.updateMany({ where: { id: { in: openProjectIds } }, data: { deletedAt: now } });
-  for (const project of openProjects) {
+  await tx.project.updateMany({
+    where: { id: { in: recruiting.filter((p) => p._count.contracts === 0).map((p) => p.id) } },
+    data: { deletedAt: now },
+  });
+  await tx.project.updateMany({
+    where: {
+      id: { in: recruiting.filter((p) => p._count.contracts > 0).map((p) => p.id) },
+      status: { in: ['UPCOMING', 'OPEN'] },
+    },
+    data: { status: 'CLOSED' },
+  });
+  for (const project of recruiting) {
     const applicants = pending.filter((a) => a.projectId === project.id).map((a) => a.freelancer);
     await notifyRecipients(tx, applicants, {
       type: 'PROJECT_STATUS_CHANGED',

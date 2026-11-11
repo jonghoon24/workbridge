@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { completeContract, getContract, signContract } from '../controllers/contracts.controller';
+import { completeContract, getContract, postCancelContract, signContract } from '../controllers/contracts.controller';
 import { getMyContracts } from '../controllers/contractList.controller';
 import { getConversationOfContract } from '../controllers/conversations.controller';
 import { getContractMilestones, putContractMilestones } from '../controllers/milestones.controller';
@@ -27,5 +27,6 @@ router.get('/:id/conversation', authenticate, requireActiveUser, getConversation
 router.get('/:id', authenticate, getContract);
 router.patch('/:id', authenticate, completeContract);
 router.post('/:id/sign', authenticate, requireActiveUser, signContract);
+router.post('/:id/cancel', authenticate, requireActiveUser, postCancelContract);
 
 export default router;

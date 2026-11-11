@@ -143,6 +143,34 @@ describe('canSend, closedReason and closesAt', () => {
     });
   });
 
+  it('a CANCELLED contract follows the same window, from cancelledAt', async () => {
+    const justInside = new Date(Date.now() - 30 * DAY_MS + HOUR_MS);
+    const { client, conversation } = await makeContractScenario({
+      contract: { status: 'CANCELLED', cancelledAt: justInside, cancelledBy: 'FREELANCER' },
+    });
+
+    const res = await getConversation(client, conversation.id);
+
+    expect(res.body.conversation).toMatchObject({
+      canSend: true,
+      closedReason: null,
+      closesAt: new Date(justInside.getTime() + 30 * DAY_MS).toISOString(),
+      contract: { status: 'CANCELLED' },
+    });
+  });
+
+  it('closes a CANCELLED contract\'s conversation once the window has passed, still readable', async () => {
+    const cancelledAt = new Date(Date.now() - 30 * DAY_MS - 1000);
+    const { client, conversation } = await makeContractScenario({
+      contract: { status: 'CANCELLED', cancelledAt, cancelledBy: 'CLIENT' },
+    });
+
+    const res = await getConversation(client, conversation.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.conversation).toMatchObject({ canSend: false, closedReason: 'CONTRACT_CLOSED' });
+  });
+
   it('a soft-deleted counterpart closes posting, and stays visible as stored', async () => {
     const { client, freelancer, conversation } = await makeContractScenario({ contract: { status: 'ACTIVE' } });
     await softDelete(freelancer.id);

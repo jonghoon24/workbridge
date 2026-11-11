@@ -649,6 +649,22 @@ const guardedMutations: Mutation[] = [
     },
   },
   {
+    label: 'POST /api/contracts/:id/cancel',
+    async setup() {
+      const { freelancer, contract } = await makeContractScenario();
+      return {
+        actor: freelancer,
+        send: (token) => bearer(token).post(`/api/contracts/${contract.id}/cancel`),
+        async assertUnchanged() {
+          const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+          expect(stored.status).toBe('PENDING');
+          expect(stored.cancelledAt).toBeNull();
+          expect(await prisma.notification.count()).toBe(0);
+        },
+      };
+    },
+  },
+  {
     label: 'POST /api/payments',
     async setup() {
       const { client, milestone } = await activeContract();
@@ -1163,6 +1179,17 @@ describe('a contract whose project is soft-deleted', () => {
     const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(stored.freelancerSigned).toBe(false);
     expect(stored.status).toBe('PENDING');
+    expect(await prisma.notification.count({ where: { userId: { in: [client.id, freelancer.id] } } })).toBe(0);
+  });
+
+  it('cannot be cancelled: POST /api/contracts/:id/cancel is 404 and writes nothing', async () => {
+    const { client, freelancer, contract } = await deletedProjectPendingContract();
+
+    const res = await authed(client).post(`/api/contracts/${contract.id}/cancel`);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('PENDING');
     expect(await prisma.notification.count({ where: { userId: { in: [client.id, freelancer.id] } } })).toBe(0);
   });
 

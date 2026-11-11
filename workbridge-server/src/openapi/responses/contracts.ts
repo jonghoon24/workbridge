@@ -30,6 +30,8 @@ export const contractFields = {
   freelancerSigned: z.boolean(),
   status: contractStatusEnum,
   completedAt: dateTime.nullable(),
+  cancelledAt: dateTime.nullable().openapi({ description: '서명 전에 철회된 시각. `CANCELLED`일 때만' }),
+  cancelledBy: roleEnum.nullable().openapi({ description: '철회한 당사자. `CANCELLED`일 때만' }),
   createdAt: dateTime,
 };
 
@@ -156,6 +158,9 @@ export const contractDetail = z
       description: z.string(),
       category: z.string(),
       status: projectStatusEnum,
+      hasLiveContract: z.boolean().openapi({
+        description: '이 프로젝트에 철회되지 않은 계약이 있는지(이 계약 포함). 없고 모집 마감이면 의뢰인이 다시 모집할 수 있다',
+      }),
     }),
     client: z.object({
       id,
@@ -186,6 +191,8 @@ export const contractList = z.object({
         startDate: dateTime,
         endDate: dateTime,
         completedAt: dateTime.nullable(),
+        cancelledAt: contractFields.cancelledAt,
+        cancelledBy: contractFields.cancelledBy,
         clientSigned: z.boolean(),
         freelancerSigned: z.boolean(),
         createdAt: dateTime,

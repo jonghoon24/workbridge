@@ -369,11 +369,12 @@ describe('POST /api/reviews', () => {
     expect(await prisma.review.count()).toBe(0);
   });
 
-  it('treats a completed contract whose project the client deleted as not found', async () => {
+  it('treats a completed contract whose project was deleted as not found', async () => {
     const { contract, project, client, freelancer } = await completedScenario();
-    // A completed contract does not block deletion, so the client can remove the project.
-    const deleted = await authed(client).delete(`/api/projects/${project.id}`);
-    expect(deleted.status).toBe(200);
+    // The client cannot delete a project with a contract (the counterpart's record); an operator's
+    // soft delete still can, and the contract goes with it.
+    expect((await authed(client).delete(`/api/projects/${project.id}`)).status).toBe(409);
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
 
     const res = await authed(freelancer).post('/api/reviews').send({
       contractId: contract.id,

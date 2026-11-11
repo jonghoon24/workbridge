@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { ACCOUNT_INACTIVE } from '../lib/locks';
+import { isFromEndedRound, latestCancelledContractAt } from '../lib/reapplication';
 import { enqueueJob } from '../jobs/queue';
 import {
   closeExpiredOpenProjects,
@@ -170,8 +171,9 @@ export async function getPublicProfile(userId: string) {
 }
 
 /**
- * `GET /me/applications`, newest first. **Writes rows** before reading: the lazy lifecycle sweep
- * closes expired open projects and rejects this freelancer's pending applications to closed ones.
+ * `GET /me/applications`, newest first, each with `canReapply`. **Writes rows** before reading:
+ * the lazy lifecycle sweep closes expired open projects and rejects this freelancer's pending
+ * applications to closed ones.
  *
  * An application to a soft-deleted project is left out, as the project and its contract are gone
  * (docs/domain/README.md "소프트 삭제"). One to a project whose client is soft-deleted is left out
@@ -182,7 +184,7 @@ export async function listMyApplications(freelancerId: string) {
   await closeExpiredOpenProjects();
   await rejectPendingApplicationsForClosedProjects({ freelancerId });
 
-  return prisma.application.findMany({
+  const applications = await prisma.application.findMany({
     where: {
       freelancerId,
       project: { deletedAt: null },
@@ -204,6 +206,16 @@ export async function listMyApplications(freelancerId: string) {
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  // Whether each one may be submitted again now: the project recruits again and this application
+  // was rejected in the round that ended with its cancelled contract (`lib/reapplication.ts`).
+  // Only a rejected application to an open project can qualify, so only those projects are looked up.
+  const mayReapply = (a: (typeof applications)[number]) => a.project.status === 'OPEN' && a.status === 'REJECTED';
+  const cutoffs = await latestCancelledContractAt([...new Set(applications.filter(mayReapply).map((a) => a.projectId))]);
+  return applications.map((application) => ({
+    ...application,
+    canReapply: mayReapply(application) && isFromEndedRound(application, cutoffs.get(application.projectId)),
+  }));
 }
 
 /** `GET /me/bookmarks`: the bookmarked projects, newest bookmark first. Writes nothing. */

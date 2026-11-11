@@ -15,7 +15,7 @@ import ProjectCardGrid from '@/components/projects/ProjectCardGrid';
 import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
 import { getProfileCompletionMessage, isProfileComplete } from '@/lib/profileCompletion';
 import { toUserMessage } from '@/lib/errorMessages';
-import { formatDate } from '@/lib/format';
+import { formatDate, kstToday, toKstDateInput } from '@/lib/format';
 import { BookmarkIcon } from '@/components/ui/Icons';
 
 const RECOMMENDATION_LIMIT = 3;
@@ -41,6 +41,14 @@ export default function ProjectDetailPage() {
   // 프로젝트 id와 묶어 두어 다른 프로젝트로 옮겨 갈 때 이전 결과를 쓰지 않는다.
   const [applicationLookup, setApplicationLookup] = useState({ projectId: null, status: 'loading', application: null });
   const [applicationRetry, setApplicationRetry] = useState(0);
+  // 의뢰인: 이 프로젝트의 계약 현황(지원자 목록의 계약 상태로 판단). 계약이 하나라도 있으면 상대방의 기록이라
+  // 삭제할 수 없고(서버 409), 철회되지 않은 계약(서명 대기 등)이 있으면 다시 모집할 수 없다(서버 409).
+  // null은 아직 모름 — 그동안은 두 버튼을 보여 주지 않는다.
+  const [contractState, setContractState] = useState(null);
+  const [reopenModal, setReopenModal] = useState(false);
+  const [reopenDeadline, setReopenDeadline] = useState('');
+  const [reopenError, setReopenError] = useState('');
+  const [reopening, setReopening] = useState(false);
   const applicationCheck = applicationLookup.projectId === id ? applicationLookup.status : 'loading';
   const myApplication = applicationLookup.projectId === id ? applicationLookup.application : null;
 
@@ -145,6 +153,67 @@ export default function ProjectDetailPage() {
     };
   }, [project?.id, project?.category]);
 
+  const ownsProject = Boolean(project && user?.id === project.clientId);
+  // 다시 모집할 마감일의 하한: 오늘과 모집 시작일 중 늦은 날(서버도 같은 규칙으로 400).
+  const reopenStartDate = project?.recruitmentStartDate ? toKstDateInput(project.recruitmentStartDate) : '';
+  const reopenMinDate = reopenStartDate > kstToday() ? reopenStartDate : kstToday();
+
+  useEffect(() => {
+    if (!ownsProject) {
+      setContractState(null);
+      return undefined;
+    }
+    let ignore = false;
+    api.get(`/api/projects/${id}/applications`)
+      .then(({ data }) => {
+        if (ignore) return;
+        const contracts = data.filter((app) => app.contract).map((app) => app.contract);
+        setContractState({
+          hasAny: contracts.length > 0,
+          hasLive: contracts.some((contract) => contract.status !== 'CANCELLED'),
+        });
+      })
+      .catch(() => {
+        if (!ignore) setContractState(null);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [id, ownsProject, project?.status]);
+
+  function openReopen() {
+    setReopenDeadline('');
+    setReopenError('');
+    setReopenModal(true);
+  }
+
+  async function handleReopen(e) {
+    e.preventDefault();
+    if (!reopenDeadline) {
+      setReopenError('새 마감일을 선택해 주세요.');
+      return;
+    }
+    if (reopenDeadline < kstToday()) {
+      setReopenError('마감일은 오늘 이후로 선택해 주세요.');
+      return;
+    }
+    if (reopenStartDate && reopenDeadline < reopenStartDate) {
+      setReopenError(`마감일은 모집 시작일(${formatDate(project.recruitmentStartDate)}) 이후로 선택해 주세요.`);
+      return;
+    }
+    setReopening(true);
+    setReopenError('');
+    try {
+      const { data } = await api.patch(`/api/projects/${id}/status`, { status: 'OPEN', deadline: reopenDeadline });
+      setProject((prev) => ({ ...prev, status: data.status, deadline: data.deadline }));
+      setReopenModal(false);
+    } catch (err) {
+      setReopenError(toUserMessage(err, '다시 모집하지 못했습니다.'));
+    } finally {
+      setReopening(false);
+    }
+  }
+
   async function handleApply(e) {
     e.preventDefault();
     setApplyError('');
@@ -183,6 +252,15 @@ export default function ProjectDetailPage() {
   }
 
   async function handleOpenApply() {
+    // 다시 지원하면 이전 지원서 내용을 채워 둔다(고쳐서 보낸다).
+    if (myApplication?.canReapply) {
+      setApplyForm({
+        coverLetter: myApplication.coverLetter || '',
+        expectedRate: myApplication.expectedRate ? String(myApplication.expectedRate) : '',
+        expectedDuration: myApplication.expectedDuration || '',
+      });
+    }
+    setApplyError('');
     setProfileChecking(true);
     try {
       const { data } = await api.get('/api/users/me');
@@ -254,9 +332,18 @@ export default function ProjectDetailPage() {
   const isOwner = user?.id === project.clientId;
   const isFreelancer = user?.role === 'FREELANCER';
   const isGuest = !user;
-  const canApply = isFreelancer && project.status === 'OPEN' && applicationCheck === 'done' && !myApplication;
+  // 철회된 계약으로 끝난 이전 모집에서 거절된 지원자는 다시 열린 모집에 다시 지원할 수 있다(서버가 canReapply로 알려 준다).
+  const canReapply = Boolean(myApplication?.canReapply);
+  const canApply = isFreelancer && project.status === 'OPEN' && applicationCheck === 'done' && (!myApplication || canReapply);
+  const canReopen = isOwner && project.status === 'CLOSED' && contractState?.hasLive === false;
+  // 계약이 하나라도 있으면 삭제할 수 없다(상대방의 기록). 확인 전에는 버튼을 막아 둔다.
+  const canDelete = contractState?.hasAny === false;
+  const deleteBlocked = contractState?.hasAny === true;
+  // 철회된 계약의 당사자였던 프리랜서는 같은 프로젝트에 다시 지원할 수 없다. 이유를 알려 준다.
+  const wasCancelledParty = myApplication?.contract?.status === 'CANCELLED';
   const loginHref = `/login?redirect=${encodeURIComponent(`/projects/${id}`)}`;
   const canClose = isOwner && project.status === 'OPEN';
+  const ownerActionCount = 2 + (canClose ? 1 : 0) + (canReopen ? 1 : 0) + (canDelete ? 1 : 0);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -289,10 +376,15 @@ export default function ProjectDetailPage() {
               </Link>
             </>
           )}
-          {isFreelancer && myApplication && (
+          {isFreelancer && myApplication && !canReapply && (
             <Link href="/my/applications">
               <Button variant="secondary">지원 완료 · 내 지원 현황</Button>
             </Link>
+          )}
+          {isFreelancer && wasCancelledParty && project.status === 'OPEN' && (
+            <p className="w-full text-sm text-gray-500 sm:text-right">
+              철회된 계약의 당사자는 같은 프로젝트에 다시 지원할 수 없습니다.
+            </p>
           )}
           {isFreelancer && applicationCheck === 'error' && (
             <>
@@ -303,21 +395,32 @@ export default function ProjectDetailPage() {
             </>
           )}
           {isOwner && (
-            <>
-              <Link href={`/projects/${id}/edit`}>
-                <Button variant="secondary" size="sm">수정</Button>
+            // 모바일에서는 버튼 수에 맞춘 격자(3개면 3열, 그 밖에는 2열)로 둬서 버튼 하나만 다음 줄로 떨어지지 않게 한다.
+            <div className={`grid w-full ${ownerActionCount === 3 ? 'grid-cols-3' : 'grid-cols-2'} gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end`}>
+              <Link href={`/projects/${id}/edit`} className="contents sm:block">
+                <Button variant="secondary" size="sm" className="w-full">수정</Button>
               </Link>
-              <Link href={`/projects/${id}/applications`}>
-                <Button variant="secondary" size="sm">지원자 관리</Button>
+              <Link href={`/projects/${id}/applications`} className="contents sm:block">
+                <Button variant="secondary" size="sm" className="w-full">지원자 관리</Button>
               </Link>
               {canClose && (
                 <Button variant="secondary" size="sm" onClick={handleCloseProject}>모집 마감</Button>
               )}
-              <Button variant="dangerText" size="sm" onClick={handleDelete}>삭제</Button>
-            </>
+              {canReopen && (
+                <Button variant="secondary" size="sm" onClick={openReopen}>다시 모집하기</Button>
+              )}
+              {canDelete && (
+                <Button variant="dangerText" size="sm" onClick={handleDelete}>삭제</Button>
+              )}
+            </div>
+          )}
+          {isOwner && deleteBlocked && (
+            <p className="w-full text-xs text-gray-500 sm:text-right">
+              계약 기록이 있는 프로젝트는 상대방의 기록이라 삭제할 수 없습니다.
+            </p>
           )}
           {canApply && (
-            <Button onClick={handleOpenApply} loading={profileChecking}>지원하기</Button>
+            <Button onClick={handleOpenApply} loading={profileChecking}>{canReapply ? '다시 지원하기' : '지원하기'}</Button>
           )}
         </div>
       </div>
@@ -418,7 +521,35 @@ export default function ProjectDetailPage() {
       )}
 
       {/* Apply Modal */}
-      <Modal isOpen={applyModal} onClose={() => setApplyModal(false)} title="프로젝트 지원">
+      <Modal isOpen={reopenModal} onClose={() => setReopenModal(false)} title="다시 모집하기">
+        <form noValidate onSubmit={handleReopen} className="space-y-4">
+          <p className="text-sm text-gray-600">
+            새 마감일까지 다시 지원을 받습니다. 이전 모집에서 거절된 지원자도 다시 지원할 수 있고, 따로 알림은 보내지 않습니다.
+          </p>
+          {reopenError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              {reopenError}
+            </div>
+          )}
+          {reopenStartDate > kstToday() && !reopenError && (
+            <p className="text-sm text-gray-600">모집 시작일({formatDate(project.recruitmentStartDate)}) 이후로 선택해 주세요.</p>
+          )}
+          <Input
+            label="새 마감일"
+            type="date"
+            required
+            min={reopenMinDate}
+            value={reopenDeadline}
+            onChange={(e) => setReopenDeadline(e.target.value)}
+          />
+          <div className="flex gap-3 justify-end">
+            <Button type="button" variant="secondary" onClick={() => setReopenModal(false)}>취소</Button>
+            <Button type="submit" loading={reopening}>다시 모집하기</Button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={applyModal} onClose={() => setApplyModal(false)} title={canReapply ? '다시 지원하기' : '프로젝트 지원'}>
         {/* noValidate: 브라우저 기본 검증 말풍선 대신 handleApply의 한국어 안내를 보여 준다. */}
         <form noValidate onSubmit={handleApply} className="space-y-4">
           {applyError && (
@@ -457,7 +588,7 @@ export default function ProjectDetailPage() {
           />
           <div className="flex gap-3 justify-end">
             <Button type="button" variant="secondary" onClick={() => setApplyModal(false)}>취소</Button>
-            <Button type="submit" loading={applyLoading}>지원하기</Button>
+            <Button type="submit" loading={applyLoading}>{canReapply ? '다시 지원하기' : '지원하기'}</Button>
           </div>
         </form>
       </Modal>

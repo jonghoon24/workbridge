@@ -1,7 +1,7 @@
 {
   "src/controllers/applications.controller.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 5
+      "count": 1
     }
   },
   "src/controllers/projects.controller.ts": {
@@ -9,10 +9,7 @@
       "count": 1
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 17
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 1
+      "count": 16
     }
   },
   "src/lib/skills.ts": {

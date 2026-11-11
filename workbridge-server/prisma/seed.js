@@ -158,6 +158,11 @@ const TEMPLATES = {
     message: `'${v.projectTitle}' 계약의 모든 마일스톤이 승인되었습니다. 리뷰를 남겨 주세요.`,
     href: `/contracts/${v.contractId}#review`,
   }),
+  CONTRACT_CANCELLED: (v) => ({
+    title: '계약이 철회되었습니다',
+    message: `${v.cancelledBy === 'CLIENT' ? '의뢰인이' : '프리랜서가'} '${v.projectTitle}' 계약을 서명 전에 철회했습니다.`,
+    href: `/contracts/${v.contractId}`,
+  }),
   SETTLEMENT_SCHEDULED: (v) => ({
     title: '정산이 예정되었습니다',
     message: `${won(v.amount)} 정산이 예정되었습니다.`,
@@ -199,6 +204,7 @@ const SYSTEM_BODIES = {
   MILESTONE_APPROVED: (v) => `${msTitle(v)} 결과물이 승인되었습니다.`,
   MILESTONE_AUTO_APPROVED: (v) => `${msTitle(v)} 결과물이 검수 기한이 지나 자동 승인되었습니다.`,
   CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨 주세요.',
+  CONTRACT_CANCELLED: (v) => `${v.cancelledBy === 'CLIENT' ? '의뢰인이' : '프리랜서가'} 서명 전에 계약을 철회했습니다.`,
 };
 
 // Email rendering (src/lib/notifications/templates.ts `renderEmail`). `CLIENT_URL` is one origin
@@ -872,6 +878,22 @@ async function main() {
     },
   });
 
+  // 서명 전 계약이 철회된 프로젝트. 의뢰인이 아직 다시 모집하지 않아 모집 마감 상태다.
+  const project17 = await prisma.project.create({
+    data: {
+      title: '매장 재고 조회 모바일 앱',
+      description:
+        '매장 직원이 바코드를 찍어 다른 매장의 재고를 바로 확인하는 사내용 앱입니다. 기존 재고 API를 연동하고, 매장별 재고 지도와 입고 예정 알림이 필요합니다.',
+      category: '모바일 앱',
+      budget: 4800000,
+      deadline: endOfKstDay(later(9 * DAY)),
+      requiredSkills: ['React Native', 'TypeScript', 'Firebase'],
+      status: 'CLOSED',
+      clientId: client2.id,
+      createdAt: ago(10 * DAY),
+    },
+  });
+
   // 의뢰인이 직접 취소한 프로젝트
   await prisma.project.create({
     data: {
@@ -1349,6 +1371,48 @@ async function main() {
     { key: 'kim2', from: client1, at: plus(plan9At, 10 * MINUTE), body: '마일스톤을 설계·프로토타입 / 개발·스토어 배포 2단계로 나눠 두었습니다. 확인하시고 괜찮으면 서명 부탁드려요.' },
   ], { [client1.id]: 'yoon1', [freelancer4.id]: 'kim1' });
 
+  // ─── project17: 서명 전에 철회된 계약 (이수현 ↔ 윤서아) ─
+  // 의뢰인이 서명한 뒤 프리랜서가 철회했다. 수락 때 거절된 정하은은 다시 모집하면 다시 지원할 수 있다.
+  const app17 = await prisma.application.create({
+    data: {
+      projectId: project17.id,
+      freelancerId: freelancer4.id,
+      coverLetter: '바코드 스캔과 오프라인 캐시가 들어간 사내 앱을 두 번 만들어 봤습니다. 재고 API 연동부터 맡겠습니다.',
+      expectedRate: 4500000,
+      expectedDuration: '5주',
+      status: 'ACCEPTED',
+      createdAt: ago(8 * DAY),
+    },
+  });
+  const app17Jung = await prisma.application.create({
+    data: {
+      projectId: project17.id,
+      freelancerId: freelancer2.id,
+      coverLetter: '매장 직원이 한 손으로 쓰기 쉬운 화면부터 설계하겠습니다. 재고 지도는 지도 SDK 없이 매장 목록과 거리순 정렬로 가볍게 시작하는 것을 제안합니다.',
+      expectedRate: 4700000,
+      expectedDuration: '6주',
+      status: 'REJECTED',
+      createdAt: ago(7 * DAY),
+    },
+  });
+  const accept17 = ago(4 * DAY);
+  const contract17 = await createContract({ project: project17, application: app17, client: client2, freelancer: freelancer4, acceptedAt: accept17 });
+  await createPlan(contract17, [
+    { title: '전체 작업', amount: 4500000, dueDate: endOfKstDay(plus(accept17, 30 * DAY)) },
+  ], accept17);
+  const cancelled17 = ago(1 * DAY + 2 * HOUR);
+  await prisma.contract.update({
+    where: { id: contract17.id },
+    data: { clientSigned: true, status: 'CANCELLED', cancelledAt: cancelled17, cancelledBy: 'FREELANCER' },
+  });
+  check(app17Jung.createdAt < contract17.createdAt, 'the rejected applicant of project17 belongs to the cancelled round');
+  await seedConversation(contract17, [
+    { system: 'CONTRACT_CREATED', at: accept17 },
+    { key: 'lee1', from: client2, at: plus(accept17, 1 * HOUR), body: '윤서아님, 잘 부탁드립니다. 계약서에 먼저 서명해 두었어요.' },
+    { key: 'yoon1', from: freelancer4, at: plus(cancelled17, -20 * MINUTE), body: '죄송합니다. 진행 중인 다른 계약 일정이 늘어나 이번 프로젝트는 맡기 어렵게 됐습니다. 계약은 철회하겠습니다.' },
+    { system: 'CONTRACT_CANCELLED', at: cancelled17, vars: { cancelledBy: 'FREELANCER' } },
+  ], { [client2.id]: 'yoon1', [freelancer4.id]: 'lee1' });
+
   // ─── project10: 진행 중 (이수현 ↔ 정하은) ─────────────
   // #1 자동 승인(정산 보류: 계좌 없음) / #2 수정 요청 / #3 결제 대기.
   const app10 = await prisma.application.create({
@@ -1595,6 +1659,7 @@ async function main() {
   await notifyRow(client2, 'MILESTONE_AUTO_APPROVED', v(contract10, project10, m10a), autoApproved10, read(autoApproved10));
   await notifyRow(client2, 'MILESTONE_SUBMITTED', v(contract10, project10, m10b), inWeek(1, 4, 15), read(inWeek(1, 4, 15)));
   await notifyRow(client2, 'CONTRACT_COMPLETED', v(contract7, project7), completed7);
+  await notifyRow(client2, 'CONTRACT_CANCELLED', v(contract17, project17, null, { cancelledBy: 'FREELANCER' }), cancelled17);
 
   // 최민호 (의뢰인)
   await notifyRow(client3, 'APPLICATION_CREATED', { applicantName: freelancer1.name, projectTitle: project3.title, projectId: project3.id }, app3Park.createdAt, read(app3Park.createdAt));
@@ -1612,6 +1677,7 @@ async function main() {
 
   // 정하은 (프리랜서)
   await notifyRow(freelancer2, 'APPLICATION_REJECTED', { projectTitle: project8.title }, accept8, read(accept8));
+  await notifyRow(freelancer2, 'APPLICATION_REJECTED', { projectTitle: project17.title }, accept17, read(accept17));
   await notifyRow(freelancer2, 'MILESTONE_AUTO_APPROVED', v(contract10, project10, m10a), autoApproved10, read(autoApproved10));
   await notifyRow(freelancer2, 'SETTLEMENT_SCHEDULED', { settlementId: settlementJung2.id, amount: settlementJung2.netAmount }, settlementJung2.createdAt, read(settlementJung2.createdAt));
   const onHoldNotice10 = await notifyRow(freelancer2, 'SETTLEMENT_ON_HOLD', { amount: settlementJung2.netAmount }, settlementJung2.scheduledPayoutAt);
@@ -1626,6 +1692,7 @@ async function main() {
 
   // 윤서아 (프리랜서)
   await notifyRow(freelancer4, 'APPLICATION_ACCEPTED', v(contract9, project9), accept9);
+  await notifyRow(freelancer4, 'APPLICATION_ACCEPTED', v(contract17, project17), accept17, read(accept17));
 
   // 송민재 (프리랜서)
   await notifyRow(freelancer5, 'MILESTONE_APPROVED', v(contract11, project11, m11a), inWeek(2, 1, 11), read(inWeek(2, 1, 11)));

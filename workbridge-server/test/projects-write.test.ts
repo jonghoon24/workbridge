@@ -75,9 +75,12 @@ const ALLOWED: Array<[ProjectStatus, ProjectStatus]> = [
   ['OPEN', 'CLOSED'],
 ];
 
+/** Reopening takes a deadline and has its own conditions: its own `describe` below. */
+const REOPEN: [ProjectStatus, ProjectStatus] = ['CLOSED', 'OPEN'];
+
 const FORBIDDEN: Array<[ProjectStatus, ProjectStatus]> = ALL_STATUSES.flatMap((from) =>
   ALL_STATUSES
-    .filter((to) => !ALLOWED.some(([f, t]) => f === from && t === to))
+    .filter((to) => ![...ALLOWED, REOPEN].some(([f, t]) => f === from && t === to))
     .map((to) => [from, to] as [ProjectStatus, ProjectStatus]),
 );
 
@@ -1048,6 +1051,170 @@ describe('PATCH /api/projects/:id', () => {
 // DELETE /api/projects/:id
 // ======================================================================================
 
+describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => {
+  /** A CLOSED project of a client, with a contract in `contractStatus` (if any) on an accepted application. */
+  async function closedProject(contractStatus?: 'PENDING' | 'CANCELLED') {
+    const { client, project } = await ownedProject({ status: 'CLOSED', deadline: daysFromNow(-1) });
+    if (contractStatus) {
+      const freelancer = await makeFreelancer();
+      const application = await makeApplication(project.id, freelancer.id, { status: 'ACCEPTED' });
+      await makeContract(
+        { projectId: project.id, applicationId: application.id, clientId: client.id, freelancerId: freelancer.id },
+        { status: contractStatus },
+      );
+    }
+    return { client, project };
+  }
+
+  const futureDate = () => kstDateString(new Date(Date.now() + 14 * DAY_MS));
+
+  it('reopens a project whose contract was cancelled, with the new deadline (end of that KST day)', async () => {
+    const { client, project } = await closedProject('CANCELLED');
+    const deadline = futureDate();
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('OPEN');
+    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(stored.status).toBe('OPEN');
+    expect(stored.deadline).toEqual(kstDateToEndOfDay(deadline));
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('reopens a project that closed without any contract', async () => {
+    const { client, project } = await closedProject();
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: futureDate() });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('OPEN');
+  });
+
+  it('accepts today (KST) as the new deadline: recruitment lasts until the day ends', async () => {
+    const { client, project } = await closedProject('CANCELLED');
+    const today = kstDateString(new Date());
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: today });
+
+    expect(res.status).toBe(200);
+    // The lifecycle sweep that a later read runs leaves it open.
+    const list = await api().get(`/api/projects/${project.id}`);
+    expect(list.body.status).toBe('OPEN');
+  });
+
+  it('refuses without a deadline with 400 and changes nothing', async () => {
+    const { client, project } = await closedProject('CANCELLED');
+
+    const res = await authed(client).patch(`/api/projects/${project.id}/status`).send({ status: 'OPEN' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'Deadline is required to reopen recruitment' } });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
+  });
+
+  it('refuses a deadline in the past with 400', async () => {
+    const { client, project } = await closedProject('CANCELLED');
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: kstDateString(new Date(Date.now() - DAY_MS)) });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'Deadline must not be in the past' } });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
+  });
+
+  it('refuses a deadline before the recruitment start date with 400 (closed while still upcoming)', async () => {
+    const { client, project } = await ownedProject({
+      status: 'CLOSED',
+      recruitmentStartDate: new Date(Date.now() + 30 * DAY_MS),
+      deadline: new Date(Date.now() + 40 * DAY_MS),
+    });
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: futureDate() });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'recruitmentStartDate cannot be after deadline' } });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
+  });
+
+  it('reopens a project closed before its recruitment started as UPCOMING', async () => {
+    const { client, project } = await ownedProject({
+      status: 'CLOSED',
+      recruitmentStartDate: new Date(Date.now() + 3 * DAY_MS),
+      deadline: new Date(Date.now() + 10 * DAY_MS),
+    });
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: futureDate() });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('UPCOMING');
+  });
+
+  it('refuses an invalid deadline with the validation 400', async () => {
+    const { client, project } = await closedProject('CANCELLED');
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: 'next week' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'deadline: Deadline must be a valid date' } });
+  });
+
+  it('refuses while a contract awaits signatures with 409, leaving the project and the deadline alone', async () => {
+    const { client, project } = await closedProject('PENDING');
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: futureDate() });
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'Cannot reopen recruitment while the project has a contract' } });
+    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(stored.status).toBe('CLOSED');
+    expect(stored.deadline).toEqual(project.deadline);
+  });
+
+  it('refuses a deadline on any other transition with 400', async () => {
+    const { client, project } = await ownedProject({ status: 'OPEN' });
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'CLOSED', deadline: futureDate() });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'Deadline can only be set when reopening recruitment' } });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('OPEN');
+  });
+
+  it('takes new applications once reopened', async () => {
+    const { client, project } = await closedProject('CANCELLED');
+    await authed(client).patch(`/api/projects/${project.id}/status`).send({ status: 'OPEN', deadline: futureDate() });
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer).post(`/api/projects/${project.id}/applications`).send({
+      coverLetter: '다시 모집한다고 해서 지원합니다.',
+      expectedRate: 3_000_000,
+      expectedDuration: '4주',
+    });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('PENDING');
+  });
+});
+
 describe('DELETE /api/projects/:id', () => {
   it('soft-deletes: sets deletedAt and keeps the row', async () => {
     const { client, project } = await ownedProject();
@@ -1092,15 +1259,35 @@ describe('DELETE /api/projects/:id', () => {
     expect(stored).not.toBeNull();
   });
 
-  it('allows deletion when the contract is COMPLETED', async () => {
-    const { client, project } = await projectWithContract('COMPLETED');
+  // A completed or cancelled contract is the freelancer's record: deleting the project would make
+  // their contract, its link in their notifications and its conversation all 404.
+  it.each(['COMPLETED', 'CANCELLED'] as const)(
+    'refuses to delete a project whose contract is %s (the counterpart\'s record) and leaves it visible to the freelancer',
+    async (status) => {
+      const { client, freelancer, project, contract } = await projectWithContract(status);
+
+      const res = await authed(client).delete(`/api/projects/${project.id}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: { message: 'Cannot delete a project with a contract record' } });
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).deletedAt).toBeNull();
+      expect((await authed(freelancer).get(`/api/contracts/${contract.id}`)).status).toBe(200);
+    },
+  );
+
+  it('reports an unfinished contract first when the project also has a cancelled one', async () => {
+    const { client, project } = await projectWithContract('CANCELLED');
+    const freelancer = await makeFreelancer();
+    const application = await makeApplication(project.id, freelancer.id, { status: 'ACCEPTED' });
+    await makeContract(
+      { projectId: project.id, applicationId: application.id, clientId: client.id, freelancerId: freelancer.id },
+      { status: 'PENDING' },
+    );
 
     const res = await authed(client).delete(`/api/projects/${project.id}`);
 
-    expect(res.status).toBe(200);
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(stored.deletedAt).toBeInstanceOf(Date);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'Cannot delete a project with an unfinished contract' } });
   });
 
   it.each(['PENDING', 'ACTIVE'] as const)(
@@ -1132,7 +1319,7 @@ describe('DELETE /api/projects/:id', () => {
     expect(res.body).toEqual({ error: { message: 'Not authorized' } });
   });
 
-  async function projectWithContract(status: 'PENDING' | 'ACTIVE' | 'COMPLETED') {
+  async function projectWithContract(status: 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED') {
     const client = await makeClient();
     const freelancer = await makeFreelancer();
     const project = await makeProject(client.id, { status: 'CLOSED' });
@@ -1304,7 +1491,9 @@ describe('PATCH /api/projects/:id/status', () => {
       ).toBe('OPEN');
     });
 
-    it('notifies every distinct applicant, including ones already decided', async () => {
+    // An applicant decided earlier was told then (or, rejected in a round that ended with a
+    // cancelled contract, already knows): closing a reopened project must not tell them again.
+    it('notifies only the applicants whose applications were still pending', async () => {
       const { client, project } = await ownedProject({ status: 'OPEN' });
       const pendingFreelancer = await makeFreelancer();
       const rejectedFreelancer = await makeFreelancer();
@@ -1320,12 +1509,24 @@ describe('PATCH /api/projects/:id/status', () => {
       expect(res.status).toBe(200);
 
       const notifications = await prisma.notification.findMany();
-      expect(notifications.map((n) => n.userId).sort()).toEqual(
-        [pendingFreelancer.id, rejectedFreelancer.id].sort(),
-      );
+      expect(notifications.map((n) => n.userId)).toEqual([pendingFreelancer.id]);
       expect(
         (await prisma.application.findUniqueOrThrow({ where: { id: alreadyRejected.id } })).status,
       ).toBe('REJECTED');
+    });
+
+    it('does not notify a soft-deleted applicant', async () => {
+      const { client, project } = await ownedProject({ status: 'OPEN' });
+      const deleted = await makeFreelancer({ deletedAt: new Date() });
+      const application = await makeApplication(project.id, deleted.id);
+
+      const res = await authed(client)
+        .patch(`/api/projects/${project.id}/status`)
+        .send({ status: 'CLOSED' });
+
+      expect(res.status).toBe(200);
+      expect(await prisma.notification.count()).toBe(0);
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: application.id } })).status).toBe('REJECTED');
     });
 
     it('writes no notifications when the project has no applications', async () => {

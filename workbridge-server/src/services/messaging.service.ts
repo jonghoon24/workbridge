@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import type { Contract, MessageKind } from '@prisma/client';
+import type { Contract, MessageKind, Role } from '@prisma/client';
 
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
@@ -39,7 +39,7 @@ import type { MessageListQuery } from '../schemas/conversations';
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Posting stays open this long after completion — exact hours, not KST days. */
+/** Posting stays open this long after the contract ends (completed or cancelled) — exact hours, not KST days. */
 export const POST_COMPLETION_WINDOW_MS = 30 * DAY_MS;
 /** A sender may delete a message strictly less than this long after `createdAt`. */
 export const DELETE_WINDOW_MS = 5 * MINUTE_MS;
@@ -65,7 +65,8 @@ export type MessageSystemEvent =
   | 'MILESTONE_REVISION_REQUESTED'
   | 'MILESTONE_APPROVED'
   | 'MILESTONE_AUTO_APPROVED'
-  | 'CONTRACT_COMPLETED';
+  | 'CONTRACT_COMPLETED'
+  | 'CONTRACT_CANCELLED';
 
 export interface SystemMessageVars {
   /** MILESTONE_PLAN_UPDATED: whether a signature was cleared by this replacement. */
@@ -73,6 +74,8 @@ export interface SystemMessageVars {
   milestoneTitle?: string;
   round?: number;
   reason?: string;
+  /** CONTRACT_CANCELLED: the party who cancelled. */
+  cancelledBy?: Role;
 }
 
 /**
@@ -92,6 +95,7 @@ const SYSTEM_BODIES: Record<MessageSystemEvent, (v: SystemMessageVars) => string
   MILESTONE_APPROVED: (v) => `${ms(v)} 결과물이 승인되었습니다.`,
   MILESTONE_AUTO_APPROVED: (v) => `${ms(v)} 결과물이 검수 기한이 지나 자동 승인되었습니다.`,
   CONTRACT_COMPLETED: () => '모든 마일스톤이 승인되어 계약이 완료되었습니다. 서로 리뷰를 남겨 주세요.',
+  CONTRACT_CANCELLED: (v) => `${v.cancelledBy === 'CLIENT' ? '의뢰인이' : '프리랜서가'} 서명 전에 계약을 철회했습니다.`,
 };
 
 // ---------------------------------------------------------------------------
@@ -146,6 +150,7 @@ const conversationInclude = {
       id: true,
       status: true,
       completedAt: true,
+      cancelledAt: true,
       clientId: true,
       freelancerId: true,
       project: { select: { id: true, title: true } },
@@ -162,16 +167,19 @@ export type ClosedReason = 'CONTRACT_CLOSED' | 'COUNTERPART_INACTIVE';
 
 /**
  * Who may post, decided top to bottom: closed after `closesAt`, then an inactive counterpart, else
- * open. A COMPLETED contract without `completedAt` (bad data) has no `closesAt`.
+ * open. The window runs from the end of the contract: `completedAt` when COMPLETED, `cancelledAt`
+ * when CANCELLED (docs/domain/messaging-notifications.md). A COMPLETED contract without
+ * `completedAt` (bad data) has no `closesAt`.
  */
 export function postingState(
-  contract: Pick<Contract, 'status' | 'completedAt'>,
+  contract: Pick<Contract, 'status' | 'completedAt' | 'cancelledAt'>,
   counterpart: { deletedAt: Date | null },
   now: Date,
 ): { canSend: boolean; closedReason: ClosedReason | null; closesAt: Date | null } {
-  const closesAt = contract.status === 'COMPLETED' && contract.completedAt
-    ? new Date(contract.completedAt.getTime() + POST_COMPLETION_WINDOW_MS)
-    : null;
+  const endedAt = contract.status === 'COMPLETED' ? contract.completedAt
+    : contract.status === 'CANCELLED' ? contract.cancelledAt
+      : null;
+  const closesAt = endedAt ? new Date(endedAt.getTime() + POST_COMPLETION_WINDOW_MS) : null;
   if (closesAt && now >= closesAt) return { canSend: false, closedReason: 'CONTRACT_CLOSED', closesAt };
   if (counterpart.deletedAt) return { canSend: false, closedReason: 'COUNTERPART_INACTIVE', closesAt };
   return { canSend: true, closedReason: null, closesAt };

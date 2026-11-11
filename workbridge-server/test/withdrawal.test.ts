@@ -116,6 +116,14 @@ describe('GET /api/users/me/withdrawal', () => {
     }
   });
 
+  it('does not count a cancelled contract: cancelling it is how an unsigned contract stops blocking', async () => {
+    const { client, freelancer, contract } = await contractIn('PENDING');
+    expect((await authed(freelancer).post(`/api/contracts/${contract.id}/cancel`)).status).toBe(200);
+
+    expect((await status(client)).body).toEqual({ canWithdraw: true, hasPassword: true, blockers: NONE });
+    expect((await status(freelancer)).body.canWithdraw).toBe(true);
+  });
+
   it('does not count a completed contract', async () => {
     const { client, freelancer } = await contractIn('COMPLETED');
 
@@ -353,6 +361,41 @@ describe('POST /api/users/me/withdrawal', () => {
         message: "'모집 중 프로젝트' 프로젝트 모집이 마감되었습니다.",
         href: '/my/applications',
       }]);
+    });
+
+    // A cancelled contract and its conversation are the freelancer's record ("이미 맺은 관계는 당사자에게
+    // 그대로다"): the project stops recruiting but is not deleted.
+    it('closes, but keeps, a project whose only contract was cancelled — the freelancer still sees the contract', async () => {
+      const { client, freelancer, project, contract, application, conversation } = await makeContractScenario({ contract: { status: 'CANCELLED' } });
+      // Recruiting again after the cancel: a new applicant waits.
+      await prisma.project.update({ where: { id: project.id }, data: { status: 'OPEN' } });
+      const newcomer = await makeFreelancer();
+      const pendingApp = await makeApplication(project.id, newcomer.id);
+
+      const res = await withdraw(client);
+
+      expect(res.status).toBe(200);
+      const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(stored).toMatchObject({ deletedAt: null, status: 'CLOSED' });
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: pendingApp.id } })).status).toBe('REJECTED');
+      const notices = await prisma.notification.findMany({ where: { type: 'PROJECT_STATUS_CHANGED' } });
+      expect(notices.map((n) => n.userId)).toEqual([newcomer.id]);
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: application.id } })).status).toBe('ACCEPTED');
+
+      const seen = await authed(freelancer).get(`/api/contracts/${contract.id}`);
+      expect(seen.status).toBe(200);
+      expect(seen.body).toMatchObject({ status: 'CANCELLED', client: { name: '탈퇴한 회원' } });
+      expect((await authed(freelancer).get(`/api/conversations/${conversation.id}`)).status).toBe(200);
+      // Hidden from everyone else like any project of a withdrawn client.
+      expect((await api().get(`/api/projects/${project.id}`)).status).toBe(404);
+    });
+
+    it('leaves a closed project whose only contract was cancelled closed', async () => {
+      const { client, project } = await makeContractScenario({ contract: { status: 'CANCELLED' } });
+
+      expect((await withdraw(client)).status).toBe(200);
+
+      expect(await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).toMatchObject({ deletedAt: null, status: 'CLOSED' });
     });
 
     it('scrubs the profile and soft-deletes the account', async () => {

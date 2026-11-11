@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { StatusPill } from '@/components/ui/Badge';
 import MilestoneStatusBadge from '@/components/milestones/MilestoneStatusBadge';
 import { formatDate, formatKRW } from '@/lib/format';
 import PageLoader from '@/components/ui/PageLoader';
@@ -124,9 +125,11 @@ export default function PaymentPage() {
   const contract = milestone.contract || {};
   const currentUser = useAuthStore.getState().user;
   const isClient = currentUser?.id === contract.clientId;
+  const cancelled = contract.status === 'CANCELLED';
   const payable = isClient && contract.status === 'ACTIVE' && milestone.status === 'PENDING';
   let blockedReason = '';
   if (!isClient) blockedReason = '계약의 의뢰인만 결제할 수 있습니다.';
+  else if (cancelled) blockedReason = '서명 전에 철회된 계약이라 결제할 수 없습니다.';
   else if (contract.status !== 'ACTIVE') blockedReason = '양측 서명으로 계약이 체결된 뒤에 결제할 수 있습니다.';
   else if (milestone.status !== 'PENDING') blockedReason = '이미 결제된 마일스톤입니다.';
 
@@ -155,21 +158,35 @@ export default function PaymentPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-gray-500">상태</dt>
-              <dd><MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} /></dd>
+              <dd>
+                {cancelled
+                  ? <StatusPill tone="gray">철회된 계약</StatusPill>
+                  : <MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} />}
+              </dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-gray-500">기한</dt>
               <dd className="font-medium">{formatDate(milestone.dueDate)}</dd>
             </div>
-            <div className="flex justify-between border-t border-gray-100 pt-3">
-              <dt className="font-semibold text-gray-900">결제 금액</dt>
-              <dd className="font-bold text-xl text-primary-600">{formatKRW(milestone.amount)}</dd>
-            </div>
+            {cancelled ? (
+              // 철회된 계약은 결제할 수 없으므로 금액을 결제할 금액처럼 강조하지 않는다.
+              <div className="flex justify-between border-t border-gray-100 pt-3">
+                <dt className="text-gray-500">마일스톤 금액</dt>
+                <dd className="font-medium text-gray-500">{formatKRW(milestone.amount)}</dd>
+              </div>
+            ) : (
+              <div className="flex justify-between border-t border-gray-100 pt-3">
+                <dt className="font-semibold text-gray-900">결제 금액</dt>
+                <dd className="font-bold text-xl text-primary-600">{formatKRW(milestone.amount)}</dd>
+              </div>
+            )}
           </dl>
-          <p className="mt-4 text-xs text-gray-500">
-            안전결제: 결제한 금액은 WorkBridge가 보관하다가 의뢰인이 결과물을 승인하면(검수 기한이 지나 자동 승인되는 경우 포함)
-            프리랜서에게 정산됩니다. 마일스톤은 순서대로만 결제할 수 있습니다.
-          </p>
+          {!cancelled && (
+            <p className="mt-4 text-xs text-gray-500">
+              안전결제: 결제한 금액은 WorkBridge가 보관하다가 의뢰인이 결과물을 승인하면(검수 기한이 지나 자동 승인되는 경우 포함)
+              프리랜서에게 정산됩니다. 마일스톤은 순서대로만 결제할 수 있습니다.
+            </p>
+          )}
         </Card>
 
         {notice && (

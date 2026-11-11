@@ -95,7 +95,7 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
 
   const CLOSED = {
     409: [
-      '`This conversation is closed` — 계약 완료 후 30일이 지남',
+      '`This conversation is closed` — 계약이 완료되거나 철회된 뒤 30일이 지남',
       '`The other participant is no longer active` — 상대방이 탈퇴함',
     ],
   };
@@ -139,7 +139,7 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
         UPLOAD_CLAIM,
         {
           409: [
-            '`This conversation is closed` — 계약 완료 후 30일이 지남',
+            '`This conversation is closed` — 계약이 완료되거나 철회된 뒤 30일이 지남',
             '`The other participant is no longer active` — 상대방이 탈퇴함',
           ],
         },
