@@ -11,8 +11,9 @@ export async function createReview(req: AuthedRequest, res: Response, next: Next
     // Parsed by `reviewBody`: a 1–5 integer rating and a string array of tags.
     const { contractId, revieweeId, rating, content, tags } = req.body as ReviewInput;
 
-    const contract = await prisma.contract.findUnique({
-      where: { id: contractId },
+    // A contract whose project is soft-deleted is invisible, as on every other contract path.
+    const contract = await prisma.contract.findFirst({
+      where: { id: contractId, project: { deletedAt: null } },
     });
 
     if (!contract) {
