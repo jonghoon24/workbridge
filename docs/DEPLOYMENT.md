@@ -9,7 +9,7 @@
 | 프리뷰 | PR마다 | Vercel Preview 배포 | Supabase 프리뷰 프로젝트 |
 | 운영 | `main` 머지 | Vercel Production 배포 | Supabase 운영 프로젝트 |
 
-프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰므로 환경변수([ENV.md](ENV.md))도 Vercel의 Preview·Production 환경에 따로 넣는다. 마이그레이션은 `.github/workflows/migrate.yml`이 적용한다. `main`에 푸시된 커밋이 `workbridge-server/prisma/migrations/**`를 바꾸면(또는 Actions에서 수동 `workflow_dispatch`) 프리뷰 DB → 운영 DB 순서로 `prisma migrate deploy`를 돌린다. 운영 작업은 프리뷰 작업이 성공해야 시작한다. 시크릿 `PREVIEW_DIRECT_URL`·`PROD_DIRECT_URL`은 pgbouncer를 거치지 않는 Session mode(5432) 연결이고, `concurrency: migrate`로 두 실행이 겹치지 않는다. 원격 DB에 마이그레이션을 적용하는 경로는 이것뿐이다. 그래서 이미 커밋된 마이그레이션은 고치지 않고 새 마이그레이션을 추가한다. 주의할 점 둘: 같은 `main` 푸시에서 Vercel 운영 배포와 이 워크플로가 따로 돌고 순서를 맞추는 장치가 없어서 새 코드가 마이그레이션 전의 DB를 잠깐 상대할 수 있다(그래서 마이그레이션은 이전 코드와 새 코드 모두에 안전해야 한다). 또 스키마를 바꾸는 PR의 서버 프리뷰는 머지 전까지 마이그레이션되지 않은 프리뷰 DB를 상대한다.
+프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰므로 환경변수([ENV.md](ENV.md))도 Vercel의 Preview·Production 환경에 따로 넣는다. 마이그레이션은 `.github/workflows/migrate.yml`이 적용한다. `main`에 푸시된 커밋이 `workbridge-server/prisma/migrations/**`를 바꾸면(또는 Actions에서 수동 `workflow_dispatch`) 프리뷰 DB → 운영 DB 순서로 `prisma migrate deploy`를 돌린다. 운영 작업은 프리뷰 작업이 성공해야 시작한다. 시크릿 `PREVIEW_DIRECT_URL`·`PROD_DIRECT_URL`은 pgbouncer를 거치지 않는 Session mode(5432) 연결이고, `concurrency: migrate`로 두 실행이 겹치지 않는다. 원격 DB에 마이그레이션을 적용하는 경로는 이것뿐이다. 주의할 점 둘: 같은 `main` 푸시에서 Vercel 운영 배포와 이 워크플로가 따로 돌고 순서를 맞추는 장치가 없어서 새 코드가 마이그레이션 전의 DB를 잠깐 상대할 수 있다(그래서 마이그레이션은 이전 코드와 새 코드 모두에 안전해야 한다). 또 스키마를 바꾸는 PR의 서버 프리뷰는 머지 전까지 마이그레이션되지 않은 프리뷰 DB를 상대한다.
 
 ### Vercel 프로젝트
 
@@ -27,8 +27,6 @@
 ```bash
 gh workflow run seed.yml -f environment=preview -f confirm=seed
 ```
-
-Claude Code 세션에서는 이 커맨드가 권한 규칙(deny)으로 막혀 있으므로 사람이 실행한다.
 
 시드는 지급 계좌번호를 그 환경의 키로 암호화해 넣으므로, 이 워크플로는 리포지토리 시크릿
 `PREVIEW_PAYOUT_ACCOUNT_ENCRYPTION_KEY`·`PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY`를 쓴다(아래 "지급 계좌 암호화 키").
@@ -56,37 +54,31 @@ Claude Code 세션에서는 이 커맨드가 권한 규칙(deny)으로 막혀 �
 
 ## 백엔드
 
-- `vercel.json`이 이미 설정되어 있음(`src/index.ts`를 `@vercel/node`가 서버리스 함수로 직접 트랜스파일한다. 빌드 단계와 `dist/`는 없다)
+- `workbridge-server/vercel.json`에 따라 `@vercel/node`가 `src/index.ts`를 서버리스 함수로 직접 트랜스파일한다. 빌드 단계와 `dist/`는 없다
 - 함수 리전은 `vercel.json`의 `regions: ["icn1"]`(서울)이다. DB(Supabase)가 ap-northeast-2에 있어서 함수가 다른 리전(기본값 iad1)에서 돌면 쿼리마다 왕복 지연이 붙고, 지원 수락처럼 쿼리가 많은 트랜잭션이 Prisma의 인터랙티브 트랜잭션 기본 한도(5초)를 넘겨 500(`Transaction not found`)이 난다. DB 리전을 옮기면 이 값도 같이 옮긴다
-- Vercel 대시보드에서 환경변수 설정([ENV.md](ENV.md))
 - Prisma 클라이언트는 `package.json`의 `postinstall: prisma generate`가 설치 단계에서 만든다. 대시보드의 Build Command에도 `npx prisma generate`가 있지만 `vercel.json`에 `builds`가 있으면 대시보드 빌드 설정은 무시되므로 실제로 동작하는 것은 `postinstall`이다
-- 마이그레이션은 손으로 적용하지 않는다. 위 `migrate.yml`이 `prisma migrate deploy`를 돌리며, 이때 `DIRECT_URL`은 pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 5432)이어야 한다
 - 운영(`NODE_ENV=production`)에서는 `app.listen()`도 작업 큐 워커도 시작하지 않는다
-- API 문서(`/api/docs`의 Scalar 화면과 `/api/openapi.json`)는 프리뷰에서만 열린다. 허용 목록이라 `VERCEL_ENV`가 `preview`·`development`일 때(그리고 `VERCEL_ENV` 없이 `NODE_ENV`가 `production`이 아닌 로컬)만 켜지고, 운영(`VERCEL_ENV=production`)이나 `VERCEL_ENV` 없이 `NODE_ENV=production`인 곳에서는 내부 엔드포인트가 드러나지 않게 404로 끈다. 문서 원본은 커밋된 `workbridge-server/openapi.json`이고 CI가 최신인지 확인한다
+- API 문서(`/api/docs`, `/api/openapi.json`)는 프리뷰와 로컬에서만 열리고 운영에서는 404다. 내부 엔드포인트와 오류 메시지를 드러내지 않기 위해서다(조건은 [ENV.md](ENV.md)의 `VERCEL_ENV`)
 
 ## 프론트엔드
 
-- GitHub 연동 시 Next.js 자동 감지
-- `NEXT_PUBLIC_API_URL`을 백엔드 배포 URL로 설정
 - 브라우저는 같은 출처의 `/api/*`를 부르고, Next 라우트 핸들러(`app/api/[...path]`, `app/api/auth/*`)가 백엔드로 전달한다
-- 백엔드 주소는 서버 쪽(라우트 핸들러와 SSR)에서만 `src/lib/apiUrl.js`의 `getApiUrl()`이 정한다. 우선순위는 `API_URL` → Vercel이 `VERCEL_RELATED_PROJECTS`를 넣어 줬으면 `@vercel/related-projects`의 `withRelatedProject`가 돌려주는 `workbridge-server` 호스트 → `NEXT_PUBLIC_API_URL` → `http://localhost:4000`이고, 프로토콜이 없으면 `https://`를 붙이고 끝의 `/`는 뗀다
+- 백엔드 주소는 서버 쪽(라우트 핸들러와 SSR)에서만 `src/lib/apiUrl.js`의 `getApiUrl()`이 정한다(우선순위는 그 파일 머리 주석)
 - 그래서 PR 프리뷰에서는 클라이언트 프리뷰가 같은 브랜치의 서버 프리뷰를 부른다. `workbridge-client/vercel.json`의 `relatedProjects`에 서버 프로젝트 ID(`prj_u3RYDLPGTEVB29lYr8z60KXSyiSm`)가 들어 있어서, Vercel이 클라이언트 배포마다 `VERCEL_RELATED_PROJECTS`에 서버의 운영 주소와 같은 브랜치의 프리뷰 주소를 넣어 준다. 브랜치 이름이 길면 Vercel이 슬러그를 잘라 프로젝트마다 다른 해시를 붙이므로 클라이언트 쪽에서 서버 주소를 만들어 낼 수 없다 — 이 값만 믿는다. Preview에는 `API_URL`을 넣지 않는다(넣으면 이 값보다 먼저 쓰인다). Related Projects는 같은 리포지토리의 Git 연동 배포에서만 채워진다(CLI 배포에서는 비어 있어 `NEXT_PUBLIC_API_URL`로 간다)
 
 ## 배포 후 업데이트
 
-- 백엔드 `CLIENT_URL` → 프론트엔드 Vercel URL **하나**(Google 로그인 리디렉션, 메일 링크, CORS의 기준 출처). 다른 출처(예: 커스텀 도메인)도 허용해야 하면 `CORS_ORIGINS`에 쉼표로 넣는다. `CLIENT_URL`이 비었거나 목록이면 시작 때 경고하고, 브라우저 요청이 CORS로 막히며, Google 로그인은 500, 메일은 `FAILED`가 된다([ENV.md](ENV.md))
+- 백엔드 `CLIENT_URL` → 프론트엔드 Vercel URL **하나**(Google 로그인 리디렉션, 메일 링크, CORS의 기준 출처). 다른 출처(예: 커스텀 도메인)는 `CORS_ORIGINS`에 넣는다. 잘못 넣었을 때의 증상은 [ENV.md](ENV.md)의 `CLIENT_URL`
 - 백엔드 `GOOGLE_CALLBACK_URL` → 프론트엔드 Vercel URL + `/api/auth/google/callback`
-- 프론트엔드 `NEXT_PUBLIC_API_URL` → 백엔드 Vercel URL
+- 프론트엔드 `NEXT_PUBLIC_API_URL` → 백엔드 Vercel URL(Related Projects 값이 없는 CLI 배포용)
 - 서버 `ALLOW_PAYMENT_BYPASS`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`는 반드시 `false`
 
 ## Sentry
 
 `SENTRY_DSN`을 설정하면 서버 오류를 Sentry로 보낸다. **비어 있으면 꺼져 있고** `@sentry/node`도 불러오지 않는다(모든 호출이 바로 돌아온다).
 
-- **보내는 것은 두 가지뿐이다.** 응답이 500으로 끝난 요청(`errorHandler`, 요청 ID·메서드·경로와 로그인한 경우 사용자 ID를 태그로)과 최종 실패한 작업(`jobs/runner.ts`, 영구 실패나 재시도 소진 — 작업 ID·종류·시도 횟수). 4xx와 재시도될 작업 실패는 보내지 않는다.
-- 오류만 보낸다(`tracesSampleRate: 0`). `sendDefaultPii: false`라 IP·쿠키·요청 본문은 붙지 않는다.
-- `environment`는 `SENTRY_ENVIRONMENT` → `VERCEL_ENV` → `NODE_ENV` 순, `release`는 `VERCEL_GIT_COMMIT_SHA`다.
-- **서버리스에서는 응답 직후 함수가 멈출 수 있어서** 500 응답을 보내기 전에 최대 2초 `flush`한다. 작업 큐도 `runDueJobs` 한 번이 끝날 때 `flush`하므로 `POST /api/internal/jobs/run`과 `npm run jobs:run`에서 이벤트가 사라지지 않는다. 2초 안에 못 보내면 `warn` 한 줄을 남기고 응답은 그대로 나간다(그 이벤트는 잃을 수 있다).
+- **보내는 것은 두 가지뿐이다.** 응답이 500으로 끝난 요청(`errorHandler`)과 최종 실패한 작업(`jobs/runner.ts`, 영구 실패나 재시도 소진). 4xx와 재시도될 작업 실패는 보내지 않는다. 오류만 보내고 개인정보(IP·쿠키·요청 본문)는 붙이지 않는다(`src/lib/sentry.ts`).
+- **서버리스에서는 응답 직후 함수가 멈출 수 있어서** 500 응답을 보내기 전과 작업 큐 실행이 끝날 때 짧게 `flush`한다. 시간 안에 못 보내면 `warn` 한 줄을 남기고 응답은 그대로 나간다(그 이벤트는 잃을 수 있다).
 - 기존 `error` 로그 한 줄은 그대로 남는다. Sentry 자체의 실패는 `warn`이다.
 
 ## 운영 환경의 한계
@@ -99,24 +91,22 @@ Vercel에는 상주 프로세스가 없어서 개발 서버가 띄우는 워커(
 
 | 방법 | 설명 |
 | --- | --- |
-| `POST /api/internal/jobs/run` | 크론이 부르는 엔드포인트. 운영 서버의 `INTERNAL_JOB_TOKEN`을 `X-Internal-Token` 헤더로 보낸다(워크플로는 같은 값을 리포지토리 시크릿 `PROD_INTERNAL_JOB_TOKEN`으로 가진다). 본문 `{ "limit": 1~500 }`(기본 50)으로 한 번에 실행할 작업 수를 제한하고, 워크플로는 서버리스 실행 시간 안에 끝나도록 `25`를 보낸다. 토큰이 비어 있으면 엔드포인트가 404로 숨는다. 응답이 2xx가 아니면 워크플로가 실패한다 |
+| `POST /api/internal/jobs/run` | 크론이 부르는 엔드포인트. 운영 서버의 `INTERNAL_JOB_TOKEN`을 `X-Internal-Token` 헤더로 보낸다(워크플로는 같은 값을 리포지토리 시크릿 `PROD_INTERNAL_JOB_TOKEN`으로 가진다). 본문 `limit`으로 한 번에 실행할 작업 수를 제한하고, 워크플로는 서버리스 실행 시간 안에 끝나도록 작은 값(`JOBS_LIMIT`)을 보낸다. 토큰이 비어 있으면 엔드포인트가 404로 숨는다. 응답이 2xx가 아니면 워크플로가 실패한다 |
 | `npm run jobs:run` | 한 번 실행하는 CLI. 운영 DB 연결 정보를 가진 곳에서 수동으로 |
 | `npm run jobs:worker` | 상주 워커 CLI. 상주 서버가 있을 때 |
 
-크론이 도는 운영에서는 자동 승인과 그 리마인더, 마일스톤 기한 알림, 주간 정산 배치(월요일 03:00 KST), 프로젝트 상태 스윕, `maintenance.cleanup`이 돈다. 시각이 정해진 작업은 호출 간격(최대 15분, GitHub의 스케줄 지연이 더해질 수 있다)만큼 늦게 돈다. 시간 초과로 끊긴 작업은 10분 뒤 stale lock 회수로 다시 시도된다. 리포지토리에 60일 동안 활동이 없으면 GitHub가 스케줄을 끈다.
+시각이 정해진 작업(자동 승인, 기한 알림, 주간 정산 배치 등)은 호출 간격(최대 15분, GitHub의 스케줄 지연이 더해질 수 있다)만큼 늦게 돈다. 함수 시간 초과로 끊긴 작업은 stale lock 회수(`STALE_LOCK_MS`, `jobs/runner.ts`)로 다시 시도된다. 리포지토리에 60일 동안 활동이 없으면 GitHub가 스케줄을 끈다.
 
-**두 작업은 환경변수로 꺼 두었다**(기본값 꺼짐, [domain/jobs.md](domain/jobs.md#플래그로-꺼-둔-작업)). 운영 서버에서 정확히 `true`로 켜기 전까지는 다음이 **일어나지 않는다**.
+**두 작업은 환경변수로 꺼 두었다.** 운영 서버에서 정확히 `true`로 켜기 전까지는 다음이 **일어나지 않는다**. 꺼져 있을 때 각 작업이 어떻게 남는지와 둘을 다르게 끈 이유는 [domain/jobs.md](domain/jobs.md#플래그로-꺼-둔-작업)에 있다. 로컬은 `.env.example`대로 둘 다 켠다(지급은 로그 provider, 메일은 로그에만 쓴다).
 
-| 작업 | 플래그 | 꺼져 있을 때 | 켜는 조건 |
-| --- | --- | --- | --- |
-| `settlement.payout`(수요일 10:00 KST 지급) | `JOB_PAYOUT_ENABLED` | 러너가 가져가지 않아 `PENDING`으로 남는다. 정산은 `SCHEDULED`에 머문다 | 실제 은행 이체 provider 연동. 지금 `LogPayoutProvider`는 돈을 보내지 않고 성공을 보고해 정산을 `PAID`로 만든다 |
-| `notification.email`(알림 메일과 미확인 메시지 요약 메일) | `JOB_EMAIL_ENABLED` | 작업은 돌고 delivery가 `SKIPPED`(`Email sending is disabled …`)로 끝난다 | 실제 메일 provider 연결과 로그 개인정보 문제 해결([#26](https://github.com/jonghoon24/workbridge/issues/26)) — 아래 4번 |
-
-둘을 다르게 다루는 이유: 지급은 줘야 할 돈이라 버리면 안 되고, 켜는 날 밀린 지급이 실행되는 것이 맞다(핸들러가 정산을 다시 읽으므로 재일정된 것은 건너뛴다). 메일은 제때 가야 쓸모가 있어서, 쌓아 두면 켜는 날 몇 주 묵은 알림과 요약 메일이 한꺼번에 나간다. 그래서 메일은 건너뛰고 끝낸다. 로컬은 `.env.example`대로 둘 다 켜 둔다(지급은 로그 provider, 메일은 로그에만 쓴다).
+| 작업 | 플래그 | 켜는 조건 |
+| --- | --- | --- |
+| `settlement.payout`(정산 지급) | `JOB_PAYOUT_ENABLED` | 실제 은행 이체 provider 연동. 지금 `LogPayoutProvider`는 돈을 보내지 않고 성공을 보고해 정산을 `PAID`로 만든다. 켜는 날 밀린 지급이 실행된다 |
+| `notification.email`(알림 메일과 미확인 메시지 요약 메일) | `JOB_EMAIL_ENABLED` | 실제 메일 provider 연결과 로그 개인정보 문제 해결([#26](https://github.com/jonghoon24/workbridge/issues/26)) — 아래 4번. 밀린 메일은 나가지 않는다 |
 
 ### 2. 요청 제한 카운터와 완료 작업 정리
 
-로그인과 AI 단가 분석의 요청 제한 카운터(`RateLimitCounter`) 중 만료된 행과 14일 지난 완료 작업은 `maintenance.cleanup` 작업(매일 04:00 KST)이 지운다. 운영에서는 위 크론이 이 작업을 돌린다. 크론이 멈췄을 때는 직접 지운다.
+로그인과 AI 단가 분석의 요청 제한 카운터(`RateLimitCounter`) 중 만료된 행과 오래된 완료 작업은 `maintenance.cleanup` 작업(매일)이 지운다. 운영에서는 위 크론이 이 작업을 돌린다. 크론이 멈췄을 때는 직접 지운다.
 
 ```sql
 DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
@@ -124,7 +114,7 @@ DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
 
 ### 3. 첨부 파일은 저장소로 직접 올린다
 
-Vercel 서버리스 함수의 **요청 본문 한도는 4.5MB**다(넘으면 플랫폼이 앱의 오류 형식이 아닌 413으로 막는다. 브라우저 요청은 Next 프록시와 백엔드 두 함수를 거치므로 두 곳 모두 걸린다). 그래서 메시지와 마일스톤 결과물 첨부(10MB × 5개)는 서버를 거치지 않는다: 서버가 서명 업로드 URL을 주고, 브라우저가 Supabase Storage의 **비공개 버킷**(`SUPABASE_ATTACHMENT_BUCKET`)에 직접 `PUT`하고, 메시지·제출에는 업로드 ID만 보낸다. 읽을 때는 15분짜리, 내려받을 때는 60초짜리 서명 URL을 준다([domain/messaging-notifications.md "첨부 파일"](domain/messaging-notifications.md#첨부-파일), [#22](https://github.com/jonghoon24/workbridge/issues/22), [#25](https://github.com/jonghoon24/workbridge/issues/25)).
+Vercel 서버리스 함수의 **요청 본문 한도는 4.5MB**다(넘으면 플랫폼이 앱의 오류 형식이 아닌 413으로 막는다. 브라우저 요청은 Next 프록시와 백엔드 두 함수를 거치므로 두 곳 모두 걸린다). 그래서 이 한도보다 큰 파일을 받는 메시지와 마일스톤 결과물 첨부는 서버를 거치지 않는다: 서버가 서명 업로드 URL을 주고, 브라우저가 Supabase Storage의 **비공개 버킷**(`SUPABASE_ATTACHMENT_BUCKET`)에 직접 `PUT`하고, 메시지·제출에는 업로드 ID만 보낸다. 읽고 내려받을 때는 짧은 서명 URL을 준다([domain/messaging-notifications.md "첨부 파일"](domain/messaging-notifications.md#첨부-파일), [#22](https://github.com/jonghoon24/workbridge/issues/22), [#25](https://github.com/jonghoon24/workbridge/issues/25)).
 
 남은 한계:
 
