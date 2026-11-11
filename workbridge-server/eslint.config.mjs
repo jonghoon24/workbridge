@@ -70,7 +70,7 @@ export default tseslint.config(
   },
 
   // Time rules (.claude/rules/money-time.md). `no-restricted-syntax` does not merge across config
-  // blocks, so the services/handlers block repeats the host-time-zone selectors.
+  // blocks, so the services/handlers and controllers blocks repeat the host-time-zone selectors.
   {
     files: ['src/**/*.ts'],
     ignores: ['src/lib/time.ts'],
@@ -99,6 +99,7 @@ export default tseslint.config(
         'error',
         { selector: "NewExpression[callee.name='AppError']", message: 'Throw AppError in the service, not the controller (REVIEW #2).' },
         { selector: "CallExpression[callee.name='invalidField']", message: 'Throw invalidField in the service, not the controller (REVIEW #2).' },
+        ...HOST_TIME_ZONE,
       ],
     },
   },

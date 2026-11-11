@@ -6,7 +6,7 @@
 # exit 2면 실패한 마지막 줄이 Claude에게 돌아가 작업을 이어 간다.
 # 서버 테스트 스위트는 일부러 돌리지 않는다. 실제 Postgres가 필요하고 오래 걸려서, DB가 없는 환경에서는
 # 매번 실패해 Claude를 붙잡는다. 파일 단위 테스트는 Claude가 `npx vitest run`으로 돌리고, 전체는 ci.yml이 돌린다.
-# 통과한 작업 트리 상태(추적 안 된 파일 포함 트리 해시)를 .git에 기록해 두고, 그 뒤로 아무것도 바뀌지 않았으면
+# 통과한 작업 트리 상태(추적 안 된 파일 포함 해시)를 .git에 기록해 두고, 그 뒤로 아무것도 바뀌지 않았으면
 # 다시 돌리지 않는다 — 커밋하지 않은 변경을 둔 채 질문만 주고받는 턴마다 검사가 다시 도는 것을 막는다.
 set -uo pipefail
 
@@ -22,15 +22,12 @@ cd "$root" || exit 0
 changed=$( { git diff --name-only HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
 [ -z "$changed" ] && exit 0
 
-# 작업 트리 전체를 임시 인덱스에 담아 트리 해시를 만든다(실제 인덱스는 건드리지 않는다).
+# 작업 트리 상태의 해시: HEAD, HEAD 대비 diff, 추적 안 된 파일의 이름과 내용 해시. 객체를 .git에 쓰지 않는다.
 stamp_file=$(git rev-parse --git-path claude-stop-check.ok 2>/dev/null)
-tree=""
-tmp_index=$(mktemp)
-if cp "$(git rev-parse --git-path index)" "$tmp_index" 2>/dev/null \
-   && GIT_INDEX_FILE="$tmp_index" git add -A >/dev/null 2>&1; then
-  tree=$(GIT_INDEX_FILE="$tmp_index" git write-tree 2>/dev/null)
-fi
-rm -f "$tmp_index"
+tree=$( { git rev-parse HEAD && git diff --binary HEAD \
+          && git ls-files --others --exclude-standard \
+          && git ls-files -z --others --exclude-standard | xargs -0 git hash-object --; } 2>/dev/null \
+        | git hash-object --stdin 2>/dev/null) || tree=""
 if [ -n "$tree" ] && [ -n "$stamp_file" ] && [ "$(cat "$stamp_file" 2>/dev/null)" = "$tree" ]; then
   exit 0
 fi
