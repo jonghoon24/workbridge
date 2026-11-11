@@ -13,30 +13,32 @@ test.beforeAll(async () => {
   account = await apiSignup({ role: 'FREELANCER', label: 'app-tabs' });
   const client = await apiLogin(ACCOUNTS.client.email);
   const freelancer = await apiLogin(account.email);
-  // Applying needs a complete freelancer profile (requireCompleteProfile).
-  await freelancer.patch('/api/users/me', {
-    experienceYears: 3,
-    hourlyRate: 45000,
-    activityCategory: '웹 개발',
-    skills: ['React'],
-  });
+  try {
+    // Applying needs a complete freelancer profile (requireCompleteProfile).
+    await freelancer.patch('/api/users/me', {
+      experienceYears: 3,
+      hourlyRate: 45000,
+      activityCategory: '웹 개발',
+      skills: ['React'],
+    });
 
-  pendingProjects = [
-    await createProject(client, { title: uniqueTitle('지원 탭 검토 A') }),
-    await createProject(client, { title: uniqueTitle('지원 탭 검토 B') }),
-  ];
-  rejectedProject = await createProject(client, { title: uniqueTitle('지원 탭 거절') });
+    pendingProjects = [
+      await createProject(client, { title: uniqueTitle('지원 탭 검토 A') }),
+      await createProject(client, { title: uniqueTitle('지원 탭 검토 B') }),
+    ];
+    rejectedProject = await createProject(client, { title: uniqueTitle('지원 탭 거절') });
 
-  for (const project of pendingProjects) await applyToProject(freelancer, project);
-  const rejected = await applyToProject(freelancer, rejectedProject);
-  await client.patch(`/api/projects/${rejectedProject.id}/applications/${rejected.id}`, { status: 'REJECTED' });
-
-  await Promise.all([client.dispose(), freelancer.dispose()]);
+    for (const project of pendingProjects) await applyToProject(freelancer, project);
+    const rejected = await applyToProject(freelancer, rejectedProject);
+    await client.patch(`/api/projects/${rejectedProject.id}/applications/${rejected.id}`, { status: 'REJECTED' });
+  } finally {
+    await Promise.all([client.dispose(), freelancer.dispose()]);
+  }
 });
 
 test('내 지원 현황의 상태 탭이 개수를 보여 주고 고른 상태의 지원만 보인다', async ({ browser, baseURL }) => {
   const { context, page } = await loggedInPage(browser, baseURL, account);
-  const tab = (label, count) => page.getByRole('button', { name: new RegExp(`^${label}\\s*${count}$`) });
+  const tab = (label, count) => page.getByRole('button', { name: `${label} ${count}`, exact: true });
   const cards = page.getByTestId('application-card');
   const projectLink = (project) => page.getByRole('link', { name: project.title });
 

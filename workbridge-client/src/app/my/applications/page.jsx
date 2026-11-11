@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card';
 import Badge, { StatusPill, statusLabels } from '@/components/ui/Badge';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
+import StatusTabs from '@/components/ui/StatusTabs';
 import { BriefcaseIcon } from '@/components/ui/Icons';
 import { formatDate } from '@/lib/format';
 import { toUserMessage } from '@/lib/errorMessages';
@@ -65,24 +66,7 @@ export default function MyApplicationsPage() {
         />
       ) : (
         <>
-          <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
-            {TABS.map((tab) => (
-              <button
-                key={tab.value || 'all'}
-                type="button"
-                aria-pressed={status === tab.value}
-                onClick={() => setStatus(tab.value)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
-                  status === tab.value
-                    ? 'border-primary-600 text-primary-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-                <span className="ml-1.5 text-xs text-gray-400">{counts[tab.value] || 0}</span>
-              </button>
-            ))}
-          </div>
+          <StatusTabs tabs={TABS} value={status} onChange={setStatus} counts={counts} />
 
           {visible.length === 0 ? (
             <EmptyState icon={BriefcaseIcon} title="해당 상태의 지원이 없습니다" />
