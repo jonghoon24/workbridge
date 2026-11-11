@@ -68,6 +68,17 @@ export function createStorageFake() {
         objects.set(at(options?.destinationBucket ?? bucket, toPath), { ...object });
         return { data: { path: toPath }, error: null };
       }),
+      /** The files directly in `folder` whose names contain `search`, paged like Supabase. */
+      list: vi.fn(async (folder: string, options?: { search?: string; limit?: number; offset?: number }) => {
+        const prefix = `${bucket}/${folder}/`;
+        const names = [...objects.keys()]
+          .filter((key) => key.startsWith(prefix) && !key.slice(prefix.length).includes('/'))
+          .map((key) => key.slice(prefix.length))
+          .filter((name) => !options?.search || name.includes(options.search))
+          .sort();
+        const offset = options?.offset ?? 0;
+        return { data: names.slice(offset, offset + (options?.limit ?? 100)).map((name) => ({ name })), error: null };
+      }),
       remove: vi.fn(async (paths: string[]) => {
         for (const path of paths) objects.delete(at(bucket, path));
         return { data: paths.map((name) => ({ name })), error: null };

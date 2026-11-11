@@ -21,6 +21,10 @@
       "description": "내 프로필과 공개 프로필, 내 지원·북마크·프로젝트"
     },
     {
+      "name": "Account",
+      "description": "회원 탈퇴(비밀번호 변경은 Auth)"
+    },
+    {
       "name": "Portfolio & careers",
       "description": "프리랜서의 포트폴리오와 경력"
     },
@@ -915,6 +919,55 @@
           "isComplete",
           "percent",
           "items"
+        ]
+      },
+      "WithdrawalStatus": {
+        "type": "object",
+        "properties": {
+          "canWithdraw": {
+            "type": "boolean",
+            "description": "막는 항목이 하나도 없으면 `true`"
+          },
+          "hasPassword": {
+            "type": "boolean",
+            "description": "탈퇴할 때 현재 비밀번호를 보내야 하는 계정인지(Google 전용 계정은 `false`)"
+          },
+          "blockers": {
+            "type": "object",
+            "properties": {
+              "unfinishedContracts": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "서명 전(`PENDING`)이거나 진행 중(`ACTIVE`)인 계약. 의뢰인·프리랜서 모두, 프로젝트가 삭제됐어도 센다"
+              },
+              "unsettledEarnings": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "승인됐지만 아직 주간 정산에 묶이지 않은 마일스톤"
+              },
+              "unpaidSettlements": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "지급되지 않은 정산: 지급 예정·지급 중·지급 실패"
+              },
+              "heldSettlements": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "지급 계좌가 없어 보류된 정산"
+              }
+            },
+            "required": [
+              "unfinishedContracts",
+              "unsettledEarnings",
+              "unpaidSettlements",
+              "heldSettlements"
+            ]
+          }
+        },
+        "required": [
+          "canWithdraw",
+          "hasPassword",
+          "blockers"
         ]
       },
       "ProjectListItem": {
@@ -5911,6 +5964,141 @@
         }
       }
     },
+    "/api/users/me/withdrawal": {
+      "get": {
+        "operationId": "getWithdrawalStatus",
+        "tags": [
+          "Account"
+        ],
+        "summary": "탈퇴할 수 있는지",
+        "description": "지금 탈퇴할 수 있는지와, 막는 항목(진행 중인 계약, 받지 않은 돈)을 항목별 개수로 준다.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "탈퇴 가능 여부와 막는 항목",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawalStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "withdraw",
+        "tags": [
+          "Account"
+        ],
+        "summary": "회원 탈퇴",
+        "description": "비밀번호가 있는 계정은 현재 비밀번호로 다시 확인한다(틀린 횟수는 비밀번호 변경과 같은 카운터로 센다). 진행 중인 계약이나 받지 않은 돈이 있으면 409. 탈퇴하면 계약 없는 내 프로젝트는 삭제되고 그 대기 지원은 거절되며, 결정 전 내 지원은 철회된다. 프로필·포트폴리오·경력·지급 계좌·북마크·알림은 지워지고, 이름과 이메일은 알아볼 수 없게 바뀐 채 계정이 소프트 삭제된다. 계약·결제·정산·메시지·쓴 리뷰는 남는다. 리프레시 쿠키는 지우지 않으니 이어서 로그아웃한다.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPassword": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "`Account withdrawn`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "잘못된 요청\n\n- `<필드>: <메시지>` — 요청 검증 실패(첫 번째 오류 하나만)\n- `Current password is required` — 비밀번호가 있는 계정인데 `currentPassword`가 없음\n- `Current password is incorrect` — 현재 비밀번호가 틀림(실패로 센다)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "상태 충돌\n\n- `Cannot withdraw while contracts or settlements are unfinished` — 진행 중이거나 서명 전인 계약, 미정산·미지급·보류 정산이 있음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "요청 한도 초과\n\n- `Too many requests. Try again later.` — 현재 비밀번호를 너무 많이 틀림",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "string",
+                  "description": "다시 시도할 수 있을 때까지의 초"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "get": {
         "operationId": "getProjects",
@@ -7540,7 +7728,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트\n- `Application not found` — 이 프로젝트의 지원이 아님",
+            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트\n- `Application not found` — 이 프로젝트의 지원이 아님, 지원자가 탈퇴했거나 삭제됨(수락 도중 포함)",
             "content": {
               "application/json": {
                 "schema": {

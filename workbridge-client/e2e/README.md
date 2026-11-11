@@ -1,6 +1,6 @@
 # E2E 테스트 (Playwright)
 
-핵심 흐름 7개를 실제 서버·DB에 대고 브라우저로 확인한다: 로그인(`auth`), 계정 설정의 비밀번호 변경(`account`), 프로젝트 등록(`project-create`), 지원(`apply`), 수락·서명(`accept-contract`), 마일스톤 결제·제출·승인(`milestone`), 목록의 북마크(`bookmark`).
+핵심 흐름 7개를 실제 서버·DB에 대고 브라우저로 확인한다: 로그인(`auth`), 계정 설정의 비밀번호 변경과 회원 탈퇴(`account`), 프로젝트 등록(`project-create`), 지원(`apply`), 수락·서명(`accept-contract`), 마일스톤 결제·제출·승인(`milestone`), 목록의 북마크(`bookmark`).
 
 ```bash
 bash scripts/e2e.sh                 # 리포지토리 루트에서. DB 생성·마이그레이션·시드 → 서버 :4002, 클라이언트 :3002 → 테스트 → 종료

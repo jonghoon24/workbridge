@@ -244,10 +244,15 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
     let needsRoleSelection = false;
 
     if (user) {
-      user = await prisma.user.update({
-        where: { id: user.id },
+      // Only while still active: a withdrawal that commits in between must not get a picture back.
+      const { count } = await prisma.user.updateMany({
+        where: { id: user.id, deletedAt: null },
         data: { profileImage: user.profileImage || picture },
       });
+      if (count === 0) {
+        throw new Error('Google account was withdrawn during login');
+      }
+      user = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
       needsRoleSelection = !user.roleSelected;
     } else {
       user = await prisma.user.create({

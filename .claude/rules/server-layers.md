@@ -57,8 +57,9 @@ paths:
 - 인터랙티브 트랜잭션 *안에서* `create` 후 P2002를 catch하지 않는다 — Postgres가 처음 실패한 문장에서 트랜잭션 전체를
   이미 중단했다. `createMany({ skipDuplicates: true })`(`jobs/queue.ts` 참고)를 쓰거나 트랜잭션 밖에서 catch해 409로 바꾼다.
 - 지급 계좌, 포트폴리오/경력, 알림 설정을 쓰는 트랜잭션과 주간 정산 배치(`settleFreelancer`)는
-  `lockUserRow(tx, userId)`가 **첫** 문장이다. 정산은 지급 결정과 같은 `User` → `Settlement` 순서로 잡는다
-  (거꾸로 잡으면 교착한다, #79).
+  `lockUserRow(tx, userId)`가 **첫** 문장이다. 사용자 요청 경로는 `lockActiveUserRow`를 써서, 기다리는 사이에 탈퇴한
+  사용자의 데이터를 되살리지 않는다. 정산은 지급 결정과 같은 `User` → `Settlement` 순서로 잡는다
+  (거꾸로 잡으면 교착한다, #79). 회원 탈퇴만 지원 수락과 같은 `Project` → `Application` → `User` 순서다(REVIEW #6).
 - 대화방 시스템 메시지(`postSystemMessage`)는 이벤트 트랜잭션의 **마지막 쓰기**로 부른다. `Conversation` 잠금을 가장
   늦게 잡아야 다른 잠금과 순환이 생기지 않는다(`docs/DATABASE.md` "동시성: 잠금과 조건부 쓰기").
 - raw SQL에 시각을 넘길 때는 `sqlTimestamp(date)`(`lib/sql.ts`, `'<ISO>'::timestamp(3)`)로 넘긴다. `Date`를 그대로
