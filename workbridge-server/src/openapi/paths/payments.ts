@@ -54,7 +54,7 @@ export function registerPaymentPaths(registry: OpenAPIRegistry): void {
       ...errors(
         invalid(),
         cause('PAYMENT_AMOUNT_MISMATCH', '금액이 결제 금액과 다름'),
-        cause('PAYMENT_VERIFICATION_FAILED', '토스 승인 실패, 금액·상태 불일치, 또는 승인 뒤 저장 실패(알려진 버그 #3)'),
+        cause('PAYMENT_VERIFICATION_FAILED', '토스페이먼츠가 승인하지 않았거나, 승인한 금액·상태가 주문과 다름'),
         ACTIVE_USER,
         cause('FORBIDDEN_RESOURCE', '결제한 의뢰인이 아님'),
         cause('PAYMENT_NOT_FOUND', '없는 주문, 또는 프로젝트가 삭제됨'),

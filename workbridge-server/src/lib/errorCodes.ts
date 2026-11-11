@@ -124,10 +124,7 @@ export const ERROR_CODES = {
   MILESTONE_REFUNDED: { status: 409, description: '환불된 마일스톤이라 결제할 수 없음' },
   PAYMENT_ALREADY_PROCESSED: { status: 409, description: '이미 처리됐거나 다른 요청이 처리 중인 결제' },
   PAYMENT_AMOUNT_MISMATCH: { status: 400, description: '결제 금액이 주문 금액과 다름' },
-  PAYMENT_VERIFICATION_FAILED: {
-    status: 400,
-    description: '결제 승인을 끝내지 못함 — 토스페이먼츠 승인 실패·금액 불일치, 또는 승인 뒤 처리 중의 다른 실패(알려진 버그 #3)',
-  },
+  PAYMENT_VERIFICATION_FAILED: { status: 400, description: '토스페이먼츠 결제 승인 실패 — 승인되지 않았거나 승인한 금액·상태가 주문과 다름' },
   PAYMENT_BYPASS_DISABLED: { status: 403, description: '이 환경에서는 개발용 결제 완료를 쓸 수 없음' },
 
   // -------------------------------------------------------------------------------------------

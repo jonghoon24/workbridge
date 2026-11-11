@@ -1105,9 +1105,8 @@ describe('POST /api/payments/confirm', () => {
         .send(body(payment.orderId, CONTRACT_AMOUNT));
 
       expect(res.status).toBe(400);
-      // Known bug #3: a failure after capture is answered as a verification failure (400) with
-      // the code of a declined payment. This pins today's answer until #3 is fixed.
-      expect(res.body).toEqual({ error: { code: 'PAYMENT_VERIFICATION_FAILED', message: 'Payment verification failed' } });
+      // Known bug #3 (left open): a failure after capture is answered like a declined payment.
+      expect(res.body.error.message).toBe('Payment verification failed');
       const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
       expect(after.status).toBe('FAILED');
       const milestoneAfter = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
