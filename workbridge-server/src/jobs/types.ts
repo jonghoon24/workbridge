@@ -4,8 +4,9 @@ import type { Logger } from '../lib/logger';
 
 /**
  * Every job type, with its payload shape. `Job.type` is a bare `String` in the schema (like
- * `Notification.type`), so adding a type needs no migration — add it here, give it a handler
- * in `registry.ts`, and document it in docs/domain/jobs.md.
+ * `Notification.type`), so adding a type needs no migration — add it here, write its handler in
+ * `handlers/` with a header comment that says what it does, register it in `registry.ts`, and
+ * record any product decision about it in docs/domain/jobs.md.
  */
 export interface JobPayloads {
   'project.lifecycleSweep': Record<string, never>;

@@ -1,5 +1,5 @@
 # main에 새 마이그레이션이 들어오면 프리뷰 DB → 운영 DB 순서로 `prisma migrate deploy`를 적용한다
-# (docs/DEPLOYMENT.md "환경"). 원격 DB에 마이그레이션을 적용하는 유일한 경로다 — 손으로 돌리지 않는다.
+# (docs/DEPLOYMENT.md "마이그레이션"). 원격 DB에 마이그레이션을 적용하는 유일한 경로다 — 손으로 돌리지 않는다.
 # 시크릿 PREVIEW_DIRECT_URL / PROD_DIRECT_URL은 pgbouncer를 거치지 않는 Session mode(5432) 연결이다.
 name: migrate
 

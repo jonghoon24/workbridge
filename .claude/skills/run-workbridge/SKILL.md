@@ -5,13 +5,13 @@ description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 
 
 # WorkBridge 실행
 
-패키지 둘, 제품 하나: `workbridge-server`(Express + Prisma, **:4000**)와
-`workbridge-client`(Next.js 14, **:3000**). 브라우저는 :3000하고만 통신한다 — 라우트 핸들러
-`src/app/api/[...path]`와 `src/app/api/auth/*`가 `/api/*`를 :4000으로 전달한다.
+패키지 둘이 제품 하나를 이룬다: `workbridge-server`(Express + Prisma, **:4000**)와
+`workbridge-client`(Next.js 14, **:3000**). 브라우저는 :3000하고만 통신한다. 클라이언트의 라우트 핸들러
+`src/app/api/[...path]`와 `src/app/api/auth/*`가 `/api/*` 요청을 :4000으로 전달한다.
 
 확인하는 방법은 셋, 가벼운 것부터:
 1. `bash .claude/skills/run-workbridge/drive.sh` — API 스모크(health, 목록, 시드 로그인, 프록시).
-2. `node workbridge-client/scripts/screenshots.mjs` — 주요 페이지의 Playwright 스크린샷.
+2. `node workbridge-client/scripts/screenshots.mjs <출력 폴더> --base http://localhost:3000` — 주요 페이지의 Playwright 스크린샷.
 3. `bash scripts/e2e.sh`(리포지토리 루트) — `workbridge-client/e2e/`의 Playwright E2E 스펙.
 
 화면 하나를 직접 조작해 볼 때는 `npx playwright cli`를 쓴다("조작" 절 끝).
@@ -20,8 +20,8 @@ description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 
 
 ## 준비물
 
-- Node 22.x(`package.json`의 `engines`), npm. **localhost**의 PostgreSQL(`brew services start postgresql@14`, 슈퍼유저 =
-  macOS 사용자, 비밀번호 없음).
+- Node 22.x(`package.json`의 `engines`), npm.
+- **localhost**의 PostgreSQL(`brew services start postgresql@14`). 슈퍼유저는 macOS 사용자이고 비밀번호는 없다.
 - 2와 3에는 Playwright Chromium: `(cd workbridge-client && npx playwright install chromium)`.
 - 외부 서비스(Google OAuth, 토스페이먼츠, Supabase Storage)는 더미 값을 쓴다:
   그 기능은 실패하지만, 핵심 흐름은 모두 로컬 DB로 동작한다.
@@ -69,10 +69,11 @@ EOF
 (cd workbridge-server && npx prisma migrate deploy && npm run db:seed)
 ```
 
-`RATE_LIMIT_ENABLED=false`로 두는 이유: 로컬 로그인은 모두 loopback에서 오므로 IP별 로그인 한도
-(`workbridge-server/src/lib/rateLimitRules.ts`의 `login.ip`) 하나를 나눠 쓴다. 시드는 마일스톤/정산/대화의 모든 상태를 덮고, 날짜는
-지금 기준이다. **시드 계정 비밀번호는 모두 `password123`**
-(`kim@example.com` CLIENT, `park@example.com` FREELANCER. 화면별로 어떤 계정을 쓸지는 `docs/SEED_DATA.md`).
+`RATE_LIMIT_ENABLED=false`로 두는 이유: 로컬 로그인은 모두 loopback에서 오므로, 모든 로그인이 IP별 로그인 한도
+(`workbridge-server/src/lib/rateLimitRules.ts`의 `login.ip`) 하나를 나눠 쓴다.
+
+시드는 마일스톤, 정산, 대화의 모든 상태를 덮고, 날짜는 시드한 시각 기준이다. **시드 계정 비밀번호는 모두 `password123`**이다
+(`kim@example.com` CLIENT, `park@example.com` FREELANCER). 화면별로 어떤 계정을 쓸지는 `docs/SEED_DATA.md`에 있다.
 
 ## 실행
 
@@ -89,15 +90,16 @@ tail -n2 /tmp/wb-server.log /tmp/wb-client.log
 
 ## 조작
 
-1. **API 스모크** — `bash .claude/skills/run-workbridge/drive.sh` → `== 통과 4, 실패 0 ==`이 나와야 한다.
+1. **API 스모크** — `bash .claude/skills/run-workbridge/drive.sh` → 마지막 줄이 `실패 0`이어야 한다.
    다른 포트: `API_PORT=4001 CLIENT_PORT=3001 bash .claude/skills/run-workbridge/drive.sh`.
-2. **스크린샷** — `node workbridge-client/scripts/screenshots.mjs`(페이지 목록, 출력 폴더, 옵션은 파일
-   머리 주석에 있다). 경로마다 먼저 한 번 불러 두고(새로 띄운 `next dev`는 처음 요청 때 컴파일한다)
-   클라이언트 쪽 fetch를 기다린다. PNG가 비어 있지 않다고 해서 증명되는 것은 없다: **이미지를 열어서
-   본다** — 빈 화면이나 에러 오버레이면 페이지가 hydrate되지 않은 것이다.
+2. **스크린샷** — `node workbridge-client/scripts/screenshots.mjs <출력 폴더> --base http://localhost:3000`.
+   옵션은 파일 머리 주석에 있고, `--base`를 빼면 :3001을 부른다. 스크립트는 페이지마다 네트워크가 잠잠해지고 로딩
+   스피너가 사라질 때까지 기다린다. 새로 띄운 `next dev`는 처음 요청 때 컴파일하므로 첫 실행은 느리다.
+   PNG 파일이 비어 있지 않다는 것만으로는 아무것도 확인되지 않는다.
+   **이미지를 열어서 본다.** 빈 화면이나 에러 오버레이면 페이지가 hydrate되지 않은 것이다.
 3. **E2E** — 리포지토리 루트에서 `bash scripts/e2e.sh`가 `workbridge-client/e2e/`의 Playwright 스펙을
-   돌린다. 스펙은 화면의 한국어 텍스트로 요소를 찾으므로, 클라이언트 문구를 바꾸면 같은 변경에서
-   스펙도 고친다.
+   돌린다. 스펙 하나만 돌리는 법, 포트, DB는 `workbridge-client/e2e/README.md`에 있다. 스펙은 화면의 한국어
+   텍스트로 요소를 찾으므로, 클라이언트 문구를 바꾸면 같은 변경에서 스펙도 고친다.
 
 화면 하나를 그때그때 볼 때는 리포지토리의 Playwright에 들어 있는 CLI로 실제 브라우저를 조작한다.
 루트에는 `package.json`이 없으므로 `workbridge-client/` 안에서 돌린다:
@@ -123,20 +125,22 @@ API 문서 화면은 `http://localhost:4000/api/docs`, 원본은 `http://localho
 
 ## 주의할 점
 
-- **시드 날짜는 밀린다.** 마감이 지나면 목록을 읽을 때 프로젝트가 닫힌다
-  (`lib/projectLifecycle.ts`). 다시 시드: `(cd workbridge-server && npm run db:seed)`. 시드는
-  `workbridge-server/.env`를 읽고(이미 셸에 있는 값이 우선), 지급 계좌번호를 `PAYOUT_ACCOUNT_ENCRYPTION_KEY`로 암호화한다 —
-  `.env`의 키를 바꿨다면 다시 시드한다.
+- **시드 날짜는 밀린다.** 시드한 뒤 시간이 지나 마감이 지나면, 목록을 읽을 때 지연 스윕이 그 프로젝트를 닫는다
+  (`CLAUDE.md` "함정"). 다시 시드한다: `(cd workbridge-server && npm run db:seed)`.
+- **암호화 키를 바꾸면 다시 시드한다.** 시드는 `workbridge-server/.env`를 읽고(이미 셸에 있는 값이 우선),
+  지급 계좌번호를 `PAYOUT_ACCOUNT_ENCRYPTION_KEY`로 암호화해 넣는다.
 - **결제 우회가 켜져 있다**(로컬, 플래그 둘 다). 결제는 마일스톤 단위다:
   `POST /api/payments/dev-complete`가 `{ milestoneId }`를 받고, 순서대로 결제된다.
 - **업로드에는 저장소 스텁이 필요하다.** `SUPABASE_URL=http://localhost:54321`은 아래를 띄우기 전까지 아무것도 가리키지 않는다:
   `(cd workbridge-server && node scripts/storage-stub.mjs > /tmp/wb-storage.log 2>&1 &)`.
   메모리 저장소라 다시 띄우면 파일이 사라진다. 서명 업로드·브라우저의 PUT·서명 다운로드·공개 URL까지 흉내 내므로
   첨부와 이미지가 화면에서 열린다. 없으면 첨부 업로드 URL 발급이 502로 답한다.
-- **이메일은 로그로만 남는다**: `grep mail.sent /tmp/wb-server.log`(개발 워커가 ~5초 안에 보낸다).
-- **미래 시각의 작업.** 주간 정산, 지급, 읽지 않은 메시지 다이제스트는 미래 시각에 잡힌다. 지금 보려면 `workbridge-server/` 안에서 `tsx` 일회성 스크립트로
-  `runDueJobs({ now: <future>, types: ['settlement.weeklyBatch', 'settlement.payout'] })`를 두 번
-  부른다(첫 번째가 다음 작업을 넣는다). `types`는 항상 제한한다. 그러지 않으면 수명주기 스윕이 마감이
+- **이메일은 로그로만 남는다**: `grep mail.sent /tmp/wb-server.log`. 개발 서버의 작업 워커가 `JOB_POLL_INTERVAL_MS`마다
+  돌며 보낸다.
+- **미래 시각의 작업.** 주간 정산, 지급, 읽지 않은 메시지 다이제스트는 미래 시각에 잡힌다. 지금 보려면
+  `workbridge-server/` 안에서 `tsx` 일회성 스크립트로
+  `runDueJobs({ now: <future>, types: ['settlement.weeklyBatch', 'settlement.payout'] })`를 두 번 부른다. 첫 번째
+  실행이 다음 작업을 넣기 때문이다. `types`는 항상 제한한다. 그러지 않으면 `project.lifecycleSweep` 작업이 마감이
   그 날짜 전인 프로젝트를 모두 닫는다.
 
 ## 문제 해결

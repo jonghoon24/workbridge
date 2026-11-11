@@ -149,7 +149,8 @@ function isDeadlock(err: unknown): boolean {
  * 3. Closes what is not a transaction yet: the client's projects without a live contract stop
  *    recruiting — their pending applications are rejected (applicants are told, like a manual
  *    close); those without any contract are deleted, those with only cancelled ones are closed and
- *    kept as the freelancer's record. The freelancer's undecided applications are withdrawn.
+ *    kept as the freelancer's record. The freelancer's applications that never became a contract
+ *    (pending or rejected) are deleted.
  * 4. Deletes the personal data (portfolio, careers, payout account, bookmarks, inbox, notification
  *    settings), blanks the email records, scrubs the user row and soft-deletes it, and enqueues
  *    the deletion of the public images. Transaction records stay.

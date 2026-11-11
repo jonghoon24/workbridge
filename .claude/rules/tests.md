@@ -6,19 +6,21 @@ paths:
 
 # 서버 테스트 (vitest + supertest)
 
-- 버그를 `it.fails`·`it.skip`·`it.todo`로 남기지 않는다(버그는 GitHub 이슈로 추적한다).
+- 실패한 테스트의 단언을 코드에 맞춰 바꾸지 않는다(`CLAUDE.md` "테스트"). 단언을 코드에 맞추면 버그가 기대값으로
+  굳고, 버그가 다시 생겨도 잡을 테스트가 없어진다.
+- 버그를 `it.fails`·`it.skip`·`it.todo`로 남기지 않는다. 버그는 GitHub 이슈로 추적한다.
 - 테스트 이름은 동작을 서술하는 영어 문장이다. 규칙 ID나 이슈 번호 태그를 붙이지 않는다.
 - `api()`·`authed()`로 받은 모든 응답은 `test/helpers/openapi.ts`가 OpenAPI 응답 스키마(객체는 strict)로 검사한다.
   새 상태 코드나 응답 필드는 테스트보다 먼저 `src/openapi/paths/<domain>.ts`·`responses/<domain>.ts`에 적는다.
   문서에 없는 것이 나오면 테스트를 우회하지 말고 문서나 코드를 고친다.
 - **실제 Postgres를 쓰고 Prisma를 모킹하지 않는다.** 스위트가 FK, 유니크 제약, 롤백을 검사한다.
-  병렬로 돌리는 실행은 `bash scripts/test-db.sh <name>`으로 각자 DB를 만들어 `TEST_DATABASE_URL`로 가리킨다 —
-  테스트마다 모든 테이블을 비우므로 DB를 같이 쓰면 서로의 픽스처를 지운다.
+  병렬로 돌릴 때는 실행마다 `bash scripts/test-db.sh <name>`으로 DB를 따로 만들고 `TEST_DATABASE_URL`로 가리킨다.
+  테스트마다 모든 테이블을 비우므로, DB를 같이 쓰면 서로의 픽스처를 지운다.
 - 픽스처는 테스트마다 `test/helpers/factories.ts`로 만든다. HTTP는 `test/helpers/api.ts`(`api()`, `authed(user)`).
 - 시간은 `now`를 넘겨 제어한다(서비스에는 `now`, 작업은 `test/helpers/jobs.ts`의 `runJobs(now)`).
   **가짜 타이머는 쓰지 않는다**(Prisma와 섞이지 않는다). 미래의 `now`로 작업을 돌릴 때는 `runDueJobs({ now, types })`로
   타입을 제한한다. 그러지 않으면 `project.lifecycleSweep`이 마감이 그 전인 프로젝트를 모두 닫는다.
-- **여러 엔드포인트에 걸친 관심사는 한 곳에서 한 번만 테스트한다 — 엔드포인트마다 다시 단언하지 않는다:**
+- **여러 엔드포인트에 걸친 관심사는 한 곳에서 한 번만 테스트한다.** 엔드포인트마다 다시 단언하지 않는다.
   - 401/403/소유권: `test/authorization.test.ts`의 `PROTECTED_ROUTES` / `PUBLIC_ROUTES`.
   - 소프트 삭제된 호출자: `test/soft-delete.test.ts`의 `guardedMutations`(`requireActiveUser`가 붙은 쓰기 라우트 전부).
 - 업로드하는 테스트 파일은 **맨 위에** `vi.mock('@supabase/supabase-js', …)`를 둔다(`uploads.test.ts` 참고). 첨부(비공개

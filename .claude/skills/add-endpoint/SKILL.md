@@ -6,8 +6,8 @@ argument-hint: <METHOD> <path> — <하는 일>
 
 # 엔드포인트 추가
 
-새 라우트는 모두 이 방식(가드 체인, zod 검증, 서비스 레이어)으로 만든다. 최근에 만든 전체 스택 — 알림 설정이나
-포트폴리오 라우트 — 을 보고 따라 만든다.
+새 라우트는 모두 이 방식(가드 체인, zod 검증, 서비스 레이어)으로 만든다. 알림 설정이나 포트폴리오 라우트처럼
+최근에 만든 전체 스택을 보고 따라 만든다.
 서버 파일을 열면 `.claude/rules/`의 서버 규칙(레이어, 트랜잭션·잠금, 금액·시간, 알림·로그, 작업)이 함께 들어온다.
 아래 단계는 그 규칙을 다시 적지 않고 순서와 손댈 곳만 적는다.
 
@@ -81,8 +81,7 @@ router.post('/things', ...guard, validate({ body: thingBody }), postThing);
   넣고, `responses`에는 성공 응답(`ok`/`created`)과 1단계의 오류를 상태 코드별로 적는다(`errors(invalid(…),
   ACTIVE_USER, role(…), notFound(…), NOT_OWNER, {409: [...]})`). 500은 적지 않는다.
 - 새 도메인 파일이면 `src/openapi/registry.ts`의 `buildRegistry()`에 등록 함수를 추가한다.
-- 다시 만든 `openapi.json`을 함께 커밋한다(CI가 최신인지 검사한다). 로컬 서버의 `GET /api/docs`에서 화면으로
-  확인할 수 있다.
+- `npm run openapi`로 `openapi.json`을 다시 만든다. 로컬 서버의 `GET /api/docs`에서 화면으로 확인할 수 있다.
 
 ## 7. 매트릭스 (여러 엔드포인트에 걸친 테스트 — 필수)
 
@@ -91,7 +90,7 @@ router.post('/things', ...guard, validate({ body: thingBody }), postThing);
   `Ids`/`MISSING`에도 추가한다.
 - `test/soft-delete.test.ts` → 쓰기 라우트면 **`guardedMutations`**에 `Mutation`을 추가한다
   (`setup()`이 `{ actor, send(token), assertUnchanged() }`를 돌려준다).
-- 401/403/소프트 삭제를 다른 곳에서 엔드포인트마다 다시 단언하지 않는다.
+- 401/403/소프트 삭제는 이 두 표에서만 단언하고, 8단계에서 엔드포인트마다 다시 단언하지 않는다(`.claude/rules/tests.md`).
 
 ## 8. 엔드포인트 테스트 — `test/<domain>.test.ts`
 
@@ -101,7 +100,7 @@ router.post('/things', ...guard, validate({ body: thingBody }), postThing);
 ## 9. 문서
 
 - 제품 결정과 그 이유 → `docs/domain/`(1단계). API 모양은 6단계의 OpenAPI가 문서다.
-- 새 모델/컬럼 → `db-migration` 스킬. 새 환경변수 → `src/env.ts`, `.env.example`, `docs/ENV.md`.
+- 새 모델/컬럼 → `db-migration` 스킬. 새 환경변수 → `src/env.ts`와 `.env.example`(`.claude/rules/deploy.md`).
 
 ## 10. 검증
 

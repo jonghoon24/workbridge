@@ -3,9 +3,11 @@ import type { PrismaTransactionClient } from '../types/index';
 
 /**
  * Locks a `User` row for the rest of the transaction. One lock serializes every per-user write
- * that must not interleave: payout-account writes and the payout decision, portfolio and career
- * writes, notification-preference writes, and withdrawal. Callers take it as the transaction's
- * first statement (withdrawal is the documented exception, docs/DATABASE.md). Returns the row's
+ * that must not interleave: payout-account writes and the payout decision, the weekly settlement
+ * batch, portfolio and career writes, notification-preference writes, withdrawal, and creating an
+ * application. Callers take it as the transaction's first statement; withdrawal and creating an
+ * application are the exceptions — they lock `Project` → `Application` → `User` like accepting an
+ * application does (docs/DATABASE.md "동시성: 잠금과 조건부 쓰기"). Returns the row's
  * `deletedAt` as it is now that the row is locked.
  */
 export async function lockUserRow(tx: PrismaTransactionClient, userId: string): Promise<{ deletedAt: Date | null } | null> {
