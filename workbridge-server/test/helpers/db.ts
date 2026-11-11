@@ -48,7 +48,6 @@ const TABLES = [
   'Contract',
   'Application',
   'ProjectBookmark',
-  'PricingAnalysis',
   'Project',
   'User',
 ] as const;

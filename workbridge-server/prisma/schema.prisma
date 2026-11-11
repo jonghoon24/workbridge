@@ -140,10 +140,9 @@ model Project {
   deletedAt            DateTime?
   createdAt            DateTime      @default(now())
 
-  applications    Application[]
-  contracts       Contract[] // at most one not CANCELLED
-  pricingAnalysis PricingAnalysis?
-  bookmarks       ProjectBookmark[]
+  applications Application[]
+  contracts    Contract[] // at most one not CANCELLED
+  bookmarks    ProjectBookmark[]
 
   // GET /api/projects: status filter + one index per sort (latest, deadline, budget).
   // [status, deadline] also serves the lifecycle sweep (status IN (UPCOMING, OPEN), deadline < now).
@@ -536,17 +535,6 @@ model Notification {
   emailDeliveries EmailDelivery[]
 
   @@index([userId, readAt, createdAt])
-}
-
-model PricingAnalysis {
-  id              String   @id @default(uuid())
-  projectId       String   @unique
-  project         Project  @relation(fields: [projectId], references: [id])
-  features        Json
-  totalAmount     Float
-  summary         String?
-  marketReference String?
-  createdAt       DateTime @default(now())
 }
 
 // ─── Notification channels (docs/domain/messaging-notifications.md) ────────
