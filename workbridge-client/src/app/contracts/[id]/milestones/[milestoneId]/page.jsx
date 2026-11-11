@@ -230,7 +230,7 @@ export default function MilestoneDetailPage() {
           )}
         </Card>
 
-        {(isFreelancer || isClient) && milestone.payoutPreview && (
+        {(isFreelancer || isClient) && contract.status !== 'CANCELLED' && milestone.payoutPreview && (
           <Card className="p-6">
             <h2 className="font-semibold text-gray-900 mb-1">정산 미리보기</h2>
             <p className="text-xs text-gray-500 mb-4">

@@ -8,6 +8,7 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { StatusPill } from '@/components/ui/Badge';
 import MilestoneStatusBadge from '@/components/milestones/MilestoneStatusBadge';
 import { formatDate, formatKRW } from '@/lib/format';
 import PageLoader from '@/components/ui/PageLoader';
@@ -156,7 +157,11 @@ export default function PaymentPage() {
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-gray-500">상태</dt>
-              <dd><MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} /></dd>
+              <dd>
+                {contract.status === 'CANCELLED'
+                  ? <StatusPill tone="gray">철회된 계약</StatusPill>
+                  : <MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} />}
+              </dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-gray-500">기한</dt>
