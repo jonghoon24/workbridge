@@ -1,139 +1,72 @@
 # 하네스 구성
 
-이 리포지토리에서 Claude Code가 일할 때 쓰는 하네스를 정리한다. 요소마다 파일, **이 코드베이스의 어떤 규칙이나
-사고 때문에 있는지**, 한계를 적는다. 각 요소의 실제 내용(지시문, 패턴, 허용 목록)은 그 파일이 원본이고 여기에 옮겨 적지 않는다.
+이 문서는 Claude Code 하네스에 관한 사실 중 다른 곳에 둘 수 없는 것만 적는다.
+지시문, 훅의 동작, 스킬의 절차, 워크플로의 동작은 각 파일이 원본이다.
 
-## 1. 지침 파일 — `CLAUDE.md`
+## 1. 어디에 무엇을 적는가
 
-모든 세션과 CI 리뷰어가 매번 읽는다. 그래서 지도 역할만 한다: 제품 한 문단, 패키지 두 개, 커맨드, 어떤 문서를
-언제 읽을지, 테스트 원칙, 언어·커밋 컨벤션, 그리고 어느 경로를 고치든 사고가 날 수 있는 함정. 특정 경로에서만
-필요한 지시는 rules로, 상세 구조는 `docs/ARCHITECTURE.md`로 보낸다. 도구(권한, 훅, ESLint, tsc)가 이미 막고 그 오류가
-이유를 알려 주는 것은 적지 않는다.
+사실 하나에는 집 하나를 둔다. 집은 그 사실이 설명하는 대상에 가장 가까운 곳이다.
+코드 주석, 설정 파일 주석, 문서 순으로 고르고, 다른 곳에서는 그 집을 링크한다.
 
-## 2. 경로별 rules — `.claude/rules/*.md`
+- `CLAUDE.md`는 모든 세션과 CI의 Claude가 매번 읽는 지도다. 커맨드, 언제 어떤 문서를 읽을지, 컨벤션, 어느 경로를 고치든 사고가 나는 함정만 둔다.
+- `.claude/rules/*.md`는 `paths:`에 맞는 파일을 Claude가 읽거나 고칠 때만 컨텍스트에 들어온다.
+  그런 파일을 읽기 전에는 rule이 보이지 않는다.
+  rule에는 그 경로에서 할 일과 하지 말 일을 명령문으로 쓴다. 명령마다 한 줄 이유와 `docs/` 링크를 단다.
+  서버 파일 하나를 고치면 여러 rule이 함께 들어온다. 그래서 같은 규칙은 한 파일에만 둔다.
+- `docs/`는 코드 옆에 둘 수 없는 것을 서술한다. 여러 파일에 걸친 "왜", 리포지토리 밖의 운영 지식, 제품 결정과 그 이유가 여기 온다. rules의 명령문은 다시 적지 않고 링크한다.
+- `.github/REVIEW.md`는 로컬 `pre-pr-review` 스킬과 CI 리뷰어가 함께 읽는 리뷰 기준이다. 항목 번호는 `REVIEW #n`으로 참조되므로 바꾸지 않는다.
+- 스킬(`.claude/skills/`)은 여러 단계를 거치는 절차를 담는다. 언제 쓰는지는 `description`이 말한다.
+- 훅과 워크플로가 무엇을 왜 하는지는 그 파일의 머리 주석이 원본이다. 훅 스크립트는 `jq`가 있어야 돈다.
+  Stop 훅은 정적 검사만 돌리고 테스트 스위트는 돌리지 않는다. 스위트는 실제 Postgres가 필요하다.
+- 상수, 한도, 개수, 목록 같은 코드의 값은 문서에 옮겨 적지 않는다. 상수 이름이나 파일을 가리킨다.
+- 도구가 막을 수 있는 규칙은 도구에 둔다.
+  코드 패턴 규칙은 텍스트 패턴을 보는 훅이 아니라 ESLint에 둔다.
+  ESLint는 AST를 보므로 주석과 문자열에 오탐하지 않는다.
+  또 에디터, Stop 훅, CI에서 사람과 Claude에게 똑같이 걸린다.
 
-`paths:` 프론트매터에 맞는 파일을 읽거나 고칠 때만 컨텍스트에 들어온다. 내용은 그 경로를 고칠 때의 명령문뿐이다.
-서버 `src/`의 파일 하나를 고치면 여러 rule이 함께 들어오므로, 같은 규칙은 그중 한 파일에만 둔다.
+## 2. 권한 규칙의 이유
 
-| 파일 | 왜 있는가 |
+목록의 원본은 `.claude/settings.json`의 `permissions`다. JSON이라 주석을 달 수 없어서 묶음별 이유를 여기 적는다.
+어떤 상황에서도 정당하지 않은 것은 `deny`에 둔다. 가끔 정당하지만 되돌리기 어려운 것은 `ask`에 두고, 실행할 때마다 사람이 승인한다.
+가끔 필요한 것까지 `deny`에 두면 막힌 에이전트가 다른 커맨드로 돌아가려 한다.
+
+| 묶음 | 이유 |
 |---|---|
-| `server-layers.md` | 라우트 → 컨트롤러 → 서비스 레이어. 새 라우트의 가드 체인과 OpenAPI 등록, 환경변수는 `env.ts`로만, 공개 핸들러의 `req.user`(타입이 경고하지 않는다), 트랜잭션 아웃박스, 트랜잭션 안 P2002(Postgres가 트랜잭션을 이미 중단했다), 잠금 순서(`lockUserRow` 첫 문장, 시스템 메시지는 마지막 쓰기), raw SQL의 시각(9시간 어긋남) |
-| `money-time.md` | 수수료·부가세·반올림은 `lib/money.ts`에만(인라인 계산은 1원 어긋남). CI·Vercel은 UTC, 개발 PC는 KST라 호스트 시간대 함수는 기기마다 답이 다르다. 테스트가 시간을 제어하도록 `now`를 인자로 |
-| `jobs.md` | 작업 등록 위치, 멱등 핸들러, 외부로 보내는 작업의 플래그 |
-| `notifications-logging.md` | 알림은 `notify()` 계열만(채널 정책과 수신자 설정이 거기서 적용된다). 요청 body·query·헤더를 통째로 로그에 넣지 않는다(계좌번호·토큰). 스위트가 "500은 한 번만 error 로그"를 단언한다 |
-| `tests.md` | 테스트를 쓰는 방법: 모든 응답의 OpenAPI 적합성 검사, 실제 Postgres, 가짜 타이머 대신 `now`, 미래 `now`로 작업을 돌릴 때 수명주기 스윕이 프로젝트를 닫는 함정, 공통 관심사는 중앙 매트릭스에서 한 번. 단언을 다루는 원칙은 경로와 무관해 `CLAUDE.md`에 있다 |
-| `prisma.md` | 커밋된 마이그레이션 불변(훅은 Edit/Write만 막는다), 새 테이블의 RLS(Supabase Data API), 새 `String[]` 컬럼의 `NULL` 원소 CHECK(Prisma `P2032`), `Float` 금액 부채, `seed.js`는 CommonJS |
-| `client.md` | JSX 유지, `lib/api.js`만, 첨부 `PUT`에 토큰 금지, 문구를 바꾸면 E2E도 함께 |
-| `deploy.md` | `vercel.json`의 진입점 두 곳과 `regions`, `dist/` 없음(Prisma 생성은 `postinstall`), 클라이언트 `vercel.json`의 자동 감지, 결제 우회·메일 로그의 운영 기본값 |
+| deny: `.env` 계열 Read | 서버 `.env`에 JWT 비밀키, 외부 서비스 키, DB 접속 문자열이 있다. Read deny는 같은 파일의 Edit/Write와 Bash의 `grep … .env`도 막으므로 `.env`는 사람이 만든다. `.env.example`은 걸리지 않는다. |
+| deny: `migrate reset`, `--force-reset`, `--accept-data-loss` | 스키마와 데이터를 통째로 지운다. 스키마는 새 마이그레이션으로만 바꾼다. |
+| deny: 강제 push | 공유 브랜치의 히스토리를 덮어쓴다. `main`은 3절의 ruleset도 막고, 이 규칙은 기능 브랜치까지 막는다. |
+| deny: `vercel pull`, `vercel env pull` | 운영 비밀값을 로컬 파일로 내려받는다. 그 파일은 `.env` deny 밖에 놓일 수 있다. |
+| ask: `dropdb`, `DROP TABLE`·`DATABASE`·`SCHEMA`, `TRUNCATE` | 병렬 작업이 만든 로컬 DB를 정리할 때는 정당하지만, 잘못 겨누면 데이터를 잃는다. 테스트 DB는 테스트 코드의 `resetDb()`가 비운다. |
+| ask: `supabase.co`, `supabase.com` | Preview와 Production의 DB와 저장소가 Supabase에 있다. 원격 마이그레이션과 데이터 작업은 워크플로로 하고, 커맨드로 직접 닿을지는 사람이 그때마다 정한다. |
+| ask: `gh workflow run` | 수동으로 실행하는 워크플로는 모두 원격 DB나 저장소를 바꾼다. `seed.yml`은 모든 테이블을 비운다. 워크플로의 `confirm` 입력은 에이전트도 넣을 수 있어서 승인을 따로 받는다. |
+| ask: `vercel … --prod`, `vercel promote`, `vercel rollback`, `vercel env …` | 운영 배포는 보통 `main` 머지와 Vercel Git 연동으로 한다. 손으로 운영에 배포·승격·롤백하거나 환경변수를 바꿀 때만 승인한다. |
+| allow: 검사 커맨드, `npm run openapi`, 읽기 전용 git·gh | 고치고 검사하는 루프가 매번 승인을 묻지 않게 한다. `npm run openapi`는 DB·환경변수·네트워크 없이 `openapi.json` 한 파일만 다시 쓴다. |
 
-**한계.** 경로가 맞는 파일을 읽어야 들어온다. 파일을 읽지 않고 답하는 질문에는 rules가 없다.
+- 쓰는 git(commit, push 등), `gh pr create`, `prisma migrate dev`는 allow에 일부러 넣지 않았다. 실행할 때 사람이 승인한다.
+- Bash 규칙은 커맨드 텍스트만 본다. `bash -c '…'`처럼 다른 형태로 부르면 걸리지 않는다. 보안 경계가 아니라 흔한 실수를 막는 장치다.
+- deny와 ask의 Bash 패턴은 앞뒤가 `*`인 문자열 포함 패턴이다. 그래서 `grep -rn TRUNCATE` 같은 검색도 걸린다. 검색은 Grep 툴로 한다.
+- 한 커맨드가 ask와 deny에 함께 걸리면 deny가 이긴다. 예를 들어 `vercel env pull`은 ask의 `*vercel env *`에도 맞지만 거부된다.
+- allow는 워크스페이스를 신뢰한 뒤에만 적용된다. deny와 ask는 항상 적용된다.
 
-## 3. 권한 규칙 — `.claude/settings.json` `permissions`
+## 3. `main` 보호
 
-목록은 `settings.json`이 원본이다. 여기서는 각 묶음이 왜 있는지만 적는다. 어떤 상황에서도 정당하지 않은 것은 `deny`,
-가끔은 정당하지만 되돌리기 어려운 것은 `ask`(실행할 때마다 사람이 승인)에 둔다. 가끔 필요한 것까지 `deny`에 두면 그때마다
-규칙을 뺐다 다시 넣어야 하고, 막힌 에이전트는 다른 커맨드로 돌아가려 한다.
+리포지토리 ruleset "main 보호"가 `main`을 지킨다. 이 설정은 GitHub에만 있고 리포지토리 파일에는 없다.
 
-| 묶음 | 왜 있는가 |
-|---|---|
-| deny: `.env` 계열 Read | 서버 `.env`에 JWT 비밀키, 외부 서비스 키, DB 접속 문자열이 있다. Read deny는 같은 파일의 Write/Edit와 Bash의 `grep … .env`도 막는다 — 그래서 `run-workbridge`의 `.env` 만들기는 사람이 한다. `.env.example`은 걸리지 않는다 |
-| deny: `migrate reset`, `--force-reset`, `--accept-data-loss` | 스키마와 데이터를 통째로 지운다. 스키마 변경은 새 마이그레이션으로만 한다 |
-| deny: 강제 push | 공유 브랜치 히스토리를 덮어쓴다 |
-| deny: `vercel pull`·`vercel env pull` | 운영 비밀값을 로컬 파일로 내려받는다. 그 파일은 `.env` deny 밖에 놓일 수 있다 |
-| ask: `dropdb`, `DROP TABLE`·`DROP DATABASE`·`DROP SCHEMA`, `TRUNCATE` | 병렬 작업이 만든 로컬 DB를 정리할 때는 정당하지만, 잘못 겨누면 데이터를 잃는다. 테스트 DB는 코드 안의 `resetDb()`가 비우므로 커맨드로 지울 일은 드물다 |
-| ask: `supabase.co`/`supabase.com` | Preview와 Production DB, 저장소가 Supabase에 있다. 원격 DB 마이그레이션은 `migrate.yml`, 데이터 작업은 수동 워크플로로 하고, 커맨드로 직접 닿는 것은 사람이 그때마다 정한다 |
-| ask: `gh workflow run` | 수동 실행할 수 있는 워크플로(`seed`, `migrate`, `jobs`, `payout-encrypt`, `attachments-migrate`)는 모두 원격 DB나 저장소를 바꾼다. `seed.yml`은 모든 테이블을 비운다. 워크플로의 `confirm=…` 입력은 에이전트도 넣을 수 있어서 승인을 따로 받는다 |
-| ask: `vercel … --prod`, `vercel promote`·`rollback`, `vercel env …` | 운영 배포는 보통 `main` 머지 → Vercel Git 연동으로 한다. 배포 한도로 막힌 배포를 다시 낼 때처럼 손으로 운영 배포·승격·롤백하거나 환경변수를 바꿀 때만 승인한다(`vercel env pull`은 deny가 먼저 막는다) |
-| allow: 검사 커맨드, `npm run openapi`, 읽기 전용 git·gh | 수정 → 검사 루프가 매번 승인을 묻지 않게 한다. `npm run openapi`는 DB·환경변수·네트워크 없이 `openapi.json` 한 파일만 결정적으로 다시 쓴다. 쓰는 git, `gh pr create`, `prisma migrate dev`는 일부러 넣지 않았다(사람이 승인한다) |
+- `main`은 PR로만 바뀐다. 협업자가 한 명이라 필요한 승인 수는 0이다.
+- `main`의 삭제와 강제 push를 막는다. 관리자를 포함해 아무도 우회할 수 없다.
+- 머지 전에 필수 체크 세 개가 통과해야 한다. `ci.yml`의 `workbridge-server`와 `workbridge-client`, `e2e.yml`의 `playwright (chromium)`이다.
+- AI 리뷰는 일부러 필수 체크에 넣지 않았다. 드래프트 PR, 포크에서 온 PR, 워크플로 파일을 바꾼 PR에서는 돌지 않기 때문이다.
 
-**한계.** Bash 규칙은 커맨드 텍스트만 본다. `bash -c '…'`처럼 다른 형태로 부르면 걸리지 않는다. 보안 경계가 아니라
-흔한 실수를 막는 장치다. 문자열 포함 패턴이라 `grep -rn TRUNCATE` 같은 검색도 걸린다(`ask`는 승인을 묻고, `vercel pull`의 deny는 막는다. 그때는 Grep 툴을 쓴다).
-`&&`로 이은 커맨드는 한 문자열로 보므로 `git push`와 `--force`가 한 줄에 함께 있으면 거부된다. push는 다른 커맨드와
-묶지 않는다. 허용 목록은 워크스페이스를 신뢰한 뒤에만 적용된다(deny와 ask는 항상 적용).
+## 4. GitHub Actions의 Claude가 보는 하네스
 
-## 4. 훅 — `.claude/settings.json` `hooks`, 스크립트는 `.claude/hooks/`
+`claude.yml`과 `claude-code-review.yml`은 `anthropics/claude-code-action`으로 Claude를 돌린다. 각 워크플로의 동작은 파일 머리 주석에 있다.
 
-| 이벤트 | 파일 | 왜 있는가 |
-|---|---|---|
-| PreToolUse `Edit\|Write\|MultiEdit` | `protect-migrations.sh` | 커밋된 마이그레이션은 preview·production에 적용되고 Prisma가 체크섬을 검사한다. 고치면 `migrate deploy`가 멈춘다. git에 없는 폴더(`--create-only` 직후 백필 단계)만 허용하고, 나머지는 exit 2로 막는다 |
-| PostToolUse `Edit\|Write\|MultiEdit` | `regen-openapi.sh` | 서버 `src/`를 고칠 때마다 `openapi.json`을 다시 만든다. 문서는 zod 스키마·OpenAPI 등록·라우트·Prisma enum에서 나와 어느 서버 파일이 바뀌어도 달라질 수 있다. 1초 안에 끝나고 DB가 필요 없다. 편집 도중이라 컴파일되지 않으면 조용히 넘어간다(typecheck와 CI가 잡는다). Stop으로 미루지 않는 것은 Claude가 턴 중간에 커밋하기 때문이다(`pre-pr-review` 스킬, `claude.yml`) — 미루면 오래된 `openapi.json`이 커밋에 들어간다 |
-| Stop | `stop-check.sh` | HEAD 이후 바뀐 쪽의 정적 검사(서버 typecheck·lint, 클라이언트 lint — CI와 같은 기준)를 돌리고, 실패하면 마지막 30줄을 돌려주고 exit 2. 통과한 작업 트리 상태(추적 안 된 파일 포함 트리 해시)를 `.git/claude-stop-check.ok`에 적어 두고, 그 뒤로 바뀐 것이 없으면 다시 돌리지 않는다(커밋 전 변경을 둔 채 질문만 하는 턴마다 10초 넘게 붙잡지 않게). `stop_hook_active`가 true면 바로 통과한다(무한 루프 방지) |
+- PR이 바꾼 하네스는 머지한 뒤에 적용된다. 액션은 Claude를 시작하기 전에 `.claude/`와 `CLAUDE.md` 등을 base 브랜치의 내용으로 되돌린다. PR이 CI의 Claude에게 줄 지시를 바꾸지 못하게 하는 장치다.
+- 리뷰 기준도 같다. 리뷰 프롬프트가 `git show origin/<base>:…`로 base 브랜치의 리뷰 기준을 읽는다. 그래서 기준을 바꾸는 PR은 바뀌기 전 기준으로 리뷰받는다.
+- 액션은 워크플로 파일이 기본 브랜치의 것과 다르면 실행하지 않는다. 그래서 워크플로를 고친 PR에는 AI 리뷰가 돌지 않고, 체크는 통과로 표시된다.
+- `@claude`가 여는 PR은 드래프트이고, 리뷰 워크플로는 드래프트를 건너뛴다. 사람이 diff를 보고 Ready for review를 누르면 AI 리뷰가 시작된다. 리뷰를 시작하고 머지하는 결정은 사람이 한다.
+- CI 리뷰어가 일관되게 보는 것은 `.github/REVIEW.md`와 rules가 다루는 것뿐이다. 리뷰 코멘트는 머지를 막지 않는다.
 
-**코드 규칙은 훅이 아니라 ESLint에 둔다.** `console.*` 금지, 호스트 시간대 날짜 함수 금지, 서비스·작업 핸들러의
-시계 읽기 금지는 `workbridge-server/eslint.config.mjs`의 `no-console`·`no-restricted-syntax`가 맡는다. 에디터·Stop 훅·CI에서
-사람과 Claude에게 똑같이 걸리고, AST로 보므로 주석·문자열에 오탐하지 않으며, 예외는 코드 옆의
-`eslint-disable-next-line … -- 이유`나 `eslint-suppressions.json`(기존 위반)에 남는다. 그래서 편집 직후 텍스트 패턴을 보는
-PostToolUse 훅은 두지 않는다 — 위반은 같은 턴의 Stop 훅 lint에서 돌아온다.
+## 5. MCP
 
-**한계.** 훅 스크립트는 `jq`가 필요하다. 마이그레이션 보호는 Edit/Write만 막고 Bash(`sed -i`, `rm`)는 `rules/prisma.md`가 맡는다.
-
-**서버 테스트 스위트는 Stop 훅에서 돌리지 않는다.** 실제 Postgres가 필요하고 한 번에 약 90초 걸린다. DB가 없는
-환경에서는 매번 실패해 Claude를 붙잡는다. 파일 단위 테스트는 Claude가 `npx vitest run`으로 돌리고, 전체는 CI가 돌린다.
-
-## 5. 스킬 — `.claude/skills/<name>/SKILL.md`
-
-| 스킬 | 왜 있는가 |
-|---|---|
-| `run-workbridge` | 로컬 Postgres, `.env` 두 개, 마이그레이션, 시드, dev 서버 두 개를 띄우는 절차가 길다. 로컬 로그인이 모두 루프백 한 주소로 세어져 로그인 제한에 걸리고, Supabase는 `localhost` 스텁이 필요하다. 화면 하나는 `npx playwright cli`로 직접 조작한다 |
-| `add-endpoint` | 라우트 하나에 손댈 곳이 열 군데다. 동작 → zod → 서비스 → 얇은 컨트롤러 → 가드 → OpenAPI 등록 → `PROTECTED_ROUTES`·`guardedMutations` → 테스트 → 문서 |
-| `db-migration` | 스키마 변경 뒤에 빠뜨리기 쉬운 후속 작업이 많다(손으로 붙이는 RLS·CHECK SQL, `TABLES`, `seed.js`, 응답에 나가는 필드면 OpenAPI 응답 스키마) |
-| `pre-pr-review` | `/code-review`와 `REVIEW.md` 번호 항목으로 diff를 보고, 국소적인 것만 고치고, 기존 테스트 단언 완화·레이어 이동은 사람에게 넘긴다. `allowed-tools`로 쓸 수 있는 커맨드를 묶었다 |
-
-**한계.** 스킬은 설명이 요청과 맞을 때만 불린다. 스킬 전체를 끝까지 실행하는 자동 테스트는 없다.
-
-## 6. 리뷰 기준 — `REVIEW.md`
-
-로컬 `pre-pr-review`와 CI 리뷰어가 같은 번호 항목을 읽는다. 항목마다 규칙 한 줄, 이 코드베이스에서의 이유(실제로 난
-버그면 그 이슈 번호), diff에서 확인하는 방법이 있다. 사람의 PR에도 적용되므로 훅·권한이 막는 것도 항목에 둔다.
-항목 번호는 바꾸지 않는다(`REVIEW #n`으로 참조된다).
-
-## 7. GitHub 워크플로 — `.github/workflows/`
-
-하네스와 검사에 해당하는 것만 적는다. 운영 워크플로(마이그레이션, 시드, 작업 크론, 데이터 이전)는 `docs/DEPLOYMENT.md`에 있다.
-
-| 파일 | 왜 있는가 |
-|---|---|
-| `ci.yml` | 서버 typecheck·lint·`prisma validate`·`openapi.json` 최신 검사·`schema.prisma`와 마이그레이션의 drift 검사(`prisma migrate diff`)·테스트(실제 Postgres 서비스 컨테이너), 클라이언트 lint·빌드. 로컬 Stop 훅이 돌리지 않는 전체 스위트를 여기서 돌린다 |
-| `e2e.yml` | Playwright E2E. 클라이언트에 단위 테스트가 없어서 핵심 흐름은 브라우저로만 확인된다 |
-| `claude-code-review.yml` | Claude가 `REVIEW.md`·`CLAUDE.md`와 바뀐 경로의 rules를 읽고 diff를 인라인 코멘트로 리뷰한다(`REVIEW.md` 위반에는 `REVIEW #n`). 드래프트와 포크에서 온 PR(시크릿이 전달되지 않는다)은 건너뛰고, 이미 단 지적은 다시 달지 않는다. 승인·변경 요청·코드 수정은 하지 않는다 — 머지 결정은 사람 몫이다 |
-| `claude.yml` | `@claude` 멘션에 답하거나 작업을 맡아 **드래프트 PR**을 연다(이미 열린 PR에서는 그 브랜치에 푸시만). 저장소의 `CLAUDE.md`·rules·스킬을 그대로 읽는다. DB가 없어 vitest는 허용하지 않는다(테스트는 PR의 `ci.yml`). 트리거한 사람에게 쓰기 권한이 있어야 돈다 |
-
-두 Claude 워크플로는 구독 토큰 시크릿 `CLAUDE_CODE_OAUTH_TOKEN`으로 `anthropics/claude-code-action@v1`을 돌린다.
-
-**`@claude`의 PR이 드래프트인 이유.** 액션의 기본 동작은 PR을 열지 않고 "Create PR" 링크만 남기는 것이다.
-`claude.yml`은 `claude_args`의 `--append-system-prompt`로 그 지시를 덮어 `gh pr create --draft`로 PR을 직접 열게 한다.
-드래프트는 `claude-code-review.yml`이 건너뛰고, 사람이 diff를 보고 **Ready for review**를 누르면 그 사람의
-`ready_for_review` 이벤트로 AI 리뷰가 시작된다. 위임은 하되 리뷰 시작과 머지는 사람이 정한다. 그 뒤 `@claude`가 같은 PR에
-커밋을 푸시하면 actor가 `claude[bot]`이라서, 리뷰 워크플로는 `allowed_bots: claude`로 이 앱 하나만 허용한다.
-
-**PR이 바꾼 하네스는 머지된 뒤에 적용된다.** PR에서 액션은 Claude를 시작하기 전에 `.claude/`, `CLAUDE.md` 등을
-base 브랜치의 내용으로 되돌린다(PR이 CI의 Claude에게 줄 지시를 바꾸지 못하게 하는 장치다). 루트의 `REVIEW.md`는 그
-목록에 없어서, 리뷰 프롬프트가 `git show origin/<base>:REVIEW.md`로 직접 base의 것을 읽는다. 그래서 리뷰 기준을 더하는
-PR은 그 PR 안에서 새 기준으로 리뷰받지 않는다 — 머지한 뒤 다음 PR부터 적용된다. 리뷰 프롬프트가 든 워크플로 파일도
-마찬가지다. 액션은 워크플로 파일이 기본 브랜치의 것과 다르면 실행하지 않으므로, 워크플로를 고친 PR에는 AI 리뷰가
-돌지 않고(체크는 통과로 표시된다) 머지한 뒤의 PR부터 바뀐 프롬프트로 돈다.
-
-**`main` 보호(리포지토리 rulesets "main 보호").** `main`은 PR로만 바뀐다. 삭제와 강제 push를 막고, 머지 전에 `ci.yml`의
-`workbridge-server`·`workbridge-client`와 `e2e.yml`의 `playwright (chromium)`이 통과해야 한다. 협업자가 한 명이라 승인 수는 0이다.
-AI 리뷰(`review`)는 드래프트·포크·워크플로 변경 PR에서 건너뛰므로 필수 체크에 넣지 않았다. 우회 권한은 관리자에게도 없다.
-로컬의 강제 push deny(3절)는 기능 브랜치까지 막는 추가 장치다.
-
-**한계.** CI 리뷰어도 `REVIEW.md`와 rules가 다루는 것만 일관되게 본다. 리뷰 코멘트는 머지를 막지 않는다.
-
-## 8. MCP — `.mcp.json`
-
-| 서버 | 왜 있는가 |
-|---|---|
-| Sentry(http, `https://mcp.sentry.dev/mcp`) | 운영·프리뷰 서버 오류를 Sentry 프로젝트 `workbridge-server`에서 조회해 원인을 찾고 고친다. 사용자마다 OAuth 로그인이 필요하다 |
-
-## 두지 않은 것
-
-- **서브에이전트 정의** — 반복해서 맡기는 작업이 아직 없다. 리뷰는 `/code-review`와 `REVIEW.md`로 충분하다.
-- **테스트를 돌리는 훅** — 실제 DB와 90초가 필요하다. Stop 훅은 정적 검사만 한다.
-- **포매터/린터 PostToolUse 훅** — Prettier 설정이 없고, lint는 Stop 훅에서 한 번 돈다. 코드 패턴 규칙도 훅이 아니라 ESLint에 둔다(4절).
-- **CodeRabbit 같은 외부 리뷰 봇** — CI 리뷰어는 같은 `REVIEW.md`를 읽는 Claude다. 기준이 두 곳으로 갈라지지 않는다.
-- **`req.user`, `deletedAt: null`, `notify()`를 검사하는 훅** — 텍스트 패턴으로는 오탐이 많다. rules, `REVIEW.md`, 중앙 매트릭스 테스트가 맡는다.
-- **샌드박스 설정** — 목적이 실수 방지라 OS 수준 격리는 넣지 않았다.
-- **Playwright MCP** — 화면 확인은 클라이언트의 Playwright에 들어 있는 `npx playwright cli`로 한다. 터미널 툴이라 MCP 툴
-  정의와 큰 응답으로 컨텍스트를 채우지 않고, 버전이 리포지토리의 lockfile에 고정되며, `-s=<세션>`으로 병렬 작업이 서로의
-  브라우저를 건드리지 않는다. 사용법은 `run-workbridge` 스킬.
+`.mcp.json`은 Sentry MCP 서버를 연결한다. 운영과 프리뷰 서버의 오류를 Sentry 프로젝트 `workbridge-server`에서 조회해 원인을 찾을 때 쓴다. 사용자마다 OAuth 로그인이 필요하다.
