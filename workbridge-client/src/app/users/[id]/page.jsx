@@ -65,7 +65,7 @@ export default function UserProfilePage() {
         {user.role === 'FREELANCER' && (
           <div className="mt-4 pt-4 border-t border-gray-100">
             <div className="grid grid-cols-2 gap-4 text-sm">
-              {user.experienceYears && (
+              {user.experienceYears !== null && (
                 <div>
                   <span className="text-gray-500">경력</span>
                   <span className="ml-2 font-medium">{user.experienceYears}년</span>
