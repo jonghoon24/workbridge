@@ -1,4 +1,6 @@
 import { z } from '../lib/zod';
+import type { FieldErrorCode } from '../lib/errorCodes';
+import { fieldCode } from './common';
 
 import { NOTIFICATION_TYPES, isNotificationType, policyFor } from '../lib/notifications/policy';
 import type { NotificationType } from '../lib/notifications/types';
@@ -23,21 +25,26 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * the messages stay exactly what the tests assert. Unknown keys are ignored.
  */
 export const preferencesBody = z.unknown().transform((body, ctx): { preferences: PreferenceEntry[] } => {
-  const fail = (path: (string | number)[], message: string) => {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+  const fail = (path: (string | number)[], message: string, code: FieldErrorCode = 'INVALID') => {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path, message, params: fieldCode(code) });
     return z.NEVER;
   };
 
   // 1. Shape.
   const raw = isRecord(body) ? body.preferences : undefined;
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_ENTRIES) {
-    return fail(['preferences'], `Expected 1 to ${MAX_ENTRIES} entries`);
+    let code: FieldErrorCode = 'INVALID';
+    if (isRecord(body) && (raw === undefined || (Array.isArray(raw) && raw.length < 1))) code = 'REQUIRED';
+    else if (Array.isArray(raw) && raw.length > MAX_ENTRIES) code = 'TOO_LARGE';
+    return fail(['preferences'], `Expected 1 to ${MAX_ENTRIES} entries`, code);
   }
 
   const entries: PreferenceEntry[] = [];
   for (const [i, entry] of raw.entries()) {
     if (!isRecord(entry)) return fail(['preferences', i], 'Expected an object');
-    if (!isNotificationType(entry.type)) return fail(['preferences', i, 'type'], 'Unknown notification type');
+    if (!isNotificationType(entry.type)) {
+      return fail(['preferences', i, 'type'], 'Unknown notification type', entry.type === undefined ? 'REQUIRED' : 'INVALID');
+    }
     for (const channel of ['inApp', 'email'] as const) {
       if (channel in entry && typeof entry[channel] !== 'boolean') {
         return fail(['preferences', i, channel], 'Expected a boolean');
@@ -54,20 +61,20 @@ export const preferencesBody = z.unknown().transform((body, ctx): { preferences:
   const seen = new Set<NotificationType>();
   for (const [i, entry] of entries.entries()) {
     if (entry.inApp === undefined && entry.email === undefined) {
-      return fail(['preferences', i], 'Specify inApp or email');
+      return fail(['preferences', i], 'Specify inApp or email', 'REQUIRED');
     }
-    if (seen.has(entry.type)) return fail(['preferences', i, 'type'], 'Duplicate notification type');
+    if (seen.has(entry.type)) return fail(['preferences', i, 'type'], 'Duplicate notification type', 'NOT_UNIQUE');
     seen.add(entry.type);
 
     const policy = policyFor(entry.type);
     if (entry.inApp === true && policy.inApp.locked && !policy.inApp.on) {
-      return fail(['preferences', i, 'inApp'], `${entry.type} has no in-app notifications`);
+      return fail(['preferences', i, 'inApp'], `${entry.type} has no in-app notifications`, 'NOT_ALLOWED');
     }
     if (entry.inApp === false && policy.inApp.locked && policy.inApp.on) {
-      return fail(['preferences', i, 'inApp'], `${entry.type} in-app notifications cannot be disabled`);
+      return fail(['preferences', i, 'inApp'], `${entry.type} in-app notifications cannot be disabled`, 'NOT_ALLOWED');
     }
     if (entry.email === false && policy.email.locked) {
-      return fail(['preferences', i, 'email'], `${entry.type} email notifications cannot be disabled`);
+      return fail(['preferences', i, 'email'], `${entry.type} email notifications cannot be disabled`, 'NOT_ALLOWED');
     }
   }
 

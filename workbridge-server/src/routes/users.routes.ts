@@ -33,12 +33,12 @@ function validateProfileUpdate(req: Request, res: Response, next: NextFunction) 
   const role = req.user.role;
   const body = Object.hasOwn(profileUpdateBodyByRole, role) ? profileUpdateBodyByRole[role] : undefined;
   if (!body) {
-    return next(new AppError('Insufficient permissions', 403));
+    return next(new AppError('FORBIDDEN_ROLE', 'Insufficient permissions'));
   }
   return validate({ body })(req, res, next);
 }
 
-router.get('/me', authenticate, getMe);
+router.get('/me', authenticate, requireActiveUser, getMe);
 // The upload runs before validation (multer fills `req.body`); its errors come first. A
 // non-image or oversized file is currently a 500, not a 400.
 router.patch('/me', authenticate, requireActiveUser, upload.single('profileImage'), validateProfileUpdate, updateMe);

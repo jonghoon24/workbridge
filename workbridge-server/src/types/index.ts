@@ -1,6 +1,8 @@
 import type { Request } from 'express';
 import type { Prisma, ProjectStatus, Role, User } from '@prisma/client';
 
+import type { ErrorCode, FieldViolation } from '../lib/errorCodes';
+
 /**
  * Shared types for the server. Import from here — do not redefine these locally.
  *
@@ -89,7 +91,8 @@ export interface AuthUserResponse {
 
 /** The uniform error body produced by `errorHandler`. */
 export interface ErrorEnvelope {
-  error: { message: string };
+  /** `fields` only on a `VALIDATION_FAILED`. */
+  error: { code: ErrorCode; message: string; fields?: FieldViolation[] };
 }
 
 // ---------------------------------------------------------------------------

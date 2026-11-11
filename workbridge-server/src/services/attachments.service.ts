@@ -116,14 +116,14 @@ export async function verifyUploads(
   const rows = await prisma.attachmentUpload.findMany({
     where: { id: { in: [...uploadIds] }, userId, scope, targetId, expiresAt: { gt: now } },
   });
-  if (rows.length !== uploadIds.length) throw new AppError(UPLOAD_NOT_FOUND, 400);
+  if (rows.length !== uploadIds.length) throw new AppError('UPLOAD_NOT_FOUND', UPLOAD_NOT_FOUND);
   const byId = new Map(rows.map((row) => [row.id, row]));
   const ordered = uploadIds.map((id) => byId.get(id)!);
 
   const stats = await Promise.all(ordered.map((row) => statObject(row.storageKey)));
   return ordered.map((row, index) => {
     const stat = stats[index];
-    if (!stat) throw new AppError(FILE_NOT_UPLOADED, 400);
+    if (!stat) throw new AppError('FILE_NOT_UPLOADED', FILE_NOT_UPLOADED);
     assertAttachmentPolicy(stat);
     return { id: row.id, storageKey: row.storageKey, fileName: row.fileName, mimeType: stat.mimeType, size: stat.size };
   });
@@ -140,7 +140,7 @@ export async function consumeUploads(
 ): Promise<void> {
   if (uploads.length === 0) return;
   const { count } = await tx.attachmentUpload.deleteMany({ where: { id: { in: uploads.map((u) => u.id) }, userId } });
-  if (count !== uploads.length) throw new AppError(UPLOAD_NOT_FOUND, 400);
+  if (count !== uploads.length) throw new AppError('UPLOAD_NOT_FOUND', UPLOAD_NOT_FOUND);
 }
 
 /**

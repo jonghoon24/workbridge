@@ -1,7 +1,7 @@
 import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { settlementListQuery } from '../../schemas/settlements';
-import { ACTIVE_USER, bearer, errors, invalid, ok, pathParams, role } from '../common';
+import { ACTIVE_USER, bearer, cause, errors, invalid, ok, pathParams, role } from '../common';
 import { settlementDetail, settlementList, settlementSummary } from '../responses/settlements';
 
 const tags = ['Settlements'];
@@ -40,10 +40,10 @@ export function registerSettlementPaths(registry: OpenAPIRegistry): void {
     request: { params: pathParams({ id: '정산 ID' }) },
     responses: {
       200: ok(settlementDetail),
-      ...errors(ACTIVE_USER, role('FREELANCER'), {
-        403: ['`Not authorized` — 내 정산이 아님'],
-        404: ['`Settlement not found` — 없는 정산'],
-      }),
+      ...errors(ACTIVE_USER, role('FREELANCER'), [
+        cause('FORBIDDEN_RESOURCE', '내 정산이 아님'),
+        cause('SETTLEMENT_NOT_FOUND', '없는 정산'),
+      ]),
     },
   });
 }

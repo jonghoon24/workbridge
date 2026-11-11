@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { authed } from './helpers/api';
+import { invalidBodyFor } from './helpers/errors';
 import { prisma } from './helpers/db';
 import { jobsOf, runJobs } from './helpers/jobs';
 import {
@@ -318,19 +319,19 @@ describe('GET /api/conversations', () => {
   });
 
   it.each([
-    ['limit=0', 'limit: must be at least 1'],
-    ['page=0', 'page: must be at least 1'],
-    ['limit=1.5', 'limit: must be an integer'],
-    ['page=2abc', 'page: must be an integer'],
-    ['limit=1&limit=2', 'limit: must be a single value'],
-    ['page=1000001', 'page: must be at most 1000000'],
-  ])('400s for a malformed paging parameter: %s', async (query, message) => {
+    ['limit=0', 'limit: must be at least 1', 'TOO_SMALL'],
+    ['page=0', 'page: must be at least 1', 'TOO_SMALL'],
+    ['limit=1.5', 'limit: must be an integer', 'INVALID'],
+    ['page=2abc', 'page: must be an integer', 'INVALID'],
+    ['limit=1&limit=2', 'limit: must be a single value', 'INVALID'],
+    ['page=1000001', 'page: must be at most 1000000', 'TOO_LARGE'],
+  ] as const)('400s for a malformed paging parameter: %s', async (query, message, code) => {
     const user = await makeFreelancer();
 
     const res = await authed(user).get(`/api/conversations?${query}`);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
   });
 
   it('leaves out conversations whose project is soft-deleted', async () => {
@@ -449,15 +450,15 @@ describe('GET /api/conversations?q=', () => {
   });
 
   it.each([
-    ['repeated', 'q=a&q=b', 'q: must be a single value'],
-    ['101 characters', `q=${'가'.repeat(101)}`, 'q: must be at most 100 characters'],
-  ])('400s for a malformed search query: %s', async (_label, query, message) => {
+    ['repeated', 'q=a&q=b', 'q: must be a single value', 'INVALID'],
+    ['101 characters', `q=${'가'.repeat(101)}`, 'q: must be at most 100 characters', 'TOO_LARGE'],
+  ] as const)('400s for a malformed search query: %s', async (_label, query, message, code) => {
     const user = await makeFreelancer();
 
     const res = await authed(user).get(`/api/conversations?${encodeURI(query)}`);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
   });
 });
 
@@ -523,7 +524,7 @@ describe('a conversation whose project is soft-deleted', () => {
     ).send({ body: 'hello' });
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Conversation not found' } });
+    expect(res.body).toEqual({ error: { code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' } });
     expect(await prisma.message.count()).toBe(1);
     expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
     const participants = await prisma.conversationParticipant.findMany({ where: { userId: freelancer.id } });
@@ -537,7 +538,7 @@ describe('a conversation whose project is soft-deleted', () => {
     const res = await authed(client).get(`/api/contracts/${contract.id}/conversation`);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect(res.body).toEqual({ error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' } });
   });
 });
 
@@ -566,7 +567,7 @@ describe('GET /api/contracts/:id/conversation', () => {
     const res = await authed(client).get(`/api/contracts/${contract.id}/conversation`);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Conversation not found' } });
+    expect(res.body).toEqual({ error: { code: 'CONVERSATION_NOT_FOUND', message: 'Conversation not found' } });
   });
 });
 

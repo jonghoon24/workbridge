@@ -11,6 +11,7 @@ import {
   makeFreelancer,
   makeProject,
 } from './helpers/factories';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /** A COMPLETED contract — the only state in which a review may be written. */
 const completedScenario = () => makeContractScenario({ contract: { status: 'COMPLETED' } });
@@ -138,7 +139,7 @@ describe('POST /api/reviews', () => {
     expect(first.status).toBe(201);
     expect(second.status).toBe(409);
     expect(second.body).toEqual({
-      error: { message: 'You have already reviewed this contract' },
+      error: { code: 'REVIEW_ALREADY_EXISTS', message: 'You have already reviewed this contract' },
     });
 
     const rows = await prisma.review.findMany({ where: { contractId: contract.id } });
@@ -172,7 +173,7 @@ describe('POST /api/reviews', () => {
     const res = await authed(client).post('/api/reviews').send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBody(field, 'REQUIRED', message));
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -182,7 +183,7 @@ describe('POST /api/reviews', () => {
     const res = await authed(client).post('/api/reviews').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'contractId: Contract ID is required' } });
+    expect(res.body).toEqual(invalidBody('contractId', 'REQUIRED', 'contractId: Contract ID is required'));
   });
 
   // Validation runs before the contract lookup, so an unknown contract with a bad body
@@ -198,19 +199,19 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(res.body).toEqual(invalidBody('rating', 'TOO_LARGE', 'rating: Rating must be an integer between 1 and 5'));
   });
 
   it.each([
-    ['a blank content', { content: '   ' }, 'content: Content is required'],
-    ['a numeric content', { content: 5 }, 'content: Content must be a string'],
-    ['an empty contractId', { contractId: '' }, 'contractId: Contract ID is required'],
-    ['an object contractId', { contractId: { not: '' } }, 'contractId: Contract ID must be a string'],
-    ['a numeric revieweeId', { revieweeId: 12345 }, 'revieweeId: Reviewee ID must be a string'],
+    ['a blank content', { content: '   ' }, 'content: Content is required', 'REQUIRED'],
+    ['a numeric content', { content: 5 }, 'content: Content must be a string', 'INVALID'],
+    ['an empty contractId', { contractId: '' }, 'contractId: Contract ID is required', 'REQUIRED'],
+    ['an object contractId', { contractId: { not: '' } }, 'contractId: Contract ID must be a string', 'INVALID'],
+    ['a numeric revieweeId', { revieweeId: 12345 }, 'revieweeId: Reviewee ID must be a string', 'INVALID'],
     // JSON only: a numeric string is not coerced (the client sends a number).
-    ['a numeric-string rating', { rating: '5' }, 'rating: Rating must be an integer between 1 and 5'],
-    ['a null rating', { rating: null }, 'rating: Rating must be an integer between 1 and 5'],
-  ])('rejects %s with 400 rather than 500', async (_label, patch, message) => {
+    ['a numeric-string rating', { rating: '5' }, 'rating: Rating must be an integer between 1 and 5', 'INVALID'],
+    ['a null rating', { rating: null }, 'rating: Rating must be an integer between 1 and 5', 'INVALID'],
+  ] as const)('rejects %s with 400 rather than 500', async (_label, patch, message, code) => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({
@@ -222,7 +223,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -253,11 +254,15 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(res.body).toEqual(invalidBody('rating', 'TOO_SMALL', 'rating: Rating must be an integer between 1 and 5'));
     expect(await prisma.review.count()).toBe(0);
   });
 
-  it.each([-1, 6, 100])('rejects an out-of-range rating (%s) with 400', async (rating) => {
+  it.each([
+    [-1, 'TOO_SMALL'],
+    [6, 'TOO_LARGE'],
+    [100, 'TOO_LARGE'],
+  ] as const)('rejects an out-of-range rating (%s) with 400', async (rating, code) => {
     const { contract, client, freelancer } = await completedScenario();
 
     const res = await authed(client).post('/api/reviews').send({
@@ -268,7 +273,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(res.body).toEqual(invalidBody('rating', code, 'rating: Rating must be an integer between 1 and 5'));
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -300,7 +305,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(res.body).toEqual(invalidBody('rating', 'INVALID', 'rating: Rating must be an integer between 1 and 5'));
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -316,7 +321,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(res.body).toEqual(invalidBody('rating', 'INVALID', 'rating: Rating must be an integer between 1 and 5'));
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -333,7 +338,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'rating: Rating must be an integer between 1 and 5' } });
+    expect(res.body).toEqual(invalidBody('rating', 'INVALID', 'rating: Rating must be an integer between 1 and 5'));
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -350,7 +355,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
+    expect(res.body).toEqual({ error: { code: 'FORBIDDEN_RESOURCE', message: 'Not authorized' } });
   });
 
   it('returns 404 for an unknown contract', async () => {
@@ -365,7 +370,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect(res.body).toEqual({ error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' } });
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -384,7 +389,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect(res.body).toEqual({ error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' } });
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -402,7 +407,7 @@ describe('POST /api/reviews', () => {
 
       expect(res.status).toBe(400);
       expect(res.body).toEqual({
-        error: { message: 'Reviews can only be written after project completion' },
+        error: { code: 'CONTRACT_NOT_COMPLETED', message: 'Reviews can only be written after project completion' },
       });
       expect(await prisma.review.count()).toBe(0);
     },
@@ -420,7 +425,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Invalid reviewee' } });
+    expect(res.body).toEqual({ error: { code: 'REVIEWEE_INVALID', message: 'Invalid reviewee' } });
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -435,7 +440,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Invalid reviewee' } });
+    expect(res.body).toEqual({ error: { code: 'REVIEWEE_INVALID', message: 'Invalid reviewee' } });
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -450,7 +455,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Invalid reviewee' } });
+    expect(res.body).toEqual({ error: { code: 'REVIEWEE_INVALID', message: 'Invalid reviewee' } });
     expect(await prisma.review.count()).toBe(0);
   });
 
@@ -508,7 +513,7 @@ describe('POST /api/reviews', () => {
     });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'tags.0: Tags must be strings' } });
+    expect(res.body).toEqual(invalidBody('tags.0', 'INVALID', 'tags.0: Tags must be strings'));
   });
 
   // The half that already held before the fix: the write must not land.

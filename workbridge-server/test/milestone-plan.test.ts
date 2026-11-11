@@ -4,6 +4,8 @@ import { authed } from './helpers/api';
 import { prisma, sideClient } from './helpers/db';
 import { makeContractScenario, makeMilestone } from './helpers/factories';
 import { DAY_MS, kstDateString, kstDateToEndOfDay } from '../src/lib/time';
+import type { FieldErrorCode } from '../src/lib/errorCodes';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * The milestone plan — reading and replacing it, and the plan rules (count, amounts, sum,
@@ -162,43 +164,43 @@ describe('PUT /api/contracts/:id/milestones — success', () => {
 describe('PUT /api/contracts/:id/milestones — refusals', () => {
   const longText = (n: number) => 'x'.repeat(n);
 
-  it.each<[string, () => unknown, string]>([
-    ['no milestones', () => [], 'milestones: A contract must have between 1 and 10 milestones'],
-    ['eleven milestones', () => Array.from({ length: 11 }, (_, i) => ({ title: `${i}`, amount: 10_000, dueDate: inDays(5) })), 'milestones: A contract must have between 1 and 10 milestones'],
-    ['an empty title', () => [{ title: '   ', amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.title: Title is required'],
-    ['a 101-character title', () => [{ title: longText(101), amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.title: Title must be at most 100 characters'],
-    ['a 2001-character description', () => [{ title: 't', description: longText(2001), amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.description: Description must be at most 2000 characters'],
-    ['a fractional amount', () => [{ title: 't', amount: 3_999_999.5, dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won'],
-    ['an amount below 10,000', () => [{ title: 'a', amount: 3_990_001, dueDate: inDays(5) }, { title: 'b', amount: 9_999, dueDate: inDays(6) }], 'milestones.1.amount: Amount must be at least 10000'],
-    ['a malformed date', () => [{ title: 't', amount: 4_000_000, dueDate: '2026/12/01' }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date'],
-    ['an impossible date', () => [{ title: 't', amount: 4_000_000, dueDate: '2099-02-30' }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date'],
-    ['yesterday', () => [{ title: 't', amount: 4_000_000, dueDate: inDays(-1) }], 'milestones.0.dueDate: Due date cannot be in the past'],
-    ['decreasing dates', () => [{ title: 'a', amount: 2_000_000, dueDate: inDays(10) }, { title: 'b', amount: 2_000_000, dueDate: inDays(9) }], 'milestones.1.dueDate: Due dates must not decrease'],
+  it.each<[string, () => unknown, string, FieldErrorCode]>([
+    ['no milestones', () => [], 'milestones: A contract must have between 1 and 10 milestones', 'REQUIRED'],
+    ['eleven milestones', () => Array.from({ length: 11 }, (_, i) => ({ title: `${i}`, amount: 10_000, dueDate: inDays(5) })), 'milestones: A contract must have between 1 and 10 milestones', 'TOO_LARGE'],
+    ['an empty title', () => [{ title: '   ', amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.title: Title is required', 'REQUIRED'],
+    ['a 101-character title', () => [{ title: longText(101), amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.title: Title must be at most 100 characters', 'TOO_LARGE'],
+    ['a 2001-character description', () => [{ title: 't', description: longText(2001), amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.description: Description must be at most 2000 characters', 'TOO_LARGE'],
+    ['a fractional amount', () => [{ title: 't', amount: 3_999_999.5, dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won', 'INVALID'],
+    ['an amount below 10,000', () => [{ title: 'a', amount: 3_990_001, dueDate: inDays(5) }, { title: 'b', amount: 9_999, dueDate: inDays(6) }], 'milestones.1.amount: Amount must be at least 10000', 'TOO_SMALL'],
+    ['a malformed date', () => [{ title: 't', amount: 4_000_000, dueDate: '2026/12/01' }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date', 'INVALID'],
+    ['an impossible date', () => [{ title: 't', amount: 4_000_000, dueDate: '2099-02-30' }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date', 'INVALID'],
+    ['yesterday', () => [{ title: 't', amount: 4_000_000, dueDate: inDays(-1) }], 'milestones.0.dueDate: Due date cannot be in the past', 'TOO_SMALL'],
+    ['decreasing dates', () => [{ title: 'a', amount: 2_000_000, dueDate: inDays(10) }, { title: 'b', amount: 2_000_000, dueDate: inDays(9) }], 'milestones.1.dueDate: Due dates must not decrease', 'CONFLICT'],
     // No zod default message (`Required`, `Expected number, received string`) reaches the client.
-    ['a missing title', () => [{ amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.title: Title is required'],
-    ['a string amount', () => [{ title: 't', amount: '4000000', dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won'],
-    ['a missing amount', () => [{ title: 't', dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won'],
-    ['a missing due date', () => [{ title: 't', amount: 4_000_000 }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date'],
-  ])('400s on %s with an exact message', async (_label, items, message) => {
+    ['a missing title', () => [{ amount: 4_000_000, dueDate: inDays(5) }], 'milestones.0.title: Title is required', 'REQUIRED'],
+    ['a string amount', () => [{ title: 't', amount: '4000000', dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won', 'INVALID'],
+    ['a missing amount', () => [{ title: 't', dueDate: inDays(5) }], 'milestones.0.amount: Amount must be a whole number of won', 'REQUIRED'],
+    ['a missing due date', () => [{ title: 't', amount: 4_000_000 }], 'milestones.0.dueDate: Due date must be a YYYY-MM-DD date', 'REQUIRED'],
+  ])('400s on %s with an exact message', async (_label, items, message, code) => {
     const { client, contract, milestone } = await makeContractScenario();
 
     const res = await put(client, contract.id, items());
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
   });
 
-  it.each<[string, Record<string, unknown>]>([
-    ['a body without milestones', {}],
-    ['milestones that are not a list', { milestones: 'x' }],
-  ])('400s on %s with the milestone count message', async (_label, body) => {
+  it.each<[string, Record<string, unknown>, FieldErrorCode]>([
+    ['a body without milestones', {}, 'REQUIRED'],
+    ['milestones that are not a list', { milestones: 'x' }, 'INVALID'],
+  ])('400s on %s with the milestone count message', async (_label, body, code) => {
     const { client, contract } = await makeContractScenario();
 
     const res = await authed(client).put(`/api/contracts/${contract.id}/milestones`).send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'milestones: A contract must have between 1 and 10 milestones' } });
+    expect(res.body).toEqual(invalidBody('milestones', code, 'milestones: A contract must have between 1 and 10 milestones'));
   });
 
   it('reports the first failing entry in array order: a past date on #0 wins over a blank title on #1', async () => {
@@ -209,7 +211,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
       { title: '  ', amount: 2_000_000, dueDate: inDays(5) },
     ]);
 
-    expect(res.body).toEqual({ error: { message: 'milestones.0.dueDate: Due date cannot be in the past' } });
+    expect(res.body).toEqual(invalidBody('milestones.0.dueDate', 'TOO_SMALL', 'milestones.0.dueDate: Due date cannot be in the past'));
   });
 
   it('checks the date order only after every entry passed its own checks', async () => {
@@ -221,7 +223,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
       { title: '', amount: 2_000_000, dueDate: inDays(10) },
     ]);
 
-    expect(res.body).toEqual({ error: { message: 'milestones.2.title: Title is required' } });
+    expect(res.body).toEqual(invalidBody('milestones.2.title', 'REQUIRED', 'milestones.2.title: Title is required'));
   });
 
   it('accepts exactly 100 / 2000 characters (the inclusive bounds)', async () => {
@@ -249,7 +251,11 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
-      error: { message: 'Milestone amounts must add up to the contract amount (2500001)' },
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Milestone amounts must add up to the contract amount (2500001)',
+        fields: [{ path: 'milestones', code: 'CONFLICT' }],
+      },
     });
   });
 
@@ -261,7 +267,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     const res = await put(client, contract.id, [{ title: 't', amount: 1_000_000, dueDate: inDays(5) }]);
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Milestone plan is locked once the contract is active' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_PLAN_LOCKED', message: 'Milestone plan is locked once the contract is active' } });
     expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
   });
 
@@ -271,7 +277,7 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     const res = await put(client, contract.id, twoStep());
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'This contract has been cancelled' } });
+    expect(res.body).toEqual({ error: { code: 'CONTRACT_CANCELLED', message: 'This contract has been cancelled' } });
     expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
   });
 

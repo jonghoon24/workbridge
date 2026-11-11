@@ -111,16 +111,19 @@ describe('a soft-deleted principal holding a pre-deletion token', () => {
     expect(stored.name).toBe('복구됨');
   });
 
-  /** `selectRole` looks the caller up with `findFirst … deletedAt: null`, so it 404s. */
-  it('POST /api/auth/select-role is guarded: 404, role unchanged', async () => {
+  /**
+   * `selectRole` looks the caller up with `findFirst … deletedAt: null`, and answers a withdrawn
+   * caller like `requireActiveUser` does: 401 `ACCOUNT_INACTIVE`.
+   */
+  it('POST /api/auth/select-role is guarded: 401 ACCOUNT_INACTIVE, role unchanged', async () => {
     const actor = await makeUser({ role: 'FREELANCER', roleSelected: false });
     const token = tokenFor(actor);
     await softDelete(actor.id);
 
     const res = await bearer(token).post('/api/auth/select-role').send({ role: 'CLIENT' });
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
     expect(stored.role).toBe('FREELANCER');
     expect(stored.roleSelected).toBe(false);
@@ -139,7 +142,7 @@ describe('a soft-deleted principal holding a pre-deletion token', () => {
  *
  * Every new mutating route gets a row here. Rows are grouped by domain: milestones, plan and
  * payout account; conversations and messages; portfolio and careers; notification preferences;
- * then the existing domains. `POST /api/auth/select-role` is covered above (404 from its own
+ * then the existing domains. `POST /api/auth/select-role` is covered above (401 from its own
  * lookup); `POST /api/auth/logout` writes no row of the caller's.
  */
 type MutationCase = {
@@ -790,7 +793,7 @@ describe('write routes refuse a soft-deleted principal (requireActiveUser)', () 
 
     await assertUnchanged();
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Account is no longer active' } });
+    expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
   });
 
   // The guard itself, on a probe route, so it is pinned independently of any route that uses it.
@@ -808,7 +811,7 @@ describe('write routes refuse a soft-deleted principal (requireActiveUser)', () 
     await softDelete(actor.id);
     const refused = await send();
     expect(refused.status).toBe(401);
-    expect(refused.body).toEqual({ error: { message: 'Account is no longer active' } });
+    expect(refused.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
 
     await restore(actor.id);
     expect((await send()).status).toBe(200);
@@ -837,7 +840,7 @@ describe('a soft-deleted user cannot authenticate or be looked up', () => {
       .send({ email: user.email, password: TEST_PASSWORD });
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+    expect(res.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } });
   });
 
   it('cannot refresh with a pre-deletion refresh cookie', async () => {
@@ -855,7 +858,7 @@ describe('a soft-deleted user cannot authenticate or be looked up', () => {
       .set('Cookie', `refreshToken=${refreshToken}`);
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'User not found' } });
   });
 
   it('cannot refresh with a cookie obtained by logging in before the deletion', async () => {
@@ -874,18 +877,18 @@ describe('a soft-deleted user cannot authenticate or be looked up', () => {
     const res = await api().post('/api/auth/refresh').set('Cookie', cookie as string);
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'User not found' } });
   });
 
-  it('404s at GET /api/users/me with a pre-deletion access token', async () => {
+  it('401s at GET /api/users/me with a pre-deletion access token — the caller\'s own account is inactive', async () => {
     const user = await makeFreelancer();
     const token = tokenFor(user);
     await softDelete(user.id);
 
     const res = await bearer(token).get('/api/users/me');
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
   });
 
   it('404s at GET /api/users/:id — invisible to the public profile lookup', async () => {
@@ -895,7 +898,7 @@ describe('a soft-deleted user cannot authenticate or be looked up', () => {
     const res = await api().get(`/api/users/${user.id}`);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
   });
 
   it('can log in again once deletedAt is cleared', async () => {
@@ -941,7 +944,7 @@ describe('a soft-deleted user cannot authenticate or be looked up', () => {
     });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Email already in use' } });
+    expect(res.body).toEqual({ error: { code: 'EMAIL_ALREADY_IN_USE', message: 'Email already in use' } });
     // No second row, and the deleted one is untouched.
     expect(await prisma.user.count({ where: { email: 'taken-by-deleted@test.local' } })).toBe(1);
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
@@ -1043,7 +1046,7 @@ describe('a soft-deleted project', () => {
     const res = await send(fx);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
   });
 
   it('is absent from GET /api/projects under the default filter', async () => {
@@ -1164,7 +1167,7 @@ describe('a contract whose project is soft-deleted', () => {
       const res = await authed(party).get(`/api/contracts/${contract.id}`);
 
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+      expect(res.body).toEqual({ error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' } });
     }
   });
 
@@ -1175,7 +1178,7 @@ describe('a contract whose project is soft-deleted', () => {
     const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect(res.body).toEqual({ error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' } });
     const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(stored.freelancerSigned).toBe(false);
     expect(stored.status).toBe('PENDING');
@@ -1188,7 +1191,7 @@ describe('a contract whose project is soft-deleted', () => {
     const res = await authed(client).post(`/api/contracts/${contract.id}/cancel`);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect(res.body).toEqual({ error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' } });
     expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('PENDING');
     expect(await prisma.notification.count({ where: { userId: { in: [client.id, freelancer.id] } } })).toBe(0);
   });
@@ -1202,7 +1205,7 @@ describe('a contract whose project is soft-deleted', () => {
     const res = await authed(client).post(`/api/milestones/${milestone.id}/approve`);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Milestone not found' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_NOT_FOUND', message: 'Milestone not found' } });
     const storedContract = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     const storedProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     const storedMilestone = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
@@ -1232,18 +1235,18 @@ describe('a contract whose project is soft-deleted, on the expansion routes', ()
   });
 
   it.each([
-    ['GET /api/contracts/:id/milestones', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).get(`/api/contracts/${s.contract.id}/milestones`), 'Contract not found'],
-    ['PUT /api/contracts/:id/milestones', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).put(`/api/contracts/${s.contract.id}/milestones`).send({ milestones: [{ title: 'x', amount: 4_000_000, dueDate: '2099-01-01' }] }), 'Contract not found'],
-    ['GET /api/milestones/:id', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.freelancer).get(`/api/milestones/${s.milestone.id}`), 'Milestone not found'],
-    ['POST /api/milestones/:id/reject', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post(`/api/milestones/${s.milestone.id}/reject`).send({ reason: 'Not what we agreed on.' }), 'Milestone not found'],
-    ['POST /api/payments', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post('/api/payments').send({ milestoneId: s.milestone.id }), 'Milestone not found'],
-  ] as const)('%s → 404', async (_label, send, message) => {
+    ['GET /api/contracts/:id/milestones', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).get(`/api/contracts/${s.contract.id}/milestones`), 'CONTRACT_NOT_FOUND', 'Contract not found'],
+    ['PUT /api/contracts/:id/milestones', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).put(`/api/contracts/${s.contract.id}/milestones`).send({ milestones: [{ title: 'x', amount: 4_000_000, dueDate: '2099-01-01' }] }), 'CONTRACT_NOT_FOUND', 'Contract not found'],
+    ['GET /api/milestones/:id', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.freelancer).get(`/api/milestones/${s.milestone.id}`), 'MILESTONE_NOT_FOUND', 'Milestone not found'],
+    ['POST /api/milestones/:id/reject', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post(`/api/milestones/${s.milestone.id}/reject`).send({ reason: 'Not what we agreed on.' }), 'MILESTONE_NOT_FOUND', 'Milestone not found'],
+    ['POST /api/payments', (s: Awaited<ReturnType<typeof activeContract>>) => authed(s.client).post('/api/payments').send({ milestoneId: s.milestone.id }), 'MILESTONE_NOT_FOUND', 'Milestone not found'],
+  ] as const)('%s → 404', async (_label, send, code, message) => {
     const scenario = await deletedProjectContract();
 
     const res = await send(scenario);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual({ error: { code, message } });
   });
 });
 

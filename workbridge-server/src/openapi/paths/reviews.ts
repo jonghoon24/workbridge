@@ -2,7 +2,7 @@ import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { z } from '../../lib/zod';
 import { reviewBody } from '../../schemas/reviews';
-import { ACTIVE_USER, bearer, created, errors, invalid, jsonBody, ok, pathParams, publicRoute } from '../common';
+import { ACTIVE_USER, bearer, cause, created, errors, invalid, jsonBody, ok, pathParams, publicRoute } from '../common';
 import { receivedReview, review } from '../responses/reviews';
 
 const tags = ['Reviews'];
@@ -20,16 +20,13 @@ export function registerReviewPaths(registry: OpenAPIRegistry): void {
     responses: {
       201: created(review),
       ...errors(
-        invalid(
-          '`Reviews can only be written after project completion` — 계약이 완료되지 않음',
-          '`Invalid reviewee` — 리뷰 대상이 계약 상대방이 아님',
-        ),
+        invalid(),
+        cause('CONTRACT_NOT_COMPLETED', '계약이 완료되지 않음'),
+        cause('REVIEWEE_INVALID', '리뷰 대상이 계약 상대방이 아님'),
         ACTIVE_USER,
-        {
-          403: ['`Not authorized` — 계약 당사자가 아님'],
-          404: ['`Contract not found` — 없는 계약, 또는 프로젝트가 삭제됨'],
-          409: ['`You have already reviewed this contract` — 이 계약에 이미 리뷰를 씀'],
-        },
+        cause('FORBIDDEN_RESOURCE', '계약 당사자가 아님'),
+        cause('CONTRACT_NOT_FOUND', '없는 계약, 또는 프로젝트가 삭제됨'),
+        cause('REVIEW_ALREADY_EXISTS', '이 계약에 이미 리뷰를 씀'),
       ),
     },
   });

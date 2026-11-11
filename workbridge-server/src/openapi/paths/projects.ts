@@ -6,13 +6,13 @@ import {
   ACTIVE_USER,
   AUTHENTICATED,
   bearer,
+  cause,
   COMPLETE_PROFILE,
   created,
   errors,
   invalid,
   jsonBody,
   NOT_OWNER,
-  notFound,
   ok,
   pathParams,
   publicRoute,
@@ -28,11 +28,11 @@ import {
 
 const tags = ['Projects'];
 
-const PROJECT_NOT_FOUND = notFound('Project not found', '없거나 삭제된 프로젝트');
+const PROJECT_NOT_FOUND = cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트');
 /** Public reads also hide a project whose client is soft-deleted. */
-const PUBLIC_PROJECT_NOT_FOUND = notFound('Project not found', '없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트');
+const PUBLIC_PROJECT_NOT_FOUND = cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트');
 const projectId = pathParams({ id: '프로젝트 ID' });
-const SCHEDULE = '`recruitmentStartDate cannot be after deadline` — 모집 시작일이 마감일보다 늦음';
+const SCHEDULE = '`deadline` `CONFLICT` — 모집 시작일이 마감일보다 늦음';
 
 /** Rule 7: the read path closes what the scheduler may not have yet. */
 const LAZY_SWEEP =
@@ -51,7 +51,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { query: projectListQuery },
     responses: {
       200: ok(projectList),
-      ...errors(invalid('`minBudget: must not be greater than maxBudget` — 최소 예산이 최대 예산보다 큼')),
+      ...errors(invalid('`minBudget` `CONFLICT` — 최소 예산이 최대 예산보다 큼')),
     },
   });
 
@@ -137,9 +137,10 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
       200: ok(project, '수정된 프로젝트'),
       ...errors(
         invalid(
-          '`Cannot change budget or recruitment dates after applications have been submitted` — 지원이 있는데 예산·일정을 보냄',
-          SCHEDULE,
+          '`deadline` `CONFLICT` — 모집 시작일이 마감일보다 늦음(`deadline`을 보냈으면)',
+          '`recruitmentStartDate` `CONFLICT` — `recruitmentStartDate`만 보냈는데 저장된 마감일보다 늦음',
         ),
+        cause('PROJECT_TERMS_LOCKED', '지원이 있는데 예산·일정을 보냄'),
         ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
@@ -161,12 +162,10 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     request: { params: projectId },
     responses: {
       200: ok(messageBody, '`Project deleted successfully`'),
-      ...errors(ACTIVE_USER, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
-        409: [
-          '`Cannot delete a project with an unfinished contract` — 계약이 `PENDING` 또는 `ACTIVE`',
-          '`Cannot delete a project with a contract record` — 완료되거나 철회된 계약이 있음(상대방의 기록)',
-        ],
-      }),
+      ...errors(ACTIVE_USER, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, [
+        cause('PROJECT_HAS_ACTIVE_CONTRACT', '계약이 `PENDING` 또는 `ACTIVE`'),
+        cause('PROJECT_HAS_CONTRACT_RECORD', '완료되거나 철회된 계약이 있음(상대방의 기록)'),
+      ]),
     },
   });
 
@@ -187,17 +186,17 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
       200: ok(project, '바뀐 프로젝트'),
       ...errors(
         invalid(
-          '`Cannot transition from <현재> to <요청>` — 허용되지 않는 전이',
-          '`Deadline is required to reopen recruitment` — 다시 모집하는데 마감일이 없음',
-          '`Deadline must not be in the past` — 다시 모집할 마감일이 이미 지남',
-          '`Deadline can only be set when reopening recruitment` — 다시 모집하기가 아닌 전이에 마감일을 보냄',
+          '`deadline` `REQUIRED` — 다시 모집하는데 마감일이 없음',
+          '`deadline` `TOO_SMALL` — 다시 모집할 마감일이 이미 지남',
+          '`deadline` `NOT_ALLOWED` — 다시 모집하기가 아닌 전이에 마감일을 보냄',
           SCHEDULE,
         ),
+        cause('PROJECT_STATUS_TRANSITION_INVALID', '허용되지 않는 전이'),
         ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
         PROJECT_NOT_FOUND,
-        { 409: ['`Cannot reopen recruitment while the project has a contract` — 철회되지 않은 계약(서명 대기 등)이 있음'] },
+        cause('REOPEN_BLOCKED_BY_CONTRACT', '철회되지 않은 계약(서명 대기 등)이 있음'),
       ),
     },
   });

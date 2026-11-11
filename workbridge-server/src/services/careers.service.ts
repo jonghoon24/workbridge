@@ -1,7 +1,7 @@
 import type { Career, Prisma } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { kstMonthIndex, kstMonthOrNull, kstMonthString, kstMonthToDate } from '../lib/time';
 import { lockActiveUserRow } from '../lib/locks';
 import { CAREER_LIMITS, monthRangeIssue } from '../schemas/profile';
@@ -86,7 +86,7 @@ export async function listCareers(userId: string, now: Date = new Date()) {
 /** `GET /api/users/:id/careers`: 404 for a missing or soft-deleted user. */
 export async function getPublicCareers(userId: string, now: Date = new Date()) {
   const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { id: true } });
-  if (!user) throw new AppError('User not found', 404);
+  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found');
   return listCareers(userId, now);
 }
 
@@ -95,7 +95,7 @@ export async function createCareer(userId: string, input: CareerCreateInput) {
   const career = await prisma.$transaction(async (tx) => {
     await lockActiveUserRow(tx, userId);
     if (await tx.career.count({ where: { userId } }) >= CAREER_LIMITS.entries) {
-      throw new AppError(LIMIT_REACHED, 409);
+      throw new AppError('CAREER_LIMIT_REACHED', LIMIT_REACHED);
     }
     return tx.career.create({
       data: {
@@ -116,8 +116,8 @@ export async function createCareer(userId: string, input: CareerCreateInput) {
 /** Existence (404), then ownership (403). */
 async function findOwnCareer(userId: string, careerId: string): Promise<Career> {
   const career = await prisma.career.findUnique({ where: { id: careerId } });
-  if (!career) throw new AppError(NOT_FOUND, 404);
-  if (career.userId !== userId) throw new AppError('Not authorized', 403);
+  if (!career) throw new AppError('CAREER_NOT_FOUND', NOT_FOUND);
+  if (career.userId !== userId) throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   return career;
 }
 
@@ -130,7 +130,7 @@ export async function updateCareer(userId: string, careerId: string, input: Care
     end: input.endDate !== undefined ? input.endDate : kstMonthOrNull(stored.endDate),
   };
   const monthIssue = monthRangeIssue(merged);
-  if (monthIssue) throw new AppError(`endDate: ${monthIssue}`, 400);
+  if (monthIssue) throw invalidField('endDate', 'CONFLICT', `endDate: ${monthIssue}`);
 
   const data: Prisma.CareerUpdateManyMutationInput = {};
   if (input.company !== undefined) data.company = input.company;
@@ -145,7 +145,7 @@ export async function updateCareer(userId: string, careerId: string, input: Care
     ? await prisma.career.updateMany({ where: { id: careerId, userId }, data })
     : { count: 1 };
   const career = count === 1 ? await prisma.career.findUnique({ where: { id: careerId } }) : null;
-  if (!career) throw new AppError(NOT_FOUND, 404);
+  if (!career) throw new AppError('CAREER_NOT_FOUND', NOT_FOUND);
 
   return { career: serializeCareer(career) };
 }
@@ -154,6 +154,6 @@ export async function updateCareer(userId: string, careerId: string, input: Care
 export async function deleteCareer(userId: string, careerId: string) {
   await findOwnCareer(userId, careerId);
   const { count } = await prisma.career.deleteMany({ where: { id: careerId, userId } });
-  if (count === 0) throw new AppError(NOT_FOUND, 404);
+  if (count === 0) throw new AppError('CAREER_NOT_FOUND', NOT_FOUND);
   return { id: careerId, deleted: true as const };
 }

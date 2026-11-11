@@ -4,6 +4,8 @@ import type { User } from '@prisma/client';
 import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeFreelancer, makePayoutAccount } from './helpers/factories';
+import type { FieldErrorCode } from '../src/lib/errorCodes';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 import { decryptAccountNumber } from '../src/lib/payoutAccountCrypto';
 import { nextKstWeekday } from '../src/lib/time';
 
@@ -100,20 +102,20 @@ describe('PUT /api/users/me/payout-account', () => {
     expect((await put(freelancer, { bankCode: '004', accountNumber: '1234567890', holderName: '  jane  DOE ' })).status).toBe(200);
   });
 
-  it.each<[string, Record<string, unknown>, string]>([
-    ['an unknown bank code', { bankCode: '999', accountNumber: '1234567890' }, 'bankCode: Unknown bank code'],
-    ['a missing bank code', { accountNumber: '1234567890' }, 'bankCode: Unknown bank code'],
-    ['9 digits', { bankCode: '004', accountNumber: '123456789' }, 'accountNumber: Account number must be 10 to 14 digits'],
-    ['15 digits', { bankCode: '004', accountNumber: '123456789012345' }, 'accountNumber: Account number must be 10 to 14 digits'],
-    ['letters', { bankCode: '004', accountNumber: '12345abcde' }, 'accountNumber: Account number must be 10 to 14 digits'],
-    ['a blank holder', { bankCode: '004', accountNumber: '1234567890', holderName: '  ' }, 'holderName: Account holder is required'],
-  ])('400s on %s', async (_label, body, message) => {
+  it.each<[string, Record<string, unknown>, string, FieldErrorCode]>([
+    ['an unknown bank code', { bankCode: '999', accountNumber: '1234567890' }, 'bankCode: Unknown bank code', 'INVALID'],
+    ['a missing bank code', { accountNumber: '1234567890' }, 'bankCode: Unknown bank code', 'REQUIRED'],
+    ['9 digits', { bankCode: '004', accountNumber: '123456789' }, 'accountNumber: Account number must be 10 to 14 digits', 'INVALID'],
+    ['15 digits', { bankCode: '004', accountNumber: '123456789012345' }, 'accountNumber: Account number must be 10 to 14 digits', 'INVALID'],
+    ['letters', { bankCode: '004', accountNumber: '12345abcde' }, 'accountNumber: Account number must be 10 to 14 digits', 'INVALID'],
+    ['a blank holder', { bankCode: '004', accountNumber: '1234567890', holderName: '  ' }, 'holderName: Account holder is required', 'REQUIRED'],
+  ])('400s on %s', async (_label, body, message, code) => {
     const freelancer = await makeFreelancer();
 
     const res = await put(freelancer, { holderName: freelancer.name, ...body });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect(await prisma.payoutAccount.count()).toBe(0);
   });
 
@@ -130,7 +132,7 @@ describe('PUT /api/users/me/payout-account', () => {
     const res = await put(freelancer, { bankCode: '004', accountNumber: '1234567890', holderName: '박지원' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Account holder must match your name' } });
+    expect(res.body).toEqual(invalidBody('holderName', 'CONFLICT', 'Account holder must match your name'));
   });
 
   it('409s while a payout is PROCESSING, and changes nothing', async () => {
@@ -141,7 +143,7 @@ describe('PUT /api/users/me/payout-account', () => {
     const res = await put(freelancer, { bankCode: '088', accountNumber: '9999999999', holderName: freelancer.name });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Payout account cannot be changed while a payout is processing' } });
+    expect(res.body).toEqual({ error: { code: 'PAYOUT_ACCOUNT_LOCKED', message: 'Payout account cannot be changed while a payout is processing' } });
     expect(await prisma.payoutAccount.findUniqueOrThrow({ where: { userId: freelancer.id } })).toMatchObject({
       bankCode: before.bankCode,
       accountNumber: before.accountNumber,

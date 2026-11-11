@@ -920,7 +920,7 @@ describe('settlement and payout races (deterministic)', () => {
       const res = await request;
 
       expect(res.status).toBe(409);
-      expect(res.body).toEqual({ error: { message: 'Payout account cannot be changed while a payout is processing' } });
+      expect(res.body).toEqual({ error: { code: 'PAYOUT_ACCOUNT_LOCKED', message: 'Payout account cannot be changed while a payout is processing' } });
       expect(await prisma.payoutAccount.findUniqueOrThrow({ where: { userId: freelancer.id } })).toMatchObject({
         bankCode: account.bankCode,
         accountNumber: account.accountNumber,

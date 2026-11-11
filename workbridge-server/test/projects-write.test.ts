@@ -12,6 +12,7 @@ import {
   makeProject,
 } from './helpers/factories';
 import { DAY_MS, kstDateString, kstDateToEndOfDay, startOfKstDay } from '../src/lib/time';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * The project mutation endpoints. Product rules: `docs/domain/projects-contracts.md`.
@@ -113,7 +114,7 @@ describe('POST /api/projects', () => {
       const res = await authed(client).post('/api/projects').send(body);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
+      expect(res.body).toEqual(invalidBody(field, 'REQUIRED', `${field}: ${message}`));
       expect(await prisma.project.count()).toBe(0);
     },
   );
@@ -169,7 +170,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 0 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
+    expect(res.body).toEqual(invalidBody('budget', 'TOO_SMALL', 'budget: Budget must be a positive whole number of won'));
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -211,7 +212,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
+    expect(res.body).toEqual(invalidBody('budget', 'INVALID', 'budget: Budget must be a positive whole number of won'));
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -225,7 +226,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), [field]: '   ' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
+    expect(res.body).toEqual(invalidBody(field, 'REQUIRED', `${field}: ${message}`));
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -236,7 +237,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), title: 123 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'title: Project title must be a string' } });
+    expect(res.body).toEqual(invalidBody('title', 'INVALID', 'title: Project title must be a string'));
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -257,7 +258,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), deadline: 1_900_000_000_000 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'deadline: Deadline must be a valid date' } });
+    expect(res.body).toEqual(invalidBody('deadline', 'INVALID', 'deadline: Deadline must be a valid date'));
   });
 
   it.each([
@@ -397,7 +398,7 @@ describe('POST /api/projects', () => {
       const res = await authed(client).post('/api/projects').send({ ...validBody(), deadline: '2030-02-30' });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'deadline: Deadline must be a valid date' } });
+      expect(res.body).toEqual(invalidBody('deadline', 'INVALID', 'deadline: Deadline must be a valid date'));
       expect(await prisma.project.count()).toBe(0);
     });
   });
@@ -443,7 +444,7 @@ describe('POST /api/projects', () => {
       .send({ ...validBody(), requiredSkills });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'requiredSkills: Required skills must be a string or a list of strings' } });
+    expect(res.body).toEqual(invalidBody('requiredSkills', 'INVALID', 'requiredSkills: Required skills must be a string or a list of strings'));
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -628,7 +629,7 @@ describe('PATCH /api/projects/:id', () => {
       .send({ title: '함께 보낸 제목', requiredSkills: [1, 2] });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'requiredSkills: Required skills must be a string or a list of strings' } });
+    expect(res.body).toEqual(invalidBody('requiredSkills', 'INVALID', 'requiredSkills: Required skills must be a string or a list of strings'));
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.requiredSkills).toEqual(project.requiredSkills);
@@ -637,18 +638,18 @@ describe('PATCH /api/projects/:id', () => {
 
   // `title !== undefined` used to store an empty title, and a `null` one reached Prisma as a 500.
   it.each([
-    ['an empty title', { title: '' }, 'title: Project title is required'],
-    ['a whitespace-only description', { description: '  ' }, 'description: Project description is required'],
-    ['a null category', { category: null }, 'category: Category must be a string'],
-    ['a null deadline', { deadline: null }, 'deadline: Deadline must be a valid date'],
-    ['an empty recruitmentStartDate', { recruitmentStartDate: '' }, 'recruitmentStartDate: Recruitment start date must be a valid date'],
-  ])('rejects %s with 400 and modifies nothing', async (_label, body, message) => {
+    ['an empty title', { title: '' }, 'title: Project title is required', 'REQUIRED'],
+    ['a whitespace-only description', { description: '  ' }, 'description: Project description is required', 'REQUIRED'],
+    ['a null category', { category: null }, 'category: Category must be a string', 'INVALID'],
+    ['a null deadline', { deadline: null }, 'deadline: Deadline must be a valid date', 'INVALID'],
+    ['an empty recruitmentStartDate', { recruitmentStartDate: '' }, 'recruitmentStartDate: Recruitment start date must be a valid date', 'INVALID'],
+  ] as const)('rejects %s with 400 and modifies nothing', async (_label, body, message, code) => {
     const { client, project } = await ownedProject();
 
     const res = await authed(client).patch(`/api/projects/${project.id}`).send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored).toEqual(project);
   });
@@ -670,7 +671,7 @@ describe('PATCH /api/projects/:id', () => {
     const res = await authed(intruder).patch(`/api/projects/${project.id}`).send({ budget: -1 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
+    expect(res.body).toEqual(invalidBody('budget', 'TOO_SMALL', 'budget: Budget must be a positive whole number of won'));
   });
 
   it('leaves omitted fields untouched', async () => {
@@ -748,7 +749,7 @@ describe('PATCH /api/projects/:id', () => {
 
         expect(spy).toHaveBeenCalled();
         expect(res.status).toBe(400);
-        expect(res.body).toEqual({ error: { message: frozenMessage } });
+        expect(res.body).toEqual({ error: { code: 'PROJECT_TERMS_LOCKED', message: frozenMessage } });
       } finally {
         spy.mockRestore();
       }
@@ -765,7 +766,7 @@ describe('PATCH /api/projects/:id', () => {
         .send({ budget: 9_999_999 });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: frozenMessage } });
+      expect(res.body).toEqual({ error: { code: 'PROJECT_TERMS_LOCKED', message: frozenMessage } });
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.budget).toBe(project.budget);
@@ -779,7 +780,7 @@ describe('PATCH /api/projects/:id', () => {
         .send({ recruitmentStartDate: daysFromNow(3).toISOString() });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: frozenMessage } });
+      expect(res.body).toEqual({ error: { code: 'PROJECT_TERMS_LOCKED', message: frozenMessage } });
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.recruitmentStartDate?.toISOString()).toBe(
@@ -795,7 +796,7 @@ describe('PATCH /api/projects/:id', () => {
         .send({ deadline: daysFromNow(90).toISOString() });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: frozenMessage } });
+      expect(res.body).toEqual({ error: { code: 'PROJECT_TERMS_LOCKED', message: frozenMessage } });
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.deadline.toISOString()).toBe(project.deadline.toISOString());
@@ -849,7 +850,7 @@ describe('PATCH /api/projects/:id', () => {
 
       expect(res.status).toBe(400);
       expect(res.body).toEqual({
-        error: { message: 'recruitmentStartDate cannot be after deadline' },
+        error: { code: 'VALIDATION_FAILED', message: 'recruitmentStartDate cannot be after deadline', fields: [{ path: 'deadline', code: 'CONFLICT' }] },
       });
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
@@ -864,7 +865,8 @@ describe('PATCH /api/projects/:id', () => {
         .send({ recruitmentStartDate: daysFromNow(60).toISOString() });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('recruitmentStartDate cannot be after deadline');
+      // Blamed on the field that was sent, not on the stored deadline.
+      expect(res.body).toEqual(invalidBody('recruitmentStartDate', 'CONFLICT', 'recruitmentStartDate cannot be after deadline'));
     });
 
     it('rejects an unparseable deadline with 400', async () => {
@@ -906,7 +908,7 @@ describe('PATCH /api/projects/:id', () => {
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 0 });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'budget: Budget must be a positive whole number of won' } });
+      expect(res.body).toEqual(invalidBody('budget', 'TOO_SMALL', 'budget: Budget must be a positive whole number of won'));
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.budget).toBe(project.budget);
@@ -1145,7 +1147,7 @@ describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => 
     const res = await authed(client).patch(`/api/projects/${project.id}/status`).send({ status: 'OPEN' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Deadline is required to reopen recruitment' } });
+    expect(res.body).toEqual(invalidBody('deadline', 'REQUIRED', 'Deadline is required to reopen recruitment'));
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
   });
 
@@ -1157,7 +1159,7 @@ describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => 
       .send({ status: 'OPEN', deadline: kstDateString(new Date(Date.now() - DAY_MS)) });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Deadline must not be in the past' } });
+    expect(res.body).toEqual(invalidBody('deadline', 'TOO_SMALL', 'Deadline must not be in the past'));
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
   });
 
@@ -1173,7 +1175,7 @@ describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => 
       .send({ status: 'OPEN', deadline: futureDate() });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'recruitmentStartDate cannot be after deadline' } });
+    expect(res.body).toEqual(invalidBody('deadline', 'CONFLICT', 'recruitmentStartDate cannot be after deadline'));
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
   });
 
@@ -1200,7 +1202,7 @@ describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => 
       .send({ status: 'OPEN', deadline: 'next week' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'deadline: Deadline must be a valid date' } });
+    expect(res.body).toEqual(invalidBody('deadline', 'INVALID', 'deadline: Deadline must be a valid date'));
   });
 
   it('refuses while a contract awaits signatures with 409, leaving the project and the deadline alone', async () => {
@@ -1211,7 +1213,7 @@ describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => 
       .send({ status: 'OPEN', deadline: futureDate() });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Cannot reopen recruitment while the project has a contract' } });
+    expect(res.body).toEqual({ error: { code: 'REOPEN_BLOCKED_BY_CONTRACT', message: 'Cannot reopen recruitment while the project has a contract' } });
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.status).toBe('CLOSED');
     expect(stored.deadline).toEqual(project.deadline);
@@ -1225,7 +1227,7 @@ describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => 
       .send({ status: 'CLOSED', deadline: futureDate() });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Deadline can only be set when reopening recruitment' } });
+    expect(res.body).toEqual(invalidBody('deadline', 'NOT_ALLOWED', 'Deadline can only be set when reopening recruitment'));
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('OPEN');
   });
 
@@ -1265,7 +1267,7 @@ describe('DELETE /api/projects/:id', () => {
 
       expect(spy).toHaveBeenCalled();
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'Project not found' } });
+      expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
     } finally {
       spy.mockRestore();
     }
@@ -1327,7 +1329,7 @@ describe('DELETE /api/projects/:id', () => {
       const res = await authed(client).delete(`/api/projects/${project.id}`);
 
       expect(res.status).toBe(409);
-      expect(res.body).toEqual({ error: { message: 'Cannot delete a project with a contract record' } });
+      expect(res.body).toEqual({ error: { code: 'PROJECT_HAS_CONTRACT_RECORD', message: 'Cannot delete a project with a contract record' } });
       expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).deletedAt).toBeNull();
       expect((await authed(freelancer).get(`/api/contracts/${contract.id}`)).status).toBe(200);
     },
@@ -1345,7 +1347,7 @@ describe('DELETE /api/projects/:id', () => {
     const res = await authed(client).delete(`/api/projects/${project.id}`);
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Cannot delete a project with an unfinished contract' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_HAS_ACTIVE_CONTRACT', message: 'Cannot delete a project with an unfinished contract' } });
   });
 
   it.each(['PENDING', 'ACTIVE'] as const)(
@@ -1357,7 +1359,7 @@ describe('DELETE /api/projects/:id', () => {
 
       expect(res.status).toBe(409);
       expect(res.body).toEqual({
-        error: { message: 'Cannot delete a project with an unfinished contract' },
+        error: { code: 'PROJECT_HAS_ACTIVE_CONTRACT', message: 'Cannot delete a project with an unfinished contract' },
       });
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
@@ -1374,7 +1376,7 @@ describe('DELETE /api/projects/:id', () => {
     const res = await authed(intruder).delete(`/api/projects/${project.id}`);
 
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
+    expect(res.body).toEqual({ error: { code: 'FORBIDDEN_RESOURCE', message: 'Not authorized' } });
   });
 
   async function projectWithContract(status: 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED') {
@@ -1420,7 +1422,7 @@ describe('PATCH /api/projects/:id/status', () => {
       .send({ status: 'CANCELLED' });
 
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
+    expect(res.body).toEqual({ error: { code: 'FORBIDDEN_RESOURCE', message: 'Not authorized' } });
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.status).toBe('OPEN');
@@ -1484,7 +1486,9 @@ describe('PATCH /api/projects/:id/status', () => {
     const res = await authed(client).patch(`/api/projects/${project.id}/status`).send({ status: to });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: `Cannot transition from ${from} to ${to}` } });
+    expect(res.body).toEqual({
+      error: { code: 'PROJECT_STATUS_TRANSITION_INVALID', message: `Cannot transition from ${from} to ${to}` },
+    });
 
     const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     expect(stored.status).toBe(from);
@@ -1637,7 +1641,7 @@ describe('PATCH /api/projects/:id/status', () => {
       }
 
       expect(res.status).toBe(500);
-      expect(res.body).toEqual({ error: { message: expect.any(String) } });
+      expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal Server Error' } });
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.status).toBe('OPEN');

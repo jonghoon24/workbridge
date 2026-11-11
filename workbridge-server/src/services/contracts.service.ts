@@ -152,12 +152,12 @@ export async function cancelContract(contractId: string, actorId: string, now: D
       freelancer: party,
     },
   });
-  if (!contract) throw new AppError('Contract not found', 404);
+  if (!contract) throw new AppError('CONTRACT_NOT_FOUND', 'Contract not found');
   if (contract.clientId !== actorId && contract.freelancerId !== actorId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
-  if (contract.status === 'CANCELLED') throw new AppError(CONTRACT_CANCELLED, 409);
-  if (contract.status !== 'PENDING') throw new AppError(CONTRACT_NOT_CANCELLABLE, 409);
+  if (contract.status === 'CANCELLED') throw new AppError('CONTRACT_CANCELLED', CONTRACT_CANCELLED);
+  if (contract.status !== 'PENDING') throw new AppError('CONTRACT_NOT_CANCELLABLE', CONTRACT_NOT_CANCELLABLE);
 
   const cancelledBy: Role = contract.clientId === actorId ? 'CLIENT' : 'FREELANCER';
   const counterpart = cancelledBy === 'CLIENT' ? contract.freelancer : contract.client;
@@ -170,7 +170,9 @@ export async function cancelContract(contractId: string, actorId: string, now: D
     if (count === 0) {
       // Lost to the other party's cancel, or to the signature that activated it.
       const current = await tx.contract.findUniqueOrThrow({ where: { id: contractId }, select: { status: true } });
-      throw new AppError(current.status === 'CANCELLED' ? CONTRACT_CANCELLED : CONTRACT_NOT_CANCELLABLE, 409);
+      throw current.status === 'CANCELLED'
+        ? new AppError('CONTRACT_CANCELLED', CONTRACT_CANCELLED)
+        : new AppError('CONTRACT_NOT_CANCELLABLE', CONTRACT_NOT_CANCELLABLE);
     }
 
     await notifyRecipients(tx, [counterpart], {
@@ -196,11 +198,11 @@ export async function getContractDetail(contractId: string, userId: string) {
   });
 
   if (!contract) {
-    throw new AppError('Contract not found', 404);
+    throw new AppError('CONTRACT_NOT_FOUND', 'Contract not found');
   }
 
   if (contract.clientId !== userId && contract.freelancerId !== userId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   return serializeContract(contract);
@@ -217,25 +219,25 @@ export async function recordSignature(contractId: string, userId: string) {
   });
 
   if (!contract) {
-    throw new AppError('Contract not found', 404);
+    throw new AppError('CONTRACT_NOT_FOUND', 'Contract not found');
   }
 
   if (contract.clientId !== userId && contract.freelancerId !== userId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   if (contract.status === 'COMPLETED') {
-    throw new AppError('A completed contract cannot be signed again', 400);
+    throw new AppError('CONTRACT_ALREADY_COMPLETED', 'A completed contract cannot be signed again');
   }
 
   if (contract.status === 'CANCELLED') {
-    throw new AppError(CONTRACT_CANCELLED, 409);
+    throw new AppError('CONTRACT_CANCELLED', CONTRACT_CANCELLED);
   }
 
   // A PENDING contract needs a valid plan, or the signature is not recorded at all. The API
   // cannot create an invalid plan; this guards rows edited directly in the database.
   if (contract.status === 'PENDING' && !isValidPlan(contract.milestones, contract.amount)) {
-    throw new AppError('Cannot sign a contract without a valid milestone plan', 400);
+    throw new AppError('MILESTONE_PLAN_INVALID', 'Cannot sign a contract without a valid milestone plan');
   }
 
   const isClient = contract.clientId === userId;
@@ -261,7 +263,7 @@ export async function recordSignature(contractId: string, userId: string) {
     // A cancel that committed while this waited for the row lock: the UPDATE above saw the
     // cancelled row. Refuse, which rolls the signature back.
     if (signed.status === 'CANCELLED') {
-      throw new AppError(CONTRACT_CANCELLED, 409);
+      throw new AppError('CONTRACT_CANCELLED', CONTRACT_CANCELLED);
     }
 
     // Guarded on PENDING so activation can never overwrite a later status.
@@ -301,5 +303,5 @@ export async function recordSignature(contractId: string, userId: string) {
  * milestone is approved; the route stays so callers get the envelope.
  */
 export function refuseManualCompletion(): never {
-  throw new AppError('Contracts are completed automatically when every milestone is approved', 410);
+  throw new AppError('MANUAL_COMPLETION_REMOVED', 'Contracts are completed automatically when every milestone is approved');
 }

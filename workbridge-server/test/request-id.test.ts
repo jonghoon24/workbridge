@@ -66,7 +66,7 @@ describe('X-Request-Id', () => {
 
     expect(res.status).toBe(404);
     expect(res.headers['x-request-id']).toBe('trace-404');
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
   });
 
   it('is on 401s, unmatched paths and body-parse failures', async () => {

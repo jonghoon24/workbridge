@@ -1,9 +1,9 @@
 import type { PortfolioItem, Prisma } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { kstMonthOrNull, kstMonthToDate } from '../lib/time';
-import { ACCOUNT_INACTIVE, lockActiveUserRow } from '../lib/locks';
+import { lockActiveUserRow } from '../lib/locks';
 import { publicObjectPath } from '../lib/attachmentStorage';
 import { enqueueJob } from '../jobs/queue';
 import { storeUploadedFile } from '../middlewares/attachmentUpload';
@@ -67,7 +67,7 @@ export async function listPortfolioItems(userId: string) {
 /** `GET /api/users/:id/portfolio`: 404 for a missing or soft-deleted user. */
 export async function getPublicPortfolio(userId: string) {
   const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { id: true } });
-  if (!user) throw new AppError('User not found', 404);
+  if (!user) throw new AppError('USER_NOT_FOUND', 'User not found');
   return { items: await listPortfolioItems(userId) };
 }
 
@@ -79,7 +79,7 @@ export async function createPortfolioItem(
 ) {
   // Checked once before the image is stored, so a full portfolio does not upload for nothing…
   if (await prisma.portfolioItem.count({ where: { userId } }) >= PORTFOLIO_LIMITS.items) {
-    throw new AppError(LIMIT_REACHED, 409);
+    throw new AppError('PORTFOLIO_LIMIT_REACHED', LIMIT_REACHED);
   }
 
   // …and the upload happens outside the transaction: holding the row lock across a network call
@@ -95,7 +95,7 @@ export async function createPortfolioItem(
       tx.portfolioItem.count({ where: { userId } }),
       tx.portfolioItem.findFirst({ where: { userId }, orderBy: { sortOrder: 'desc' }, select: { sortOrder: true } }),
     ]);
-    if (count >= PORTFOLIO_LIMITS.items) throw new AppError(LIMIT_REACHED, 409);
+    if (count >= PORTFOLIO_LIMITS.items) throw new AppError('PORTFOLIO_LIMIT_REACHED', LIMIT_REACHED);
 
     return tx.portfolioItem.create({
       data: {
@@ -113,7 +113,7 @@ export async function createPortfolioItem(
     });
   }).catch(async (err: unknown) => {
     // Withdrew while the image was uploading: the lock check refused the write (401).
-    if (err instanceof AppError && err.message === ACCOUNT_INACTIVE) await discardImageOfWithdrawnUser(userId, imageUrl);
+    if (err instanceof AppError && err.code === 'ACCOUNT_INACTIVE') await discardImageOfWithdrawnUser(userId, imageUrl);
     throw err;
   });
 
@@ -122,8 +122,8 @@ export async function createPortfolioItem(
 
 /** Existence (404), then ownership (403), shared by PATCH and DELETE. */
 function assertOwnItem<T extends { userId: string }>(item: T | null, userId: string): T {
-  if (!item) throw new AppError(NOT_FOUND, 404);
-  if (item.userId !== userId) throw new AppError('Not authorized', 403);
+  if (!item) throw new AppError('PORTFOLIO_ITEM_NOT_FOUND', NOT_FOUND);
+  if (item.userId !== userId) throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   return item;
 }
 
@@ -134,6 +134,10 @@ export async function updatePortfolioItem(
   input: PortfolioPatchInput,
   image: Express.Multer.File | undefined,
 ) {
+  // Still validation, so before the existence check — the schema cannot see the file.
+  if (image && input.removeImage) {
+    throw invalidField('removeImage', 'CONFLICT', 'removeImage: Cannot upload and remove an image at once');
+  }
   const stored = assertOwnItem(await prisma.portfolioItem.findUnique({ where: { id: itemId } }), userId);
 
   // The month order is checked on the stored row merged with the patch.
@@ -142,7 +146,7 @@ export async function updatePortfolioItem(
     end: input.endedAt !== undefined ? input.endedAt : kstMonthOrNull(stored.endedAt),
   };
   const monthIssue = monthRangeIssue(merged);
-  if (monthIssue) throw new AppError(`endedAt: ${monthIssue}`, 400);
+  if (monthIssue) throw invalidField('endedAt', 'CONFLICT', `endedAt: ${monthIssue}`);
 
   const data: Prisma.PortfolioItemUpdateManyMutationInput = {};
   if (input.title !== undefined) data.title = input.title;
@@ -167,7 +171,7 @@ export async function updatePortfolioItem(
   if (!item) {
     // The item is gone; if a withdrawal deleted it, the image just stored belongs to no one.
     await discardImageOfWithdrawnUser(userId, storedImageUrl);
-    throw new AppError(NOT_FOUND, 404);
+    throw new AppError('PORTFOLIO_ITEM_NOT_FOUND', NOT_FOUND);
   }
 
   return { item: serializePortfolioItem(item) };
@@ -194,7 +198,7 @@ export async function reorderPortfolio(userId: string, ids: string[]) {
     const isPermutation = ids.length === ownedIds.size
       && new Set(ids).size === ids.length
       && ids.every((id) => ownedIds.has(id));
-    if (!isPermutation) throw new AppError(BAD_ORDER, 400);
+    if (!isPermutation) throw new AppError('PORTFOLIO_ORDER_MISMATCH', BAD_ORDER);
 
     // At most 20 rows, all locked out from concurrent creates and deletes by the user-row lock.
     for (const [index, id] of ids.entries()) {

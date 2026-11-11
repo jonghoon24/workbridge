@@ -1,12 +1,12 @@
 import { z } from '../lib/zod';
 
 import { uploadIdsField } from './attachments';
-import { queryInt, queryString } from './common';
+import { fieldCode, queryInt, queryString } from './common';
 import { pageQuery } from './pagination';
 
 /**
- * Query and body schemas of the conversation routes. The error messages are part of the API
- * contract — tests assert them exactly — so change them only together with the tests.
+ * Query and body schemas of the conversation routes. Tests assert the error messages exactly, so
+ * change them together with the tests (the client branches on the code, not the message).
  */
 
 /** Message page size — default 30, a larger value yields 100. */
@@ -30,6 +30,7 @@ export const conversationListQuery = z.object({
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `must be at most ${MAX_CONVERSATION_SEARCH_LENGTH} characters`,
+          params: fieldCode('TOO_LARGE'),
         });
         return z.NEVER;
       }
@@ -53,7 +54,7 @@ export const messageListQuery = z
   })
   .superRefine((query, ctx) => {
     if (query.before !== undefined && query.after !== undefined) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['before'], message: 'Use either before or after, not both' });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['before'], message: 'Use either before or after, not both', params: fieldCode('CONFLICT') });
     }
   });
 
@@ -75,6 +76,6 @@ export const messageBody = z
   })
   .superRefine((value, ctx) => {
     if (value.body === '' && value.uploadIds.length === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body'], message: MESSAGE_REQUIRED });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['body'], message: MESSAGE_REQUIRED, params: fieldCode('REQUIRED') });
     }
   });
