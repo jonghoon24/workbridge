@@ -511,7 +511,6 @@ async function main() {
   await prisma.payment.deleteMany();
   await prisma.milestone.deleteMany();
   await prisma.contract.deleteMany();
-  await prisma.pricingAnalysis.deleteMany();
   await prisma.projectBookmark.deleteMany();
   await prisma.application.deleteMany();
   await prisma.project.deleteMany();

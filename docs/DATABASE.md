@@ -9,8 +9,8 @@ PostgreSQL(운영은 Supabase) + Prisma. 모델·필드·enum·인덱스의 원�
 ```
 User ─┬─ Project ── Application ── Contract ─┬─ Milestone ─┬─ Payment
       │     │                                 │             ├─ MilestoneSubmission ── MilestoneAttachment
-      │     ├─ ProjectBookmark                │             └─ SettlementItem ── Settlement
-      │     └─ PricingAnalysis                ├─ Review
+      │     └─ ProjectBookmark                │             └─ SettlementItem ── Settlement
+      │                                       ├─ Review
       │                                       └─ Conversation ─┬─ ConversationParticipant (2명)
       ├─ PayoutAccount (0~1)                                   └─ Message ── MessageAttachment
       ├─ AttachmentUpload (붙기 전의 첨부 업로드)
@@ -184,8 +184,7 @@ Storage는 secret 키로만 다룬다. 그래서 **모든 테이블에 RLS를 �
 ## 금액이 `Float`인 부채
 
 `Project.budget`, `Application.expectedRate`, `Contract.amount`, `Milestone.amount`, `Payment.amount`, 정산 금액들,
-`User.hourlyRate`, `PricingAnalysis.totalAmount`가 모두 `Float`(double)이다. 확장 이전부터 있던 부채이고 마이그레이션하지
-않는다. 컬럼 대신 쓰는 값을 막는다.
+`User.hourlyRate`가 모두 `Float`(double)이다. 확장 이전부터 있던 부채이고 마이그레이션하지 않는다. 컬럼 대신 쓰는 값을 막는다.
 
 - 요청 본문의 금액은 원 단위 정수만 받는다(소수 금액 입력은 400). 수수료 계산은 basis point 정수 연산이다.
 - 계약 금액은 지원의 `expectedRate`라 소수일 수 있다. 마일스톤 관련 계산(기본 마일스톤, 계획 합계, 서명 때의 계획 검사)은
