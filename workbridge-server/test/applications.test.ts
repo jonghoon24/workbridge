@@ -1051,6 +1051,39 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(await prisma.contract.count()).toBe(1);
     });
 
+    // #135: the reject's own check passes, then an accept of the same application commits before
+    // the reject writes. Stand-in for that race: the accept runs right after the reject's lookup.
+    it('409s a reject that loses to an accept committed after its check, and does not notify the winner', async () => {
+      const s = await scenario();
+      const findFirst = prisma.application.findFirst.bind(prisma.application);
+      let accepted: Answer | undefined;
+      const spy = vi.spyOn(prisma.application, 'findFirst').mockImplementationOnce((async (
+        args: Parameters<typeof findFirst>[0],
+      ) => {
+        const found = await findFirst(args);
+        accepted = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' });
+        return found;
+      }) as unknown as typeof prisma.application.findFirst);
+
+      try {
+        const res = await authed(s.client)
+          .patch(url(s.project.id, s.chosen.id))
+          .send({ status: 'REJECTED' });
+
+        expect(accepted?.status).toBe(200);
+        expect(res.status).toBe(409);
+        expect(res.body).toEqual({ error: { message: 'This application has already been processed' } });
+      } finally {
+        spy.mockRestore();
+      }
+
+      const chosen = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
+      expect(chosen.status).toBe('ACCEPTED');
+      expect(await prisma.contract.count()).toBe(1);
+      const toWinner = await prisma.notification.findMany({ where: { userId: s.winner.id } });
+      expect(toWinner.map((n) => n.type)).toEqual(['APPLICATION_ACCEPTED']);
+    });
+
     it('409s — not 500 — when accepting a sibling that the accept bulk-rejected', async () => {
       const s = await scenario();
 
