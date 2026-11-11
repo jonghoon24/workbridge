@@ -18,7 +18,17 @@ import { presignAttachments } from './attachments.service';
 
 /** The full contract. `satisfies` keeps literal types like `'desc'` for Prisma. */
 export const contractInclude = {
-  project: { select: { id: true, title: true, description: true, category: true, status: true } },
+  project: {
+    select: {
+      id: true,
+      title: true,
+      description: true,
+      category: true,
+      status: true,
+      // `hasLiveContract`: whether the client could recruit again (no contract but cancelled ones).
+      _count: { select: { contracts: { where: { status: { not: 'CANCELLED' } } } } },
+    },
+  },
   // No email: parties reach each other through in-app messages.
   client: { select: { id: true, name: true, companyName: true, profileImage: true } },
   freelancer: { select: { id: true, name: true, skills: true, profileImage: true } },
@@ -36,11 +46,14 @@ export type ContractWithRelations = Prisma.ContractGetPayload<{ include: typeof 
 
 /**
  * Milestones serialized (each with its own `payment`) plus `milestoneSummary`; the contract has no
- * `payment` key. The latest submissions' attachments get signed download URLs.
+ * `payment` key. The project carries `hasLiveContract` instead of its contract count. The latest
+ * submissions' attachments get signed download URLs.
  */
 export function serializeContract(contract: ContractWithRelations) {
+  const { _count, ...project } = contract.project;
   return presignAttachments({
     ...contract,
+    project: { ...project, hasLiveContract: _count.contracts > 0 },
     milestones: contract.milestones.map(serializeMilestone),
     milestoneSummary: milestoneSummary(contract.milestones, contract.amount),
   });

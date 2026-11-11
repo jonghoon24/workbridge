@@ -6,6 +6,7 @@ import {
   TEST_PASSWORD,
   makeClient,
   makeContractScenario,
+  makeFreelancer,
   makeMessage,
   makeMilestone,
   makePayment,
@@ -965,7 +966,8 @@ describe('POST /api/contracts/:id/cancel', () => {
       clientSigned: false,
       freelancerSigned: false,
       amount: contract.amount,
-      project: { id: project.id, status: 'CLOSED' },
+      // Nothing else live on the project: the client may recruit again.
+      project: { id: project.id, status: 'CLOSED', hasLiveContract: false },
     });
     expect(new Date(res.body.cancelledAt).getTime()).toBeGreaterThanOrEqual(before - 1000);
     // The plan stays as the record of the terms on the table; nothing moves it any more.
@@ -1190,6 +1192,26 @@ describe('POST /api/contracts/:id/cancel', () => {
         }
       },
     );
+  });
+});
+
+describe('GET /api/contracts/:id — project.hasLiveContract', () => {
+  it('is true while this or a newer contract on the project is not cancelled', async () => {
+    const pending = await makeContractScenario();
+    expect((await authed(pending.client).get(`/api/contracts/${pending.contract.id}`)).body.project.hasLiveContract).toBe(true);
+
+    // A cancelled contract, then a new one on the same project (the next round).
+    const { client, project, contract } = await makeContractScenario({ contract: { status: 'CANCELLED' } });
+    expect((await authed(client).get(`/api/contracts/${contract.id}`)).body.project.hasLiveContract).toBe(false);
+    const next = await makeFreelancer();
+    const application = await prisma.application.create({
+      data: { projectId: project.id, freelancerId: next.id, coverLetter: 'next', expectedRate: 1_000_000, expectedDuration: '1주', status: 'ACCEPTED' },
+    });
+    await prisma.contract.create({
+      data: { projectId: project.id, applicationId: application.id, clientId: client.id, freelancerId: next.id, amount: 1_000_000, startDate: new Date(), endDate: new Date() },
+    });
+
+    expect((await authed(client).get(`/api/contracts/${contract.id}`)).body.project.hasLiveContract).toBe(true);
   });
 });
 

@@ -374,14 +374,19 @@ export async function deleteProject(req: AuthedRequest, res: Response, next: Nex
       // that commits a contract first makes this a 409 instead of orphaning a live contract.
       await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${project.id} FOR UPDATE`;
 
-      // A pending or active contract belongs to the freelancer too; deleting the project would
-      // hide it from them (every contract path 404s on a deleted project). Completed is fine.
-      const unfinished = await tx.contract.findFirst({
-        where: { projectId: project.id, status: { in: ['PENDING', 'ACTIVE'] } },
-        select: { id: true },
+      // A contract belongs to the freelancer too: deleting the project would hide it from them
+      // (every contract path 404s on a deleted project), along with its conversation. So any
+      // contract keeps the project — a pending or active one, and also a completed or cancelled
+      // one, which is the counterpart's record (docs/domain/projects-contracts.md "수정과 삭제").
+      const contracts = await tx.contract.findMany({
+        where: { projectId: project.id },
+        select: { status: true },
       });
-      if (unfinished) {
+      if (contracts.some((c) => c.status === 'PENDING' || c.status === 'ACTIVE')) {
         throw new AppError('Cannot delete a project with an unfinished contract', 409);
+      }
+      if (contracts.length > 0) {
+        throw new AppError('Cannot delete a project with a contract record', 409);
       }
 
       await tx.project.update({

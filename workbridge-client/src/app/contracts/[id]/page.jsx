@@ -95,6 +95,8 @@ export default function ContractPage() {
       }
     } catch (err) {
       setActionError(toUserMessage(err, '서명하지 못했습니다.'));
+      // 다른 탭이나 상대가 먼저 철회했으면 지금 상태(배지·버튼)를 다시 보여 준다.
+      if (err.response?.status === 409) await loadContract().catch(() => {});
     } finally {
       setSigning(false);
     }
@@ -231,6 +233,11 @@ export default function ContractPage() {
   const canCancel = (isClient || isFreelancer) && contract.status === 'PENDING';
   const isCancelled = contract.status === 'CANCELLED';
   const cancelledByLabel = contract.cancelledBy === 'CLIENT' ? '의뢰인' : '프리랜서';
+  // 철회된 계약에서는 더 기다릴 서명이 없다: '서명 대기' 대신 '서명하지 않음'.
+  const signatureLabel = (party, signed) => {
+    if (signed) return `${party} 서명 완료`;
+    return isCancelled ? `${party} 서명하지 않음` : `${party} 서명 대기`;
+  };
   const milestones = contract.milestones || [];
   const summary = contract.milestoneSummary || {};
   const contractAmount = summary.contractAmount ?? Math.round(contract.amount || 0);
@@ -283,7 +290,7 @@ export default function ContractPage() {
             <p className="mt-1">
               철회된 계약은 다시 진행할 수 없습니다. 계약 내용과 대화는 기록으로 남습니다.
             </p>
-            {isClient && contract.project?.status === 'CLOSED' && (
+            {isClient && contract.project?.status === 'CLOSED' && !contract.project?.hasLiveContract && (
               <p className="mt-2">
                 <Link href={`/projects/${contract.projectId}`} className="font-medium text-primary-600 hover:text-primary-700">
                   프로젝트에서 다시 모집하기 →
@@ -345,11 +352,11 @@ export default function ContractPage() {
             <div className="flex gap-6">
               <div className={`flex items-center gap-2 ${contract.clientSigned ? 'text-green-600' : 'text-gray-400'}`}>
                 <span>{contract.clientSigned ? '✓' : '○'}</span>
-                <span className="text-sm font-medium">의뢰인 서명 {contract.clientSigned ? '완료' : '대기'}</span>
+                <span className="text-sm font-medium">{signatureLabel('의뢰인', contract.clientSigned)}</span>
               </div>
               <div className={`flex items-center gap-2 ${contract.freelancerSigned ? 'text-green-600' : 'text-gray-400'}`}>
                 <span>{contract.freelancerSigned ? '✓' : '○'}</span>
-                <span className="text-sm font-medium">프리랜서 서명 {contract.freelancerSigned ? '완료' : '대기'}</span>
+                <span className="text-sm font-medium">{signatureLabel('프리랜서', contract.freelancerSigned)}</span>
               </div>
             </div>
             {(canSign || canCancel) && (

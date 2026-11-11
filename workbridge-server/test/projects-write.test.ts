@@ -1297,15 +1297,35 @@ describe('DELETE /api/projects/:id', () => {
     expect(stored).not.toBeNull();
   });
 
-  it.each(['COMPLETED', 'CANCELLED'] as const)('allows deletion when the contract is %s', async (status) => {
-    const { client, project } = await projectWithContract(status);
+  // A completed or cancelled contract is the freelancer's record: deleting the project would make
+  // their contract, its link in their notifications and its conversation all 404.
+  it.each(['COMPLETED', 'CANCELLED'] as const)(
+    'refuses to delete a project whose contract is %s (the counterpart\'s record) and leaves it visible to the freelancer',
+    async (status) => {
+      const { client, freelancer, project, contract } = await projectWithContract(status);
+
+      const res = await authed(client).delete(`/api/projects/${project.id}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: { message: 'Cannot delete a project with a contract record' } });
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).deletedAt).toBeNull();
+      expect((await authed(freelancer).get(`/api/contracts/${contract.id}`)).status).toBe(200);
+    },
+  );
+
+  it('reports an unfinished contract first when the project also has a cancelled one', async () => {
+    const { client, project } = await projectWithContract('CANCELLED');
+    const freelancer = await makeFreelancer();
+    const application = await makeApplication(project.id, freelancer.id, { status: 'ACCEPTED' });
+    await makeContract(
+      { projectId: project.id, applicationId: application.id, clientId: client.id, freelancerId: freelancer.id },
+      { status: 'PENDING' },
+    );
 
     const res = await authed(client).delete(`/api/projects/${project.id}`);
 
-    expect(res.status).toBe(200);
-
-    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-    expect(stored.deletedAt).toBeInstanceOf(Date);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'Cannot delete a project with an unfinished contract' } });
   });
 
   it.each(['PENDING', 'ACTIVE'] as const)(

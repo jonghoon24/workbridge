@@ -2134,6 +2134,10 @@
               },
               "status": {
                 "$ref": "#/components/schemas/ProjectStatus"
+              },
+              "hasLiveContract": {
+                "type": "boolean",
+                "description": "이 프로젝트에 철회되지 않은 계약이 있는지(이 계약 포함). 없고 모집 마감이면 의뢰인이 다시 모집할 수 있다"
               }
             },
             "required": [
@@ -2141,7 +2145,8 @@
               "title",
               "description",
               "category",
-              "status"
+              "status",
+              "hasLiveContract"
             ]
           },
           "client": {
@@ -6933,7 +6938,7 @@
           "Projects"
         ],
         "summary": "프로젝트 삭제(소유 의뢰인)",
-        "description": "소프트 삭제다. 이후 목록·상세와 그 프로젝트의 계약·마일스톤·대화 경로에서 404가 된다. 완료되지 않은 계약(`PENDING`·`ACTIVE`)이 있으면 지울 수 없다. 완료된 계약만 있으면 지울 수 있다.",
+        "description": "소프트 삭제다. 이후 목록·상세와 그 프로젝트의 계약·마일스톤·대화 경로에서 404가 된다. 계약이 하나라도 있으면(서명 대기·진행 중·완료·철회) 지울 수 없다. 계약은 상대방의 기록이기도 하다.",
         "security": [
           {
             "bearerAuth": []
@@ -7001,7 +7006,7 @@
             }
           },
           "409": {
-            "description": "상태 충돌\n\n- `Cannot delete a project with an unfinished contract` — 계약이 `PENDING` 또는 `ACTIVE`",
+            "description": "상태 충돌\n\n- `Cannot delete a project with an unfinished contract` — 계약이 `PENDING` 또는 `ACTIVE`\n- `Cannot delete a project with a contract record` — 완료되거나 철회된 계약이 있음(상대방의 기록)",
             "content": {
               "application/json": {
                 "schema": {

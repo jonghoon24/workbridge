@@ -50,6 +50,9 @@ test('프리랜서가 서명 전 계약을 철회하면 의뢰인이 알림을 �
   await expect(clientPage.getByText('철회됨', { exact: true })).toBeVisible();
   await clientPage.getByRole('link', { name: '프로젝트에서 다시 모집하기 →' }).click();
   await expect(clientPage).toHaveURL(new RegExp(`/projects/${project.id}$`));
+  // 철회된 계약도 상대방의 기록이라 프로젝트를 지울 수 없다.
+  await expect(clientPage.getByText('계약 기록이 있는 프로젝트는 상대방의 기록이라 삭제할 수 없습니다.')).toBeVisible();
+  await expect(clientPage.getByRole('button', { name: '삭제' })).toHaveCount(0);
   await clientPage.getByRole('button', { name: '다시 모집하기' }).click();
   const deadline = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   await clientPage.getByLabel('새 마감일').fill(deadline);
@@ -63,6 +66,8 @@ test('프리랜서가 서명 전 계약을 철회하면 의뢰인이 알림을 �
   try {
     await otherPage.goto(`/projects/${project.id}`);
     await otherPage.getByRole('button', { name: '다시 지원하기' }).click();
+    // 이전 지원서 내용이 채워져 있다.
+    await expect(otherPage.getByRole('dialog', { name: '다시 지원하기' }).getByLabel('예상 기간')).toHaveValue('1개월');
     await otherPage.getByPlaceholder('지원 동기와 경험을 자세히 작성해 주세요').fill('다시 모집한다고 해서 지원합니다. 일정은 맞출 수 있습니다.');
     await otherPage.getByLabel('희망 금액 (원)').fill('2700000');
     await otherPage.getByLabel('예상 기간').fill('5주');
@@ -77,5 +82,6 @@ test('프리랜서가 서명 전 계약을 철회하면 의뢰인이 알림을 �
   // 철회한 프리랜서는 같은 프로젝트에 다시 지원할 수 없다.
   await freelancerPage.goto(`/projects/${project.id}`);
   await expect(freelancerPage.getByRole('button', { name: '지원 완료 · 내 지원 현황' })).toBeVisible();
+  await expect(freelancerPage.getByText('철회된 계약의 당사자는 같은 프로젝트에 다시 지원할 수 없습니다.')).toBeVisible();
   await expect(freelancerPage.getByRole('button', { name: /지원하기/ })).toHaveCount(0);
 });

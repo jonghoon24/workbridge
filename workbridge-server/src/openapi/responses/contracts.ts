@@ -158,6 +158,9 @@ export const contractDetail = z
       description: z.string(),
       category: z.string(),
       status: projectStatusEnum,
+      hasLiveContract: z.boolean().openapi({
+        description: '이 프로젝트에 철회되지 않은 계약이 있는지(이 계약 포함). 없고 모집 마감이면 의뢰인이 다시 모집할 수 있다',
+      }),
     }),
     client: z.object({
       id,
