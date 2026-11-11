@@ -11,12 +11,15 @@ import { FilterIcon, SearchIcon } from '@/components/ui/Icons';
 import PageLoader from '@/components/ui/PageLoader';
 import { toUserMessage } from '@/lib/errorMessages';
 import useDebounce from '@/lib/useDebounce';
+import useBookmarkedProjectIds from '@/lib/useBookmarkedProjectIds';
 
 function ProjectsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { filters, page, setFilters, setPage, setFiltersAndPage } = useProjectStore();
   const debouncedSearch = useDebounce(filters.search, 300);
+  // 필터나 페이지가 바뀌어도 다시 부르지 않도록 페이지에서 한 번 불러 둔다.
+  const { isBookmarked, setBookmarked } = useBookmarkedProjectIds();
 
   const [projects, setProjects] = useState([]);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
@@ -191,7 +194,12 @@ function ProjectsContent() {
               <p className="text-sm text-gray-500 mb-3">총 {meta.total}개의 프로젝트</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 {projects.map((project) => (
-                  <ProjectCard key={project.id} project={project} />
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    bookmarked={isBookmarked(project.id)}
+                    onBookmarkChange={(bookmarked) => setBookmarked(project.id, bookmarked)}
+                  />
                 ))}
               </div>
 

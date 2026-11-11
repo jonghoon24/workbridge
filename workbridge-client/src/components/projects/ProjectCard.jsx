@@ -6,7 +6,9 @@ import Badge from '@/components/ui/Badge';
 import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
 import Tag from '@/components/ui/Tag';
 
-export default function ProjectCard({ project, onBookmarkChange }) {
+// `bookmarked`: 목록이 한 번에 불러온 북마크 여부(true/false, 아직 모르면 null). 넘기지 않으면
+// `project.isBookmarked`(내 북마크 목록)를 쓰고, 그것도 없으면 버튼이 스스로 조회한다.
+export default function ProjectCard({ project, bookmarked, onBookmarkChange }) {
   const now = new Date();
   const recruitmentStartDate = project.recruitmentStartDate
     ? new Date(project.recruitmentStartDate)
@@ -40,7 +42,7 @@ export default function ProjectCard({ project, onBookmarkChange }) {
         </div>
         <ProjectBookmarkButton
           projectId={project.id}
-          initialBookmarked={project.isBookmarked}
+          bookmarked={bookmarked !== undefined ? bookmarked : project.isBookmarked}
           onChange={onBookmarkChange}
         />
       </div>

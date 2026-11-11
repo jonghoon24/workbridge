@@ -269,6 +269,13 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     gate: null,
   },
   {
+    label: 'GET /api/users/me/bookmarks/ids',
+    method: 'get',
+    path: () => '/api/users/me/bookmarks/ids',
+    role: 'FREELANCER',
+    gate: 'middleware',
+  },
+  {
     label: 'GET /api/users/me/recommended-projects',
     method: 'get',
     path: () => '/api/users/me/recommended-projects',
@@ -806,8 +813,8 @@ describe('the route table itself', () => {
     expect(mounted.length).toBeGreaterThan(70);
   });
 
-  it('records a role gate for exactly the 34 role-gated routes', () => {
-    expect(ROLE_GATED_ROUTES).toHaveLength(34);
+  it('records a role gate for exactly the 35 role-gated routes', () => {
+    expect(ROLE_GATED_ROUTES).toHaveLength(35);
     expect(ROLE_GATED_ROUTES.every((r) => r.gate !== null)).toBe(true);
     expect(PROTECTED_ROUTES.filter((r) => r.role === null).every((r) => r.gate === null)).toBe(true);
   });
@@ -998,9 +1005,9 @@ describe('authorization — role gating', () => {
   const clientOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'CLIENT');
   const freelancerOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'FREELANCER');
 
-  it('splits the role-gated routes into 12 CLIENT-only and 22 FREELANCER-only', () => {
+  it('splits the role-gated routes into 12 CLIENT-only and 23 FREELANCER-only', () => {
     expect(clientOnly).toHaveLength(12);
-    expect(freelancerOnly).toHaveLength(22);
+    expect(freelancerOnly).toHaveLength(23);
   });
 
   it.each(clientOnly)('$label → 403 for a FREELANCER', async (route) => {

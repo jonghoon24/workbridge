@@ -10,6 +10,9 @@ import { makeClient, makeFreelancer, makeProject } from './helpers/factories';
  * All three look the project up first: a project that never existed or is soft-deleted is 404
  * (`docs/domain/projects-contracts.md`, 북마크). Removing a bookmark that does not exist on a live
  * project still succeeds — that is the idempotence rule, not a lookup.
+ *
+ * `GET /api/users/me/bookmarks/ids` gives a list screen every bookmarked id in one request, so its
+ * cards do not ask about themselves one by one.
  */
 
 /** A project id that is guaranteed not to exist (the db was truncated before this test). */
@@ -365,5 +368,76 @@ describe('GET /api/users/me/bookmarks (reflects rows written by the bookmark end
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
+  });
+});
+
+describe('GET /api/users/me/bookmarks/ids', () => {
+  const idsPath = '/api/users/me/bookmarks/ids';
+
+  it('returns an empty list when the freelancer has no bookmarks', async () => {
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(freelancer).get(idsPath);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ projectIds: [] });
+  });
+
+  it('returns the bookmarked project ids, newest bookmark first', async () => {
+    const client = await makeClient();
+    const freelancer = await makeFreelancer();
+    const older = await makeProject(client.id);
+    const newer = await makeProject(client.id);
+    const notBookmarked = await makeProject(client.id);
+    await prisma.projectBookmark.create({
+      data: { projectId: older.id, userId: freelancer.id, createdAt: new Date('2026-01-01T00:00:00Z') },
+    });
+    await prisma.projectBookmark.create({
+      data: { projectId: newer.id, userId: freelancer.id, createdAt: new Date('2026-01-02T00:00:00Z') },
+    });
+
+    const res = await authed(freelancer).get(idsPath);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ projectIds: [newer.id, older.id] });
+    expect(res.body.projectIds).not.toContain(notBookmarked.id);
+  });
+
+  it("leaves out another freelancer's bookmarks", async () => {
+    const { freelancer, project } = await freelancerWithProject();
+    const other = await makeFreelancer();
+    await prisma.projectBookmark.create({ data: { projectId: project.id, userId: other.id } });
+
+    const res = await authed(freelancer).get(idsPath);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ projectIds: [] });
+  });
+
+  it('leaves out a soft-deleted project, as the bookmark list does', async () => {
+    const { client, freelancer, project } = await freelancerWithProject();
+    const live = await makeProject(client.id);
+    await prisma.projectBookmark.createMany({
+      data: [
+        { projectId: project.id, userId: freelancer.id },
+        { projectId: live.id, userId: freelancer.id },
+      ],
+    });
+    await prisma.project.update({ where: { id: project.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).get(idsPath);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ projectIds: [live.id] });
+  });
+
+  it('follows bookmarks added and removed through the bookmark endpoints', async () => {
+    const { freelancer, project } = await freelancerWithProject();
+
+    await authed(freelancer).post(bookmarkPath(project.id));
+    expect((await authed(freelancer).get(idsPath)).body).toEqual({ projectIds: [project.id] });
+
+    await authed(freelancer).delete(bookmarkPath(project.id));
+    expect((await authed(freelancer).get(idsPath)).body).toEqual({ projectIds: [] });
   });
 });
