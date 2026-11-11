@@ -12,21 +12,18 @@ import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
 import { logger } from '../lib/logger';
 import { clientUrl } from '../lib/clientUrl';
+import {
+  exchangeGoogleCode,
+  GOOGLE_AUTH_URL,
+  OAUTH_STATE_COOKIE,
+  OAUTH_STATE_MAX_AGE_MS,
+  oauthStateCookieOptions,
+} from '../lib/googleOAuth';
+import { parseOAuthState } from '../lib/reauth';
+import { completeGoogleReauth, reauthFailurePath } from '../services/reauth.service';
 import type { AuthedRequest, RefreshTokenPayload } from '../types/index';
 import type { GoogleCallbackQuery, LoginInput, SelectRoleInput, SignupInput } from '../schemas/auth';
 import jwt from 'jsonwebtoken';
-
-/**
- * The Google OAuth `state` cookie (login CSRF defence). Scoped to the two OAuth routes and
- * short-lived: it only has to survive one trip to Google's consent screen. `SameSite=Lax` still
- * sends it on Google's top-level redirect back to the callback.
- */
-export const OAUTH_STATE_COOKIE = 'oauthState';
-const OAUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000;
-
-function oauthStateCookieOptions() {
-  return { httpOnly: true, secure: env.isProduction, sameSite: 'lax' as const, path: '/api/auth/google' };
-}
 
 export async function signup(req: Request, res: Response, next: NextFunction) {
   try {
@@ -163,7 +160,7 @@ export async function googleAuth(req: Request, res: Response, next: NextFunction
     });
 
     res.cookie(OAUTH_STATE_COOKIE, state, { ...oauthStateCookieOptions(), maxAge: OAUTH_STATE_MAX_AGE_MS });
-    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+    res.redirect(`${GOOGLE_AUTH_URL}?${params.toString()}`);
   } catch (err) {
     next(err);
   }
@@ -181,33 +178,34 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
 
   try {
     // Parsed by `googleCallbackQuery`: a missing, empty or malformed value reads as absent.
-    const { code, state } = res.locals.query as GoogleCallbackQuery;
+    const { code, state, error } = res.locals.query as GoogleCallbackQuery;
     const expectedState: unknown = req.cookies?.[OAUTH_STATE_COOKIE];
     // One attempt per cookie, whatever the outcome.
     res.clearCookie(OAUTH_STATE_COOKIE, oauthStateCookieOptions());
 
-    if (!code) {
-      return res.redirect(`${client}/login?error=oauth_failed`);
+    const stateMatches = state !== undefined
+      && typeof expectedState === 'string' && expectedState !== ''
+      && safeEqual(state, expectedState);
+    const intent = state ? parseOAuthState(state) : { intent: 'login' as const };
+
+    // A re-authentication (docs/domain/accounts.md "Google 재인증") goes back to the screen of its
+    // purpose, never to the login screen, and never logs anyone in. A state that does not match the
+    // cookie only picks that screen: nothing is exchanged and no proof is issued.
+    if (intent.intent === 'reauth') {
+      if (!stateMatches) {
+        logger.warn('google reauth failed', { purpose: intent.purpose, code: 'failed', reason: 'state mismatch' });
+        return res.redirect(`${client}${reauthFailurePath(intent.purpose, 'failed')}`);
+      }
+      const location = await completeGoogleReauth({ purpose: intent.purpose, code, error }, new Date());
+      return res.redirect(`${client}${location}`);
     }
 
-    if (
-      !state
-      || typeof expectedState !== 'string' || !expectedState
-      || !safeEqual(state, expectedState)
-    ) {
+    if (!code || intent.intent !== 'login' || !stateMatches) {
       return res.redirect(`${client}/login?error=oauth_failed`);
     }
 
     // Exchange code for tokens
-    const tokenResponse = await axios.post<{ access_token: string }>('https://oauth2.googleapis.com/token', {
-      code,
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: env.GOOGLE_CALLBACK_URL,
-      grant_type: 'authorization_code',
-    });
-
-    const { access_token } = tokenResponse.data;
+    const { access_token } = await exchangeGoogleCode(code);
 
     // Get user info
     // Google's userinfo response; `id` and `email` are checked below before anything uses them.

@@ -627,6 +627,13 @@ const PUBLIC_ROUTES: PublicSpec[] = [
     expected: 200,
   },
   { label: 'GET /api/auth/google', method: 'get', path: () => '/api/auth/google', expected: 302 },
+  // A top-level navigation carries no access token; the proof is matched to the user where it is used.
+  {
+    label: 'GET /api/auth/google/reauth',
+    method: 'get',
+    path: () => '/api/auth/google/reauth?purpose=withdrawal',
+    expected: 302,
+  },
   {
     label: 'GET /api/auth/google/callback',
     method: 'get',
@@ -1183,8 +1190,8 @@ describe('the public surface', () => {
     };
   });
 
-  it('enumerates fourteen public routes (thirteen handlers; the review list is mounted twice)', () => {
-    expect(PUBLIC_ROUTES).toHaveLength(14);
+  it('enumerates fifteen public routes (fourteen handlers; the review list is mounted twice)', () => {
+    expect(PUBLIC_ROUTES).toHaveLength(15);
   });
 
   it.each(PUBLIC_ROUTES)('$label is reachable with no token → $expected', async (route) => {
@@ -1218,6 +1225,13 @@ describe('the public surface', () => {
 
   it('GET /api/auth/google redirects to Google rather than answering 401', async () => {
     const res = await api().get('/api/auth/google');
+
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toContain('accounts.google.com');
+  });
+
+  it('GET /api/auth/google/reauth redirects to Google rather than answering 401', async () => {
+    const res = await api().get('/api/auth/google/reauth?purpose=withdrawal');
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toContain('accounts.google.com');

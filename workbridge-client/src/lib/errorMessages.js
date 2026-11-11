@@ -59,6 +59,9 @@ const MESSAGES = {
   'New password must be different from the current password': '새 비밀번호는 현재 비밀번호와 달라야 합니다.',
   'Account has no password': 'Google 계정으로 가입한 회원은 비밀번호를 변경할 수 없습니다.',
   'Password has already been changed': '비밀번호가 이미 변경되었습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'Google re-authentication is required': 'Google로 다시 로그인해 확인해 주세요.',
+  'Google re-authentication is invalid or expired':
+    'Google 확인이 만료되었거나 이 계정에 연결된 Google 계정이 아닙니다. 다시 확인해 주세요.',
   'Cannot withdraw while contracts or settlements are unfinished':
     '진행 중인 계약이나 받지 않은 정산이 있어 탈퇴할 수 없습니다.',
 

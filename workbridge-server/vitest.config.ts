@@ -61,6 +61,8 @@ export default defineConfig({
       // Both gated job types run here, as in local development; the gate tests turn them off.
       JOB_PAYOUT_ENABLED: 'true',
       JOB_EMAIL_ENABLED: 'true',
+      // Lax Google re-authentication, as in local development; the strict-mode tests turn it on.
+      GOOGLE_REAUTH_REQUIRE_AUTH_TIME: 'false',
     },
   },
 });

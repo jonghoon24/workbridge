@@ -11,7 +11,7 @@ import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import Input from '@/components/ui/Input';
 import PageLoader from '@/components/ui/PageLoader';
-import { AlertCircleIcon } from '@/components/ui/Icons';
+import { AlertCircleIcon, GoogleIcon } from '@/components/ui/Icons';
 import { toUserMessage } from '@/lib/errorMessages';
 
 // 탈퇴를 막는 항목(GET /api/users/me/withdrawal의 blockers)마다 보여 줄 문장과 갈 곳.
@@ -46,6 +46,36 @@ const BLOCKER_LINES = [
   },
 ];
 
+// Google 재인증이 탈퇴 화면으로 돌려보낼 때의 `?reauthError=<코드>` 문구(docs/domain/accounts.md "Google 재인증").
+// `unavailable`은 서버가 Google 로그인 시각을 반드시 요구하도록 설정됐을 때만 온다.
+const REAUTH_ERRORS = {
+  cancelled: 'Google 확인을 취소했습니다. 탈퇴하려면 다시 확인해 주세요.',
+  stale: 'Google에 로그인한 지 오래되어 본인 확인에 쓸 수 없습니다. 이 브라우저에서 Google 계정을 로그아웃한 뒤 다시 확인해 주세요. Google에서 로그아웃하면 이 브라우저의 모든 Google 계정이 함께 로그아웃됩니다.',
+  account_mismatch: '이 계정에 연결된 Google 계정으로 로그인해 주세요.',
+  unavailable: '지금은 Google로 본인을 확인할 수 없습니다. 고객센터로 문의해 주세요.',
+  failed: 'Google 확인에 실패했습니다. 다시 시도해 주세요.',
+};
+
+// 재인증 증명(JWT)의 사용자 id. 서명은 확인하지 않는다 — 다른 계정으로 확인한 것을 바로 알려 주는 표시용이고,
+// 실제 검사는 서버가 탈퇴할 때 한다.
+function proofSubject(token) {
+  try {
+    const payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(payload)).sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// 돌아온 주소에서 재인증 결과(`#reauthToken=` 또는 `?reauthError=`)를 꺼내고 주소에서 지운다. 증명이 기록이나
+// 공유된 주소에 남지 않게 하고, 새로고침해도 같은 오류가 다시 뜨지 않게 한다.
+function takeReauthResult() {
+  const token = new URLSearchParams(window.location.hash.slice(1)).get('reauthToken');
+  const code = new URLSearchParams(window.location.search).get('reauthError');
+  if (token || code) window.history.replaceState(null, '', window.location.pathname);
+  return { token, code };
+}
+
 // 탈퇴 전에 읽게 하는 안내. 서버가 실제로 하는 일과 같아야 한다(docs/domain/accounts.md "회원 탈퇴").
 function notices(role) {
   return [
@@ -67,6 +97,8 @@ export default function WithdrawalPage() {
   const [loadError, setLoadError] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [password, setPassword] = useState('');
+  // Google 전용 계정이 방금 Google로 다시 로그인했다는 증명. 메모리에만 둔다(새로고침하면 다시 확인).
+  const [reauthToken, setReauthToken] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -75,7 +107,16 @@ export default function WithdrawalPage() {
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
-    setRole(useAuthStore.getState().user?.role ?? null);
+    const me = useAuthStore.getState().user;
+    setRole(me?.role ?? null);
+
+    const { token, code } = takeReauthResult();
+    if (code) {
+      setError(Object.hasOwn(REAUTH_ERRORS, code) ? REAUTH_ERRORS[code] : REAUTH_ERRORS.failed);
+    } else if (token) {
+      if (me && proofSubject(token) !== me.id) setError(REAUTH_ERRORS.account_mismatch);
+      else setReauthToken(token);
+    }
     load()
       .catch((err) => {
         if (err.response?.status === 401) {
@@ -98,13 +139,22 @@ export default function WithdrawalPage() {
       setError('현재 비밀번호를 입력해 주세요.');
       return;
     }
+    if (!status.hasPassword && !reauthToken) {
+      setError('Google로 다시 로그인해 확인해 주세요.');
+      return;
+    }
     if (!confirm('정말 탈퇴하시겠습니까? 탈퇴하면 되돌릴 수 없습니다.')) return;
 
     setSubmitting(true);
     try {
-      await api.post('/api/users/me/withdrawal', status.hasPassword ? { currentPassword: password } : {});
+      await api.post(
+        '/api/users/me/withdrawal',
+        status.hasPassword ? { currentPassword: password } : { reauthToken },
+      );
     } catch (err) {
       setSubmitting(false);
+      // 만료됐거나 맞지 않는 증명은 다시 쓸 수 없으니 버리고 다시 확인하게 한다.
+      if (!status.hasPassword && err.response?.status === 400) setReauthToken(null);
       // 화면을 연 뒤에 상태가 바뀌었으면(새 계약 등) 사유를 다시 보여 준다.
       if (err.response?.status === 409) await load().catch(() => {});
       setError(toUserMessage(err, '탈퇴하지 못했습니다.'));
@@ -176,6 +226,9 @@ export default function WithdrawalPage() {
           )}
 
           <form onSubmit={handleWithdraw} noValidate className="mt-5 space-y-4">
+            {!status.hasPassword && (
+              <GoogleReauth confirmed={Boolean(reauthToken)} disabled={!status.canWithdraw} />
+            )}
             <label className="flex items-start gap-2 text-sm text-gray-800">
               <input
                 type="checkbox"
@@ -205,6 +258,37 @@ export default function WithdrawalPage() {
           </form>
         </Card>
       </div>
+    </div>
+  );
+}
+
+// Google로만 가입한 계정의 본인 확인. 확인은 Google을 다녀오는 페이지 이동이라, 탈퇴 동의보다 먼저 둔다.
+function GoogleReauth({ confirmed, disabled }) {
+  function handleReauth() {
+    window.location.href = '/api/auth/google/reauth?purpose=withdrawal';
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 p-4">
+      <p className="text-sm font-medium text-gray-900">Google 계정 확인</p>
+      <p className="mt-1 text-sm text-gray-600">
+        Google로 가입한 계정은 탈퇴하기 전에 Google 로그인을 한 번 더 확인합니다.
+      </p>
+      {confirmed ? (
+        <p className="mt-3 text-sm text-green-700">
+          Google 계정을 확인했습니다. 몇 분 안에 탈퇴를 마치지 않으면 다시 확인해야 합니다.
+        </p>
+      ) : (
+        <button
+          type="button"
+          onClick={handleReauth}
+          disabled={disabled}
+          className="mt-3 w-full h-11 flex items-center justify-center gap-3 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <GoogleIcon />
+          Google로 다시 로그인
+        </button>
+      )}
     </div>
   );
 }

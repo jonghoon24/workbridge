@@ -35,6 +35,9 @@ OpenAPI 문서(아래 "API 계약: OpenAPI")가 기준이다.
 - 확장 라우트의 체인: `authenticate → requireActiveUser → requireRole(...) → [업로드] → validate → controller`.
 - 기존 라우트는 `authenticate → requireRole(...) → validate` 뒤에 컨트롤러가 소유권을 직접 확인한다.
   프로젝트 등록은 `requireCompleteProfile`(`src/middlewares/profile.ts`)도 거친다.
+- 되돌릴 수 없는 작업 직전의 본인 재확인: 비밀번호 계정은 현재 비밀번호, Google 전용 계정은 Google 재인증
+  (`src/services/reauth.service.ts`). 재인증의 결과는 저장하지 않고 짧게 사는 서명 토큰(`src/lib/reauth.ts`)으로 브라우저에
+  주며, 그 작업의 서비스가 `assertRecentGoogleReauth`로 검사한다. 지금은 회원 탈퇴만 쓴다.
 - 로그인과 AI 분석에는 `rateLimit`(`src/middlewares/rateLimit.ts`, 카운터는 `RateLimitCounter` 테이블)이 붙는다.
   `POST /api/internal/jobs/run`은 JWT 대신 `requireInternalToken`(`X-Internal-Token`)으로 지킨다.
 

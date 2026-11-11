@@ -158,8 +158,17 @@ function setOAuthStateCookie(response, value, maxAge) {
   });
 }
 
+// 백엔드가 리다이렉트를 주지 않았을 때(서버 오류 등) 브라우저를 보낼 곳. 재인증은 로그인 화면이 아니라 탈퇴 화면으로
+// 돌아간다 — 재인증하던 사람을 로그인 화면이나 홈에 떨어뜨리지 않는다.
+const GOOGLE_REDIRECT_FALLBACKS = {
+  google: '/login?error=oauth_failed',
+  'google/callback': '/login?error=oauth_failed',
+  'google/reauth': '/my/account/withdrawal?reauthError=failed',
+};
+
 /**
- * `GET /api/auth/google` and its callback. The backend's redirect is replayed to the browser, and
+ * `GET /api/auth/google`, `GET /api/auth/google/reauth` and their callback. The backend's redirect
+ * is replayed to the browser — with its fragment, which carries a re-authentication proof — and
  * the cookies the backend set on this server-to-server hop are moved onto the browser's origin:
  * the OAuth `state` cookie on the way out, the refresh cookie on the way back. The callback
  * forwards the browser's `state` cookie to the backend, which compares it with the `state`
@@ -178,7 +187,7 @@ export async function proxyGoogleRedirect(request, path) {
     redirect: 'manual',
   });
 
-  const location = backendResponse.headers.get('location') || '/login?error=oauth_failed';
+  const location = backendResponse.headers.get('location') || GOOGLE_REDIRECT_FALLBACKS[path];
   const redirectStatus = [301, 302, 303, 307, 308].includes(backendResponse.status)
     ? backendResponse.status
     : 302;

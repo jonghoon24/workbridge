@@ -1,7 +1,14 @@
 import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { z } from '../../lib/zod';
-import { changePasswordBody, googleCallbackQuery, loginBody, selectRoleBody, signupBody } from '../../schemas/auth';
+import {
+  changePasswordBody,
+  googleCallbackQuery,
+  googleReauthQuery,
+  loginBody,
+  selectRoleBody,
+  signupBody,
+} from '../../schemas/auth';
 import { ACTIVE_USER, AUTHENTICATED, bearer, created, errors, invalid, jsonBody, ok, publicRoute, SECURITY_SCHEMES } from '../common';
 import { accessTokenBody, authSession } from '../responses/auth';
 import { messageBody } from '../responses/common';
@@ -152,19 +159,44 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
 
   registry.registerPath({
     method: 'get',
+    path: '/api/auth/google/reauth',
+    operationId: 'googleReauth',
+    tags,
+    summary: '구글 재인증 시작',
+    description:
+      '민감한 작업(지금은 회원 탈퇴) 직전에 Google 로그인을 한 번 더 거치게 한다. 로그인 시작과 같은 `oauthState` 쿠키(10분)에 '
+      + '`state`를 두고 구글 계정 선택 화면(`prompt=select_account`)으로 보내며, ID 토큰의 `auth_time`(구글 로그인 시각)을 요청한다. '
+      + '페이지 이동이라 액세스 토큰 없이 부른다. 결과는 콜백이 `purpose`의 화면으로 돌려보낸다(`GET /api/auth/google/callback`). '
+      + '서버의 `CLIENT_URL`이 없거나 출처 하나가 아니면 구글로 보내지 않고 서버 오류로 답한다(설정 오류).',
+    security: publicRoute,
+    request: { query: googleReauthQuery },
+    responses: {
+      302: redirect('구글 계정 선택 화면으로 이동'),
+      ...errors(invalid()),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
     path: '/api/auth/google/callback',
     operationId: 'googleCallback',
     tags,
-    summary: '구글 로그인 콜백',
+    summary: '구글 로그인·재인증 콜백',
     description:
-      '400을 내지 않고 리디렉션으로 끝난다(서버의 `CLIENT_URL`이 없거나 출처 하나가 아닌 설정 오류만 서버 오류로 답한다). 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, '
+      '400을 내지 않고 리디렉션으로 끝난다(서버의 `CLIENT_URL`이 없거나 출처 하나가 아닌 설정 오류만 서버 오류로 답한다). '
+      + '**로그인**: 성공하면 `CLIENT_URL/auth/callback?token=…&needsRoleSelection=…`, '
       + '실패(코드 없음, `state`가 `oauthState` 쿠키와 다름, 구글 호출 실패)하면 `CLIENT_URL/login?error=oauth_failed`로 보낸다. '
       + '기존 계정과는 `googleId`로만 연결한다. 이 Google 계정과 연결되지 않은 계정이 같은 이메일을 쓰고 있으면 연결하지도 세션을 '
-      + '발급하지도 않고 `CLIENT_URL/login?error=email_account_exists`로 보낸다(Google이 이메일을 인증했어도 같다).',
+      + '발급하지도 않고 `CLIENT_URL/login?error=email_account_exists`로 보낸다(Google이 이메일을 인증했어도 같다). '
+      + '**재인증**(`GET /api/auth/google/reauth`로 시작한 것): 세션을 발급하지 않고 계정을 만들거나 프로필을 바꾸지 않는다. '
+      + '성공하면 그 목적의 화면(탈퇴는 `CLIENT_URL/my/account/withdrawal`)에 `#reauthToken=…`(짧게 사는 재인증 증명)을 붙여 보내고, '
+      + '실패하면 `?reauthError=`로 보낸다: `cancelled`(구글에서 취소), `stale`(구글 로그인 시각이 오래됨), '
+      + '`account_mismatch`(이 구글 계정과 연결된 활성 계정 없음), `unavailable`(구글이 로그인 시각을 주지 않음 — '
+      + '`GOOGLE_REAUTH_REQUIRE_AUTH_TIME`이 켜진 경우만), `failed`(그 밖의 실패, `state`가 쿠키와 다른 경우 포함).',
     security: publicRoute,
     request: { query: googleCallbackQuery },
     responses: {
-      302: redirect('클라이언트로 이동(성공, `error=oauth_failed` 또는 `error=email_account_exists`)'),
+      302: redirect('클라이언트로 이동(로그인: 성공, `error=oauth_failed` 또는 `error=email_account_exists`. 재인증: `#reauthToken=` 또는 `?reauthError=`)'),
     },
   });
 }

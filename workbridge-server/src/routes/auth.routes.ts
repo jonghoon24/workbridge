@@ -9,12 +9,20 @@ import {
   selectRole,
 } from '../controllers/auth.controller';
 import { postChangePassword } from '../controllers/account.controller';
+import { getGoogleReauth } from '../controllers/reauth.controller';
 import { authenticate } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
 import { rateLimit } from '../middlewares/rateLimit';
 import { validate } from '../middlewares/validate';
 import { LOGIN_FAILURE_RULE, LOGIN_IP_RULE, PASSWORD_CONFIRM_FAILURE_RULE } from '../lib/rateLimitRules';
-import { changePasswordBody, googleCallbackQuery, loginBody, selectRoleBody, signupBody } from '../schemas/auth';
+import {
+  changePasswordBody,
+  googleCallbackQuery,
+  googleReauthQuery,
+  loginBody,
+  selectRoleBody,
+  signupBody,
+} from '../schemas/auth';
 
 const router = Router();
 
@@ -44,6 +52,9 @@ router.post(
   postChangePassword,
 );
 router.get('/google', googleAuth);
+// Public like `/google`: a top-level navigation carries no access token. The proof the callback
+// issues is matched to the signed-in user by the action that uses it.
+router.get('/google/reauth', validate({ query: googleReauthQuery }), getGoogleReauth);
 // The callback query schema never fails: every callback failure is a redirect, never a 400.
 router.get('/google/callback', validate({ query: googleCallbackQuery }), googleCallback);
 

@@ -1,4 +1,5 @@
 import { normalizeEmail } from '../lib/email';
+import { REAUTH_PURPOSES } from '../lib/reauth';
 import { z } from '../lib/zod';
 
 /**
@@ -91,10 +92,18 @@ const callbackParam = z.preprocess(
   z.string().optional(),
 );
 
-/** `GET /google/callback`. */
+/** `GET /google/callback`. `error` is Google's (`access_denied` when the user cancels). */
 export const googleCallbackQuery = z.object({
   code: callbackParam,
   state: callbackParam,
+  error: callbackParam,
+});
+
+/** `GET /google/reauth`. The purpose picks the screen the callback returns to. */
+export const googleReauthQuery = z.object({
+  purpose: z.enum(REAUTH_PURPOSES, {
+    errorMap: () => ({ message: `Purpose must be one of: ${REAUTH_PURPOSES.join(', ')}` }),
+  }),
 });
 
 export type SignupInput = z.infer<typeof signupBody>;
@@ -102,3 +111,4 @@ export type LoginInput = z.infer<typeof loginBody>;
 export type SelectRoleInput = z.infer<typeof selectRoleBody>;
 export type ChangePasswordInput = z.infer<typeof changePasswordBody>;
 export type GoogleCallbackQuery = z.infer<typeof googleCallbackQuery>;
+export type GoogleReauthQuery = z.infer<typeof googleReauthQuery>;

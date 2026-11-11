@@ -153,7 +153,14 @@ gh workflow run attachments-migrate.yml -f environment=preview -f apply=true # �
 
 **자체 호스팅**: `TRUST_PROXY=loopback`은 Next 포트에 신뢰하는 클라이언트만 닿을 때만 안전하다. 아니면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다. 헤더를 다시 쓰는 프록시를 Next 앞에 두거나 `TRUST_PROXY`를 비운다. Next 프록시는 Vercel에서만 `X-Client-IP`를 보낸다.
 
-### 6. 그 밖에
+### 6. Google 전용 계정의 재인증은 로그인 시각을 확인하지 못한다
+
+Google로만 가입한 회원은 탈퇴 직전에 Google 로그인을 한 번 더 거친다([domain/accounts.md "Google 재인증"](domain/accounts.md#google-재인증)). "방금 로그인했다"의 근거는 Google이 ID 토큰에 담는 로그인 시각(`auth_time`)인데, Google은 이 값을 **게시·인증된 앱이 "Session age claims"를 켰을 때만** 준다. 운영의 Google OAuth 앱은 아직 이 조건을 갖추지 않았다고 보고 기본값(완화 모드)으로 둔다.
+
+- **완화 모드(기본)**: 연결된 Google 계정으로 다녀왔는지와 계정이 이 회원의 것인지는 확인하지만, 시각이 오지 않으면 신선도를 확인하지 못하고 `warn` 로그 `google reauth without auth_time`를 남긴다. 그래서 **이 브라우저에 Google 로그인이 살아 있으면 비밀번호 입력 없이 클릭만으로 통과한다.** 시각이 오면 그때는 확인한다.
+- **엄격 모드로 바꾸는 법**: Google 앱을 게시·인증하고 Session age claims를 켠다([ENV.md](ENV.md#google-oauth) "Google OAuth" 4번) → 프리뷰에서 실제 Google 왕복으로 `warn`이 사라진 것을 확인 → 운영 서버에 `GOOGLE_REAUTH_REQUIRE_AUTH_TIME=true`. 이후 시각이 없는 확인은 받지 않는다(`unavailable`, 화면은 고객센터를 안내). 조건 없이 켜면 Google 전용 회원은 탈퇴할 수 없다.
+
+### 7. 그 밖에
 
 - **프로필·포트폴리오 이미지는 공개 버킷**(`workbridge`)에 추측하기 어려운 키로 저장되고 공개 URL로 나간다. 공개 프로필에 보이는 이미지라 의도된 것이다. 메시지·결과물 첨부는 3번의 비공개 버킷이다.
 - **지급 계좌번호는 저장할 때 암호화**하고(위 "지급 계좌 암호화 키") 응답·로그·정산에는 마스킹한 값만 나간다. 계좌가 회원 본인 것인지 은행 API로 확인하지는 않는다 — 예금주는 프로필 이름과만 비교한다. 은행 확인은 실제 송금을 연동할 때 한다([#28](https://github.com/jonghoon24/workbridge/issues/28)).

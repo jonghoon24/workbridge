@@ -26,7 +26,8 @@
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | 액세스·리프레시 토큰 서명 시크릿 |
 | `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | 토큰 만료 시간 |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 |
-| `GOOGLE_CALLBACK_URL` | Google OAuth 콜백. 백엔드가 아니라 **프론트엔드**의 `/api/auth/google/callback` URL이다(Next 프록시가 받아 서버로 넘긴다) |
+| `GOOGLE_CALLBACK_URL` | Google OAuth 콜백. 백엔드가 아니라 **프론트엔드**의 `/api/auth/google/callback` URL이다(Next 프록시가 받아 서버로 넘긴다). 로그인과 재인증이 같은 콜백을 쓴다 |
+| `GOOGLE_REAUTH_REQUIRE_AUTH_TIME` | 정확히 `true`일 때만 Google 재인증(Google 전용 계정의 탈퇴 전 확인)이 Google의 로그인 시각(`auth_time`)을 반드시 요구한다. 비우거나 다른 값이면 시각이 오지 않아도 연결된 Google 계정으로 다녀온 것만으로 받고 `warn`을 남긴다. Google이 시각을 주는 조건(아래 "Google OAuth" 4번)을 갖춘 환경에서만 켠다. 조건 없이 켜면 Google 전용 회원이 탈퇴할 수 없다. 이 차이는 [DEPLOYMENT.md](DEPLOYMENT.md#6-google-전용-계정의-재인증은-로그인-시각을-확인하지-못한다) 6번 |
 | `OPENAI_API_KEY` | OpenAI API 키. **모듈을 읽을 때 클라이언트를 만들므로 비어 있으면 서버가 뜨지 않는다**(테스트처럼 더미 값이면 된다) |
 | `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키(`test_sk_...`) |
 | `ALLOW_PAYMENT_BYPASS` | `true`면 토스 결제창 없이 결제 완료 처리(`POST /api/payments/dev-complete`). 로컬·E2E 전용이고 **프리뷰·운영에서는 반드시 `false`**(아래 "결제 우회") |
@@ -91,6 +92,9 @@
 1. [Google Cloud Console](https://console.cloud.google.com/)에서 프로젝트 생성
 2. APIs & Services > Credentials에서 OAuth 2.0 클라이언트 ID 생성
 3. 승인된 리디렉션 URI에 `http://localhost:3000/api/auth/google/callback` 추가
+4. (재인증의 로그인 시각) Google Auth Platform > Settings > Advanced Settings에서 **Session age claims**를 켠다. 앱이
+   게시(Audience가 In production)되고 인증(Verification Center가 Verified)된 경우에만 Google이 ID 토큰에 `auth_time`을
+   넣는다. 켠 뒤 Google 왕복에서 `auth_time`이 오는 것을 확인하고 서버의 `GOOGLE_REAUTH_REQUIRE_AUTH_TIME`을 `true`로 둔다
 
 ### 토스페이먼츠
 

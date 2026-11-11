@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Withdrawal deletes public images, and the race tests upload one. No test may reach Supabase.
 vi.mock('@supabase/supabase-js', async () => {
@@ -6,9 +6,11 @@ vi.mock('@supabase/supabase-js', async () => {
   return { createClient: () => storage.client };
 });
 
+import { hkdfSync } from 'node:crypto';
+import jwt from 'jsonwebtoken';
 import type { User } from '@prisma/client';
 
-import { api, authed } from './helpers/api';
+import { api, authed, tokenFor } from './helpers/api';
 import { prisma, sideClient } from './helpers/db';
 import {
   makeApplication,
@@ -29,6 +31,7 @@ import {
 import { jobsOf } from './helpers/jobs';
 import { storage, STORAGE_BASE } from './helpers/storageFake';
 import { runDueJobs } from '../src/jobs/runner';
+import { issueReauthProof, REAUTH_AUDIENCE } from '../src/lib/reauth';
 
 /**
  * `GET`/`POST /api/users/me/withdrawal` (docs/domain/accounts.md "회원 탈퇴"), and the writes that
@@ -49,6 +52,19 @@ beforeEach(() => {
 const status = (user: User) => authed(user).get('/api/users/me/withdrawal');
 const withdraw = (user: User, body: Record<string, unknown> = { currentPassword: TEST_PASSWORD }) =>
   authed(user).post('/api/users/me/withdrawal').send(body);
+
+const MINUTE_MS = 60_000;
+
+/**
+ * A Google re-authentication proof, as the callback issues it (`google-reauth.test.ts` covers the
+ * callback). `authTime` is Google's sign-in time; `null` is a lax-mode proof issued at `issuedAt`.
+ */
+function reauthProof(
+  user: Pick<User, 'id' | 'googleId'>,
+  { authTime = new Date(), issuedAt = new Date(), googleSub = user.googleId as string }: { authTime?: Date | null; issuedAt?: Date; googleSub?: string } = {},
+) {
+  return issueReauthProof({ userId: user.id, googleSub, purpose: 'withdrawal', authTime }, issuedAt);
+}
 
 /** A contract between a fresh client and freelancer, in `status`. */
 function contractIn(status: 'PENDING' | 'ACTIVE' | 'COMPLETED') {
@@ -192,6 +208,101 @@ describe('POST /api/users/me/withdrawal', () => {
 
       expect(res.status).toBe(400);
       expect(res.body).toEqual({ error: { message } });
+    });
+
+    describe('a Google-only account', () => {
+      const GOOGLE_SUB = 'google-uid-reauth';
+      const googleOnly = () => makeClient({ password: null, googleId: GOOGLE_SUB });
+      const refused = async (user: User, body: Record<string, unknown>, message: string) => {
+        const res = await withdraw(user, body);
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: { message } });
+        expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).deletedAt).toBeNull();
+      };
+      const INVALID = 'Google re-authentication is invalid or expired';
+
+      afterEach(() => {
+        process.env.GOOGLE_REAUTH_REQUIRE_AUTH_TIME = 'false';
+      });
+
+      it('requires a Google re-authentication, consent alone is not enough', async () => {
+        const user = await googleOnly();
+
+        await refused(user, {}, 'Google re-authentication is required');
+        await refused(user, { currentPassword: TEST_PASSWORD }, 'Google re-authentication is required');
+      });
+
+      it('refuses a proof whose Google sign-in is older than the window', async () => {
+        const user = await googleOnly();
+
+        await refused(user, { reauthToken: reauthProof(user, { authTime: new Date(Date.now() - 6 * MINUTE_MS) }) }, INVALID);
+      });
+
+      it('refuses a proof without auth_time once its window from the callback has passed', async () => {
+        const user = await googleOnly();
+        const sixMinutesAgo = new Date(Date.now() - 6 * MINUTE_MS);
+
+        await refused(user, { reauthToken: reauthProof(user, { authTime: null, issuedAt: sixMinutesAgo }) }, INVALID);
+      });
+
+      it('refuses another member\'s proof', async () => {
+        const user = await googleOnly();
+        const other = await makeClient({ password: null, googleId: 'google-uid-other' });
+
+        await refused(user, { reauthToken: reauthProof(other) }, INVALID);
+      });
+
+      it('refuses a proof for a Google account that is not the one linked', async () => {
+        const user = await googleOnly();
+
+        await refused(user, { reauthToken: reauthProof(user, { googleSub: 'google-uid-other' }) }, INVALID);
+      });
+
+      it('refuses a proof for another purpose', async () => {
+        const user = await googleOnly();
+        // Signed with the proof key itself, so only the purpose is wrong.
+        const key = Buffer.from(hkdfSync('sha256', process.env.JWT_ACCESS_SECRET as string, '', 'workbridge reauth proof', 32));
+        const otherPurpose = jwt.sign(
+          { purpose: 'payout_account', gsub: GOOGLE_SUB, authTimeVerified: true },
+          key,
+          { algorithm: 'HS256', audience: REAUTH_AUDIENCE, subject: user.id, expiresIn: '5m' },
+        );
+
+        await refused(user, { reauthToken: otherPurpose }, INVALID);
+      });
+
+      it('refuses an access token in place of a proof', async () => {
+        const user = await googleOnly();
+
+        await refused(user, { reauthToken: tokenFor(user) }, INVALID);
+      });
+
+      it('accepts a lax-mode proof without auth_time, but strict mode demands one backed by auth_time', async () => {
+        const lax = await googleOnly();
+        const strict = await makeClient({ password: null, googleId: 'google-uid-strict' });
+
+        expect((await withdraw(lax, { reauthToken: reauthProof(lax, { authTime: null }) })).status).toBe(200);
+
+        process.env.GOOGLE_REAUTH_REQUIRE_AUTH_TIME = 'true';
+        await refused(strict, { reauthToken: reauthProof(strict, { authTime: null }) }, INVALID);
+        expect((await withdraw(strict, { reauthToken: reauthProof(strict) })).status).toBe(200);
+      });
+
+      it('rejects a non-string or empty reauthToken with 400', async () => {
+        const user = await googleOnly();
+
+        await refused(user, { reauthToken: '' }, 'reauthToken: Google re-authentication is required');
+        await refused(user, { reauthToken: 42 }, 'reauthToken: Reauth token must be a string');
+      });
+    });
+
+    it('confirms an account with a password by its password, whatever reauth proof it sends', async () => {
+      const user = await makeFreelancer({ googleId: 'google-uid-has-password' });
+
+      const res = await withdraw(user, { reauthToken: reauthProof(user) });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'Current password is required' } });
     });
 
     it('shares the wrong-password limit with changing the password', async () => {
@@ -366,10 +477,10 @@ describe('POST /api/users/me/withdrawal', () => {
       expect(signup.body.user.id).not.toBe(user.id);
     });
 
-    it('lets a Google-only account withdraw without a password, freeing its Google link', async () => {
+    it('lets a Google-only account withdraw after a fresh Google re-authentication, freeing its Google link', async () => {
       const user = await makeClient({ password: null, googleId: 'google-uid-withdraw' });
 
-      const res = await withdraw(user, {});
+      const res = await withdraw(user, { reauthToken: reauthProof(user) });
 
       expect(res.status).toBe(200);
       expect(await prisma.user.count({ where: { googleId: 'google-uid-withdraw' } })).toBe(0);

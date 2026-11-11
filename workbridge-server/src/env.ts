@@ -167,6 +167,14 @@ export const env = {
   get JOB_EMAIL_ENABLED(): string | undefined {
     return process.env.JOB_EMAIL_ENABLED;
   },
+  /**
+   * Google re-authentication (`services/reauth.service.ts`) refuses a Google sign-in without
+   * `auth_time` only when this is exactly `'true'`. Off by default: Google returns `auth_time` only
+   * to a published, verified app with "Session age claims" turned on (docs/ENV.md). Read per callback.
+   */
+  get GOOGLE_REAUTH_REQUIRE_AUTH_TIME(): string | undefined {
+    return process.env.GOOGLE_REAUTH_REQUIRE_AUTH_TIME;
+  },
   /** The development worker starts unless this is exactly `'false'`. */
   get JOB_WORKER_ENABLED(): string | undefined {
     return process.env.JOB_WORKER_ENABLED;
