@@ -1,5 +1,6 @@
 // 메시지 화면 전용 상수와 헬퍼. 공용 lib/format.js는 수정하지 않고 가져다 쓴다.
 import { formatDate, toKstDateInput } from '@/lib/format';
+import { ATTACHMENT_TOO_LARGE_TEXT } from '@/lib/attachments';
 import { toUserMessage } from '@/lib/errorMessages';
 
 // 메시지 입력 한도. 화면 검사는 안내용이고 최종 판단은 서버가 한다.
@@ -43,7 +44,7 @@ const ERROR_TEXT = {
   CONVERSATION_CLOSED: CLOSED_REASON_TEXT.CONTRACT_CLOSED,
   COUNTERPART_INACTIVE: CLOSED_REASON_TEXT.COUNTERPART_INACTIVE,
   FORBIDDEN_RESOURCE: '이 대화방에 접근할 권한이 없습니다.',
-  FILE_TOO_LARGE: '파일은 개당 10MB 이하여야 합니다.',
+  FILE_TOO_LARGE: ATTACHMENT_TOO_LARGE_TEXT,
 };
 
 export function messageErrorText(err, fallback) {

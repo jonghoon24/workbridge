@@ -6,7 +6,8 @@
 //    기본 문구로 충분하다고 적은 STATUS_DEFAULT_CODES.
 // 2. 그 두 표와 공용 필드 표(FIELD_MESSAGES)에 서버에 없는 코드가 없다(이름이 바뀌었거나 없어진 코드).
 // 3. 화면 코드가 쓰는 코드도 서버에 있다: `errorCode(…)`가 있는 줄의 'UPPER_SNAKE' 문자열, `*_CODES` 배열,
-//    `codes:`(오류 코드)와 `fields:`(필드 코드) override 객체의 키. override를 상수로 넘기면 같은 파일의 그 상수를 읽는다.
+//    `codes:`(오류 코드)와 `fields:`(필드 코드) override 객체의 키, `violation.code === '…'`(필드 코드).
+//    override를 상수로 넘기면 같은 파일의 그 상수를 읽는다. 분기는 이 모양으로 쓴다 — 다른 모양은 검사되지 않는다.
 //
 // 빌드도 린트도 모르는 어긋남(서버에 새 코드가 생겼는데 문구가 없음, 화면이 없는 코드로 분기함)을 CI에서 잡는다.
 
@@ -130,6 +131,10 @@ for (const file of sourceFiles(join(root, 'src'))) {
     if (!ERROR_CODES.has(code)) problems.push(`${where}: 서버에 없는 오류 코드 ${code}`);
   }
 
+  // Field codes compared on a violation (`violation.code === 'CONFLICT'`).
+  for (const [, code] of text.matchAll(/violation\??\.code\s*[!=]==\s*'([A-Z][A-Z0-9_]*)'/g)) {
+    if (!FIELD_CODES.has(code)) problems.push(`${where}: 서버에 없는 필드 코드 ${code}`);
+  }
   for (const block of overrideBlocks(text, 'fields')) {
     for (const code of keysAtDepth(block, 2)) {
       if (!FIELD_CODES.has(code)) problems.push(`${where}: 서버에 없는 필드 코드 ${code}`);

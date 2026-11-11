@@ -11,8 +11,11 @@
 import api from './api';
 import { errorCode, fieldViolation, toUserMessage } from './errorMessages';
 
+// 첨부 파일 한 개의 크기 한도(서버 ATTACHMENT_MAX_BYTES)를 넘었을 때의 안내. 업로드를 쓰는 화면이 같이 쓴다.
+export const ATTACHMENT_TOO_LARGE_TEXT = '파일은 개당 10MB 이하여야 합니다.';
+
 const UPLOAD_ERROR_TEXT = {
-  413: '파일은 개당 10MB 이하여야 합니다.',
+  413: ATTACHMENT_TOO_LARGE_TEXT,
 };
 
 // 화면에 보여 줄 문구를 가진 오류. 컴포넌트는 err.displayMessage를 그대로 보여 준다.
@@ -79,7 +82,7 @@ export async function uploadAttachments(resource, files, onProgress = () => {}) 
       issued = data.uploads;
     } catch (err) {
       throw uploadError(toUserMessage(err, '파일 업로드를 준비하지 못했습니다.', {
-        codes: { FILE_TOO_LARGE: UPLOAD_ERROR_TEXT[413] },
+        codes: { FILE_TOO_LARGE: ATTACHMENT_TOO_LARGE_TEXT },
       }));
     }
 

@@ -6,7 +6,7 @@ import Button from '@/components/ui/Button';
 import { formatFileSize } from '@/lib/format';
 import { ATTACHMENT_ACCEPT, MILESTONE_LIMITS } from '@/constants/milestones';
 import { toUserMessage } from '@/lib/errorMessages';
-import { forgetUploads, isRejectedUpload, uploadAttachments } from '@/lib/attachments';
+import { ATTACHMENT_TOO_LARGE_TEXT, forgetUploads, isRejectedUpload, uploadAttachments } from '@/lib/attachments';
 import useLeaveWarning from '@/lib/useLeaveWarning';
 import FileButton from '@/components/ui/FileButton';
 
@@ -111,7 +111,7 @@ export default function SubmissionForm({ milestoneId, isResubmission = false, on
         // 업로드가 만료됐거나 저장된 파일이 거부되면 다음 시도에서 새로 올린다.
         if (isRejectedUpload(err)) forgetUploads(files);
         setError(toUserMessage(err, '결과물을 제출하지 못했습니다.', {
-          codes: { FILE_TOO_LARGE: '파일은 개당 10MB 이하여야 합니다.' },
+          codes: { FILE_TOO_LARGE: ATTACHMENT_TOO_LARGE_TEXT },
         }));
       }
     } finally {

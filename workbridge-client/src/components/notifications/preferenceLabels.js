@@ -1,5 +1,5 @@
 // 알림 설정의 한국어 라벨. 서버는 type과 category 코드만 준다.
-import { toUserMessage } from '@/lib/errorMessages';
+import { fieldViolation, toUserMessage } from '@/lib/errorMessages';
 
 export const CATEGORY_LABELS = {
   APPLICATION: '지원',
@@ -39,7 +39,24 @@ export function typeLabel(type) {
   return TYPE_LABELS[type] || { label: type, description: '' };
 }
 
-// 알림 설정의 검증 오류(`preferences.*`)와 탈퇴한 계정은 공용 변환표가 맡는다.
+// 앱 알림을 바꿀 수 없는 종류(`preferences.<i>.inApp` NOT_ALLOWED)는 서버가 한 필드 코드로 답하므로, 보낸 값으로
+// 켜려던 것(앱 알림이 없는 종류)인지 끄려던 것(필수 알림)인지 가른다.
+function inAppNotAllowedText(err) {
+  const violation = fieldViolation(err);
+  const match = /^preferences\.(\d+)\.inApp$/.exec(violation?.path || '');
+  if (!match || violation.code !== 'NOT_ALLOWED') return null;
+  let sent;
+  try {
+    sent = JSON.parse(err.config?.data || '{}').preferences?.[Number(match[1])];
+  } catch {
+    return null;
+  }
+  if (sent?.inApp === true) return '읽지 않은 메시지 요약은 이메일로만 받을 수 있습니다.';
+  if (sent?.inApp === false) return '필수 알림은 앱 알림을 끌 수 없습니다.';
+  return null;
+}
+
+// 그 밖의 검증 오류(`preferences.*`)와 탈퇴한 계정은 공용 변환표가 맡는다.
 export function describePreferenceError(err, fallback) {
-  return toUserMessage(err, fallback);
+  return inAppNotAllowedText(err) || toUserMessage(err, fallback);
 }

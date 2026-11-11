@@ -31,8 +31,7 @@ const FIELD_LABELS = {
 };
 
 // 서버 검증 오류의 원인 필드 `milestones.2.amount`를 "3번 마일스톤 금액: …"으로 바꿔 보여 준다.
-function describeMilestoneField(err) {
-  const violation = fieldViolation(err);
+function describeMilestoneField(violation) {
   const match = /^milestones\.(\d+)\.(\w+)$/.exec(violation?.path || '');
   if (!match) return null;
   const [, index, field] = match;
@@ -149,7 +148,7 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
       const violation = fieldViolation(err);
       const sumMismatch = violation?.path === 'milestones' && violation.code === 'CONFLICT';
       setError(
-        describeMilestoneField(err)
+        describeMilestoneField(violation)
         || (sumMismatch ? `마일스톤 금액의 합계가 계약 금액(${formatKRW(contractAmount)})과 같아야 합니다.` : null)
         || toUserMessage(err, '마일스톤 계획을 저장하지 못했습니다.'),
       );
