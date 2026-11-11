@@ -10,18 +10,22 @@
       "Bash(*prisma migrate reset*)",
       "Bash(*--force-reset*)",
       "Bash(*--accept-data-loss*)",
-      "Bash(*dropdb*)",
-      "Bash(*DROP TABLE*)",
-      "Bash(*drop table*)",
-      "Bash(*TRUNCATE*)",
       "Bash(git push -f*)",
       "Bash(git push * -f*)",
       "Bash(git push *--force*)",
+      "Bash(*vercel env pull*)",
+      "Bash(*vercel pull*)"
+    ],
+    "ask": [
+      "Bash(*dropdb*)",
+      "Bash(*DROP TABLE*)",
+      "Bash(*drop table*)",
+      "Bash(*DROP DATABASE*)",
+      "Bash(*drop database*)",
+      "Bash(*TRUNCATE*)",
       "Bash(*supabase.co*)",
       "Bash(*supabase.com*)",
       "Bash(gh workflow run *seed*)",
-      "Bash(*vercel env pull*)",
-      "Bash(*vercel pull*)",
       "Bash(*vercel*--prod*)"
     ],
     "allow": [
