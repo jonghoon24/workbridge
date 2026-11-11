@@ -451,6 +451,27 @@ const guardedMutations: Mutation[] = [
       };
     },
   },
+  // Account.
+  {
+    label: 'POST /api/auth/change-password',
+    async setup() {
+      const actor = await makeFreelancer();
+      const before = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
+      return {
+        actor,
+        send: (token) => bearer(token).post('/api/auth/change-password').send({
+          currentPassword: TEST_PASSWORD,
+          newPassword: `${GHOST}-password`,
+        }),
+        async assertUnchanged() {
+          const stored = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
+          expect(stored.password).toBe(before.password);
+          expect(stored.passwordChangedAt).toBeNull();
+        },
+      };
+    },
+  },
+
   // Existing-domain writes: users, projects, applications, contracts, payments, reviews,
   // notifications.
   {

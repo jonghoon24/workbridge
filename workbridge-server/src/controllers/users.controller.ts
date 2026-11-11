@@ -13,36 +13,48 @@ import { listCareers } from '../services/careers.service';
 import { listPortfolioItems } from '../services/portfolio.service';
 import { v4 as uuidv4 } from 'uuid';
 
+/**
+ * The caller's own profile (`GET`/`PATCH /me`). `password` is read only to tell the client whether
+ * the account has one ({@link toMyProfile}); the hash itself never leaves this module.
+ */
+const myProfileSelect = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  profileImage: true,
+  bio: true,
+  companyName: true,
+  businessField: true,
+  website: true,
+  skills: true,
+  activityCategory: true,
+  experienceYears: true,
+  hourlyRate: true,
+  portfolioUrl: true,
+  createdAt: true,
+  password: true,
+} satisfies Prisma.UserSelect;
+
+/** Drops the hash and adds `hasPassword` — false for an account that signs in with Google only. */
+function toMyProfile({ password, ...profile }: Prisma.UserGetPayload<{ select: typeof myProfileSelect }>) {
+  return { ...profile, hasPassword: password !== null };
+}
+
 export async function getMe(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     // `findFirst`, not `findUnique`: a soft-deleted user holding a still-valid access token
     // must not be able to read their profile. `deletedAt` is not part of a unique constraint.
     const user = await prisma.user.findFirst({
       where: { id: req.user.id, deletedAt: null },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        profileImage: true,
-        bio: true,
-        companyName: true,
-        businessField: true,
-        website: true,
-        skills: true,
-        activityCategory: true,
-        experienceYears: true,
-        hourlyRate: true,
-        portfolioUrl: true,
-        createdAt: true,
-      },
+      select: myProfileSelect,
     });
 
     if (!user) {
       throw new AppError('User not found', 404);
     }
 
-    res.json(user);
+    res.json(toMyProfile(user));
   } catch (err) {
     next(err);
   }
@@ -66,26 +78,10 @@ export async function updateMe(req: AuthedFileRequest, res: Response, next: Next
     const user = await prisma.user.update({
       where: { id: req.user.id },
       data: updateData,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        profileImage: true,
-        bio: true,
-        companyName: true,
-        businessField: true,
-        website: true,
-        skills: true,
-        activityCategory: true,
-        experienceYears: true,
-        hourlyRate: true,
-        portfolioUrl: true,
-        createdAt: true,
-      },
+      select: myProfileSelect,
     });
 
-    res.json(user);
+    res.json(toMyProfile(user));
   } catch (err) {
     next(err);
   }

@@ -8,11 +8,13 @@ import {
   googleCallback,
   selectRole,
 } from '../controllers/auth.controller';
+import { postChangePassword } from '../controllers/account.controller';
 import { authenticate } from '../middlewares/auth';
+import { requireActiveUser } from '../middlewares/activeUser';
 import { rateLimit } from '../middlewares/rateLimit';
 import { validate } from '../middlewares/validate';
-import { LOGIN_FAILURE_RULE, LOGIN_IP_RULE } from '../lib/rateLimitRules';
-import { googleCallbackQuery, loginBody, selectRoleBody, signupBody } from '../schemas/auth';
+import { LOGIN_FAILURE_RULE, LOGIN_IP_RULE, PASSWORD_CONFIRM_FAILURE_RULE } from '../lib/rateLimitRules';
+import { changePasswordBody, googleCallbackQuery, loginBody, selectRoleBody, signupBody } from '../schemas/auth';
 
 const router = Router();
 
@@ -31,6 +33,16 @@ router.post(
 router.post('/logout', logout);
 router.post('/refresh', refresh);
 router.post('/select-role', authenticate, validate({ body: selectRoleBody }), selectRole);
+// Re-issues the session like `select-role`, so it lives here: the client's refresh-cookie proxy
+// covers `/api/auth/*` only. The failure limit only peeks; the service counts wrong passwords.
+router.post(
+  '/change-password',
+  authenticate,
+  requireActiveUser,
+  rateLimit(PASSWORD_CONFIRM_FAILURE_RULE, { mode: 'peek' }),
+  validate({ body: changePasswordBody }),
+  postChangePassword,
+);
 router.get('/google', googleAuth);
 // The callback query schema never fails: every callback failure is a redirect, never a 400.
 router.get('/google/callback', validate({ query: googleCallbackQuery }), googleCallback);

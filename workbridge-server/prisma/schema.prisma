@@ -80,25 +80,28 @@ enum EmploymentType {
 }
 
 model User {
-  id               String    @id @default(uuid())
-  email            String    @unique
-  password         String?
-  name             String
-  role             Role
-  roleSelected     Boolean   @default(true)
-  profileImage     String?
-  bio              String?
-  companyName      String?
-  businessField    String?
-  website          String?
-  skills           String[] // no NULL elements: CHECK in migration 20261110082231
-  activityCategory String?
-  experienceYears  Int?
-  hourlyRate       Float?
-  portfolioUrl     String?
-  googleId         String?   @unique
-  createdAt        DateTime  @default(now())
-  deletedAt        DateTime?
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String?
+  name              String
+  role              Role
+  roleSelected      Boolean   @default(true)
+  profileImage      String?
+  bio               String?
+  companyName       String?
+  businessField     String?
+  website           String?
+  skills            String[] // no NULL elements: CHECK in migration 20261110082231
+  activityCategory  String?
+  experienceYears   Int?
+  hourlyRate        Float?
+  portfolioUrl      String?
+  googleId          String?   @unique
+  /// Set by POST /api/auth/change-password; null = never changed. Refresh tokens carry the value
+  /// they were minted with and stop refreshing once it differs (docs/domain/accounts.md)
+  passwordChangedAt DateTime?
+  createdAt         DateTime  @default(now())
+  deletedAt         DateTime?
 
   clientProjects      Project[]                 @relation("ClientProjects")
   applications        Application[]             @relation("FreelancerApplications")

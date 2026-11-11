@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import axios from 'axios';
 import type { NextFunction, Request, Response } from 'express';
-import type { User } from '@prisma/client';
 import prisma from '../lib/prisma';
-import { generateAccessToken, generateRefreshToken } from '../lib/jwt';
+import { generateAccessToken } from '../lib/jwt';
+import { authUserPayload, issueTokens, setRefreshTokenCookie } from '../lib/authTokens';
 import { AppError } from '../lib/errors';
 import { normalizeEmail } from '../lib/email';
 import { clearLoginFailures, recordLoginFailure } from '../lib/rateLimitRules';
@@ -12,18 +12,9 @@ import { safeEqual } from '../lib/safeEqual';
 import { env } from '../env';
 import { logger } from '../lib/logger';
 import { clientUrl } from '../lib/clientUrl';
-import type { AuthedRequest, AuthUserResponse, JwtUserPayload } from '../types/index';
+import type { AuthedRequest, RefreshTokenPayload } from '../types/index';
 import type { GoogleCallbackQuery, LoginInput, SelectRoleInput, SignupInput } from '../schemas/auth';
 import jwt from 'jsonwebtoken';
-
-function setRefreshTokenCookie(res: Response, token: string) {
-  res.cookie('refreshToken', token, {
-    httpOnly: true,
-    secure: env.isProduction,
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-  });
-}
 
 /**
  * The Google OAuth `state` cookie (login CSRF defence). Scoped to the two OAuth routes and
@@ -35,19 +26,6 @@ const OAUTH_STATE_MAX_AGE_MS = 10 * 60 * 1000;
 
 function oauthStateCookieOptions() {
   return { httpOnly: true, secure: env.isProduction, sameSite: 'lax' as const, path: '/api/auth/google' };
-}
-
-/** Builds the JWT claims — distinct from {@link authUserPayload}, the HTTP response shape. */
-function issueTokens(user: Pick<User, 'id' | 'email' | 'role'>) {
-  const payload = { id: user.id, email: user.email, role: user.role };
-  const accessToken = generateAccessToken(payload);
-  const refreshToken = generateRefreshToken(payload);
-  return { accessToken, refreshToken };
-}
-
-/** Builds the user object sent to clients — distinct from the JWT claims in {@link issueTokens}. */
-function authUserPayload(user: Pick<User, 'id' | 'email' | 'name' | 'role'>): AuthUserResponse {
-  return { id: user.id, email: user.email, name: user.name, role: user.role };
 }
 
 export async function signup(req: Request, res: Response, next: NextFunction) {
@@ -131,10 +109,10 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
       throw new AppError('Refresh token not found', 401);
     }
 
-    // `jwt.verify` is typed `string | JwtPayload`; we only ever sign `JwtUserPayload` claims.
-    let decoded: JwtUserPayload;
+    // `jwt.verify` is typed `string | JwtPayload`; we only ever sign `RefreshTokenPayload` claims.
+    let decoded: RefreshTokenPayload;
     try {
-      decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as JwtUserPayload;
+      decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as RefreshTokenPayload;
     } catch {
       throw new AppError('Invalid or expired refresh token', 401);
     }
@@ -143,6 +121,14 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
     const user = await prisma.user.findFirst({ where: { id: decoded.id, deletedAt: null } });
     if (!user) {
       throw new AppError('User not found', 401);
+    }
+
+    // Minted before the password last changed: that session ended with the change (other devices
+    // are logged out; the device that changed it got a new token). Compared for equality, not
+    // `iat < passwordChangedAt` — `iat` has whole seconds and cannot tell a token minted in the
+    // same second apart. A token from before this claim existed reads as `null` (never changed).
+    if ((decoded.pwdChangedAt ?? null) !== (user.passwordChangedAt?.getTime() ?? null)) {
+      throw new AppError('Invalid or expired refresh token', 401);
     }
 
     const accessToken = generateAccessToken({ id: user.id, email: user.email, role: user.role });

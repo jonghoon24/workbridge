@@ -23,6 +23,14 @@ function requiredString(label: string) {
 export const roleField = z.enum(['CLIENT', 'FREELANCER'], { errorMap: () => ({ message: ROLE_MESSAGE }) });
 
 /**
+ * A new password, by the signup rule (`MIN_PASSWORD_LENGTH` characters). Signup and changing the
+ * password share it, so there is one rule for every password a user sets.
+ */
+function newPasswordField(label: string) {
+  return requiredString(label).min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+}
+
+/**
  * `POST /signup`. The email must look like an address and is normalized (`normalizeEmail`: trimmed
  * and lowercased) before it is stored or checked for duplicates. The password needs
  * `MIN_PASSWORD_LENGTH` characters, the same rule as the client's signup form.
@@ -33,10 +41,7 @@ export const signupBody = z.object({
     .min(1, 'Email is required')
     .email('Email must be a valid email address')
     .transform(normalizeEmail),
-  password: requiredString('Password').min(
-    MIN_PASSWORD_LENGTH,
-    `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
-  ),
+  password: newPasswordField('Password'),
   name: requiredString('Name').trim().min(1, 'Name is required'),
   role: roleField,
 });
@@ -58,6 +63,24 @@ export const selectRoleBody = z.object({
   role: roleField,
 });
 
+export const SAME_PASSWORD_MESSAGE = 'New password must be different from the current password';
+
+/**
+ * `POST /change-password`. The current password takes any value (like login — an account from
+ * before the signup rule can still change it); the new one follows the signup rule and must differ
+ * from the current one. Whether the current one is right is the service's check, after validation.
+ */
+export const changePasswordBody = z
+  .object({
+    currentPassword: requiredString('Current password'),
+    newPassword: newPasswordField('New password'),
+  })
+  .superRefine((body, ctx) => {
+    if (body.newPassword === body.currentPassword) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['newPassword'], message: SAME_PASSWORD_MESSAGE });
+    }
+  });
+
 /**
  * One OAuth callback parameter. **Never fails:** every callback failure must degrade to the
  * `oauth_failed` redirect, never a 400 — so an absent, empty, repeated or nested value simply
@@ -77,4 +100,5 @@ export const googleCallbackQuery = z.object({
 export type SignupInput = z.infer<typeof signupBody>;
 export type LoginInput = z.infer<typeof loginBody>;
 export type SelectRoleInput = z.infer<typeof selectRoleBody>;
+export type ChangePasswordInput = z.infer<typeof changePasswordBody>;
 export type GoogleCallbackQuery = z.infer<typeof googleCallbackQuery>;

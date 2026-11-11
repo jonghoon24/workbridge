@@ -52,6 +52,22 @@ async function apiLogin(email, password = PASSWORD) {
   return new Api(context, accessToken, user);
 }
 
+/**
+ * Signs a fresh account up through `/api/auth/signup`, for specs that change the account itself
+ * (password, withdrawal) and so must never touch a seed account. The email is unique per run.
+ */
+async function apiSignup({ role = 'FREELANCER', password = PASSWORD, label = 'account' } = {}) {
+  const email = `e2e-${label}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
+  const name = `E2E ${label}`;
+  const context = await request.newContext({ baseURL: BASE_URL });
+  const response = await context.post('/api/auth/signup', { data: { email, password, name, role } });
+  if (!response.ok()) {
+    throw new Error(`signup ${email} -> ${response.status()}: ${await response.text()}`);
+  }
+  await context.dispose();
+  return { email, password, name, role };
+}
+
 function dateOffset(days) {
   const date = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
   return date.toISOString().slice(0, 10);
@@ -110,6 +126,7 @@ async function buildActiveContract(clientApi, freelancerApi, projectOverrides = 
 module.exports = {
   Api,
   apiLogin,
+  apiSignup,
   createProject,
   applyToProject,
   acceptApplication,

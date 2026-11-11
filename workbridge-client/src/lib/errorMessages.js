@@ -53,6 +53,12 @@ const MESSAGES = {
   'Not authorized': '이 작업을 할 권한이 없습니다.',
   'Too many requests. Try again later.': STATUS_DEFAULTS[429],
   '프로필을 먼저 완성해주세요': '프로필을 먼저 완성해 주세요.',
+  'Current password is required': '현재 비밀번호를 입력해 주세요.',
+  'Current password is incorrect': '현재 비밀번호가 올바르지 않습니다.',
+  'New password is required': '새 비밀번호를 입력해 주세요.',
+  'New password must be different from the current password': '새 비밀번호는 현재 비밀번호와 달라야 합니다.',
+  'Account has no password': 'Google 계정으로 가입한 회원은 비밀번호를 변경할 수 없습니다.',
+  'Password has already been changed': '비밀번호가 이미 변경되었습니다. 새로고침한 뒤 다시 시도해 주세요.',
 
   // 프로젝트
   'Project not found': '프로젝트를 찾을 수 없습니다. 삭제되었을 수 있습니다.',

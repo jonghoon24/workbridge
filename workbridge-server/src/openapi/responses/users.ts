@@ -21,7 +21,15 @@ const profileFields = {
 };
 
 /** `GET`/`PATCH /api/users/me`. */
-export const myProfile = z.object({ ...profileFields, email: z.string() }).openapi('MyProfile');
+export const myProfile = z
+  .object({
+    ...profileFields,
+    email: z.string(),
+    hasPassword: z.boolean().openapi({
+      description: '비밀번호로 로그인하는 계정인지. Google로만 가입해 비밀번호가 없으면 `false`(비밀번호 변경 메뉴를 숨긴다)',
+    }),
+  })
+  .openapi('MyProfile');
 
 /** `GET /api/users/:id` — no email; received reviews, rating, portfolio and careers. */
 export const publicProfile = z

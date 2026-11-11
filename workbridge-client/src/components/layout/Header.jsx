@@ -16,6 +16,7 @@ import {
   ChevronDownIcon,
   CreditCardIcon,
   FileTextIcon,
+  LockIcon,
   LogOutIcon,
   MessageIcon,
   PlusIcon,
@@ -294,6 +295,7 @@ export default function Header() {
                         알림
                       </MenuLink>
                       <MenuLink href="/my/notifications/settings" icon={SettingsIcon} onClick={close}>알림 설정</MenuLink>
+                      <MenuLink href="/my/account" icon={LockIcon} onClick={close}>계정 설정</MenuLink>
                       <MenuLink href="/my/contracts" icon={FileTextIcon} onClick={close}>내 계약</MenuLink>
                       {user.role === 'FREELANCER' && (
                         <>
