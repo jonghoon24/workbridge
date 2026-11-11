@@ -222,10 +222,13 @@ export async function getProjectById(req: Request, res: Response, next: NextFunc
   }
 }
 
-/** The live project a bookmark route acts on; a missing or soft-deleted project is 404. */
+/**
+ * The live project a bookmark route acts on; a missing or soft-deleted project, or one whose client
+ * is soft-deleted, is 404 — as on the detail page.
+ */
 async function findBookmarkableProject(projectId: string) {
   const project = await prisma.project.findFirst({
-    where: { id: projectId, deletedAt: null },
+    where: { id: projectId, deletedAt: null, client: { deletedAt: null } },
     select: { id: true },
   });
 

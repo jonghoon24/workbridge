@@ -7,8 +7,8 @@ import { makeClient, makeFreelancer, makeProject } from './helpers/factories';
 /**
  * Bookmarks — `GET|POST|DELETE /api/projects/:id/bookmark`, all FREELANCER-only.
  *
- * All three look the project up first: a project that never existed or is soft-deleted is 404
- * (`docs/domain/projects-contracts.md`, 북마크). Removing a bookmark that does not exist on a live
+ * All three look the project up first: a project that never existed or is soft-deleted, or whose
+ * client is soft-deleted, is 404 (`docs/domain/projects-contracts.md`, 북마크). Removing a bookmark that does not exist on a live
  * project still succeeds — that is the idempotence rule, not a lookup.
  *
  * `GET /api/users/me/bookmarks/ids` gives a list screen every bookmarked id in one request, so its
@@ -335,6 +335,28 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ error: { message: 'Project not found' } });
     expect(await countBookmarks({ projectId: project.id, userId: freelancer.id })).toBe(1);
+  });
+});
+
+describe('a project whose client is soft-deleted', () => {
+  // Gone like a deleted project, as on the detail page: no check, no new bookmark, no removal.
+  it.each([
+    ['GET', (f: Parameters<typeof authed>[0], id: string) => authed(f).get(bookmarkPath(id))],
+    ['POST', (f: Parameters<typeof authed>[0], id: string) => authed(f).post(bookmarkPath(id))],
+    ['DELETE', (f: Parameters<typeof authed>[0], id: string) => authed(f).delete(bookmarkPath(id))],
+  ])('%s /api/projects/:id/bookmark is 404 and leaves the bookmark rows as they were', async (_method, send) => {
+    const { client, freelancer, project } = await freelancerWithProject();
+    await prisma.projectBookmark.create({ data: { projectId: project.id, userId: freelancer.id } });
+    await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
+    const other = await makeFreelancer();
+
+    const res = await send(freelancer, project.id);
+    const fresh = await authed(other).post(bookmarkPath(project.id));
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(fresh.status).toBe(404);
+    expect(await countBookmarks({ projectId: project.id })).toBe(1);
   });
 });
 
