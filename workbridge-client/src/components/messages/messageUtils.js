@@ -40,16 +40,14 @@ export function closedReasonText(closedReason, contractStatus) {
 
 // 메시지 화면에서만 다르게 안내할 서버 오류. 나머지는 공용 변환표가 맡는다.
 const ERROR_TEXT = {
-  'This conversation is closed': CLOSED_REASON_TEXT.CONTRACT_CLOSED,
-  'The other participant is no longer active': CLOSED_REASON_TEXT.COUNTERPART_INACTIVE,
-  'Not authorized': '이 대화방에 접근할 권한이 없습니다.',
+  CONVERSATION_CLOSED: CLOSED_REASON_TEXT.CONTRACT_CLOSED,
+  COUNTERPART_INACTIVE: CLOSED_REASON_TEXT.COUNTERPART_INACTIVE,
+  FORBIDDEN_RESOURCE: '이 대화방에 접근할 권한이 없습니다.',
+  FILE_TOO_LARGE: '파일은 개당 10MB 이하여야 합니다.',
 };
 
 export function messageErrorText(err, fallback) {
-  return toUserMessage(err, fallback, {
-    status: { 413: '파일은 개당 10MB 이하여야 합니다.' },
-    messages: ERROR_TEXT,
-  });
+  return toUserMessage(err, fallback, { codes: ERROR_TEXT });
 }
 
 // 메시지 옆 시각: 오늘이면 "오후 3:05", 아니면 날짜까지.

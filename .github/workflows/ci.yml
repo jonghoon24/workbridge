@@ -102,6 +102,11 @@ jobs:
       - name: 린트
         run: npm run lint -- --max-warnings=0
 
+      # 서버의 오류 코드(openapi.json의 ErrorCode)마다 화면 문구가 있고, 화면이 없는 코드로 분기하지 않는지 본다.
+      # 서버만 바꾼 PR에서도 돌아서, 문구 없는 새 코드가 머지되지 않는다.
+      - name: 오류 코드 대조
+        run: npm run check:error-codes
+
       # 클라이언트에는 단위 테스트가 없어서 운영 빌드가 깨끗이 끝나는 것이 정합성 검사다
       # (CLAUDE.md). API URL은 요청 때만 읽으므로 어떤 값이든 빌드된다.
       - name: 빌드

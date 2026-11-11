@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import api from '@/lib/api';
 import Button from '@/components/ui/Button';
 import { formatKRW, kstToday, toKstDateInput } from '@/lib/format';
-import { toUserMessage, translateServerMessage } from '@/lib/errorMessages';
+import { fieldMessage, fieldViolation, toUserMessage } from '@/lib/errorMessages';
 import { MILESTONE_LIMITS } from '@/constants/milestones';
 
 let rowKey = 0;
@@ -30,13 +30,14 @@ const FIELD_LABELS = {
   dueDate: '기한',
 };
 
-// 서버 검증 메시지 `milestones.2.amount: …`를 "3번 마일스톤 금액: …"으로 바꿔 보여 준다.
-function describeMilestoneField(message) {
-  const match = /^milestones\.(\d+)\.(\w+): (.*)$/.exec(message || '');
+// 서버 검증 오류의 원인 필드 `milestones.2.amount`를 "3번 마일스톤 금액: …"으로 바꿔 보여 준다.
+function describeMilestoneField(err) {
+  const violation = fieldViolation(err);
+  const match = /^milestones\.(\d+)\.(\w+)$/.exec(violation?.path || '');
   if (!match) return null;
-  const [, index, field, rest] = match;
+  const [, index, field] = match;
   const label = `${Number(index) + 1}번 마일스톤 ${FIELD_LABELS[field] || ''}`.trim();
-  return `${label}: ${translateServerMessage(rest) || '입력한 내용을 다시 확인해 주세요.'}`;
+  return `${label}: ${fieldMessage(violation) || '입력한 내용을 다시 확인해 주세요.'}`;
 }
 
 // 계약 PENDING 동안 의뢰인이 계획 전체를 교체한다(PUT /api/contracts/:id/milestones).
@@ -145,7 +146,13 @@ export default function MilestonePlanEditor({ contract, onSaved, onCancel }) {
       });
       onSaved?.(data, { signaturesReset: hasSignature });
     } catch (err) {
-      setError(describeMilestoneField(err.response?.data?.error?.message) || toUserMessage(err, '마일스톤 계획을 저장하지 못했습니다.'));
+      const violation = fieldViolation(err);
+      const sumMismatch = violation?.path === 'milestones' && violation.code === 'CONFLICT';
+      setError(
+        describeMilestoneField(err)
+        || (sumMismatch ? `마일스톤 금액의 합계가 계약 금액(${formatKRW(contractAmount)})과 같아야 합니다.` : null)
+        || toUserMessage(err, '마일스톤 계획을 저장하지 못했습니다.'),
+      );
     } finally {
       setSaving(false);
     }

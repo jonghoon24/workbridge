@@ -12,7 +12,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import Input from '@/components/ui/Input';
 import PageLoader from '@/components/ui/PageLoader';
 import { AlertCircleIcon, GoogleIcon } from '@/components/ui/Icons';
-import { toUserMessage } from '@/lib/errorMessages';
+import { errorCode, toUserMessage } from '@/lib/errorMessages';
 
 // 탈퇴를 막는 항목(GET /api/users/me/withdrawal의 blockers)마다 보여 줄 문장과 갈 곳.
 const BLOCKER_LINES = [
@@ -154,7 +154,7 @@ export default function WithdrawalPage() {
     } catch (err) {
       setSubmitting(false);
       // 만료됐거나 맞지 않는 증명은 다시 쓸 수 없으니 버리고 다시 확인하게 한다.
-      if (!status.hasPassword && err.response?.status === 400) setReauthToken(null);
+      if (['REAUTH_REQUIRED', 'REAUTH_INVALID'].includes(errorCode(err))) setReauthToken(null);
       // 화면을 연 뒤에 상태가 바뀌었으면(새 계약 등) 사유를 다시 보여 준다.
       if (err.response?.status === 409) await load().catch(() => {});
       setError(toUserMessage(err, '탈퇴하지 못했습니다.'));

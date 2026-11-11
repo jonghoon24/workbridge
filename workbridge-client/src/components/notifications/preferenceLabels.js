@@ -39,16 +39,7 @@ export function typeLabel(type) {
   return TYPE_LABELS[type] || { label: type, description: '' };
 }
 
-// 알림 설정의 예측 가능한 서버 오류. 나머지는 공용 변환표가 맡는다.
-const SERVER_ERROR_PATTERNS = [
-  [/in-app notifications cannot be disabled$/, '필수 알림은 앱 알림을 끌 수 없습니다.'],
-  [/email notifications cannot be disabled$/, '필수 알림은 이메일을 끌 수 없습니다.'],
-  [/has no in-app notifications$/, '읽지 않은 메시지 요약은 이메일로만 받을 수 있습니다.'],
-  [/Unknown notification type$/, '알 수 없는 알림 종류가 있습니다. 새로고침한 뒤 다시 시도해 주세요.'],
-  [/Duplicate notification type$/, '같은 알림 종류가 두 번 들어 있습니다. 새로고침한 뒤 다시 시도해 주세요.'],
-  [/^Account is no longer active$/, '더 이상 사용할 수 없는 계정입니다.'],
-];
-
+// 알림 설정의 검증 오류(`preferences.*`)와 탈퇴한 계정은 공용 변환표가 맡는다.
 export function describePreferenceError(err, fallback) {
-  return toUserMessage(err, fallback, { patterns: SERVER_ERROR_PATTERNS });
+  return toUserMessage(err, fallback);
 }

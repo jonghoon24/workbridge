@@ -9,7 +9,7 @@
 // 2단계는 우리 백엔드가 아니라 저장소로 가는 요청이라 api.js(토큰을 붙이는 인스턴스)를 쓰지 않는다 —
 // 액세스 토큰을 제3자에게 보내면 안 된다. 진행률 때문에 XMLHttpRequest를 쓴다.
 import api from './api';
-import { toUserMessage } from './errorMessages';
+import { errorCode, fieldViolation, toUserMessage } from './errorMessages';
 
 const UPLOAD_ERROR_TEXT = {
   413: '파일은 개당 10MB 이하여야 합니다.',
@@ -52,6 +52,13 @@ export function forgetUploads(files) {
   files.forEach((file) => uploadedFiles.delete(file));
 }
 
+// 보낸 업로드를 서버가 거부했다(만료, 업로드 안 됨, 저장된 파일의 크기·형식, 업로드 목록 자체). 다음 시도에서 새로 올린다.
+const REJECTED_UPLOAD_CODES = ['UPLOAD_NOT_FOUND', 'FILE_NOT_UPLOADED', 'FILE_TOO_LARGE', 'FILE_TYPE_UNSUPPORTED'];
+
+export function isRejectedUpload(err) {
+  return REJECTED_UPLOAD_CODES.includes(errorCode(err)) || fieldViolation(err)?.path === 'uploadIds';
+}
+
 /**
  * files를 resource(`/api/conversations/<id>` 또는 `/api/milestones/<id>`)에 붙일 수 있게 올리고
  * 업로드 id 목록을 돌려준다. onProgress(0~100)는 아직 올리지 않은 파일 바이트 기준이다.
@@ -72,7 +79,7 @@ export async function uploadAttachments(resource, files, onProgress = () => {}) 
       issued = data.uploads;
     } catch (err) {
       throw uploadError(toUserMessage(err, '파일 업로드를 준비하지 못했습니다.', {
-        status: { 413: UPLOAD_ERROR_TEXT[413] },
+        codes: { FILE_TOO_LARGE: UPLOAD_ERROR_TEXT[413] },
       }));
     }
 

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
-import { toUserMessage } from '@/lib/errorMessages';
+import { errorCode, toUserMessage } from '@/lib/errorMessages';
 
 // 토스 결제창에서 사용자가 직접 닫거나 취소했을 때 failUrl에 붙는 코드.
 const CANCEL_CODES = new Set(['PAY_PROCESS_CANCELED', 'USER_CANCEL']);
@@ -56,8 +56,8 @@ function PaymentResultContent() {
       api.post('/api/payments/confirm', { orderId, paymentKey, amount: parseInt(amount, 10) })
         .then(showDone)
         .catch(async (err) => {
-          // 이미 승인된 결제를 다시 확인하면 서버는 409를 준다. 마일스톤이 결제됐으면 성공으로 보여 준다.
-          if (err.response?.status === 409 && (await isFunded())) {
+          // 이미 승인된 결제를 다시 확인하면 서버는 PAYMENT_ALREADY_PROCESSED를 준다. 마일스톤이 결제됐으면 성공으로 보여 준다.
+          if (errorCode(err) === 'PAYMENT_ALREADY_PROCESSED' && (await isFunded())) {
             showDone();
             return;
           }
