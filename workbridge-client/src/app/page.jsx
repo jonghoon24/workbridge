@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import api from '@/lib/api';
-import ProjectCard from '@/components/projects/ProjectCard';
+import ProjectCardGrid from '@/components/projects/ProjectCardGrid';
 import HeroActions from '@/components/home/HeroActions';
 import ProjectDiscovery from '@/components/home/ProjectDiscovery';
 import HomeRecommendedProjects from '@/components/profile/HomeRecommendedProjects';
@@ -94,11 +94,10 @@ export default async function HomePage() {
                 전체 보기 →
               </Link>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {projects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
-              ))}
-            </div>
+            <ProjectCardGrid
+              projects={projects}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
+            />
           </div>
         </section>
       )}

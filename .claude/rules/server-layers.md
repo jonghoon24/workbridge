@@ -11,7 +11,7 @@ paths:
 - 기존 도메인(auth, users, projects, applications, contracts, payments, reviews, notifications)은
   컨트롤러 안에 로직을 둔다(`routes → controllers → lib`).
 - 확장 도메인(milestones, settlements, payout account, contract list, conversations,
-  portfolio/careers, recommendations, notification preferences)은
+  portfolio/careers, recommendations, notification preferences, bookmark ids)은
   `routes → controllers → services → lib`이다.
 - 기존 컨트롤러를 서비스 레이어로 옮기는 일은 #40에서 한다. 다른 변경에 섞지 않는다.
 

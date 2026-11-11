@@ -11,7 +11,7 @@ import Card from '@/components/ui/Card';
 import Tag from '@/components/ui/Tag';
 import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
-import ProjectCard from '@/components/projects/ProjectCard';
+import ProjectCardGrid from '@/components/projects/ProjectCardGrid';
 import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
 import { getProfileCompletionMessage, isProfileComplete } from '@/lib/profileCompletion';
 import { toUserMessage } from '@/lib/errorMessages';
@@ -396,11 +396,10 @@ export default function ProjectDetailPage() {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {recommendations.map((recommendedProject) => (
-                <ProjectCard key={recommendedProject.id} project={recommendedProject} />
-              ))}
-            </div>
+            <ProjectCardGrid
+              projects={recommendations}
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+            />
           )}
         </section>
       )}

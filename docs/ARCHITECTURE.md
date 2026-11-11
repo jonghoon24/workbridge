@@ -20,7 +20,7 @@ WorkBridge의 코드가 어떻게 짜여 있는지 설명한다. 제품 규칙�
 
 | | 기존 도메인 | 확장 도메인 |
 | --- | --- | --- |
-| 도메인 | auth, users, projects, applications, contracts, payments, reviews, notifications | milestones, settlements, payout account, contract list, conversations, portfolio/careers, recommendations, notification preferences |
+| 도메인 | auth, users, projects, applications, contracts, payments, reviews, notifications | milestones, settlements, payout account, contract list, conversations, portfolio/careers, recommendations, notification preferences, bookmark ids |
 | 흐름 | `routes → controllers → lib` | `routes → controllers → services → lib` |
 | 로직 | 컨트롤러 안 | `src/services/*.service.ts`, 일부는 `src/lib/`(추천은 `lib/recommendations.ts`) |
 | 소프트 삭제된 호출자 | 쓰기 라우트는 `requireActiveUser`가 401. 읽기 라우트는 다시 확인하지 않는다(`GET /api/users/me`만 404) | `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |

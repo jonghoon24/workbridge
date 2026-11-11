@@ -5,24 +5,34 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import { BookmarkIcon } from '@/components/ui/Icons';
 
+// `bookmarked`가 북마크 여부를 정한다.
+// - true/false: 목록이 한 번에 불러온 값을 쓰고 따로 조회하지 않는다(useBookmarkedProjectIds).
+// - null: 목록이 아직 불러오는 중이라 버튼을 그리지 않는다.
+// - 넘기지 않음(undefined): 버튼이 `GET /api/projects/:id/bookmark`로 스스로 조회한다(상세 화면).
 export default function ProjectBookmarkButton({
   projectId,
-  initialBookmarked = false,
+  bookmarked: bookmarkedProp,
   onChange,
   className = '',
 }) {
   const { user, initAuth } = useAuthStore();
   const [initialized, setInitialized] = useState(false);
-  const [bookmarked, setBookmarked] = useState(initialBookmarked);
+  const [bookmarked, setBookmarked] = useState(bookmarkedProp ?? false);
   const [loading, setLoading] = useState(false);
+  const loadsItself = bookmarkedProp === undefined;
 
   useEffect(() => {
     initAuth();
     setInitialized(true);
   }, [initAuth]);
 
+  // 목록이 값을 늦게 불러오거나 다른 카드에서 바꾸면 따라간다.
   useEffect(() => {
-    if (!initialized || user?.role !== 'FREELANCER') return;
+    if (typeof bookmarkedProp === 'boolean') setBookmarked(bookmarkedProp);
+  }, [bookmarkedProp]);
+
+  useEffect(() => {
+    if (!loadsItself || !initialized || user?.role !== 'FREELANCER') return;
 
     let ignore = false;
     api.get(`/api/projects/${projectId}/bookmark`)
@@ -34,9 +44,9 @@ export default function ProjectBookmarkButton({
     return () => {
       ignore = true;
     };
-  }, [initialized, projectId, user?.role]);
+  }, [loadsItself, initialized, projectId, user?.role]);
 
-  if (!initialized || user?.role !== 'FREELANCER') return null;
+  if (!initialized || user?.role !== 'FREELANCER' || bookmarkedProp === null) return null;
 
   async function handleClick(e) {
     e.preventDefault();
