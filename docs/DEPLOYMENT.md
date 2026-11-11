@@ -6,7 +6,7 @@
 | --- | --- | --- | --- |
 | 로컬 | 개발 | `npm run dev` (서버 :4000, 클라이언트 :3000) | 로컬 Postgres. 테스트는 이름에 `test`가 들어간 별도 DB(`scripts/test-db.sh`), E2E는 `workbridge_e2e` |
 | CI | PR과 `main` 푸시 | GitHub Actions(`ci.yml`, `e2e.yml`) | 워크플로마다 띄우는 Postgres 서비스 컨테이너 |
-| 프리뷰 | PR마다 | Vercel Preview 배포 | Supabase 프리뷰 프로젝트 |
+| 프리뷰 | 브랜치 배포를 켰을 때 PR마다(지금은 꺼 둠, 아래 "백엔드") | Vercel Preview 배포 | Supabase 프리뷰 프로젝트 |
 | 운영 | `main` 머지 | Vercel Production 배포 | Supabase 운영 프로젝트 |
 
 프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰므로 환경변수([ENV.md](ENV.md))도 Vercel의 Preview·Production 환경에 따로 넣는다. 마이그레이션은 `.github/workflows/migrate.yml`이 적용한다. `main`에 푸시된 커밋이 `workbridge-server/prisma/migrations/**`를 바꾸면(또는 Actions에서 수동 `workflow_dispatch`) 프리뷰 DB → 운영 DB 순서로 `prisma migrate deploy`를 돌린다. 운영 작업은 프리뷰 작업이 성공해야 시작한다. 시크릿 `PREVIEW_DIRECT_URL`·`PROD_DIRECT_URL`은 pgbouncer를 거치지 않는 Session mode(5432) 연결이고, `concurrency: migrate`로 두 실행이 겹치지 않는다. 원격 DB에 마이그레이션을 적용하는 경로는 이것뿐이다. 주의할 점 둘: 같은 `main` 푸시에서 Vercel 운영 배포와 이 워크플로가 따로 돌고 순서를 맞추는 장치가 없어서 새 코드가 마이그레이션 전의 DB를 잠깐 상대할 수 있다(그래서 마이그레이션은 이전 코드와 새 코드 모두에 안전해야 한다). 또 스키마를 바꾸는 PR의 서버 프리뷰는 머지 전까지 마이그레이션되지 않은 프리뷰 DB를 상대한다.
@@ -18,7 +18,7 @@
 | 서버 | https://workbridge-server-tau.vercel.app |
 | 클라이언트 | https://workbridge-client-alpha.vercel.app |
 
-둘 다 Vercel 팀 `jonghoon24s-projects`에 있고 Preview·Production 환경변수는 넣어 두었다. 리포지토리와 Vercel GitHub 앱으로 연결돼 있어서, 푸시된 브랜치와 PR마다 두 프로젝트가 프리뷰 배포되고 `main` 머지는 운영 배포가 된다.
+둘 다 Vercel 팀 `jonghoon24s-projects`에 있고 Preview·Production 환경변수는 넣어 두었다. 리포지토리와 Vercel GitHub 앱으로 연결돼 있고 `main` 머지는 운영 배포가 된다. 브랜치·PR 프리뷰 배포는 지금 꺼 두었다 — 두 `vercel.json`의 `git.deploymentEnabled`가 `main`만 배포한다. 이 설정을 지우면 푸시된 브랜치와 PR마다 두 프로젝트가 다시 프리뷰 배포된다.
 
 ### 시드 리셋 — `seed.yml`
 
