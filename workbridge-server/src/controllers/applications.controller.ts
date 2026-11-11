@@ -201,6 +201,11 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
               select: { id: true },
             });
             if (!current) throw new AppError('Application not found', 404);
+            // Lost to a concurrent accept of another application on this project (it rejected this
+            // one before this accept got the project row): the same conflict as the unique contract.
+            if (await tx.contract.findUnique({ where: { projectId }, select: { id: true } })) {
+              throw new AppError('A contract already exists for this project', 409);
+            }
             throw new AppError('This application has already been processed', 409);
           }
           const updatedApp = await tx.application.findUniqueOrThrow({ where: { id: appId } });

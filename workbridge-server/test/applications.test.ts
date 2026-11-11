@@ -1222,10 +1222,8 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
 
       const [a, b] = await Promise.all([first!, second!]);
       expect([a.status, b.status].sort()).toEqual([200, 409]);
-      // The winner rejected the loser's application before the loser got the project row, so the
-      // loser's conditional accept finds it decided.
       const loser = a.status === 409 ? a : b;
-      expect(loser.body).toEqual({ error: { message: 'This application has already been processed' } });
+      expect(loser.body).toEqual({ error: { message: 'A contract already exists for this project' } });
       expect(await prisma.contract.count()).toBe(1);
       expect(
         await prisma.application.count({ where: { projectId: s.project.id, status: 'ACCEPTED' } }),
