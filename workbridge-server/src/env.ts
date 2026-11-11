@@ -12,6 +12,9 @@
  *
  * `DATABASE_URL` / `DIRECT_URL` are absent here — they are read by Prisma via `env()` in
  * `schema.prisma`, never by application code.
+ *
+ * What each variable means, its format and an example value: `.env.example`. Add a new variable
+ * there and here together; CI checks that every variable the server reads is listed there.
  */
 
 /** A var whose call site rejects `undefined`. Throws on access if unset. */
@@ -167,7 +170,8 @@ export const env = {
   /**
    * Google re-authentication (`services/reauth.service.ts`) refuses a Google sign-in without
    * `auth_time` only when this is exactly `'true'`. Off by default: Google returns `auth_time` only
-   * to a published, verified app with "Session age claims" turned on (docs/ENV.md). Read per callback.
+   * to a published, verified app with "Session age claims" turned on (docs/ENV.md "Google OAuth").
+   * Read per callback.
    */
   get GOOGLE_REAUTH_REQUIRE_AUTH_TIME(): string | undefined {
     return process.env.GOOGLE_REAUTH_REQUIRE_AUTH_TIME;

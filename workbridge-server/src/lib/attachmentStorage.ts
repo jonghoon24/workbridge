@@ -45,8 +45,8 @@ const ATTACHMENT_MIME_TYPES = new Set([
 
 /**
  * Images, PDF, ZIP, plain text, Office documents (docx/xlsx/pptx and the legacy formats) and HWP.
- * Keep in sync with the bucket's Allowed MIME types (docs/ENV.md): Supabase accepts `type/*` but
- * not a partial wildcard, so the Office Open XML types are listed one by one.
+ * Keep in sync with the bucket's Allowed MIME types (docs/ENV.md "Supabase"): Supabase accepts
+ * `type/*` but not a partial wildcard, so the Office Open XML types are listed one by one.
  */
 export function isAllowedAttachmentType(mimetype: string): boolean {
   return mimetype.startsWith('image/') || ATTACHMENT_MIME_TYPES.has(mimetype);
