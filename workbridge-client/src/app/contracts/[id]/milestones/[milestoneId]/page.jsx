@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
+import { StatusPill } from '@/components/ui/Badge';
 import MilestoneStatusBadge from '@/components/milestones/MilestoneStatusBadge';
 import PayoutPreview from '@/components/milestones/PayoutPreview';
 import RejectModal from '@/components/milestones/RejectModal';
@@ -128,7 +129,12 @@ export default function MilestoneDetailPage() {
           <span className="text-gray-400 mr-2">#{milestone.sequence}</span>
           {milestone.title}
         </h1>
-        <MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} />
+        {contract.status === 'CANCELLED' ? (
+          // 철회된 계약의 마일스톤은 진행하지 않는다. "결제 대기"로 보이면 결제할 수 있는 것처럼 읽힌다.
+          <StatusPill tone="gray">철회된 계약</StatusPill>
+        ) : (
+          <MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} />
+        )}
       </div>
 
       <div className="space-y-4">
@@ -224,7 +230,7 @@ export default function MilestoneDetailPage() {
           )}
         </Card>
 
-        {(isFreelancer || isClient) && milestone.payoutPreview && (
+        {(isFreelancer || isClient) && contract.status !== 'CANCELLED' && milestone.payoutPreview && (
           <Card className="p-6">
             <h2 className="font-semibold text-gray-900 mb-1">정산 미리보기</h2>
             <p className="text-xs text-gray-500 mb-4">

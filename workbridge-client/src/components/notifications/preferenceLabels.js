@@ -18,6 +18,7 @@ export const TYPE_LABELS = {
   PROJECT_STATUS_CHANGED: { label: '모집 마감', description: '지원한 프로젝트의 모집이 마감되었을 때' },
   CONTRACT_ACTIVATED: { label: '계약 체결', description: '양측 서명으로 계약이 시작되었을 때' },
   CONTRACT_COMPLETED: { label: '계약 완료', description: '모든 마일스톤이 승인되었을 때' },
+  CONTRACT_CANCELLED: { label: '계약 철회', description: '상대방이 서명 전 계약을 철회했을 때' },
   MILESTONE_PLAN_UPDATED: { label: '마일스톤 계획 변경', description: '서명 후 마일스톤 계획이 바뀌었을 때' },
   MILESTONE_FUNDED: { label: '마일스톤 결제', description: '의뢰인이 마일스톤 금액을 안전결제로 결제했을 때' },
   MILESTONE_SUBMITTED: { label: '결과물 제출', description: '프리랜서가 결과물을 제출했을 때' },

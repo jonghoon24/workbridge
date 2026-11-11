@@ -10,12 +10,14 @@ import { PAYMENT_STATUS_LABELS } from '@/constants/milestones';
 // 계약 페이지의 마일스톤 한 줄. 행동 버튼은 상태와 역할로 정한다.
 // - 의뢰인: 결제(순서상 다음 PENDING만), 검수 대기면 승인/수정 요청
 // - 프리랜서: FUNDED/REVISION_REQUESTED면 제출(상세 페이지의 제출 폼으로 이동)
+// inactive: 철회된 계약의 마일스톤. 진행하지 않으므로 상태 배지와 예상 실지급액을 숨긴다(결제·제출 버튼은 상태로 이미 나오지 않는다).
 export default function MilestoneCard({
   milestone,
   contractId,
   isClient,
   isFreelancer,
   canFund,
+  inactive = false,
   busy,
   onApprove,
   onReject,
@@ -36,7 +38,7 @@ export default function MilestoneCard({
             <Link href={detailHref} className="font-medium text-gray-900 hover:text-primary-600">
               {milestone.title}
             </Link>
-            <MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} />
+            {!inactive && <MilestoneStatusBadge status={milestone.status} approvalType={milestone.approvalType} />}
             {milestone.revisionCount > 0 && (
               <span className="text-xs text-gray-500">수정 요청 {milestone.revisionCount}회</span>
             )}
@@ -65,7 +67,7 @@ export default function MilestoneCard({
               수정 요청 사항: {milestone.latestSubmission.decisionReason}
             </p>
           )}
-          {isFreelancer && milestone.payoutPreview && (
+          {isFreelancer && !inactive && milestone.payoutPreview && (
             <div className="mt-2">
               <PayoutPreview preview={milestone.payoutPreview} compact />
             </div>

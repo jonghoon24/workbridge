@@ -29,6 +29,15 @@ export const CLOSED_REASON_TEXT = {
   COUNTERPART_INACTIVE: '상대방이 탈퇴하여 더 이상 메시지를 보낼 수 없습니다.',
 };
 
+// 철회된 계약의 대화방도 철회한 때부터 같은 기간 동안만 보낼 수 있다(서버의 closedReason은 같은 CONTRACT_CLOSED).
+export const CANCELLED_CONTRACT_CLOSED_TEXT = '계약 철회 후 30일이 지나 대화가 종료되었습니다. 이전 메시지는 계속 볼 수 있습니다.';
+
+/** 보낼 수 없는 이유의 안내 문구. 계약 상태에 따라 완료와 철회를 구분한다. */
+export function closedReasonText(closedReason, contractStatus) {
+  if (closedReason === 'CONTRACT_CLOSED' && contractStatus === 'CANCELLED') return CANCELLED_CONTRACT_CLOSED_TEXT;
+  return CLOSED_REASON_TEXT[closedReason] || '이 대화방에는 메시지를 보낼 수 없습니다.';
+}
+
 // 메시지 화면에서만 다르게 안내할 서버 오류. 나머지는 공용 변환표가 맡는다.
 const ERROR_TEXT = {
   'This conversation is closed': CLOSED_REASON_TEXT.CONTRACT_CLOSED,

@@ -21,6 +21,7 @@ const TABS = [
   { value: 'PENDING', label: '서명 대기' },
   { value: 'ACTIVE', label: '진행 중' },
   { value: 'COMPLETED', label: '완료' },
+  { value: 'CANCELLED', label: '철회됨' },
 ];
 
 const PAGE_SIZE = 10;
@@ -152,6 +153,11 @@ export default function MyContractsPage() {
                         의뢰인 서명 {contract.clientSigned ? '완료' : '대기'} · 프리랜서 서명 {contract.freelancerSigned ? '완료' : '대기'}
                       </p>
                     )}
+                    {contract.status === 'CANCELLED' && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {formatDate(contract.cancelledAt)} {contract.cancelledBy === 'CLIENT' ? '의뢰인' : '프리랜서'} 철회
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3 sm:flex-col sm:items-end">
                     <p className="font-semibold text-gray-900 sm:text-right">{formatKRW(contractAmount)}</p>
@@ -167,6 +173,7 @@ export default function MyContractsPage() {
                   </div>
                 </div>
 
+                {contract.status !== 'CANCELLED' && (
                 <div className="mt-4">
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
                     <span>
@@ -178,6 +185,7 @@ export default function MyContractsPage() {
                     <div className="h-full bg-primary-600" style={{ width: `${percent}%` }} />
                   </div>
                 </div>
+                )}
               </Card>
             );
           })}

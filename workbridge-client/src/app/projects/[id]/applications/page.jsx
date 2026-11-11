@@ -6,7 +6,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
-import Badge from '@/components/ui/Badge';
+import Badge, { StatusPill } from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import RecommendedFreelancers from '@/components/profile/RecommendedFreelancers';
 import PageLoader from '@/components/ui/PageLoader';
@@ -95,6 +95,7 @@ export default function ApplicationsPage() {
                             {app.freelancer?.name}
                           </Link>
                           <Badge variant={app.status}>{app.status}</Badge>
+                          {app.contract?.status === 'CANCELLED' && <StatusPill tone="gray">계약 철회</StatusPill>}
                         </div>
                         <p className="text-sm text-gray-500 mb-2">
                           경력 {app.freelancer?.experienceYears}년 · 시간당 {app.freelancer?.hourlyRate?.toLocaleString()}원

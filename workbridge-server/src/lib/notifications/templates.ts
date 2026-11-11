@@ -1,3 +1,5 @@
+import type { Role } from '@prisma/client';
+
 import type { NotificationType } from './types';
 
 /**
@@ -24,6 +26,8 @@ export interface TemplateVars {
   conversationId?: string;
   /** The conversation's unread count, for the digest. */
   unreadCount?: number;
+  /** CONTRACT_CANCELLED: the party who cancelled. */
+  cancelledBy?: Role;
 }
 
 export interface RenderedNotification {
@@ -93,6 +97,12 @@ const TEMPLATES: Record<TemplateType, (v: TemplateVars) => RenderedNotification>
     title: '계약이 완료되었습니다',
     message: `'${v.projectTitle}' 계약의 모든 마일스톤이 승인되었습니다. 리뷰를 남겨 주세요.`,
     href: `${contractHref(v)}#review`,
+  }),
+  CONTRACT_CANCELLED: (v) => ({
+    title: '계약이 철회되었습니다',
+    // The particle follows the role (의뢰인이 / 프리랜서가), so each is a whole phrase.
+    message: `${v.cancelledBy === 'CLIENT' ? '의뢰인이' : '프리랜서가'} '${v.projectTitle}' 계약을 서명 전에 철회했습니다.`,
+    href: contractHref(v),
   }),
   SETTLEMENT_SCHEDULED: (v) => ({
     title: '정산이 예정되었습니다',

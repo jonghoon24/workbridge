@@ -45,4 +45,4 @@ const test = base.test.extend({
   },
 });
 
-module.exports = { test, expect: base.expect, acceptDialogs };
+module.exports = { test, expect: base.expect, acceptDialogs, loggedInPage };

@@ -378,6 +378,20 @@ describe('POST /api/conversations/:id/messages', () => {
       expect((await send(freelancer, conversation.id).send({ body: 'b' })).status).toBe(201);
     });
 
+    it('allows a CANCELLED contract within the window and 409s after it, like a completed one', async () => {
+      const open = await makeContractScenario({
+        contract: { status: 'CANCELLED', cancelledAt: new Date(Date.now() - 30 * DAY_MS + 3_600_000) },
+      });
+      const closed = await makeContractScenario({
+        contract: { status: 'CANCELLED', cancelledAt: new Date(Date.now() - 30 * DAY_MS - 1000) },
+      });
+
+      expect((await send(open.freelancer, open.conversation.id).send({ body: '철회 사유를 여쭤봐도 될까요?' })).status).toBe(201);
+      const late = await send(closed.client, closed.conversation.id).send({ body: 'x' });
+      expect(late.status).toBe(409);
+      expect(late.body).toEqual({ error: { message: 'This conversation is closed' } });
+    });
+
     it('409s once the post-completion window has closed, for either party', async () => {
       const { client, freelancer, conversation } = await makeContractScenario({
         contract: { status: 'COMPLETED', completedAt: new Date(Date.now() - 30 * DAY_MS - 1000) },

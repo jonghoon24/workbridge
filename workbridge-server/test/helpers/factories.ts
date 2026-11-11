@@ -109,16 +109,24 @@ export function makeApplication(
   });
 }
 
+/**
+ * A contract. A `CANCELLED` one gets `cancelledAt` (now) and `cancelledBy` (`CLIENT`) unless the
+ * overrides set them — the database requires both exactly when the status is `CANCELLED`.
+ */
 export function makeContract(
   ids: { projectId: string; applicationId: string; clientId: string; freelancerId: string },
   overrides: Partial<Prisma.ContractUncheckedCreateInput> = {},
 ): Promise<Contract> {
+  const cancellation = overrides.status === 'CANCELLED'
+    ? { cancelledAt: new Date(), cancelledBy: 'CLIENT' as const }
+    : {};
   return prisma.contract.create({
     data: {
       ...ids,
       amount: 4_000_000,
       startDate: daysFromNow(0),
       endDate: daysFromNow(30),
+      ...cancellation,
       ...overrides,
     },
   });

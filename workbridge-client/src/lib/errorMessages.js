@@ -72,6 +72,13 @@ const MESSAGES = {
     '지원자가 있는 프로젝트는 예산과 모집 기간을 바꿀 수 없습니다.',
   'Cannot delete a project with an unfinished contract':
     '진행 중이거나 서명 대기 중인 계약이 있는 프로젝트는 삭제할 수 없습니다.',
+  'Cannot delete a project with a contract record':
+    '계약 기록이 있는 프로젝트는 상대방의 기록이라 삭제할 수 없습니다. 모집을 끝내려면 모집 마감을 이용해 주세요.',
+  'Deadline is required to reopen recruitment': '새 마감일을 선택해 주세요.',
+  'Deadline must not be in the past': '마감일은 오늘 이후로 선택해 주세요.',
+  'Deadline can only be set when reopening recruitment': '마감일은 다시 모집할 때만 바꿀 수 있습니다.',
+  'Cannot reopen recruitment while the project has a contract':
+    '서명 대기 중인 계약이 있어 다시 모집할 수 없습니다. 계약을 철회한 뒤 다시 시도해 주세요.',
   'AI analysis did not return a response': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
   'AI analysis did not return valid feature pricing': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
 
@@ -143,13 +150,15 @@ const MESSAGES = {
   'Contracts are completed automatically when every milestone is approved':
     '계약은 모든 마일스톤이 승인되면 자동으로 완료됩니다.',
   'Milestone plan is locked once the contract is active': '계약이 시작된 뒤에는 마일스톤 계획을 바꿀 수 없습니다.',
+  'This contract has been cancelled': '이미 철회된 계약입니다.',
+  'Only a contract awaiting signatures can be cancelled': '양측이 서명해 이미 시작된 계약이라 철회할 수 없습니다.',
   'Amount must be a whole number of won': '금액은 원 단위 정수로 입력해 주세요.',
   'Due date must be a YYYY-MM-DD date': '기한을 선택해 주세요.',
   'Due date cannot be in the past': '기한은 오늘 이후로 선택해 주세요.',
   'Due dates must not decrease': '기한은 앞 마일스톤보다 빠를 수 없습니다.',
   'Title must be a string': '제목을 다시 입력해 주세요.',
   'Description must be a string': '설명을 다시 입력해 주세요.',
-  'status: must be one of PENDING, ACTIVE, COMPLETED': '계약 상태 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.',
+  'status: must be one of PENDING, ACTIVE, COMPLETED, CANCELLED': '계약 상태 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.',
 
   // 결제
   'Payment verification failed': '결제 승인에 실패했습니다. 결제 내역을 확인한 뒤 다시 시도해 주세요.',
@@ -211,7 +220,7 @@ const MESSAGES = {
   // 알림
   'Notification not found': '알림을 찾을 수 없습니다.',
   'Unknown notification type': '알 수 없는 알림 종류가 있습니다. 새로고침한 뒤 다시 시도해 주세요.',
-  'preferences: Expected 1 to 20 entries': '알림 설정을 저장하지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'preferences: Expected 1 to 21 entries': '알림 설정을 저장하지 못했습니다. 새로고침한 뒤 다시 시도해 주세요.',
 
   // 메시지
   'Conversation not found': '대화방을 찾을 수 없습니다.',

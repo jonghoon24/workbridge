@@ -15,6 +15,8 @@ export const applicationCreateBody = z.object({
   expectedDuration: requiredString('Expected duration'),
 });
 
+export type ApplicationCreateInput = z.infer<typeof applicationCreateBody>;
+
 /** `PATCH /api/projects/:projectId/applications/:appId`. */
 export const applicationDecisionBody = z.object({
   status: bodyEnum('Status', ['ACCEPTED', 'REJECTED'] as const),

@@ -265,6 +265,16 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
     expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
   });
 
+  it('409s on a cancelled contract, leaving its plan as it was', async () => {
+    const { client, contract, milestone } = await makeContractScenario({ contract: { status: 'CANCELLED' } });
+
+    const res = await put(client, contract.id, twoStep());
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'This contract has been cancelled' } });
+    expect((await prisma.milestone.findMany({ where: { contractId: contract.id } })).map((m) => m.id)).toEqual([milestone.id]);
+  });
+
   it("403s for a FREELANCER, even the contract's own (role gate)", async () => {
     const { freelancer, contract } = await makeContractScenario();
 

@@ -5,14 +5,14 @@ import prisma from '../lib/prisma';
 import openai from '../lib/openai';
 import { AppError } from '../lib/errors';
 import { logger } from '../lib/logger';
-import { notifyMany } from '../lib/notifications/notify';
+import { notifyRecipients } from '../lib/notifications/notify';
 import {
   closeExpiredOpenProjects,
   getProjectStatusForRecruitmentStart,
   rejectPendingApplicationsForClosedProjects,
 } from '../lib/projectLifecycle';
 import { expandSkillSearchTerms } from '../lib/skills';
-import type { ProjectListQuery } from '../schemas/projects';
+import type { ProjectListQuery, ProjectStatusInput } from '../schemas/projects';
 import type {
   AuthedRequest,
   PricingAnalysisData,
@@ -374,14 +374,19 @@ export async function deleteProject(req: AuthedRequest, res: Response, next: Nex
       // that commits a contract first makes this a 409 instead of orphaning a live contract.
       await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${project.id} FOR UPDATE`;
 
-      // A pending or active contract belongs to the freelancer too; deleting the project would
-      // hide it from them (every contract path 404s on a deleted project). Completed is fine.
-      const unfinished = await tx.contract.findFirst({
-        where: { projectId: project.id, status: { in: ['PENDING', 'ACTIVE'] } },
-        select: { id: true },
+      // A contract belongs to the freelancer too: deleting the project would hide it from them
+      // (every contract path 404s on a deleted project), along with its conversation. So any
+      // contract keeps the project — a pending or active one, and also a completed or cancelled
+      // one, which is the counterpart's record (docs/domain/projects-contracts.md "수정과 삭제").
+      const contracts = await tx.contract.findMany({
+        where: { projectId: project.id },
+        select: { status: true },
       });
-      if (unfinished) {
+      if (contracts.some((c) => c.status === 'PENDING' || c.status === 'ACTIVE')) {
         throw new AppError('Cannot delete a project with an unfinished contract', 409);
+      }
+      if (contracts.length > 0) {
+        throw new AppError('Cannot delete a project with a contract record', 409);
       }
 
       await tx.project.update({
@@ -399,7 +404,8 @@ export async function deleteProject(req: AuthedRequest, res: Response, next: Nex
 /**
  * The client's manual transitions only. `IN_PROGRESS` has none: signing moves a project there and
  * approving the last milestone completes it, so a client cannot skip the milestones or cancel
- * over a running contract.
+ * over a running contract. `CLOSED → OPEN` is recruiting again ("다시 모집하기"): it takes a new
+ * deadline and is refused while the project has a contract that is not cancelled.
  */
 const validTransitions: ProjectStatusTransitions = {
   UPCOMING: ['OPEN', 'CANCELLED', 'CLOSED'],
@@ -407,19 +413,23 @@ const validTransitions: ProjectStatusTransitions = {
   IN_PROGRESS: [],
   COMPLETED: [],
   CANCELLED: [],
-  CLOSED: [],
+  CLOSED: ['OPEN'],
 };
+
+const REOPEN_DEADLINE_REQUIRED = 'Deadline is required to reopen recruitment';
+const REOPEN_DEADLINE_PAST = 'Deadline must not be in the past';
+const DEADLINE_ONLY_ON_REOPEN = 'Deadline can only be set when reopening recruitment';
+const REOPEN_WITH_CONTRACT = 'Cannot reopen recruitment while the project has a contract';
 
 export async function updateProjectStatus(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // Parsed by `projectStatusBody`: a ProjectStatus; the transition table is checked below.
-    const status: ProjectStatus = req.body.status;
+    // Parsed by `projectStatusBody`: a ProjectStatus and, to reopen, a deadline (a KST date lasts
+    // until that day ends); the transition table is checked below.
+    const { status, deadline } = req.body as ProjectStatusInput;
+    const now = new Date();
 
     const project = await prisma.project.findFirst({
       where: { id: req.params.id, deletedAt: null },
-      include: {
-        applications: { select: { freelancerId: true } },
-      },
     });
 
     if (!project) {
@@ -434,7 +444,52 @@ export async function updateProjectStatus(req: AuthedRequest, res: Response, nex
       throw new AppError(`Cannot transition from ${project.status} to ${status}`, 400);
     }
 
+    const reopening = project.status === 'CLOSED' && status === 'OPEN';
+    if (!reopening && deadline !== undefined) {
+      throw new AppError(DEADLINE_ONLY_ON_REOPEN, 400);
+    }
+    if (reopening) {
+      if (deadline === undefined) throw new AppError(REOPEN_DEADLINE_REQUIRED, 400);
+      // The lifecycle sweep would close it again at once (the same `deadline < now` rule).
+      if (deadline < now) throw new AppError(REOPEN_DEADLINE_PAST, 400);
+      // The schedule every other deadline write keeps: a project closed while still UPCOMING may
+      // start recruiting later than the new deadline.
+      if (project.recruitmentStartDate) validateRecruitmentSchedule(project.recruitmentStartDate, deadline);
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
+      if (reopening) {
+        // Lock the project row so the contract check and the reopen see the same state, as a
+        // delete does. A contract awaiting signatures (or any contract that is not cancelled)
+        // keeps recruitment closed: cancelling it first is the way out.
+        const [locked] = await tx.$queryRaw<{ status: ProjectStatus }[]>`
+          SELECT "status" FROM "Project" WHERE "id" = ${project.id} AND "deletedAt" IS NULL FOR UPDATE`;
+        if (!locked) throw new AppError('Project not found', 404);
+        if (locked.status !== 'CLOSED') throw new AppError(`Cannot transition from ${locked.status} to ${status}`, 400);
+        const live = await tx.contract.findFirst({
+          where: { projectId: project.id, status: { not: 'CANCELLED' } },
+          select: { id: true },
+        });
+        if (live) throw new AppError(REOPEN_WITH_CONTRACT, 409);
+
+        // Nobody is notified: the earlier applicants were already told of their result, and the
+        // ones who may apply again see it in their applications.
+        // `UPCOMING` instead when the project was closed before its recruitment even started.
+        return tx.project.update({
+          where: { id: project.id },
+          data: { status: getProjectStatusForRecruitmentStart(project.recruitmentStartDate, now), deadline },
+        });
+      }
+
+      // Read the pending applicants before they are rejected: only they hear that recruitment
+      // closed. Applicants already decided (or rejected in an earlier round) were told already.
+      const pending = status === 'CLOSED'
+        ? await tx.application.findMany({
+          where: { projectId: project.id, status: 'PENDING' },
+          select: { freelancer: { select: { id: true, deletedAt: true } } },
+        })
+        : [];
+
       const changedProject = await tx.project.update({
         where: { id: req.params.id },
         data: { status },
@@ -442,19 +497,14 @@ export async function updateProjectStatus(req: AuthedRequest, res: Response, nex
 
       if (status === 'CLOSED') {
         await rejectPendingApplicationsForClosedProjects({ projectId: req.params.id }, tx);
-      }
-
-      const recipientIds = [...new Set(project.applications.map((application) => application.freelancerId))];
-      if (status === 'CLOSED' && recipientIds.length > 0) {
-        // Inline wording (not in the template table), routed through `notifyMany()` for preferences
-        // and email.
-        await notifyMany(tx, recipientIds.map((userId) => ({
-          userId,
-          type: 'PROJECT_STATUS_CHANGED' as const,
+        // Inline wording (not in the template table), routed through `notifyRecipients()` for
+        // preferences and email, and to skip a deleted applicant.
+        await notifyRecipients(tx, pending.map((application) => application.freelancer), {
+          type: 'PROJECT_STATUS_CHANGED',
           title: '프로젝트 모집이 마감되었습니다',
           message: `'${project.title}' 프로젝트 모집이 마감되었습니다.`,
           href: '/my/applications',
-        })));
+        }, now);
       }
 
       return changedProject;

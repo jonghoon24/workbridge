@@ -3,6 +3,7 @@ import type { ApprovalType, Milestone, MilestoneStatus } from '@prisma/client';
 
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
+import { CONTRACT_CANCELLED } from '../lib/contractMessages';
 import { env } from '../env';
 import { DAY_MS, HOUR_MS, kstDateString, kstDateToEndOfDay } from '../lib/time';
 import { PLATFORM_FEE_RATE_BPS, payoutBreakdown, wholeWon } from '../lib/money';
@@ -279,6 +280,7 @@ export interface PlanItem {
 export async function replacePlan(contractId: string, actorId: string, items: readonly PlanItem[], now: Date = new Date()) {
   const contract = await findContractForRoute(contractId);
   if (contract.clientId !== actorId) throw new AppError('Not authorized', 403);
+  if (contract.status === 'CANCELLED') throw new AppError(CONTRACT_CANCELLED, 409);
   if (contract.status !== 'PENDING') throw new AppError(PLAN_LOCKED, 409);
 
   const expected = wholeWon(contract.amount);
@@ -295,6 +297,7 @@ export async function replacePlan(contractId: string, actorId: string, items: re
     // on this lock, and "was a signature present" comes from the locked row, not a stale read.
     const [locked] = await tx.$queryRaw<{ status: string; clientSigned: boolean; freelancerSigned: boolean }[]>`
       SELECT "status", "clientSigned", "freelancerSigned" FROM "Contract" WHERE "id" = ${contractId} FOR UPDATE`;
+    if (locked?.status === 'CANCELLED') throw new AppError(CONTRACT_CANCELLED, 409);
     if (!locked || locked.status !== 'PENDING') throw new AppError(PLAN_LOCKED, 409);
 
     const updated = await tx.contract.update({

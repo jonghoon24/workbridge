@@ -13,12 +13,13 @@ import { notify } from '../src/lib/notifications/notify';
 
 const CLIENT_TYPES = [
   'APPLICATION_CREATED', 'CONTRACT_ACTIVATED', 'MILESTONE_SUBMITTED', 'MILESTONE_AUTO_APPROVED',
-  'MILESTONE_AUTO_APPROVE_REMINDER', 'MILESTONE_OVERDUE', 'CONTRACT_COMPLETED', 'MESSAGE_UNREAD_DIGEST',
+  'MILESTONE_AUTO_APPROVE_REMINDER', 'MILESTONE_OVERDUE', 'CONTRACT_COMPLETED', 'CONTRACT_CANCELLED',
+  'MESSAGE_UNREAD_DIGEST',
 ];
 const FREELANCER_TYPES = [
   'APPLICATION_ACCEPTED', 'APPLICATION_REJECTED', 'PROJECT_STATUS_CHANGED', 'CONTRACT_ACTIVATED',
   'MILESTONE_PLAN_UPDATED', 'MILESTONE_FUNDED', 'MILESTONE_REVISION_REQUESTED', 'MILESTONE_APPROVED',
-  'MILESTONE_AUTO_APPROVED', 'MILESTONE_DUE_SOON', 'MILESTONE_OVERDUE', 'CONTRACT_COMPLETED',
+  'MILESTONE_AUTO_APPROVED', 'MILESTONE_DUE_SOON', 'MILESTONE_OVERDUE', 'CONTRACT_COMPLETED', 'CONTRACT_CANCELLED',
   'SETTLEMENT_SCHEDULED', 'SETTLEMENT_PAID', 'SETTLEMENT_ON_HOLD', 'SETTLEMENT_FAILED', 'MESSAGE_UNREAD_DIGEST',
 ];
 
@@ -30,7 +31,7 @@ const storedRows = (userId: string) =>
   prisma.notificationPreference.findMany({ where: { userId }, orderBy: { type: 'asc' }, select: { type: true, inApp: true, email: true } });
 
 describe('GET /api/notifications/preferences', () => {
-  it('a CLIENT gets its 8 types in notification-catalog order, with the defaults', async () => {
+  it('a CLIENT gets its 9 types in notification-catalog order, with the defaults', async () => {
     const client = await makeClient();
 
     const res = await get(client);
@@ -48,7 +49,7 @@ describe('GET /api/notifications/preferences', () => {
     });
   });
 
-  it('a FREELANCER gets its 17 types in notification-catalog order', async () => {
+  it('a FREELANCER gets its 18 types in notification-catalog order', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await get(freelancer);
@@ -87,7 +88,7 @@ describe('GET /api/notifications/preferences', () => {
     expect(entry(res, 'MILESTONE_DUE_SOON')).toMatchObject({ inApp: false, email: false });
     expect(entry(res, 'SETTLEMENT_FAILED')).toMatchObject({ email: true });
     expect(entry(res, 'APPLICATION_CREATED')).toBeUndefined();
-    expect(res.body.preferences).toHaveLength(17);
+    expect(res.body.preferences).toHaveLength(18);
   });
 
   it('lists by the stored role, not the token\'s', async () => {
@@ -109,21 +110,21 @@ describe('GET /api/notifications/preferences', () => {
 });
 
 describe('PUT /api/notifications/preferences — validation', () => {
-  const longArray = Array.from({ length: 21 }, () => ({ type: 'MILESTONE_DUE_SOON', email: false }));
+  const longArray = Array.from({ length: 22 }, () => ({ type: 'MILESTONE_DUE_SOON', email: false }));
 
   it.each([
     ['missing', {}],
     ['not an array', { preferences: { type: 'MILESTONE_DUE_SOON', email: false } }],
     ['empty', { preferences: [] }],
-    ['longer than 20', { preferences: longArray }],
+    ['longer than 21', { preferences: longArray }],
     ['a body that is an array', [{ type: 'MILESTONE_DUE_SOON', email: false }]],
-  ])('preferences %s → 400 `preferences: Expected 1 to 20 entries`', async (_label, body) => {
+  ])('preferences %s → 400 `preferences: Expected 1 to 21 entries`', async (_label, body) => {
     const user = await makeFreelancer();
 
     const res = await put(user, body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'preferences: Expected 1 to 20 entries' } });
+    expect(res.body).toEqual({ error: { message: 'preferences: Expected 1 to 21 entries' } });
   });
 
   it.each([

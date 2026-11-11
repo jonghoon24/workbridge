@@ -48,4 +48,5 @@ export const CONTRACT_STATUS_LABELS = {
   PENDING: '서명 대기',
   ACTIVE: '계약 진행 중',
   COMPLETED: '완료',
+  CANCELLED: '철회됨',
 };

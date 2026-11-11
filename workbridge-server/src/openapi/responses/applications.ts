@@ -49,6 +49,9 @@ export const myApplication = z.object({
     deadline: dateTime,
     client: z.object({ id, name: z.string(), companyName: z.string().nullable() }),
   }),
+  canReapply: z.boolean().openapi({
+    description: '지금 같은 프로젝트에 다시 지원할 수 있는지. 철회된 계약으로 끝난 모집 회차에서 거절된 지원이고 프로젝트가 다시 모집 중일 때만 `true`',
+  }),
 });
 
 /** `PATCH …/applications/:appId` with `ACCEPTED`: the application and the contract it created. */

@@ -29,18 +29,18 @@ import type { NotificationType } from '../src/lib/notifications/types';
 const LOCKED_IN_APP: NotificationType[] = [
   'APPLICATION_ACCEPTED', 'CONTRACT_ACTIVATED', 'MILESTONE_PLAN_UPDATED', 'MILESTONE_FUNDED',
   'MILESTONE_SUBMITTED', 'MILESTONE_REVISION_REQUESTED', 'MILESTONE_APPROVED', 'MILESTONE_AUTO_APPROVED',
-  'MILESTONE_AUTO_APPROVE_REMINDER', 'CONTRACT_COMPLETED', 'SETTLEMENT_PAID', 'SETTLEMENT_ON_HOLD',
+  'MILESTONE_AUTO_APPROVE_REMINDER', 'CONTRACT_COMPLETED', 'CONTRACT_CANCELLED', 'SETTLEMENT_PAID', 'SETTLEMENT_ON_HOLD',
   'SETTLEMENT_FAILED', 'MESSAGE_UNREAD_DIGEST',
 ];
 const LOCKED_EMAIL: NotificationType[] = ['MILESTONE_AUTO_APPROVE_REMINDER', 'SETTLEMENT_ON_HOLD', 'SETTLEMENT_FAILED'];
 const EMAIL_OFF_BY_DEFAULT: NotificationType[] = ['APPLICATION_REJECTED', 'PROJECT_STATUS_CHANGED', 'SETTLEMENT_SCHEDULED'];
 
 describe('policy table', () => {
-  it('has the 20 types in catalog order, the digest last', () => {
-    expect(NOTIFICATION_TYPES).toHaveLength(20);
-    expect(new Set(NOTIFICATION_TYPES).size).toBe(20);
+  it('has the 21 types in catalog order, the digest last', () => {
+    expect(NOTIFICATION_TYPES).toHaveLength(21);
+    expect(new Set(NOTIFICATION_TYPES).size).toBe(21);
     expect(NOTIFICATION_TYPES[0]).toBe('APPLICATION_CREATED');
-    expect(NOTIFICATION_TYPES[19]).toBe('MESSAGE_UNREAD_DIGEST');
+    expect(NOTIFICATION_TYPES[20]).toBe('MESSAGE_UNREAD_DIGEST');
   });
 
   it('locks trade and money types in-app, and three types by email too', () => {
@@ -52,10 +52,10 @@ describe('policy table', () => {
     }
   });
 
-  it('gives a CLIENT 8 types and a FREELANCER 17, the five "both" types included', () => {
-    expect(typesForRole('CLIENT')).toHaveLength(8);
-    expect(typesForRole('FREELANCER')).toHaveLength(17);
-    expect(NOTIFICATION_POLICY.filter((p) => p.recipient === 'BOTH')).toHaveLength(5);
+  it('gives a CLIENT 9 types and a FREELANCER 18, the six "both" types included', () => {
+    expect(typesForRole('CLIENT')).toHaveLength(9);
+    expect(typesForRole('FREELANCER')).toHaveLength(18);
+    expect(NOTIFICATION_POLICY.filter((p) => p.recipient === 'BOTH')).toHaveLength(6);
   });
 });
 

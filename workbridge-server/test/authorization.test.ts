@@ -405,6 +405,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     role: null,
   },
   {
+    label: 'POST /api/contracts/:id/cancel',
+    method: 'post',
+    path: (ids) => `/api/contracts/${ids.contractId}/cancel`,
+    role: null,
+  },
+  {
     label: 'GET /api/contracts/:id/conversation',
     method: 'get',
     path: (ids) => `/api/contracts/${ids.contractId}/conversation`,
@@ -1364,6 +1370,26 @@ describe('ownership is checked after existence', () => {
 
     expect(asClient.status).toBe(200);
     expect(asFreelancer.status).toBe(200);
+  });
+
+  it('POST /api/contracts/:id/cancel → 404 for a contract owned by nobody', async () => {
+    const user = await makeClient();
+
+    const res = await authed(user).post('/api/contracts/missing-contract-id/cancel');
+
+    expectErrorEnvelope(res, 404);
+  });
+
+  it('POST /api/contracts/:id/cancel → 403 for an outsider, and the contract stays PENDING', async () => {
+    const { contract } = await makeContractChain();
+    const outsider = await makeFreelancer();
+
+    const res = await authed(outsider).post(`/api/contracts/${contract.id}/cancel`);
+
+    expectErrorEnvelope(res, 403);
+    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(after.status).toBe('PENDING');
+    expect(await prisma.notification.count()).toBe(0);
   });
 
   it('POST /api/contracts/:id/sign → 404 for a contract owned by nobody', async () => {
