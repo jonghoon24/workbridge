@@ -443,6 +443,29 @@ describe('GET /api/users/me/bookmarks/ids', () => {
     expect(res.body.projectIds).not.toContain(notBookmarked.id);
   });
 
+  it('orders bookmarks made at the same instant by bookmark id, the same as GET /api/users/me/bookmarks', async () => {
+    const client = await makeClient();
+    const freelancer = await makeFreelancer();
+    const createdAt = new Date('2026-01-01T00:00:00Z');
+    // Inserted in neither id order nor its reverse, so neither scan direction lines up by chance.
+    const ids = ['c', 'a', 'e', 'b', 'd'].map((c) => `${c.repeat(8)}-0000-4000-8000-000000000000`);
+    const projectByBookmark = new Map<string, string>();
+    for (const id of ids) {
+      const project = await makeProject(client.id);
+      await prisma.projectBookmark.create({ data: { id, projectId: project.id, userId: freelancer.id, createdAt } });
+      projectByBookmark.set(id, project.id);
+    }
+    const expected = [...ids].sort().map((id) => projectByBookmark.get(id));
+
+    const idsRes = await authed(freelancer).get(idsPath);
+    const listRes = await authed(freelancer).get('/api/users/me/bookmarks');
+
+    expect(idsRes.status).toBe(200);
+    expect(idsRes.body).toEqual({ projectIds: expected });
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.map((project: { id: string }) => project.id)).toEqual(expected);
+  });
+
   it("leaves out another freelancer's bookmarks", async () => {
     const { freelancer, project } = await freelancerWithProject();
     const other = await makeFreelancer();

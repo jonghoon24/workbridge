@@ -1086,6 +1086,58 @@ describe('GET /api/users/me/applications', () => {
     expect((await prisma.application.findUniqueOrThrow({ where: { id: theirApp.id } })).status)
       .toBe('PENDING');
   });
+
+  it('leaves out applications to a soft-deleted project, contract or not', async () => {
+    const client = await makeClient();
+    const freelancer = await makeFreelancer();
+    const live = await makeProject(client.id);
+    const deleted = await makeProject(client.id);
+    const deletedWithContract = await makeProject(client.id, { status: 'IN_PROGRESS' });
+    const liveApp = await makeApplication(live.id, freelancer.id);
+    await makeApplication(deleted.id, freelancer.id);
+    const accepted = await makeApplication(deletedWithContract.id, freelancer.id, { status: 'ACCEPTED' });
+    await makeContract({
+      projectId: deletedWithContract.id,
+      applicationId: accepted.id,
+      clientId: client.id,
+      freelancerId: freelancer.id,
+    });
+    await prisma.project.updateMany({
+      where: { id: { in: [deleted.id, deletedWithContract.id] } },
+      data: { deletedAt: new Date() },
+    });
+
+    const res = await authed(freelancer).get('/api/users/me/applications');
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((app: { id: string }) => app.id)).toEqual([liveApp.id]);
+  });
+
+  it('leaves out applications to a soft-deleted client\'s projects, but keeps one that became a contract', async () => {
+    const goneClient = await makeClient();
+    const liveClient = await makeClient();
+    const freelancer = await makeFreelancer();
+    const open = await makeProject(goneClient.id);
+    const completed = await makeProject(goneClient.id, { status: 'COMPLETED' });
+    const live = await makeProject(liveClient.id);
+    const liveApp = await makeApplication(live.id, freelancer.id, { createdAt: new Date('2026-01-01T00:00:00Z') });
+    await makeApplication(open.id, freelancer.id, { createdAt: new Date('2026-01-02T00:00:00Z') });
+    const contracted = await makeApplication(completed.id, freelancer.id, {
+      status: 'ACCEPTED',
+      createdAt: new Date('2026-01-03T00:00:00Z'),
+    });
+    const contract = await makeContract(
+      { projectId: completed.id, applicationId: contracted.id, clientId: goneClient.id, freelancerId: freelancer.id },
+      { status: 'COMPLETED' },
+    );
+    await prisma.user.update({ where: { id: goneClient.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).get('/api/users/me/applications');
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((app: { id: string }) => app.id)).toEqual([contracted.id, liveApp.id]);
+    expect(res.body[0].contract).toEqual({ id: contract.id, status: 'COMPLETED' });
+  });
 });
 
 describe('GET /api/users/me/bookmarks', () => {

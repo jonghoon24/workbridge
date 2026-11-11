@@ -642,6 +642,28 @@ describe('writes that overlap a withdrawal', () => {
     expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).bio).toBeNull();
   });
 
+  it('a profile update whose write lands just before the withdrawal answers 401, not the scrubbed profile', async () => {
+    const user = await makeFreelancer();
+    // Deterministic stand-in for the race: the withdrawal commits right after the conditional write
+    // succeeds and before the profile is read back.
+    const updateMany = prisma.user.updateMany.bind(prisma.user);
+    const spy = vi.spyOn(prisma.user, 'updateMany').mockImplementation((async (args: Parameters<typeof updateMany>[0]) => {
+      const written = await updateMany(args);
+      await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), name: '탈퇴한 회원', bio: null } });
+      return written;
+    }) as unknown as typeof prisma.user.updateMany);
+
+    try {
+      const res = await authed(user).patch('/api/users/me').send({ bio: '탈퇴 직전 소개' });
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual(INACTIVE);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('a portfolio item is not created, and its uploaded image goes to the file cleanup', async () => {
     const user = await makeFreelancer();
 
