@@ -12,6 +12,7 @@ import {
   removeCareer,
   removePortfolioItem,
 } from '../controllers/profile.controller';
+import { getMyBookmarkedProjectIds } from '../controllers/bookmarks.controller';
 import { getRecommendedProjects } from '../controllers/recommendations.controller';
 import { authenticate, requireRole } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
@@ -68,6 +69,10 @@ router.delete('/me/careers/:careerId', ...freelancer, removeCareer);
 
 // Profile completion — either role.
 router.get('/me/profile-completion', authenticate, requireActiveUser, getMyProfileCompletion);
+
+// The caller's bookmarked project ids, so a project list marks its cards in one request. It takes
+// no query, so there is nothing to validate.
+router.get('/me/bookmarks/ids', ...freelancer, getMyBookmarkedProjectIds);
 
 // Recommended projects — role, then complete profile, then validation.
 router.get(

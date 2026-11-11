@@ -48,6 +48,11 @@ export const bookmarkedProject = z.object({
   bookmarkedAt: dateTime,
 });
 
+/** `GET /api/users/me/bookmarks/ids`: the bookmarked live projects' ids, newest bookmark first. */
+export const bookmarkedProjectIds = z.object({
+  projectIds: z.array(z.string()),
+});
+
 /** One row of `PricingAnalysis.features`, normalized before it was stored (`analyzeProject`). */
 const pricingFeature = z.object({
   name: z.string(),

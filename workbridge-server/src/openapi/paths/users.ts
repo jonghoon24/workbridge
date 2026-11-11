@@ -16,7 +16,7 @@ import {
   role,
 } from '../common';
 import { myApplication } from '../responses/applications';
-import { bookmarkedProject, myProject } from '../responses/projects';
+import { bookmarkedProject, bookmarkedProjectIds, myProject } from '../responses/projects';
 import { receivedReview } from '../responses/reviews';
 import {
   myProfile,
@@ -113,6 +113,22 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(z.array(bookmarkedProject)),
       ...errors(AUTHENTICATED, { 403: ['`Only freelancers can view their bookmarks` — FREELANCER가 아님'] }),
+    },
+  });
+
+  registry.registerPath({
+    method: 'get',
+    path: '/api/users/me/bookmarks/ids',
+    operationId: 'getMyBookmarkedProjectIds',
+    tags,
+    summary: '북마크한 프로젝트 ID(프리랜서)',
+    description:
+      '북마크한 시각의 최신순. 삭제된 프로젝트는 빠진다. 프로젝트 목록 화면이 한 번 불러서 카드마다 북마크 여부를 표시한다'
+      + '(카드마다 `GET /api/projects/{id}/bookmark`를 부르지 않는다).',
+    security: bearer,
+    responses: {
+      200: ok(bookmarkedProjectIds),
+      ...errors(ACTIVE_USER, role('FREELANCER')),
     },
   });
 
