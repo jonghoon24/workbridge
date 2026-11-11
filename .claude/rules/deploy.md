@@ -4,6 +4,7 @@ paths:
   - "workbridge-server/src/index.ts"
   - "workbridge-server/src/env.ts"
   - "workbridge-server/package.json"
+  - "workbridge-client/vercel.json"
   - "workbridge-client/next.config.js"
   - "workbridge-client/package.json"
   - ".github/workflows/**"
@@ -15,29 +16,16 @@ paths:
 # 배포 (Vercel)
 
 - `workbridge-server/vercel.json`은 진입점을 **두 번** 하드코딩한다(`builds[].src`와 `routes[].dest`
-  = `src/index.ts`). 진입점 이름을 바꾸면 둘 다 고친다.
-- `vercel.json`의 `regions: ["icn1"]`은 DB가 있는 서울 리전에 함수를 둔다. 지우거나 바꾸면 쿼리가 많은
-  트랜잭션이 인터랙티브 트랜잭션 한도(5초)를 넘겨 운영에서만 500이 난다(`docs/DEPLOYMENT.md` "백엔드").
-- `@vercel/node`가 TypeScript를 바로 트랜스파일한다: **빌드 단계도 `dist/`도 없다.** Prisma 클라이언트는
-  `package.json`의 `postinstall: prisma generate`가 만든다. 대시보드의 Build Command(`npx prisma generate`)는
-  `vercel.json`에 `builds`가 있어서 **무시된다** — `postinstall`을 지우지 않는다.
-- `index.ts`는 `export default app`을 유지한다. `app.listen()`과 개발 워커는 `NODE_ENV`가
-  `production`도 `test`도 아닐 때만 시작한다.
-- 환경: Vercel **Preview**와 **Production**은 환경변수도 따로, **Supabase 프로젝트도 따로**(DB가 다르다).
-  어느 쪽 접속 문자열도 커맨드에 넣지 않는다(Bash에서 `supabase.co`/`supabase.com`은 거부된다).
-  로컬 작업은 `localhost` Postgres를 쓴다.
-- 원격 DB에 마이그레이션을 적용하는 것은 CI뿐이다: `.github/workflows/migrate.yml`이 `main` 푸시가
-  `workbridge-server/prisma/migrations/**`를 바꿀 때(또는 수동 `workflow_dispatch`) preview → production 순서로
-  `prisma migrate deploy`를 돌린다. 손으로 돌리지 않는다.
-- `seed.yml`은 원격 DB를 시드로 되돌린다. **모든 테이블을 비우므로** 수동 실행 전용이고 `confirm=seed`가 있어야 돈다.
-- 클라이언트 프리뷰는 Vercel Related Projects로 같은 브랜치의 서버 프리뷰를 부른다: `workbridge-client/vercel.json`의
-  `relatedProjects`(서버 프로젝트 ID)가 `VERCEL_RELATED_PROJECTS`를 채우고 `src/lib/apiUrl.js`가 읽는다. 브랜치 URL
-  해시가 프로젝트마다 달라 주소를 직접 조립하지 않는다. 이 `vercel.json`에 다른 키를 넣지 않는다(Next.js 자동 감지 유지).
-- **운영에는 상주 작업 워커가 없다**: `.github/workflows/jobs.yml`이 15분마다 운영 서버의
-  `POST /api/internal/jobs/run`을 `INTERNAL_JOB_TOKEN`(GitHub 시크릿 `PROD_INTERNAL_JOB_TOKEN`)으로 부른다.
-  지급·메일 작업 플래그(`JOB_PAYOUT_ENABLED`, `JOB_EMAIL_ENABLED`)는 운영에 넣지 않는다(기본 꺼짐).
-  `docs/DEPLOYMENT.md` "운영 환경의 한계" 참고.
-- `ALLOW_PAYMENT_BYPASS`(서버)와 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`(클라이언트)는 운영에서 반드시
-  `false`. `MAIL_PROVIDER=log`는 주소와 본문 전체를 로그에 쓴다 — 개발 전용.
+  = `src/index.ts`). 진입점 이름을 바꾸면 둘 다 고친다. `index.ts`는 `export default app`을 유지한다.
+- 두 `vercel.json`의 `regions: ["icn1"]`은 함수를 DB와 같은 서울 리전에 둔다. 지우거나 바꾸지 않는다: 서버는 쿼리가 많은
+  트랜잭션이 인터랙티브 트랜잭션 한도(5초)를 넘겨 운영에서만 500이 나고, 클라이언트 프록시는 API 호출마다 지연이 붙는다
+  (`docs/DEPLOYMENT.md` "백엔드").
+- 서버는 빌드 단계도 `dist/`도 없다. Prisma 클라이언트는 `package.json`의 `postinstall: prisma generate`만 만든다
+  (대시보드의 Build Command는 `vercel.json`에 `builds`가 있어서 무시된다) — `postinstall`을 지우지 않는다.
+- `workbridge-client/vercel.json`에는 `builds`·`routes`를 넣지 않는다. Next.js 프레임워크 자동 감지가 꺼진다.
+  프리뷰의 서버 주소는 `relatedProjects`로 찾는다 — 브랜치 URL을 직접 조립하지 않는다(해시가 프로젝트마다 다르다).
+- 원격 DB 마이그레이션은 `migrate.yml`만 적용한다. 워크플로를 고칠 때 preview → production 순서와
+  `concurrency: migrate`를 유지한다.
+- `ALLOW_PAYMENT_BYPASS`(서버)와 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`(클라이언트)는 운영에서 `false`다.
+  `MAIL_PROVIDER=log`는 주소와 본문 전체를 로그에 쓰므로 개발 전용이다. 예시 파일·문서·워크플로에서 이 기본을 뒤집지 않는다.
 - 새 환경변수: `src/env.ts`(지연 getter), `.env.example`, `docs/ENV.md`에 함께 추가한다.
-- Google OAuth `GOOGLE_CALLBACK_URL`은 **프론트엔드**(`/api/auth/google/callback`)를 가리킨다.

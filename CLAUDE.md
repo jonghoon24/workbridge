@@ -2,7 +2,7 @@
 
 WorkBridge(프리랜서 매칭 플랫폼)는 의뢰인(`CLIENT`)과 프리랜서(`FREELANCER`)를 잇는다. 프로젝트 탐색
 → 지원 → 계약 → 마일스톤 결제(토스페이먼츠) → 정산 → 상호 리뷰가 기본 흐름이고, 메시지, 포트폴리오,
-AI 단가 분석(OpenAI `gpt-4o-mini`)이 붙어 있다.
+AI 단가 분석(OpenAI)이 붙어 있다.
 
 npm 패키지 두 개가 따로 있다(워크스페이스 툴 없음 — 커맨드는 각 패키지 안에서 실행한다).
 - `workbridge-server/` — Express + Prisma + PostgreSQL API, **TypeScript**, Vercel 배포.
@@ -18,7 +18,8 @@ npm run lint                         # typescript-eslint. 기존 `any`는 eslint
 bash scripts/test-db.sh              # 로컬 workbridge_test 생성 + 마이그레이션 (URL 출력)
 npm test                             # 그 실제 Postgres로 vitest (~90초). 모든 테이블을 TRUNCATE
 npx vitest run test/<file>.test.ts   # 파일 하나
-npx prisma migrate dev --name <name> # 새 마이그레이션. 그다음 npm run db:generate
+npx prisma migrate dev --name <name> # 새 마이그레이션 생성·적용, 클라이언트 재생성
+npm run db:generate                  # 마이그레이션을 migrate deploy로만 받았을 때 클라이언트 재생성
 npm run db:seed                      # 시드 데이터 (docs/SEED_DATA.md)
 npm run openapi                      # openapi.json 재생성. 커밋한다(CI가 최신인지 검사)
 ```
@@ -38,24 +39,23 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 |---|---|
 | 레이어, 요청 흐름, 작업 큐, 클라이언트 구조, 환경 | `docs/ARCHITECTURE.md` |
 | 엔드포인트, 요청·응답, 상태 코드와 오류 메시지 | `GET /api/docs`(로컬 서버) / `workbridge-server/openapi.json` |
-| 제품 규칙과 이유(정책 수치, 상태 전이) / DB 모델, 불변식, 잠금 | `docs/domain/` / `docs/DATABASE.md` |
+| 제품 결정과 그 이유, 용어, 상태 전이 / DB 불변식, 잠금, FK 삭제 동작 | `docs/domain/` / `docs/DATABASE.md` |
 | 환경변수 / 배포와 운영 환경의 한계 | `docs/ENV.md` / `docs/DEPLOYMENT.md` |
 | 시드 계정과 화면별 시나리오 | `docs/SEED_DATA.md` |
 | 이 하네스(지침, 권한, 훅, 스킬) / 리뷰 기준 | `docs/HARNESS.md` / `REVIEW.md` |
 
-**테스트는 지금 코드가 아니라 의도한 동작을 단언한다.** 근거는 `docs/domain/`, OpenAPI, 이슈다. 알려진 버그는
-GitHub 이슈로 추적하고(도메인 문서의 `현재 다름: #N`), 고치는 PR에 회귀 테스트를 넣는다.
-
-경로별 상세 지침은 `.claude/rules/`에 있고, 해당 경로의 파일을 다룰 때 자동으로 컨텍스트에 들어온다.
-
 ## 구조 요약
 
-- 서버: `src/index.ts`가 `/api/*` 라우터를 마운트하고 `export default app`(Vercel). 요청 검증은 모든 라우트가
-  zod `schemas/` + `validate()`. 기존 도메인은 `routes → controllers → lib`, 확장 도메인은 `services/`를 더 쓴다(이전은 #40).
-- 에러는 `throw new AppError(message, status)` → `next(err)` → `errorHandler`가 `{ error: { message } }`.
+- 서버: `src/index.ts`가 `/api/*` 라우터를 마운트하고 `export default app`(Vercel). 기존 도메인은
+  `routes → controllers → lib`, 확장 도메인은 `src/services/`를 더 쓴다(`docs/ARCHITECTURE.md`).
 - 데이터: `User → Project → Application → Contract → Milestone/Payment → Review`.
   `User`와 `Project`는 소프트 삭제(`deletedAt`) — 어디서나 `deletedAt: null`로 거른다.
-- 클라이언트: 백엔드 호출은 모두 `src/lib/api.js`(Axios + 조용한 토큰 갱신)를 거친다.
+
+## 테스트
+
+- 실패한 테스트를 통과시키려고 단언을 지우거나 약하게 바꾸지 않는다. 동작을 바꾸는 것이 요청받은 변경일 때만 테스트를 고친다.
+- 기존 코드에 테스트를 붙이다가 버그로 보이는 동작을 만나면 그 동작을 단언으로 고정하지 않고 보고한다.
+- 버그를 고치는 PR에는 고치기 전 코드에서 실패하는 회귀 테스트를 넣는다.
 
 ## 컨벤션
 
@@ -64,21 +64,9 @@ GitHub 이슈로 추적하고(도메인 문서의 `현재 다름: #N`), 고치�
 
 ## 함정 (바로 사고가 나는 것)
 
-- `src/index.ts`에서 `import 'dotenv/config'`는 **반드시 첫 import**로 둔다. 모듈 평가 때
-  `process.env`를 읽는 모듈이 여럿 있다.
-- 라우터 마운트 순서가 동작을 정한다. `/api/users`는 `users.routes` 다음 `profile.routes`,
-  `/api/projects`는 `projects.routes` 다음 `applications.routes`. 먼저 마운트된 쪽이 이긴다.
-  새 `/api/users/me/<x>` 라우트는 `profile.routes.ts`에 넣고, 순서는 절대 바꾸지 않는다.
-- `GET /api/projects`와 `GET /api/projects/:id`는 **행을 쓴다**(지연 수명주기 스윕이 마감된
-  프로젝트를 닫는다). 읽기 전용이 아니다.
-- `req.user`는 non-optional로 타입이 잡혀 있지만 `src/types/index.ts`에 적힌 공개 핸들러 15개에서는
-  `undefined`다(`X-Internal-Token`으로 지키는 `runJobs`, API 문서 화면 포함). 거기서는 읽지 않는다.
-- 테스트가 **모든 응답**을 OpenAPI 응답 스키마로 strict 검사한다. 라우트·상태 코드·응답 필드를 바꾸면
-  `src/openapi/paths`·`responses`를 함께 고치고 `npm run openapi`. 문서에 없는 상태 코드나 필드는 테스트 실패다.
-- 핸들러에 `Promise<void>`를 붙이지 않는다. 함수 중간에 `return res.json(...)`하는 곳이 많다.
-- 여러 행을 바꾸는 상태 변경은 `prisma.$transaction` 하나로 하고, 알림과 작업도 그 안에서 쓴다.
-- 적용된 마이그레이션은 고치지 않는다(훅이 막는다). 스키마를 바꾸고 `prisma migrate dev`.
-- `console.*` 대신 `lib/logger.ts`를 쓴다. `error` 레벨은 500, 응답을 보낸 뒤에 난 예외(서버 버그라 경보 대상), 작업 실패에만 쓴다.
-- 이메일은 로그로만 남는다(`mail.sent` 줄). 결제 우회 플래그는 운영에서 반드시 `false`.
+- 프로젝트를 읽는 GET 중 일부는 **행을 쓴다.** `workbridge-server/src/lib/projectLifecycle.ts`의 지연 수명주기 스윕
+  (`closeExpiredOpenProjects`, `rejectPendingApplicationsForClosedProjects`)이 마감된 프로젝트를 닫고 그 대기 중
+  지원을 거절한다. 어느 핸들러인지는 두 함수의 호출처로 확인한다. 읽기 전용으로 다루지 않는다 — 캐시, 빌드 때의
+  정적 렌더링, 원격 환경에 대한 "확인용" 호출도 그 환경의 행을 바꾼다.
 - 운영에는 상주 작업 워커가 없다. GitHub Actions `jobs.yml`이 15분마다 `POST /api/internal/jobs/run`을
-  부른다. 지급(`JOB_PAYOUT_ENABLED`)과 메일(`JOB_EMAIL_ENABLED`) 작업은 플래그로 꺼져 있다.
+  부르므로 작업은 최대 15분 늦게 돈다. 지급(`JOB_PAYOUT_ENABLED`)과 메일(`JOB_EMAIL_ENABLED`) 작업은 플래그로 꺼져 있다.

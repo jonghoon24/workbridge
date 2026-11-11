@@ -1,23 +1,15 @@
 ---
 name: db-migration
-description: WorkBridge 데이터베이스 스키마를 안전하게 바꾼다(schema change, migration) — schema.prisma 수정, 로컬 DB에 새 Prisma 마이그레이션 생성, 클라이언트 재생성, 테스트·시드·docs/DATABASE.md 갱신. 새 모델, 컬럼, 인덱스, enum 값, 백필(backfill)에 쓴다. 적용된 마이그레이션은 절대 고치지 않는다.
+description: WorkBridge 데이터베이스 스키마를 안전하게 바꾼다(schema change, migration) — schema.prisma 수정, 로컬 DB에 새 Prisma 마이그레이션 생성, 클라이언트 재생성, 테스트·시드·문서 갱신. 새 모델, 컬럼, 인덱스, enum 값, 백필(backfill)에 쓴다. 적용된 마이그레이션은 절대 고치지 않는다.
 argument-hint: <short_snake_case_name> — <바뀌는 것>
 ---
 
 # 데이터베이스 마이그레이션
 
 모든 작업은 `workbridge-server/` 안에서 `.env`의 **로컬** Postgres(`localhost`)를 대상으로 한다.
-preview와 production DB는 여기서 절대 건드리지 않는다: `main`에 머지될 때 CI(`migrate.yml`)가 두 DB에
-적용한다(8단계 참고).
-
-## 0. 기본 규칙
-
-- **적용된 마이그레이션은 고치지 않는다.** `prisma/migrations/`의 폴더를 수정하거나 이름을 바꾸거나
-  지우지 않는다 — 이미 preview/production에서 돌았고 Prisma가 체크섬을 검사한다.
-  PreToolUse 훅이 git에 있는 마이그레이션의 편집을 막는다. 실수는 *새* 마이그레이션으로 고친다.
-- `prisma migrate reset`, `db push --force-reset`, `--accept-data-loss`는 쓰지 않는다
-  (`.claude/settings.json`에서 거부). `migrate dev`가 drift 때문에 reset이 필요하다고 하면 멈추고 묻는다.
-- 금액 컬럼은 `Float`로 둔다(의도된 부채). `User`/`Project` 삭제는 소프트 삭제(`deletedAt`)로 둔다.
+preview와 production DB에는 `main`에 머지될 때 CI(`migrate.yml`)가 적용한다(8단계 참고).
+이미 커밋된 마이그레이션은 고치지 않는다. 실수는 *새* 마이그레이션으로 고친다.
+`migrate dev`가 drift 때문에 reset이 필요하다고 하면 멈추고 사용자에게 묻는다.
 
 ## 1. `prisma/schema.prisma` 수정
 
@@ -41,24 +33,32 @@ npx prisma migrate dev --name <short_snake_case_name>
 클라이언트를 다시 생성한다. 생성된 SQL을 읽는다: 지워지는 컬럼/테이블(데이터 손실), enum 변경,
 기본값 없는 `NOT NULL`을 확인한다.
 
-**새 테이블이면 RLS를 켠다.** `npx prisma migrate dev --create-only --name <name>`으로 SQL만 만들고, 끝에
-`ALTER TABLE "<Model>" ENABLE ROW LEVEL SECURITY;`를 테이블마다 붙인 뒤 `npx prisma migrate dev`로 적용한다.
-정책은 만들지 않는다. 앱은 테이블 소유자로 접속해 RLS를 우회하고, Supabase Data API(anon 키)는 막힌다
-(`docs/DATABASE.md` "행 단위 보안"). 빠뜨리면 `test/db-constraints.test.ts`가 실패한다.
+**새 테이블이나 새 `String[]` 컬럼이면 SQL을 손으로 더한다.** `npx prisma migrate dev --create-only --name <name>`으로
+SQL만 만들고, 끝에 붙인 뒤 `npx prisma migrate dev`로 적용한다(규칙과 이유: `.claude/rules/prisma.md`).
+
+```sql
+ALTER TABLE "<Model>" ENABLE ROW LEVEL SECURITY;                 -- 새 테이블마다. 정책은 만들지 않는다
+ALTER TABLE "<Model>" ADD CONSTRAINT "<Model>_<column>_no_null"  -- 새 String[] 컬럼마다
+  CHECK (array_position("<column>", NULL) IS NULL);
+```
+
+RLS를 빠뜨리면 `test/db-constraints.test.ts`가 실패한다. `String[]` CHECK는 그 파일의 `targets`에 행을 추가해야 검사된다.
 
 ## 3. 백필 (필요하면)
 
 백필은 같은 새 마이그레이션에 넣는다: `npx prisma migrate dev --create-only --name <name>`이 적용하지
 않고 SQL만 쓴다. 거기에 `UPDATE …` 문을 붙인 뒤 `npx prisma migrate dev`로 적용한다. 훅은
 마이그레이션 폴더가 git에 추적되지 않는 동안만 편집을 허용한다. 커밋하면 적용된 것으로 보고 고정된다.
-금액은 float이 아니라 numeric으로 반올림한다(`ROUND(x::numeric)`) — "마이그레이션과 백필 메모" 참고.
+금액은 float이 아니라 numeric으로 반올림한다(`ROUND(x::numeric)`) — `docs/DATABASE.md` "마이그레이션과 백필 메모" 참고.
 
-## 4. 재생성과 타입 체크
+## 4. 타입 체크
 
 ```bash
-npm run db:generate
 npm run typecheck
 ```
+
+`migrate dev`가 클라이언트를 이미 다시 만들었다. 다른 브랜치의 마이그레이션을 `migrate deploy`로만 받은
+worktree라면 먼저 `npm run db:generate`를 돌린다.
 
 ## 5. 테스트
 
@@ -80,20 +80,19 @@ npm test
 
 ## 7. 문서
 
-`docs/DATABASE.md`(한국어): "모델" 아래 해당 절의 모델, enum/상태 흐름, "관계와 불변식",
-관련 있으면 소프트 삭제나 잠금 메모, 그리고 "마이그레이션과 백필 메모" 표의 한 행
-(`| \`<timestamp>_<name>\` | <내용> |`)과 백필 메모.
+`docs/DATABASE.md`(한국어)는 바뀐 것이 있을 때만 고친다: "관계와 불변식", "외래 키의 삭제 동작", 스키마가 표현하지
+못하는 제약(CHECK 등), 소프트 삭제나 잠금 메모, 백필이 있으면 "마이그레이션과 백필 메모". 모델과 필드 목록은
+`schema.prisma`가 원본이라 옮겨 적지 않는다.
 
-새 컬럼이 API 응답에 나가면 `src/openapi/responses/<domain>.ts`의 응답 스키마에도 추가하고 `npm run openapi`로
-`openapi.json`을 다시 만든다. 테스트가 응답을 문서와 strict하게 대조하므로 빠뜨리면 그 응답을 받는 테스트가 실패한다.
-새 제품 규칙(상태 전이, 정책 수치)이 생기면 `docs/domain/`의 해당 문서도 고친다.
+새 컬럼이 API 응답에 나가면 `src/openapi/responses/<domain>.ts`의 응답 스키마에도 추가하고 `openapi.json`을 다시
+만든다(빠뜨리면 그 응답을 받는 테스트가 strict 검사에서 실패한다).
+변경이 제품 결정을 담고 있으면(새 상태와 전이 등) 그 결정과 이유를 `docs/domain/`의 해당 문서에 적는다.
 
 ## 8. 배포
 
 - `schema.prisma`와 새 마이그레이션 폴더 전체를 그것을 쓰는 코드와 함께 커밋한다.
 - `main`에 머지되면 `.github/workflows/migrate.yml`이 **preview와 production** DB(서로 다른 Supabase
-  프로젝트)에 차례로 `prisma migrate deploy`를 돌린다. 손으로 돌리지 않고, 그 접속 문자열을 커맨드에
-  넣지 않는다.
+  프로젝트)에 차례로 `prisma migrate deploy`를 돌린다.
 - 이전 코드와 새 코드 어느 쪽이 먼저 떠 있어도 안전한 마이그레이션이어야 한다. 같은 `main` 푸시에서
   Vercel 배포와 `migrate.yml`이 따로 돌고 둘의 순서를 맞추는 장치가 없다 — 새 코드가 마이그레이션
   전의 DB를 잠깐 상대할 수 있다. 컬럼은 nullable이나 기본값을 두고 추가하고, 옛 컬럼은 다음 릴리스에서

@@ -51,7 +51,8 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
       throw new AppError('A completed contract cannot be signed again', 400);
     }
 
-    // A PENDING contract needs a valid plan, or the signature is not recorded at all.
+    // A PENDING contract needs a valid plan, or the signature is not recorded at all. The API
+    // cannot create an invalid plan; this guards rows edited directly in the database.
     if (contract.status === 'PENDING' && !isValidPlan(contract.milestones, contract.amount)) {
       throw new AppError('Cannot sign a contract without a valid milestone plan', 400);
     }

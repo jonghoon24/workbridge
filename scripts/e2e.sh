@@ -10,6 +10,7 @@
 #   E2E_CLIENT_PORT     client port (default 3002)
 #   E2E_CLIENT_MODE     dev | prod  (default prod when CI=true, otherwise dev)
 #   E2E_SKIP_SEED=1     reuse the current DB contents (skip migrate + seed)
+#   E2E_LOG_DIR         server/client logs (default workbridge-client/test-results/e2e-logs)
 #
 # Shell variables like DATABASE_URL are set explicitly below, never read from the caller's shell,
 # so this cannot accidentally migrate/seed (= wipe) some other database.

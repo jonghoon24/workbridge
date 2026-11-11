@@ -1,73 +1,72 @@
 # 환경변수
 
-환경(로컬, CI, 프리뷰, 운영)의 구분은 [DEPLOYMENT.md](DEPLOYMENT.md#환경)에 있다. 프리뷰와 운영은 Vercel의 Preview·Production 환경에 각각 값을 넣고, DB 변수는 각 환경의 Supabase 프로젝트를 가리킨다.
+환경(로컬, CI, 프리뷰, 운영)의 구분은 [DEPLOYMENT.md](DEPLOYMENT.md#환경)에 있다. 기본값과 로컬 예시 값은 `.env.example`
+(서버 `workbridge-server/`, 클라이언트 `workbridge-client/`)과 `workbridge-server/src/env.ts`가 원본이다.
+
+어디에 넣나:
+
+- **로컬**: 서버 `workbridge-server/.env`, 클라이언트 `workbridge-client/.env.local`(각 `.env.example`을 복사). 테스트는
+  `vitest.config.ts`가, E2E는 `scripts/e2e.sh`가 값을 직접 정한다.
+- **프리뷰·운영**: Vercel 서버·클라이언트 프로젝트의 Preview·Production 환경에 각각 넣는다. 프리뷰와 운영은 서로 다른
+  Supabase 프로젝트라 DB·Supabase 변수와 암호화 키가 환경마다 다르다.
+- **GitHub 리포지토리 시크릿**: 원격 DB와 비밀값이 필요한 워크플로가 쓴다. `PREVIEW_`/`PROD_` 접두어로 환경을 나눈다 —
+  `*_DIRECT_URL`(`migrate.yml`, `seed.yml`, `payout-encrypt.yml`, `attachments-migrate.yml`),
+  `*_PAYOUT_ACCOUNT_ENCRYPTION_KEY`(`seed.yml`, `payout-encrypt.yml`), `*_SUPABASE_URL`·`*_SUPABASE_SECRET_KEY`
+  (`attachments-migrate.yml`), `PROD_INTERNAL_JOB_TOKEN`(`jobs.yml`). 그 환경의 Vercel 서버 값과 **같은 값**이어야 한다
+  (예: `PROD_INTERNAL_JOB_TOKEN` = 운영 `INTERNAL_JOB_TOKEN`).
 
 ## 서버 (.env)
 
 | 변수 | 설명 |
 | --- | --- |
-| `PORT` | 서버 포트 (기본 4000) |
-| `DATABASE_URL` | PostgreSQL 연결 문자열 (Supabase Transaction mode 포트 6543 권장). Vercel(프리뷰·운영)에서는 끝에 `&connection_limit=3`을 붙인다(필요하면 `&pool_timeout=10`도). 없으면 Prisma가 함수 인스턴스마다 `CPU 수 × 2 + 1`개 연결을 열어, 인스턴스가 늘 때 Supavisor 연결 한도에 먼저 닿는다. `1`은 권하지 않는다: `Promise.all([findMany, count])`가 직렬화되고, 트랜잭션 안에서 루트 `prisma`를 쓰는 헬퍼가 있으면 풀을 기다리다 멈춘다. 로컬은 붙이지 않아도 된다 |
-| `DIRECT_URL` | pgbouncer를 거치지 않는 직접 연결 문자열. `prisma migrate`가 쓴다(`schema.prisma`의 `directUrl`). 로컬에서는 `DATABASE_URL`과 같게 둔다 |
-| `NODE_ENV` | `production`이면 `app.listen()`과 개발 작업 워커를 시작하지 않고(Vercel), CORS 기본 허용 목록에서 `http://localhost:3000`을 뺀다. `VERCEL_ENV`가 없을 때 `production`이면 API 문서도 끈다(아래 `VERCEL_ENV`). 테스트는 `test` |
-| `JWT_ACCESS_SECRET` | Access Token 서명 시크릿 |
-| `JWT_REFRESH_SECRET` | Refresh Token 서명 시크릿 |
-| `JWT_ACCESS_EXPIRES_IN` | Access Token 만료 시간 (기본 15m) |
-| `JWT_REFRESH_EXPIRES_IN` | Refresh Token 만료 시간 (기본 7d) |
-| `GOOGLE_CLIENT_ID` | Google OAuth 클라이언트 ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 시크릿 |
-| `GOOGLE_CALLBACK_URL` | Google OAuth 콜백 URL. 프론트엔드 `/api/auth/google/callback` URL 사용 |
+| `PORT` | 서버 포트 |
+| `DATABASE_URL` | PostgreSQL 연결 문자열(Supabase는 Transaction mode 6543). Vercel(프리뷰·운영)에서는 끝에 `&connection_limit=3`을 붙인다(필요하면 `&pool_timeout=10`도). 없으면 Prisma가 함수 인스턴스마다 `CPU 수 × 2 + 1`개 연결을 열어, 인스턴스가 늘 때 Supavisor 연결 한도에 먼저 닿는다. `1`은 권하지 않는다: `Promise.all([findMany, count])`가 직렬화되고, 트랜잭션 안에서 루트 `prisma`를 쓰는 헬퍼가 있으면 풀을 기다리다 멈춘다. 로컬은 붙이지 않아도 된다 |
+| `DIRECT_URL` | pgbouncer를 거치지 않는 직접 연결(Supabase Session mode 5432). `prisma migrate`가 쓴다(`schema.prisma`의 `directUrl`). 로컬에서는 `DATABASE_URL`과 같게 둔다 |
+| `NODE_ENV` | `production`이면 `app.listen()`과 개발 작업 워커를 시작하지 않고(Vercel), CORS 기본 허용 목록에서 `http://localhost:3000`을 뺀다. API 문서 게이트에도 쓰인다(아래 `VERCEL_ENV`) |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | 액세스·리프레시 토큰 서명 시크릿 |
+| `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | 토큰 만료 시간 |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google OAuth 클라이언트 |
+| `GOOGLE_CALLBACK_URL` | Google OAuth 콜백. 백엔드가 아니라 **프론트엔드**의 `/api/auth/google/callback` URL이다(Next 프록시가 받아 서버로 넘긴다) |
 | `OPENAI_API_KEY` | OpenAI API 키. **모듈을 읽을 때 클라이언트를 만들므로 비어 있으면 서버가 뜨지 않는다**(테스트처럼 더미 값이면 된다) |
-| `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키 (test_sk_...) |
-| `ALLOW_PAYMENT_BYPASS` | 로컬·E2E에서 `true`로 설정하면 토스 결제창 없이 결제 완료 처리 가능. 실제 운영 서비스에서는 `false` 유지 |
-| `CLIENT_URL` | 프론트엔드 **출처 하나**(예: `https://app.example.com`, 끝의 `/`는 괜찮다). Google 로그인 리디렉션(`/auth/callback`, `/login?error=…`), 메일 본문 링크, CORS 허용 출처가 모두 이 값을 쓴다(`src/lib/clientUrl.ts`). 쉼표·공백 목록, 경로, 스킴 없는 값은 받지 않는다. 값이 없거나 이런 형태면 서버는 뜨지만 시작 때 `warn` 한 줄을 남기고 CORS에서 빠지며, 쓰는 곳에서 이유를 밝히고 실패한다: Google 로그인 시작·콜백은 500(응답 본문은 일반 메시지, 이유는 `CLIENT_URL`을 적은 오류 로그 한 줄), 메일은 발송 기록이 `FAILED`(이유 기록, 발송 작업 없음)이고 `warn` 로그를 남긴다. 알림과 원인이 된 상태 변경은 그대로 저장된다 |
-| `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 추가 출처는 여기에만 둔다. 개발 환경에서는 `http://localhost:3000`이 항상 허용된다 |
-| `SUPABASE_URL` | Supabase 프로젝트 URL. `OPENAI_API_KEY`처럼 모듈을 읽을 때 쓰이므로 서버를 띄우려면 필요하다(더미 값 가능) |
-| `SUPABASE_SECRET_KEY` | Supabase Secret Key (sb_secret_...). 모듈을 읽을 때 쓰인다(위와 같음). 비공개 첨부 버킷의 서명 URL 발급과 파일 확인·삭제에도 쓴다 |
-| `SUPABASE_ATTACHMENT_BUCKET` | 메시지·결과물 첨부를 두는 **비공개** Storage 버킷 이름(기본 `workbridge-attachments`). 처음 쓸 때 읽는다. 버킷을 기본 이름으로 만들면 넣지 않아도 된다. 프로필·포트폴리오 이미지는 공개 버킷 `workbridge`에 그대로 둔다(아래 "Supabase") |
-| `PAYOUT_ACCOUNT_ENCRYPTION_KEY` | 지급 계좌번호를 저장할 때 쓰는 AES-256-GCM 키. **32바이트를 base64로** 넣는다(`openssl rand -base64 32`). 암호화·복호화할 때마다 읽으므로 없어도 서버는 뜨지만, 지급 계좌 등록, 계좌가 있는 사용자의 계좌 조회, 지급 작업이 500·작업 실패가 되고 시드(`npm run db:seed`)는 아무것도 지우기 전에 멈춘다. 환경마다 다른 키를 쓰고, 한 환경 안에서는 Vercel 서버와 GitHub 시크릿(`PREVIEW_`/`PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY`, `seed.yml`·`payout-encrypt.yml`)이 같은 값이어야 한다. **바꾸거나 잃으면 저장된 계좌번호를 읽지 못한다** — 교체 절차는 [DEPLOYMENT.md](DEPLOYMENT.md#지급-계좌-암호화-키). 테스트(`vitest.config.ts`)와 E2E(`scripts/e2e.sh`)는 고정된 더미 키를 쓴다 |
-| `LOG_LEVEL` | 로그 레벨 `debug`/`info`/`warn`/`error`/`silent` (기본 `info`). JSON 한 줄씩 출력하며 `error`만 stderr로 간다. 테스트는 `error` |
-| `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(레이트 리밋 키)로 쓴다. 비우면 소켓 주소를 쓰고 `X-Forwarded-For`는 무시. Next.js 프록시는 받은 `X-Forwarded-For`를 그대로 넘기므로 `loopback`은 **Next 포트(:3000)에 신뢰하는 클라이언트만 닿을 때만 안전하다**. 그렇지 않으면 클라이언트가 헤더로 자기 IP를 골라 로그인 제한을 우회한다. 로컬 로그인은 어차피 전부 루프백 한 주소로 세어진다 |
-| `PROXY_SHARED_SECRET` | Next.js 프록시와 함께 쓰는 비밀값. 클라이언트의 같은 이름 변수와 **같은 값**이어야 한다. 요청의 `X-Proxy-Secret`이 이 값과 같을 때만(상수 시간 비교) `X-Client-IP`를 클라이언트 IP로 믿는다(`src/lib/clientIp.ts`). 비우면 `X-Client-IP`를 언제나 무시하고, Vercel에서는 `X-Vercel-Forwarded-For`, 그 밖에는 `req.ip`(`TRUST_PROXY`)를 쓴다. 로컬은 비워 둔다. 값은 `python3 -c "import secrets;print(secrets.token_urlsafe(48))"`로 만든다 |
-| `RATE_LIMIT_ENABLED` | `false`면 레이트 리밋(로그인, AI 단가 분석)을 끈다. 기본 켜짐. 요청마다 읽는다. 로컬에서 로그인을 여러 번 하는 수동 확인·스크립트는 `false`로 둔다(머신 전체가 15분에 20회를 나눠 쓴다) |
-| `INTERNAL_JOB_TOKEN` | `POST /api/internal/jobs/run`의 `X-Internal-Token` 값. 비우면 엔드포인트가 404(존재를 숨김) |
-| `JOB_PAYOUT_ENABLED` | 정확히 `true`일 때만 `settlement.payout`(정산 지급) 작업을 실행한다. 그 밖에는 러너가 이 작업을 가져가지 않아 `PENDING`으로 남는다(나중에 켜면 그때 지급된다). **기본 꺼짐.** 지금 있는 지급 provider(`LogPayoutProvider`)는 돈을 보내지 않고 정산을 `PAID`로 만들기 때문에, 실제 이체 provider를 연결하기 전에는 운영에서 켜지 않는다. 로컬은 `true`(`.env.example`). 러너가 돌 때마다 읽는다(`src/jobs/gates.ts`) |
-| `JOB_EMAIL_ENABLED` | 정확히 `true`일 때만 `notification.email`(알림 메일과 미확인 메시지 요약 메일) 작업이 메일을 보낸다. 그 밖에는 작업이 delivery를 `SKIPPED`로 끝낸다(나중에 켜도 밀린 메일은 나가지 않는다). **기본 꺼짐.** 지금 메일 provider는 로그 전용이라 받는 주소와 본문 전체가 운영 로그에 남으므로([#26](https://github.com/jonghoon24/workbridge/issues/26)), 실제 메일 provider를 연결하기 전에는 운영에서 켜지 않는다. 로컬은 `true`(`.env.example`, 로그에만 쓴다). 발송마다 읽는다 |
-| `JOB_WORKER_ENABLED` | `false`면 개발 서버(`npm run dev`)가 작업 큐 워커를 띄우지 않는다. 기본 켜짐. 운영과 테스트에서는 어차피 뜨지 않는다 |
-| `JOB_POLL_INTERVAL_MS` | 개발 워커의 폴링 간격(ms, 기본 5000) |
-| `MILESTONE_AUTO_APPROVE_DAYS` | 산출물 제출 후 자동 승인까지의 일수(양의 정수, 기본 7). 24시간 단위로 센다. 양의 정수가 아니면 7 |
-| `MAIL_PROVIDER` | 이메일 발송 provider. 비우거나 `log`면 로그 provider로, 메일을 보내지 않고 받는 주소와 본문 전체를 `info` 로그 `mail.sent` 한 줄로 남긴다(개발용. 실제 provider는 미정: [#26](https://github.com/jonghoon24/workbridge/issues/26)). 실제 메일 서비스는 연결돼 있지 않다. 그 밖의 값은 지원하지 않아 서버·`jobs:run`·`jobs:worker` 시작 때 `warn` 한 줄을 남기고, 발송마다 해당 delivery가 `FAILED`가 된다. 발송할 때마다 읽는다 |
-| `MAIL_FROM` | 이메일 발신자(기본 `WorkBridge <no-reply@workbridge.local>`). 메일 본문의 링크 기준 주소는 `CLIENT_URL`이다 |
-| `SENTRY_DSN` | Sentry DSN(선택). 비우면 오류 보고가 꺼지고 `@sentry/node`를 아예 불러오지 않는다. 설정하면 500 응답과 최종 실패한 작업만 보낸다([DEPLOYMENT.md](DEPLOYMENT.md#sentry)). 호출마다 읽는다 |
-| `SENTRY_ENVIRONMENT` | Sentry `environment`(선택). 비우면 `VERCEL_ENV` → `NODE_ENV` → `development` 순으로 정한다. `release`는 Vercel이 넣어 주는 `VERCEL_GIT_COMMIT_SHA`가 있으면 그 값이다 |
-| `VERCEL_ENV` | Vercel이 넣는다(직접 넣지 않는다). API 문서(`GET /api/docs`, `GET /api/openapi.json`)는 허용 목록으로 켠다: `VERCEL_ENV`가 `preview`·`development`이거나, `VERCEL_ENV`가 없고 `NODE_ENV`가 `production`이 아닐 때(로컬·테스트)만 열린다. 그 밖(`production`, 모르는 값, `VERCEL_ENV` 없이 `NODE_ENV=production`)에서는 꺼져 경로가 없는 것처럼 404다. 문서에 내부 엔드포인트와 모든 오류 메시지가 있어서다. 요청마다 읽는다 |
-
-작업 큐는 개발 서버 워커 외에 `npm run jobs:run`(한 번 실행)과 `npm run jobs:worker`(단독 워커)로도 돌릴 수 있다. 운영(Vercel)에는 상주 워커가 없고, GitHub Actions(`.github/workflows/jobs.yml`)가 15분마다 운영 서버의 `POST /api/internal/jobs/run`을 부른다. 이 워크플로는 리포지토리 시크릿 `PROD_INTERNAL_JOB_TOKEN`(운영 서버의 `INTERNAL_JOB_TOKEN`과 같은 값)을 쓴다([DEPLOYMENT.md](DEPLOYMENT.md#1-작업-큐는-15분마다-돈다)).
+| `TOSS_SECRET_KEY` | 토스페이먼츠 시크릿 키(`test_sk_...`) |
+| `ALLOW_PAYMENT_BYPASS` | `true`면 토스 결제창 없이 결제 완료 처리(`POST /api/payments/dev-complete`). 로컬·E2E 전용이고 **프리뷰·운영에서는 반드시 `false`**(아래 "결제 우회") |
+| `CLIENT_URL` | 프론트엔드 **출처 하나**(끝의 `/`는 괜찮다). Google 로그인 리디렉션, 메일 본문 링크, CORS 허용 출처가 모두 이 값을 쓴다(`src/lib/clientUrl.ts`). 목록·경로·스킴 없는 값은 받지 않는다. 비었거나 이런 형태면 서버는 뜨지만 시작 때 `warn`을 남기고, 브라우저 요청이 CORS로 막히며, Google 로그인은 500, 메일은 발송 기록이 `FAILED`가 된다 |
+| `CORS_ORIGINS` | `CLIENT_URL` 외에 허용할 출처(쉼표 구분, 선택). 추가 출처(예: 커스텀 도메인)는 `CLIENT_URL`이 아니라 여기에 둔다 |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | Supabase 프로젝트 URL과 Secret Key(`sb_secret_...`). 모듈을 읽을 때 쓰이므로 서버를 띄우려면 필요하다(더미 값 가능). 비공개 첨부 버킷의 서명 URL 발급과 파일 확인·삭제에도 쓴다 |
+| `SUPABASE_ATTACHMENT_BUCKET` | 메시지·결과물 첨부를 두는 **비공개** Storage 버킷 이름. 기본 이름으로 버킷을 만들면 넣지 않아도 된다. 프로필·포트폴리오 이미지는 공개 버킷 `workbridge`에 둔다(아래 "Supabase") |
+| `PAYOUT_ACCOUNT_ENCRYPTION_KEY` | 지급 계좌번호 암호화 키(32바이트 base64, `openssl rand -base64 32`). 없어도 서버는 뜨지만 지급 계좌 등록·조회와 지급 작업이 실패하고, 시드는 아무것도 지우기 전에 멈춘다. 환경마다 다른 키이고 Vercel 서버와 GitHub 시크릿이 같은 값이어야 한다. **바꾸거나 잃으면 저장된 계좌번호를 읽지 못한다** — 교체 절차는 [DEPLOYMENT.md](DEPLOYMENT.md#지급-계좌-암호화-키) |
+| `LOG_LEVEL` | 로그 레벨(`debug`/`info`/`warn`/`error`/`silent`). 테스트는 `error` |
+| `TRUST_PROXY` | Express `trust proxy` 값. 설정하면 `X-Forwarded-For`에서 신뢰한 프록시를 뺀 주소를 클라이언트 IP(요청 제한 키)로 쓴다. 로컬은 `loopback`. `loopback`이 안전한 조건은 [DEPLOYMENT.md](DEPLOYMENT.md#5-클라이언트-ip) 5번 |
+| `PROXY_SHARED_SECRET` | Next 프록시가 보낸 `X-Client-IP`를 믿기 위한 공유 비밀. 클라이언트의 같은 이름 변수와 **같은 값**이어야 한다. 비우면 `X-Client-IP`를 무시한다. 로컬은 비워 둔다. 값은 `python3 -c "import secrets;print(secrets.token_urlsafe(48))"`로 만든다([DEPLOYMENT.md](DEPLOYMENT.md#5-클라이언트-ip) 5번) |
+| `RATE_LIMIT_ENABLED` | `false`면 요청 제한(로그인, AI 단가 분석)을 끈다. 로컬에서는 모든 로그인이 루프백 한 주소로 세어져 한도를 나눠 쓰므로, 로그인을 반복하는 수동 확인·스크립트는 `false`로 둔다 |
+| `INTERNAL_JOB_TOKEN` | `POST /api/internal/jobs/run`의 `X-Internal-Token` 값. 비우면 엔드포인트가 404(존재를 숨김). 운영 값은 GitHub 시크릿 `PROD_INTERNAL_JOB_TOKEN`과 같아야 크론(`jobs.yml`)이 돈다 |
+| `JOB_PAYOUT_ENABLED` | 정확히 `true`일 때만 `settlement.payout`(정산 지급) 작업을 실행한다. **운영에서는 꺼 둔다**(지금 지급 provider는 돈을 보내지 않고 정산을 `PAID`로 만든다). 로컬은 켠다. 꺼졌을 때의 동작과 켜는 조건은 [DEPLOYMENT.md](DEPLOYMENT.md#1-작업-큐는-15분마다-돈다) |
+| `JOB_EMAIL_ENABLED` | 정확히 `true`일 때만 `notification.email` 작업이 메일을 보낸다. **운영에서는 꺼 둔다**(로그 provider가 주소와 본문을 운영 로그에 남긴다, [#26](https://github.com/jonghoon24/workbridge/issues/26)). 로컬은 켠다. 위와 같은 절 참고 |
+| `JOB_WORKER_ENABLED` | `false`면 개발 서버(`npm run dev`)가 작업 큐 워커를 띄우지 않는다. 운영과 테스트에서는 어차피 뜨지 않는다 |
+| `JOB_POLL_INTERVAL_MS` | 개발 워커의 폴링 간격(ms) |
+| `MILESTONE_AUTO_APPROVE_DAYS` | 산출물 제출 후 자동 승인까지의 일수(양의 정수, 24시간 단위). 양의 정수가 아니면 기본값 |
+| `MAIL_PROVIDER` | 이메일 provider. 비우거나 `log`면 메일을 보내지 않고 받는 주소와 본문을 `mail.sent` 로그로 남긴다. 실제 메일 서비스는 연결돼 있지 않다([DEPLOYMENT.md](DEPLOYMENT.md#4-이메일은-로그로만-나간다) 4번). 그 밖의 값은 시작 때 `warn`을 남기고 모든 발송이 `FAILED`가 된다 |
+| `MAIL_FROM` | 이메일 발신자. 메일 본문의 링크 기준 주소는 `CLIENT_URL`이다 |
+| `SENTRY_DSN` | Sentry DSN(선택). 비우면 오류 보고가 꺼지고 `@sentry/node`를 불러오지 않는다([DEPLOYMENT.md](DEPLOYMENT.md#sentry)) |
+| `SENTRY_ENVIRONMENT` | Sentry `environment`(선택). 비우면 `VERCEL_ENV` → `NODE_ENV` → `development` 순 |
+| `VERCEL_ENV` | Vercel이 넣는다(직접 넣지 않는다). API 문서(`GET /api/docs`, `GET /api/openapi.json`)는 허용 목록으로 켠다: `VERCEL_ENV`가 `preview`·`development`이거나, `VERCEL_ENV`가 없고 `NODE_ENV`가 `production`이 아닐 때(로컬·테스트)만 열린다. 그 밖(`production`, 모르는 값, `VERCEL_ENV` 없이 `NODE_ENV=production`)에서는 경로가 없는 것처럼 404다. 문서에 내부 엔드포인트와 모든 오류 메시지가 있어서다 |
 
 ## 클라이언트 (.env.local)
 
 | 변수 | 설명 |
 | --- | --- |
-| `NEXT_PUBLIC_API_URL` | 백엔드 API URL (기본 http://localhost:4000) |
-| `API_URL` | 서버 쪽(Next 프록시 라우트와 SSR)에서만 쓰는 백엔드 URL. 있으면 `NEXT_PUBLIC_API_URL`보다 먼저 쓴다(선택) |
-| `PROXY_SHARED_SECRET` | 서버 쪽 전용(`NEXT_PUBLIC_` 아님). 서버의 같은 이름 변수와 같은 값. Vercel(`VERCEL=1`)에서 이 값이 있으면 Next 프록시가 브라우저 IP(Vercel 엣지가 덮어쓴 `X-Vercel-Forwarded-For`)를 `X-Client-IP`로, 이 값을 `X-Proxy-Secret`으로 백엔드에 보낸다. 로컬은 비워 둔다 |
-| (프리뷰 백엔드 주소) | 프리뷰에서는 Vercel Related Projects(`workbridge-client/vercel.json`)가 넣어 주는 `VERCEL_RELATED_PROJECTS`로 같은 브랜치의 서버 프리뷰를 찾는다. 환경변수로 넣을 것은 없다. 우선순위는 `API_URL` 다음, `NEXT_PUBLIC_API_URL` 앞이다([DEPLOYMENT.md](DEPLOYMENT.md#프론트엔드)) |
-| `NEXT_PUBLIC_TOSS_CLIENT_KEY` | 토스페이먼츠 클라이언트 키 (test_ck_...) |
-| `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` | 로컬·E2E에서 `true`로 설정하면 결제 페이지에 개발용 결제 완료 버튼 표시. 실제 운영 서비스에서는 `false` 유지 |
+| `NEXT_PUBLIC_API_URL` | 백엔드 API URL. `API_URL`도 Related Projects 값도 없을 때(로컬, CLI 배포) 쓰인다(우선순위는 `src/lib/apiUrl.js` 머리 주석) |
+| `API_URL` | 서버 쪽 전용 백엔드 URL(선택). 있으면 다른 후보보다 먼저 쓴다. **프리뷰에는 넣지 않는다** — 넣으면 같은 브랜치의 서버 프리뷰를 찾는 Related Projects보다 먼저 쓰인다([DEPLOYMENT.md](DEPLOYMENT.md#프론트엔드)) |
+| `PROXY_SHARED_SECRET` | 서버 쪽 전용(`NEXT_PUBLIC_` 아님). 서버의 같은 이름 변수와 같은 값. Vercel(`VERCEL=1`)에서만 Next 프록시가 브라우저 IP를 `X-Client-IP`로, 이 값을 `X-Proxy-Secret`으로 백엔드에 보낸다. 로컬은 비워 둔다 |
+| `NEXT_PUBLIC_TOSS_CLIENT_KEY` | 토스페이먼츠 클라이언트 키(`test_ck_...`) |
+| `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS` | `true`면 결제 페이지에 개발용 결제 완료 버튼을 보인다. 서버의 `ALLOW_PAYMENT_BYPASS`와 짝이고, **프리뷰·운영에서는 반드시 `false`** |
 
-## E2E (`scripts/e2e.sh`)
+## E2E
 
-`bash scripts/e2e.sh`는 서버·클라이언트 변수를 스크립트 안에서 직접 정하고(더미 키, 결제 우회 켬, 작업 워커와 요청 제한 끔) 호출한 셸의 `DATABASE_URL`은 읽지 않는다. 바꿀 수 있는 것은 아래뿐이고 모두 선택이다.
-
-| 변수 | 설명 |
-| --- | --- |
-| `E2E_DB` | DB 이름 (기본 `workbridge_e2e`). **시드가 모든 테이블을 비우므로** 다른 DB를 가리키지 않는다 |
-| `E2E_DATABASE_URL` | Postgres 전체 URL (기본 `postgresql://$USER@localhost:5432/$E2E_DB`). CI는 서비스 컨테이너 주소를 넣는다 |
-| `E2E_SERVER_PORT` / `E2E_CLIENT_PORT` | API·클라이언트 포트 (기본 4002 / 3002) |
-| `E2E_CLIENT_MODE` | `dev`(`next dev`) 또는 `prod`(`next build && next start`). 기본은 `CI=true`면 `prod`, 아니면 `dev` |
-| `E2E_SKIP_SEED` | `1`이면 마이그레이션과 시드를 건너뛰고 지금 DB를 그대로 쓴다 |
-| `E2E_LOG_DIR` | 서버·클라이언트 로그 위치 (기본 `workbridge-client/test-results/e2e-logs`) |
-| `E2E_BASE_URL` | Playwright가 여는 클라이언트 주소. 스크립트가 `http://localhost:$E2E_CLIENT_PORT`로 정한다. 이미 떠 있는 앱에 `npm run e2e`(클라이언트)로 직접 돌릴 때만 넣는다 (기본 `http://localhost:3002`) |
+`bash scripts/e2e.sh`는 서버·클라이언트 변수를 스크립트 안에서 직접 정하고 호출한 셸의 `DATABASE_URL`은 읽지 않는다.
+바꿀 수 있는 `E2E_*` 변수는 스크립트 머리 주석에 있다. 스크립트는 그 DB를 마이그레이션하고 시드하므로(**모든 테이블을 비운다**)
+`E2E_DB`·`E2E_DATABASE_URL`을 다른 DB로 가리키지 않는다. 이미 떠 있는 앱에 Playwright만 돌리는 `E2E_BASE_URL`은
+`workbridge-client/e2e/README.md`에 있다.
 
 ## 외부 서비스 설정
 
@@ -81,10 +80,10 @@
    `application/vnd.ms-powerpoint`, `application/vnd.openxmlformats-officedocument.wordprocessingml.document`,
    `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
    `application/vnd.openxmlformats-officedocument.presentationml.presentation`, `application/x-hwp`로 둔다
-   (Supabase는 `image/*` 같은 하위 유형 전체 와일드카드만 받고 `…officedocument.*` 같은 부분 와일드카드는 거부한다)
-   (서버도 같은 정책을 검사한다. 버킷 제한은 서명 URL로 올리는 단계의 두 번째 방어선이다). Storage 정책(RLS)은
-   추가하지 않는다: 서버만 Secret Key로 접근하고, 브라우저는 서버가 발급한 서명 URL로만 올리고 내려받는다.
-   다른 이름을 쓰면 `SUPABASE_ATTACHMENT_BUCKET`에 넣는다
+   (Supabase는 `image/*` 같은 하위 유형 전체 와일드카드만 받고 `…officedocument.*` 같은 부분 와일드카드는 거부한다.
+   목록은 `src/lib/attachmentStorage.ts`의 허용 목록과 맞춘다. 서버도 같은 정책을 검사하고, 버킷 제한은 서명 URL로 올리는
+   단계의 두 번째 방어선이다). Storage 정책(RLS)은 추가하지 않는다: 서버만 Secret Key로 접근하고, 브라우저는 서버가 발급한
+   서명 URL로만 올리고 내려받는다. 다른 이름을 쓰면 `SUPABASE_ATTACHMENT_BUCKET`에 넣는다
 4. DATABASE_URL은 Settings > Database > Connection String에서 Transaction mode (포트 6543) 사용
 
 ### Google OAuth
@@ -98,9 +97,11 @@
 1. [토스페이먼츠 개발자센터](https://developers.tosspayments.com/)에서 테스트 키 발급
 2. 클라이언트 키 (`test_ck_...`)와 시크릿 키 (`test_sk_...`) 확인
 
-### 결제 우회 테스트
+### 결제 우회
 
-실제 결제창을 사용할 수 없는 로컬·E2E 환경에서는 서버 `.env`의 `ALLOW_PAYMENT_BYPASS=true`와 클라이언트 `.env.local`의 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true`를 함께 설정합니다. 결제 페이지에서 "개발용 결제 완료 처리"를 누르면 서버가 그 마일스톤의 개발용 완료 결제 레코드를 만들고 마일스톤을 결제 완료(`FUNDED`)로 바꿉니다(`POST /api/payments/dev-complete`, 마일스톤 순서대로). 이후 프리랜서가 산출물을 제출하고 의뢰인이 승인하면, 마지막 마일스톤 승인 때 계약이 자동으로 완료되어 리뷰를 쓸 수 있습니다. 실제 운영 서비스에서는 두 값을 모두 `false`로 유지합니다.
+실제 결제창을 쓸 수 없는 로컬·E2E에서는 서버 `ALLOW_PAYMENT_BYPASS=true`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS=true`를
+함께 둔다. 결제 페이지의 "개발용 결제 완료 처리"가 토스 승인 없이 그 마일스톤을 결제 완료(`FUNDED`)로 만든다. 돈을 받지 않고
+결제를 완료시키는 경로라서 프리뷰·운영에서는 두 값 모두 `false`다.
 
 ### OpenAI
 

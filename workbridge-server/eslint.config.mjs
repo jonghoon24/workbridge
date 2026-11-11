@@ -35,7 +35,7 @@ export default tseslint.config(
     },
   },
 
-  // Logging goes through `lib/logger.ts` (CLAUDE.md). The logger itself and the job CLI, whose
+  // Logging goes through `lib/logger.ts` (.claude/rules/notifications-logging.md). The logger itself and the job CLI, whose
   // stdout is its output, are the only places that write to the console.
   {
     files: ['src/**/*.ts'],
