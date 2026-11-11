@@ -64,9 +64,6 @@ const MESSAGES = {
 
   // 프로젝트
   'Project not found': '프로젝트를 찾을 수 없습니다. 삭제되었을 수 있습니다.',
-  'Only clients can view their projects': '의뢰인 회원만 볼 수 있는 화면입니다.',
-  'Only freelancers can view their bookmarks': '북마크는 프리랜서 회원만 사용할 수 있습니다.',
-  'Only freelancers can view their applications': '지원 현황은 프리랜서 회원만 볼 수 있습니다.',
   'recruitmentStartDate cannot be after deadline': '모집 시작일은 마감일보다 늦을 수 없습니다.',
   'Cannot change budget or recruitment dates after applications have been submitted':
     '지원자가 있는 프로젝트는 예산과 모집 기간을 바꿀 수 없습니다.',
