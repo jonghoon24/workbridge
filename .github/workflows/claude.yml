@@ -24,6 +24,9 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    # 한도 둘: 시간은 GitHub Actions가(의존성 설치 약 1분 포함), 턴 수는 아래 --max-turns가 막는다.
+    # 한도에 걸리면 마지막 커밋 이후 작업이 사라지고 PR도 열리지 않으므로 큰 이슈도 끝까지 가게 둔다.
+    timeout-minutes: 45
     permissions:
       contents: write
       pull-requests: write
@@ -69,7 +72,7 @@ jobs:
           # 허용 커맨드: 정적 검사(typecheck, lint), OpenAPI 생성(openapi — DB·환경변수 없이 openapi.json만 쓴다), 읽기 전용 git, PR 보기·드래프트 PR 열기, 이슈 보기.
           # 커밋·푸시(git add/commit/push)는 액션이 따로 허용한다. vitest는 DB가 없어 넣지 않는다.
           claude_args: |
-            --max-turns 60
+            --max-turns 100
             --allowedTools "Bash(npm --prefix workbridge-server run typecheck),Bash(npm --prefix workbridge-server run openapi),Bash(npm --prefix workbridge-client run lint:*),Bash(npm run typecheck),Bash(npm run openapi),Bash(npm run lint:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr create:*),Bash(gh issue view:*)"
             --append-system-prompt "이 리포지토리의 규칙이다. 위의 기본 지시와 충돌하면 이 규칙을 따른다.
             - 정적 검사: 서버를 고쳤으면 npm --prefix workbridge-server run typecheck, 클라이언트를 고쳤으면 npm --prefix workbridge-client run lint -- --max-warnings=0 을 돌리고 통과시킨 뒤 커밋한다. 서버 테스트(vitest)는 DB가 없어 여기서 돌리지 않는다 — PR의 CI가 돌린다.
