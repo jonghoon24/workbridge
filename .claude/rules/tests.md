@@ -6,10 +6,7 @@ paths:
 
 # 서버 테스트 (vitest + supertest)
 
-- 실패한 테스트를 통과시키려고 단언을 지우거나 약하게 바꾸지 않는다. 동작을 바꾸는 것이 요청받은 변경일 때만 테스트를 고친다.
-- 기존 코드에 테스트를 붙이다가 버그로 보이는 동작을 만나면 그 동작을 단언으로 고정하지 않고 보고한다.
-- 버그를 `it.fails`·`it.skip`·`it.todo`로 남기지 않는다. 버그는 GitHub 이슈로 추적하고, 고치는 PR이 고치기 전 코드에서
-  실패하는 회귀 테스트를 넣는다.
+- 버그를 `it.fails`·`it.skip`·`it.todo`로 남기지 않는다(버그는 GitHub 이슈로 추적한다).
 - 테스트 이름은 동작을 서술하는 영어 문장이다. 규칙 ID나 이슈 번호 태그를 붙이지 않는다.
 - `api()`·`authed()`로 받은 모든 응답은 `test/helpers/openapi.ts`가 OpenAPI 응답 스키마(객체는 strict)로 검사한다.
   새 상태 코드나 응답 필드는 테스트보다 먼저 `src/openapi/paths/<domain>.ts`·`responses/<domain>.ts`에 적는다.
@@ -19,7 +16,8 @@ paths:
   테스트마다 모든 테이블을 비우므로 DB를 같이 쓰면 서로의 픽스처를 지운다.
 - 픽스처는 테스트마다 `test/helpers/factories.ts`로 만든다. HTTP는 `test/helpers/api.ts`(`api()`, `authed(user)`).
 - 시간은 `now`를 넘겨 제어한다(서비스에는 `now`, 작업은 `test/helpers/jobs.ts`의 `runJobs(now)`).
-  **가짜 타이머는 쓰지 않는다**(Prisma와 섞이지 않는다).
+  **가짜 타이머는 쓰지 않는다**(Prisma와 섞이지 않는다). 미래의 `now`로 작업을 돌릴 때는 `runDueJobs({ now, types })`로
+  타입을 제한한다. 그러지 않으면 `project.lifecycleSweep`이 마감이 그 전인 프로젝트를 모두 닫는다.
 - **여러 엔드포인트에 걸친 관심사는 한 곳에서 한 번만 테스트한다 — 엔드포인트마다 다시 단언하지 않는다:**
   - 401/403/소유권: `test/authorization.test.ts`의 `PROTECTED_ROUTES` / `PUBLIC_ROUTES`.
   - 소프트 삭제된 호출자: `test/soft-delete.test.ts`의 `guardedMutations`(`requireActiveUser`가 붙은 쓰기 라우트 전부).

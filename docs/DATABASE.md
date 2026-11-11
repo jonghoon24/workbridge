@@ -1,4 +1,4 @@
-# 데이터베이스 모델
+# 데이터베이스 불변식과 잠금
 
 PostgreSQL(운영은 Supabase) + Prisma. 모델·필드·enum·인덱스의 원본은 `workbridge-server/prisma/schema.prisma`(필드 주석 포함)이고,
 마이그레이션은 `prisma/migrations/`에 있다. 제품 규칙과 상태 전이는 [domain/](domain/README.md)에 있다. 이 문서는 스키마만 읽어서는
@@ -154,9 +154,8 @@ Storage는 secret 키로만 다룬다. 그래서 **모든 테이블에 RLS를 �
 ## 금액이 `Float`인 부채
 
 `Project.budget`, `Application.expectedRate`, `Contract.amount`, `Milestone.amount`, `Payment.amount`, 정산 금액들,
-`User.hourlyRate`, `PricingAnalysis.totalAmount`가 모두 `Float`(double)이다. 확장 이전부터 있던 부채이고 일부러 마이그레이션하지
-않았다. double은 2^53까지의 정수를 정확히 담으므로 원 단위 정수만 쓰는 한 저장에서는 오차가 없다. 그래서 컬럼 대신 쓰는 값을
-막는다.
+`User.hourlyRate`, `PricingAnalysis.totalAmount`가 모두 `Float`(double)이다. 확장 이전부터 있던 부채이고 마이그레이션하지
+않는다. 컬럼 대신 쓰는 값을 막는다.
 
 - 확장 도메인은 원 단위 정수만 받는다(소수 금액 입력은 400). 수수료 계산은 basis point 정수 연산이다.
 - 계약 금액은 지원의 `expectedRate`라 소수일 수 있다. 마일스톤 관련 계산(기본 마일스톤, 계획 합계, 서명 때의 계획 검사)은
@@ -176,6 +175,8 @@ Storage는 secret 키로만 다룬다. 그래서 **모든 테이블에 RLS를 �
 - **정산 원장은 확장 이후 승인분부터다.** 확장 전에 완료된 계약의 마일스톤에는 `SettlementItem`이 없다(화면의 예상 정산액은
   현재 요율로 계산해 보여준다).
 - **대화방 백필**: 확장 전 계약마다 대화방과 참여자 둘을 계약의 `createdAt`으로 만들었다. 메시지(시스템 메시지 포함)는 백필하지 않았다.
+- **0원 예산·단가**: 1원 이상 규칙 전에 0원으로 저장된 `Project.budget`과 `User.hourlyRate`는 백필하지 않았다. 그 값을
+  수정할 때까지 0원으로 남아 있으므로, 이 컬럼에 CHECK를 걸거나 백필할 때는 먼저 그런 행을 처리한다.
 - **알림 설정**: 희소 저장(기본값과 다른 것만 행으로 남는다)이라 백필이 없다. 행이 없으면 기본값이다.
 - **비공개 버킷 이전 전의 첨부**는 `storageKey` 없이 공개 URL만 가진 행이다. 옮기는 절차는 [DEPLOYMENT.md](DEPLOYMENT.md)의
   "첨부 파일은 저장소로 직접 올린다".

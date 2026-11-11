@@ -70,8 +70,8 @@ EOF
 (cd workbridge-server && npx prisma migrate deploy && npm run db:seed)
 ```
 
-`RATE_LIMIT_ENABLED=false`로 두는 이유: 로컬 로그인은 모두 loopback에서 오므로 15분에 20회 한도 하나를
-나눠 쓴다(`docs/domain/accounts.md` "로그인 요청 제한"). 시드는 마일스톤/정산/대화의 모든 상태를 덮고, 날짜는
+`RATE_LIMIT_ENABLED=false`로 두는 이유: 로컬 로그인은 모두 loopback에서 오므로 IP별 로그인 한도
+(`workbridge-server/src/lib/rateLimitRules.ts`의 `login.ip`) 하나를 나눠 쓴다. 시드는 마일스톤/정산/대화의 모든 상태를 덮고, 날짜는
 지금 기준이다. **시드 계정 비밀번호는 모두 `password123`**
 (`kim@example.com` CLIENT, `park@example.com` FREELANCER. 화면별로 어떤 계정을 쓸지는 `docs/SEED_DATA.md`).
 

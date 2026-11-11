@@ -34,7 +34,7 @@
 
 8. **`User`·`Project`를 읽거나 쓰는 모든 쿼리는 `deletedAt: null`로 거른다.**
    - 왜: 소프트 삭제다(`docs/domain/README.md` "소프트 삭제"). 이 필터 누락은 반복해서 난 버그 유형이다(삭제된 프로젝트의 북마크 #14, 계약 #16). 확장 리소스는 계약의 프로젝트를 따라 404가 된다.
-   - 확인: 새 `findUnique`/`findFirst`/`findMany`/`update`가 `user`·`project`(또는 `contract.project`)에 닿을 때 필터가 있는지 본다. `findUnique`는 필터를 못 거니 `findFirst`로 바꿔야 한다.
+   - 확인: 새 `findUnique`/`findFirst`/`findMany`/`update`가 `user`·`project`(또는 `contract.project`)에 닿을 때 필터가 있는지 본다. 유니크 필드만으로 찾는 `findUnique`는 `deletedAt` 필터를 건너뛰므로 위반이다. `deletedAt: null`을 함께 건 `findFirst`나 `findUnique`(Prisma 5는 유니크 조회에 다른 필터를 더할 수 있다)는 괜찮다.
 
 9. **공개 핸들러에서 `req.user`를 읽지 않는다.**
    - 왜: `Express.Request.user`는 non-optional로 선언돼 컴파일러가 경고하지 않지만, `src/types/index.ts`의 `Request.user` 주석에 적힌 공개 핸들러(`runJobs`, API 문서 화면 포함)에서는 런타임에 `undefined`다. `test/authorization.test.ts`가 유일한 안전장치다.
@@ -57,5 +57,5 @@
     - 확인: 새 라우트마다 `PROTECTED_ROUTES`(표에 없으면 실제 라우터와 대조하는 테스트가 실패한다)와, 쓰기 라우트면 `guardedMutations` 행이 추가됐는지 본다. 엔드포인트별 파일에서 401/403을 다시 단언하는 것은 중복이다.
 
 14. **클라이언트는 `src/lib/api.js`로만 백엔드를 부르고, 사용자에게 보이는 문구를 바꾸면 E2E도 함께 고친다.**
-    - 왜: `api.js`가 토큰 첨부, 401 시 한 번 갱신, 동시 요청 대기열, 실패 시 `/login` 이동을 맡는다(인증 폼만 `authApi.js`). E2E(`workbridge-client/e2e/`)는 화면의 한국어 텍스트로 요소를 고른다.
+    - 왜: 토큰 첨부와 만료 시 갱신은 `api.js` 한 곳에만 있다(인증 폼만 `authApi.js`). E2E(`workbridge-client/e2e/`)는 화면의 한국어 텍스트로 요소를 고른다.
     - 확인: `workbridge-client/src` diff에서 `from 'axios'`, `fetch(`를 grep하고, 바뀐 JSX 문자열이 `workbridge-client/e2e/`에서 쓰이는지 grep한다. 새 보호 페이지는 `src/middleware.js`의 `protectedRoutes`에 추가됐는지 본다.

@@ -17,12 +17,12 @@
 
 | 파일 | 왜 있는가 |
 |---|---|
-| `server-layers.md` | 기존/확장 레이어가 섞여 있고 이전은 #40에서 따로 한다. 새 라우트의 가드 체인과 OpenAPI 등록, 공개 핸들러의 `req.user`(타입이 경고하지 않는다), 트랜잭션 아웃박스, 트랜잭션 안 P2002(Postgres가 트랜잭션을 이미 중단했다), 잠금 순서(`lockUserRow` 첫 문장, 시스템 메시지는 마지막 쓰기), raw SQL의 시각(9시간 어긋남) |
+| `server-layers.md` | 기존/확장 레이어가 섞여 있고 이전은 #40에서 따로 한다. 새 라우트의 가드 체인과 OpenAPI 등록, 환경변수는 `env.ts`로만, 공개 핸들러의 `req.user`(타입이 경고하지 않는다), 트랜잭션 아웃박스, 트랜잭션 안 P2002(Postgres가 트랜잭션을 이미 중단했다), 잠금 순서(`lockUserRow` 첫 문장, 시스템 메시지는 마지막 쓰기), raw SQL의 시각(9시간 어긋남) |
 | `money-time.md` | 수수료·부가세·반올림은 `lib/money.ts`에만(인라인 계산은 1원 어긋남). CI·Vercel은 UTC, 개발 PC는 KST라 호스트 시간대 함수는 기기마다 답이 다르다. 테스트가 시간을 제어하도록 `now`를 인자로 |
-| `jobs.md` | 작업 등록 위치, 멱등 핸들러, 외부로 보내는 작업의 플래그, 미래 `now`로 돌릴 때 수명주기 스윕이 프로젝트를 닫는 함정 |
+| `jobs.md` | 작업 등록 위치, 멱등 핸들러, 외부로 보내는 작업의 플래그 |
 | `notifications-logging.md` | 알림은 `notify()` 계열만(채널 정책과 수신자 설정이 거기서 적용된다). 요청 body·query·헤더를 통째로 로그에 넣지 않는다(계좌번호·토큰). 스위트가 "500은 한 번만 error 로그"를 단언한다 |
-| `tests.md` | 단언을 약하게 바꾸지 않기, 버그로 보이는 동작을 고정하지 않기, 모든 응답의 OpenAPI 적합성 검사, 실제 Postgres, 가짜 타이머 금지, 공통 관심사는 중앙 매트릭스에서 한 번 |
-| `prisma.md` | 새 테이블의 RLS(Supabase Data API), 새 `String[]` 컬럼의 `NULL` 원소 CHECK(Prisma `P2032`), `Float` 금액 부채, `seed.js`는 CommonJS |
+| `tests.md` | 테스트를 쓰는 방법: 모든 응답의 OpenAPI 적합성 검사, 실제 Postgres, 가짜 타이머 대신 `now`, 미래 `now`로 작업을 돌릴 때 수명주기 스윕이 프로젝트를 닫는 함정, 공통 관심사는 중앙 매트릭스에서 한 번. 단언을 다루는 원칙은 경로와 무관해 `CLAUDE.md`에 있다 |
+| `prisma.md` | 커밋된 마이그레이션 불변(훅은 Edit/Write만 막는다), 새 테이블의 RLS(Supabase Data API), 새 `String[]` 컬럼의 `NULL` 원소 CHECK(Prisma `P2032`), `Float` 금액 부채, `seed.js`는 CommonJS |
 | `client.md` | JSX 유지, `lib/api.js`만, 첨부 `PUT`에 토큰 금지, 문구를 바꾸면 E2E도 함께 |
 | `deploy.md` | `vercel.json`의 진입점 두 곳과 `regions`, `dist/` 없음(Prisma 생성은 `postinstall`), 클라이언트 `vercel.json`의 자동 감지, 결제 우회·메일 로그의 운영 기본값 |
 

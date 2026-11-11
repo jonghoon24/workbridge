@@ -20,6 +20,7 @@ paths:
   multipart 라우트(포트폴리오 이미지)에서는 `imageUpload` **다음에** 마운트한다.
 - 컨트롤러는 얇게: 서비스를 부르고 `res.json(...)`, `catch (err) { next(err) }`. 비즈니스 로직, 트랜잭션,
   `AppError`는 `src/services/<domain>.service.ts`에 둔다.
+- 환경변수는 `src/env.ts`의 getter로만 읽는다(`process.env` 직접 읽기 금지).
 - 파일 첨부는 multipart로 받지 않는다: 서명 업로드 URL과 `uploadIds`(`services/attachments.service.ts`)를 쓴다.
 - OpenAPI에 등록한다: 경로와 상태 코드별 응답·오류 메시지는 `src/openapi/paths/<domain>.ts`, 응답 모양은
   `src/openapi/responses/<domain>.ts`. 테스트가 모든 응답을 이 문서와 strict하게 대조하므로 문서에 없는 상태 코드나

@@ -12,5 +12,3 @@ paths:
 - 핸들러는 멱등이다: 상태를 다시 읽고 조건부로 쓴다. 두 번 돌아도 바뀌는 것이 없다.
 - 새 타입은 `jobs/registry.ts`에, payload 타입은 `jobs/types.ts`에, 반복 일정은 `jobs/recurring.ts`에 등록한다.
 - 새 작업 타입이 외부로 무언가(돈, 메일)를 보내면 `jobs/gates.ts`에 같은 방식의 플래그를 둔다(기본 꺼짐).
-- 테스트에서 미래의 `now`로 작업을 돌릴 때는 `runDueJobs({ now, types })`로 타입을 제한한다. 그러지 않으면
-  `project.lifecycleSweep`이 마감이 그 전인 프로젝트를 모두 닫는다.

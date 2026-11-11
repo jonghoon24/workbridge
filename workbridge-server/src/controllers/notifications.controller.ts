@@ -52,6 +52,7 @@ export async function markNotificationRead(
       where: { id: req.params.id, userId: req.user.id },
     });
 
+    // Someone else's notification is 404, not 403, so ids cannot be probed for existence.
     if (!notification) {
       throw new AppError('Notification not found', 404);
     }
