@@ -37,8 +37,9 @@ stateDiagram-v2
 상태를 맞춘다.** `closeExpiredOpenProjects(now)`(`src/lib/projectLifecycle.ts`)가 모집 시작일이 된 `UPCOMING`을
 열고, 마감이 지난 프로젝트를 `CLOSED`로 바꾸고, 그 프로젝트의 대기 중인 지원을 알림 없이 거절한다.
 
-프로젝트 목록·상세, 지원, 내 지원·내 프로젝트 목록이 이 스윕을 먼저 돌린다. 즉 **프로젝트 목록과 상세 조회는
-읽기 전용이 아니다.** 작업 큐의 `project.lifecycleSweep`도 같은 함수를 주기적으로 돌리지만([jobs.md](jobs.md)), 그것은
+프로젝트 목록·상세를 비롯해 프로젝트나 지원을 읽는 여러 경로가 이 스윕(또는 지원 거절만 하는
+`rejectPendingApplicationsForClosedProjects`)을 먼저 돌린다. 어느 경로인지는 `src/lib/projectLifecycle.ts` 함수의
+호출부를 본다. 즉 **프로젝트 목록과 상세 조회는 읽기 전용이 아니다.** 작업 큐의 `project.lifecycleSweep`도 같은 함수를 주기적으로 돌리지만([jobs.md](jobs.md)), 그것은
 아무도 읽지 않을 때 상태를 맞춰 두는 보조 장치이고 보장은 읽기 경로의 스윕이다. 스윕은 멱등이라 둘이 어떤 순서로
 겹쳐도 결과가 같다. 추천과 대화방 조회는 스윕을 돌리지 않는 진짜 읽기 전용이다.
 
