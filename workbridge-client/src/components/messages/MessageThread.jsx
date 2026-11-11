@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
-import { forgetUploads, uploadAttachments } from '@/lib/attachments';
+import { forgetUploads, isRejectedUpload, uploadAttachments } from '@/lib/attachments';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import { formatDateTime } from '@/lib/format';
@@ -191,7 +191,7 @@ export default function MessageThread({ conversationId }) {
       // 업로드 단계의 오류는 이미 화면용 문구를 갖고 있다.
       if (err.displayMessage) throw err;
       // 업로드가 만료됐거나 저장된 파일이 거부되면 다음 시도에서 새로 올린다.
-      if ([400, 413].includes(err.response?.status)) forgetUploads(files);
+      if (isRejectedUpload(err)) forgetUploads(files);
       if (err.response?.status === 409) {
         // 그사이 대화가 닫혔거나 상대가 탈퇴했다. 입력창을 이유로 바꾼다.
         api.get(base).then(({ data }) => setConversation(data.conversation)).catch(() => {});

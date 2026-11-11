@@ -185,7 +185,13 @@ export default function ProfilePage() {
       setSuccess('프로필이 저장되었습니다.');
       setCompletionKey((key) => key + 1);
     } catch (err) {
-      setError(toUserMessage(err, '저장에 실패했습니다.'));
+      setError(toUserMessage(err, '저장에 실패했습니다.', {
+        // 프로필 이미지는 5MB 이하의 이미지 한 장이다(공용 문구는 첨부 파일용).
+        codes: {
+          FILE_TOO_LARGE: '이미지는 5MB 이하만 올릴 수 있습니다.',
+          FILE_TYPE_UNSUPPORTED: '이미지 파일만 올릴 수 있습니다.',
+        },
+      }));
     } finally {
       setSaving(false);
     }

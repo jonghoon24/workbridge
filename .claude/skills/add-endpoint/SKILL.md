@@ -25,7 +25,8 @@ argument-hint: <METHOD> <path> — <하는 일>
 - 검사 순서: 역할(403 `FORBIDDEN_ROLE`) → 업로드(413/400) → 검증(400 `VALIDATION_FAILED`, `<path>: <message>`)
   → 존재(404 `<RESOURCE>_NOT_FOUND`) → 소유권(403 `FORBIDDEN_RESOURCE`) → 상태(409);
 - 원인마다 오류 코드(`src/lib/errorCodes.ts`)와 메시지. 클라이언트가 같은 안내를 하는 원인이면 기존 코드를 쓰고, 아니면
-  새 코드를 표와 `test/error-codes.test.ts`의 `PUBLISHED` 끝에 더한다(이름 규칙은 표의 주석). 응답 모양과 상태 코드
+  새 코드를 표와 `test/error-codes.test.ts`의 `PUBLISHED` 끝에 더하고(이름 규칙은 표의 주석), 클라이언트
+  `src/lib/errorMessages.js`의 `CODE_MESSAGES`에 문구를 넣는다. 응답 모양과 상태 코드
   (`201 { item }`, `200 { items, meta }`)와 함께 6단계에서 OpenAPI에 그대로 적는다;
 - 한 트랜잭션에서 바뀌는 행, `notify()`로 보내는 알림, 넣는 작업(`docs/domain/README.md` "원자성");
 - 소프트 삭제: 삭제된 프로젝트/사용자 때문에 무엇이 안 보이게 되는지(`docs/domain/README.md` "소프트 삭제");

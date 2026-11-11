@@ -15,6 +15,10 @@ paths:
   브라우저 코드는 같은 출처 `/api/*`를 부른다.
 - 로그인이 필요한 페이지를 추가하면 그 경로 접두사를 `src/middleware.js`의 `protectedRoutes`에 넣는다.
   이 미들웨어는 쿠키가 있는지만 보므로 권한 검사는 서버에 둔다.
+- 서버 오류는 `toUserMessage(err, fallback, { codes, fields })`(`src/lib/errorMessages.js`)로 보여 주고, 분기는
+  `errorCode(err)`(오류 코드)나 `fieldViolation(err)`(검증 실패의 원인 필드)로 한다. 서버의 `message`는 개발자용 영어라
+  바뀔 수 있으므로 비교하지도 화면에 보여 주지도 않는다. 코드와 필드 코드는 `npm run check:error-codes`가 서버의
+  `openapi.json`과 대조한다(CI).
 - **사용자에게 보이는 한국어 문구는 함부로 바꾸지 않는다.** E2E 테스트가 텍스트로 요소를 찾으므로
   라벨이나 메시지를 바꾸면 깨진다. 꼭 바꿔야 하면 같은 변경에서 `workbridge-client/e2e/`도 고친다.
-- 검사(단위 테스트 없음): `npm run lint`, `npm run build`. 화면 확인과 E2E는 `run-workbridge` 스킬을 따른다.
+- 검사(단위 테스트 없음): `npm run lint`, `npm run check:error-codes`, `npm run build`. 화면 확인과 E2E는 `run-workbridge` 스킬을 따른다.
