@@ -59,6 +59,7 @@ export function reauthFailurePath(purpose: ReauthPurpose, code: ReauthErrorCode)
 interface GoogleIdClaims {
   iss?: unknown;
   aud?: unknown;
+  azp?: unknown;
   exp?: unknown;
   sub?: unknown;
   auth_time?: unknown;
@@ -82,6 +83,10 @@ function readIdToken(idToken: string | undefined, now: Date): { sub: string; aut
     throw new ReauthFailure('failed', 'unexpected issuer');
   }
   if (!audiences.includes(env.GOOGLE_CLIENT_ID)) throw new ReauthFailure('failed', 'unexpected audience');
+  // OIDC Core 3.1.3.7 steps 4-5: with more than one audience, the authorized party must be us.
+  if (audiences.length > 1 && claims.azp !== env.GOOGLE_CLIENT_ID) {
+    throw new ReauthFailure('failed', 'unexpected authorized party');
+  }
   if (typeof claims.exp !== 'number' || claims.exp * 1000 <= now.getTime()) {
     throw new ReauthFailure('failed', 'expired id_token');
   }

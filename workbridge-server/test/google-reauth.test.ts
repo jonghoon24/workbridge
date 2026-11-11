@@ -295,6 +295,10 @@ describe('GET /api/auth/google/callback for a re-authentication', () => {
 
   it.each([
     ['an ID token for another client', () => stubGoogle(idToken({ aud: 'someone-elses-client' }))],
+    [
+      'an ID token for several audiences whose authorized party is another client',
+      () => stubGoogle(idToken({ aud: [GOOGLE_CLIENT_ID, 'someone-elses-client'], azp: 'someone-elses-client' })),
+    ],
     ['an ID token from another issuer', () => stubGoogle(idToken({ iss: 'https://evil.example' }))],
     ['an expired ID token', () => stubGoogle(idToken({ exp: nowSeconds() - 1 }))],
     ['an ID token without a subject', () => stubGoogle(idToken({ sub: undefined }))],

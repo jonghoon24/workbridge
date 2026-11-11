@@ -200,11 +200,7 @@ export async function googleCallback(req: Request, res: Response, next: NextFunc
       return res.redirect(`${client}${location}`);
     }
 
-    if (!code) {
-      return res.redirect(`${client}/login?error=oauth_failed`);
-    }
-
-    if (intent.intent !== 'login' || !stateMatches) {
+    if (!code || intent.intent !== 'login' || !stateMatches) {
       return res.redirect(`${client}/login?error=oauth_failed`);
     }
 

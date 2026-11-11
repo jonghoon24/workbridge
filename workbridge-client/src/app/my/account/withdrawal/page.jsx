@@ -112,7 +112,7 @@ export default function WithdrawalPage() {
 
     const { token, code } = takeReauthResult();
     if (code) {
-      setError(REAUTH_ERRORS[code] ?? REAUTH_ERRORS.failed);
+      setError(Object.hasOwn(REAUTH_ERRORS, code) ? REAUTH_ERRORS[code] : REAUTH_ERRORS.failed);
     } else if (token) {
       if (me && proofSubject(token) !== me.id) setError(REAUTH_ERRORS.account_mismatch);
       else setReauthToken(token);
