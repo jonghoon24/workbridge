@@ -151,6 +151,14 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     role: null,
     gate: null,
   },
+  {
+    label: 'POST /api/auth/change-password',
+    method: 'post',
+    path: () => '/api/auth/change-password',
+    body: () => ({ currentPassword: 'password123', newPassword: 'new-password-1' }),
+    role: null,
+    gate: null,
+  },
 
   // users.routes.ts
   { label: 'GET /api/users/me', method: 'get', path: () => '/api/users/me', role: null, gate: null },
@@ -933,7 +941,8 @@ describe('authentication — token claims', () => {
     expect(payload.id).toBe(res.body.user.id);
   });
 
-  it('the refresh token carries the same shape as the access token', async () => {
+  // Plus `pwdChangedAt`, which lets a password change end the sessions minted before it.
+  it('the refresh token carries the access token\'s claims plus pwdChangedAt', async () => {
     const res = await api().post('/api/auth/signup').send({
       email: 'claims2@test.local',
       password: 'password123',
@@ -947,7 +956,7 @@ describe('authentication — token claims', () => {
     const refresh = cookie!.split(';')[0].slice('refreshToken='.length);
 
     expect(Object.keys(claims(refresh)).sort())
-      .toEqual(Object.keys(claims(res.body.accessToken)).sort());
+      .toEqual([...Object.keys(claims(res.body.accessToken)), 'pwdChangedAt'].sort());
   });
 
   it('the access token lives 15 minutes', async () => {

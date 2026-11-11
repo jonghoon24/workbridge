@@ -18,7 +18,7 @@ import { api, authed, expiredToken, tokenFor } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeUser, TEST_PASSWORD } from './helpers/factories';
 import { generateRefreshToken } from '../src/lib/jwt';
-import type { JwtUserPayload } from '../src/types/index';
+import type { JwtUserPayload, RefreshTokenPayload } from '../src/types/index';
 
 // ---------------------------------------------------------------------------
 // Local helpers (kept in this file on purpose — the shared harness is off limits)
@@ -54,6 +54,10 @@ function refreshCookieToken(res: WithHeaders): string {
 
 function claims(token: string, secret: string = ACCESS_SECRET): JwtUserPayload {
   return jwt.verify(token, secret) as JwtUserPayload;
+}
+
+function refreshClaims(token: string): RefreshTokenPayload {
+  return jwt.verify(token, REFRESH_SECRET) as RefreshTokenPayload;
 }
 
 /** A Google userinfo payload; `verified_email` is what a real Google response carries. */
@@ -300,6 +304,14 @@ describe('POST /api/auth/signup', () => {
     expect(decoded.role).toBe('CLIENT');
   });
 
+  it('records in the refresh token that the password was never changed', async () => {
+    const res = await api().post('/api/auth/signup').send(valid);
+
+    const decoded = refreshClaims(refreshCookieToken(res));
+    expect(decoded).toHaveProperty('pwdChangedAt', null);
+    expect(Object.keys(decoded).sort()).toEqual(['email', 'exp', 'iat', 'id', 'pwdChangedAt', 'role']);
+  });
+
   it('gives the access token a 15-minute and the refresh token a 7-day lifetime', async () => {
     const res = await api().post('/api/auth/signup').send(valid);
 
@@ -488,6 +500,18 @@ describe('POST /api/auth/login', () => {
       email: user.email,
       role: 'CLIENT',
     });
+  });
+
+  it('records the current password change time in the refresh token', async () => {
+    const changedAt = new Date('2026-11-01T03:04:05.678Z');
+    const user = await makeClient({ passwordChangedAt: changedAt });
+
+    const res = await api().post('/api/auth/login').send({ email: user.email, password: TEST_PASSWORD });
+
+    expect(res.status).toBe(200);
+    expect(refreshClaims(refreshCookieToken(res)).pwdChangedAt).toBe(changedAt.getTime());
+    // The access token does not carry it.
+    expect(Object.keys(claims(res.body.accessToken)).sort()).toEqual(['email', 'exp', 'iat', 'id', 'role']);
   });
 
   it('issues a token that authenticates a protected route', async () => {
@@ -682,6 +706,46 @@ describe('POST /api/auth/refresh', () => {
 
     expect(me.status).toBe(200);
     expect(me.body.id).toBe(user.id);
+  });
+
+  it('refuses a refresh token minted before the password was last changed', async () => {
+    const changedAt = new Date('2026-11-01T03:04:05.678Z');
+    const user = await makeClient({ passwordChangedAt: changedAt });
+    const before = generateRefreshToken({
+      id: user.id, email: user.email, role: user.role, pwdChangedAt: changedAt.getTime() - 60_000,
+    });
+
+    const res = await api().post('/api/auth/refresh').set('Cookie', `refreshToken=${before}`);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { message: 'Invalid or expired refresh token' } });
+  });
+
+  it('accepts a refresh token minted with the current password change time', async () => {
+    const changedAt = new Date('2026-11-01T03:04:05.678Z');
+    const user = await makeClient({ passwordChangedAt: changedAt });
+    const current = generateRefreshToken({
+      id: user.id, email: user.email, role: user.role, pwdChangedAt: changedAt.getTime(),
+    });
+
+    const res = await api().post('/api/auth/refresh').set('Cookie', `refreshToken=${current}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  // Tokens minted before the claim existed carry none: they keep working for a user who never
+  // changed the password, and stop for one who has.
+  it('reads a refresh token without the claim as minted before any password change', async () => {
+    const unchanged = await makeClient();
+    const changed = await makeFreelancer({ passwordChangedAt: new Date() });
+    const legacy = (u: typeof unchanged) => jwt.sign({ id: u.id, email: u.email, role: u.role }, REFRESH_SECRET, { expiresIn: '7d' });
+
+    const ok = await api().post('/api/auth/refresh').set('Cookie', `refreshToken=${legacy(unchanged)}`);
+    const refused = await api().post('/api/auth/refresh').set('Cookie', `refreshToken=${legacy(changed)}`);
+
+    expect(ok.status).toBe(200);
+    expect(refused.status).toBe(401);
+    expect(refused.body).toEqual({ error: { message: 'Invalid or expired refresh token' } });
   });
 
   it('reflects the current role, not the role in the refresh token', async () => {

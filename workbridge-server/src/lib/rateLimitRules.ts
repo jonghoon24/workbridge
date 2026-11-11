@@ -7,7 +7,7 @@ import { hit, isRateLimitEnabled, reset } from './rateLimit';
 import type { JwtUserPayload, RateLimitRule } from '../types/index';
 
 /**
- * The rate-limit rules: login (docs/domain/accounts.md) and AI rate analysis
+ * The rate-limit rules: login and password confirmation (docs/domain/accounts.md) and AI rate analysis
  * (docs/domain/projects-contracts.md). The client IP comes from `clientIp()` (`lib/clientIp.ts`).
  */
 
@@ -37,6 +37,19 @@ export const LOGIN_FAILURE_RULE: RateLimitRule = {
     const email = normalizedEmail(req);
     return email ? `${email}:${clientIp(req)}` : null;
   },
+};
+
+/**
+ * Wrong current passwords per signed-in user, on every route that re-checks the password (changing
+ * it). The middleware only *peeks*; the service counts a failure with
+ * {@link recordPasswordConfirmFailure} and clears the count on success — the same pattern as
+ * {@link LOGIN_FAILURE_RULE}, keyed by the account instead of email + IP. Runs after `authenticate`.
+ */
+export const PASSWORD_CONFIRM_FAILURE_RULE: RateLimitRule = {
+  name: 'password.failure',
+  windowMs: 15 * MINUTE_MS,
+  limit: 5,
+  key: (req) => (req as { user?: JwtUserPayload }).user?.id ?? null,
 };
 
 // The analyze rules run after `authenticate`, so `req.user` is set.
@@ -73,4 +86,20 @@ export async function recordLoginFailure(req: Request, now: Date = new Date()): 
 export async function clearLoginFailures(req: Request): Promise<void> {
   const key = isRateLimitEnabled() ? ruleKey(LOGIN_FAILURE_RULE, req) : null;
   if (key) await reset(key);
+}
+
+function passwordConfirmKey(userId: string): string {
+  return `${PASSWORD_CONFIRM_FAILURE_RULE.name}:${userId}`;
+}
+
+/** Counts a wrong current password against the user. */
+export async function recordPasswordConfirmFailure(userId: string, now: Date): Promise<void> {
+  if (!isRateLimitEnabled()) return;
+  await hit(passwordConfirmKey(userId), PASSWORD_CONFIRM_FAILURE_RULE.windowMs, PASSWORD_CONFIRM_FAILURE_RULE.limit, now);
+}
+
+/** Clears the user's count after the password was confirmed. */
+export async function clearPasswordConfirmFailures(userId: string): Promise<void> {
+  if (!isRateLimitEnabled()) return;
+  await reset(passwordConfirmKey(userId));
 }

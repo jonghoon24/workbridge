@@ -96,7 +96,9 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 - **API 호출**: 모두 `src/lib/api.js`(Axios 인스턴스 하나). 액세스 토큰을 붙이고 401이면 `/api/auth/refresh`로 한 번
   갱신한다. 로그인·가입·역할 선택·로그아웃만 갱신 인터셉터가 없는 `src/lib/authApi.js`를 쓴다.
 - **프록시**: `src/app/api/[...path]/route.js`가 `/api/*`를 서버로 전달하고, `src/app/api/auth/*`는
-  `src/lib/server/authProxy.js`로 리프레시 토큰을 프론트엔드 쪽 `refreshToken` 쿠키로 다룬다. 서버 주소는 서버 쪽 코드에서만
+  `src/lib/server/authProxy.js`로 리프레시 토큰을 프론트엔드 쪽 `refreshToken` 쿠키로 다룬다. 일반 프록시는 쿠키를 주고받지
+  않으므로, 리프레시 쿠키를 새로 심는 서버 경로는 `/api/auth/*` 아래에 두고 전용 라우트를 만든다(로그인한 사용자가 부르는
+  `change-password`는 `api.js`로 부른다). 서버 주소는 서버 쪽 코드에서만
   `src/lib/apiUrl.js`의 `getApiUrl()`이 정한다(우선순위는 그 파일 머리 주석).
 - **상태**: Zustand 스토어 `src/store/authStore.js`(사용자, `localStorage`에 복사. 액세스 토큰은 `localStorage`에만
   두고 `src/lib/api.js`의 인터셉터가 읽고 갱신한다)와

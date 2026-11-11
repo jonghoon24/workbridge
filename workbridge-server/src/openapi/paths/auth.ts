@@ -1,8 +1,8 @@
 import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { z } from '../../lib/zod';
-import { googleCallbackQuery, loginBody, selectRoleBody, signupBody } from '../../schemas/auth';
-import { AUTHENTICATED, bearer, created, errors, invalid, jsonBody, ok, publicRoute, SECURITY_SCHEMES } from '../common';
+import { changePasswordBody, googleCallbackQuery, loginBody, selectRoleBody, signupBody } from '../../schemas/auth';
+import { ACTIVE_USER, AUTHENTICATED, bearer, created, errors, invalid, jsonBody, ok, publicRoute, SECURITY_SCHEMES } from '../common';
 import { accessTokenBody, authSession } from '../responses/auth';
 import { messageBody } from '../responses/common';
 
@@ -81,7 +81,7 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
       ...errors({
         401: [
           '`Refresh token not found` — `refreshToken` 쿠키가 없음',
-          '`Invalid or expired refresh token` — 쿠키가 위조됐거나 만료됨',
+          '`Invalid or expired refresh token` — 쿠키가 위조됐거나 만료됨, 또는 비밀번호가 바뀌기 전에 발급됨(다른 기기 로그아웃)',
           '`User not found` — 탈퇴한 사용자',
         ],
       }),
@@ -102,6 +102,37 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
       ...errors(invalid('`Role has already been selected` — 이미 역할을 골랐음'), AUTHENTICATED, {
         404: ['`User not found` — 탈퇴한 사용자'],
       }),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/auth/change-password',
+    operationId: 'changePassword',
+    tags,
+    summary: '비밀번호 변경',
+    description:
+      '현재 비밀번호를 확인하고 새 비밀번호로 바꾼다. 새 비밀번호 규칙은 가입과 같다. 이 기기에는 토큰을 다시 발급하고, '
+      + '바꾸기 전에 발급된 리프레시 토큰은 더 이상 갱신되지 않는다(다른 기기 로그아웃). 이미 발급된 Access Token은 만료까지 유효하다. '
+      + '현재 비밀번호를 틀린 횟수는 사용자별로 세고, 한도를 넘으면 그 윈도가 끝날 때까지 맞는 비밀번호도 429다.',
+    security: bearer,
+    request: { body: jsonBody(changePasswordBody) },
+    responses: {
+      200: { ...ok(accessTokenBody, '비밀번호가 바뀌고 이 기기의 토큰이 다시 발급됨'), headers: setsRefreshCookie },
+      ...errors(
+        invalid(
+          '`newPassword: New password must be different from the current password` — 새 비밀번호가 현재 비밀번호와 같음',
+          '`Current password is incorrect` — 현재 비밀번호가 틀림(실패로 센다)',
+        ),
+        ACTIVE_USER,
+        {
+          409: [
+            '`Account has no password` — Google로만 가입해 비밀번호가 없는 계정',
+            '`Password has already been changed` — 동시에 들어온 다른 변경이 먼저 끝남',
+          ],
+          429: ['`Too many requests. Try again later.` — 현재 비밀번호를 너무 많이 틀림'],
+        },
+      ),
     },
   });
 

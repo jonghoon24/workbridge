@@ -14,9 +14,9 @@ import type { Prisma, ProjectStatus, Role, User } from '@prisma/client';
 // ---------------------------------------------------------------------------
 
 /**
- * The JWT payload. Minted in `auth.controller.ts` as `{ id, email, role }` — access
- * and refresh tokens carry the identical shape — plus `iat`/`exp` injected by
- * `jsonwebtoken`.
+ * The access token's payload. Minted by `issueTokens` (`lib/authTokens.ts`) as `{ id, email, role }`
+ * plus `iat`/`exp` injected by `jsonwebtoken`. The refresh token carries the same claims and one
+ * more ({@link RefreshTokenPayload}).
  */
 export interface JwtUserPayload {
   id: string;
@@ -24,6 +24,17 @@ export interface JwtUserPayload {
   role: Role;
   iat?: number;
   exp?: number;
+}
+
+/**
+ * The refresh token's claims: {@link JwtUserPayload} plus `pwdChangedAt`, the user's
+ * `passwordChangedAt` in epoch milliseconds when the token was minted (`null` = never changed).
+ * `refresh` accepts the token only while that still equals the stored value, so changing the
+ * password ends every session whose refresh token predates it. A token minted before the claim
+ * existed has none and reads as `null`. The access token does not carry it.
+ */
+export interface RefreshTokenPayload extends JwtUserPayload {
+  pwdChangedAt?: number | null;
 }
 
 declare global {

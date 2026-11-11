@@ -104,6 +104,19 @@ describe('GET /api/users/me', () => {
     expect(res.body).not.toHaveProperty('deletedAt');
   });
 
+  it('tells whether the account has a password without exposing it', async () => {
+    const withPassword = await makeFreelancer();
+    const googleOnly = await makeFreelancer({ password: null, googleId: 'google-only-uid' });
+
+    const first = await authed(withPassword).get('/api/users/me');
+    const second = await authed(googleOnly).get('/api/users/me');
+
+    expect(first.body.hasPassword).toBe(true);
+    expect(second.body.hasPassword).toBe(false);
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: withPassword.id } });
+    expect(JSON.stringify(first.body)).not.toContain(stored.password);
+  });
+
   it('404s when the record behind a still-valid token is gone', async () => {
     const user = await makeFreelancer();
     const token = tokenFor(user);
@@ -140,7 +153,8 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(client).patch('/api/users/me').send({ name: '새 이름', bio: '소개' });
 
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ name: '새 이름', bio: '소개' });
+    expect(res.body).toMatchObject({ name: '새 이름', bio: '소개', hasPassword: true });
+    expect(res.body).not.toHaveProperty('password');
 
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
     expect(stored.name).toBe('새 이름');
