@@ -127,3 +127,31 @@ describe('string array columns reject NULL elements', () => {
     });
   });
 });
+
+/**
+ * Supabase serves the schema through its Data API (PostgREST); a table without RLS is readable
+ * and writable by anyone holding the project URL and the anon key. The app connects as the table
+ * owner, which bypasses RLS, so RLS with no policies closes that door without changing behavior
+ * (docs/DATABASE.md "행 단위 보안"). A new table must enable it in the migration that creates it.
+ */
+describe('row level security', () => {
+  it('is enabled on every table in the schema', async () => {
+    const tables = await prisma.$queryRaw<Array<{ name: string; rls: boolean }>>`
+      SELECT c.relname AS name, c.relrowsecurity AS rls
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'p')
+      ORDER BY c.relname`;
+
+    expect(tables.length).toBeGreaterThan(0);
+    expect(tables.filter((t) => !t.rls).map((t) => t.name)).toEqual([]);
+  });
+
+  it('leaves the app, which connects as the table owner, able to read and write', async () => {
+    const client = await makeClient();
+
+    await expect(prisma.user.findFirst({ where: { id: client.id, deletedAt: null } })).resolves.toMatchObject({
+      id: client.id,
+    });
+  });
+});
