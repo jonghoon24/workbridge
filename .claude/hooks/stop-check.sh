@@ -5,6 +5,8 @@
 #   workbridge-client/src/** 변경   → npm run lint -- --max-warnings=0 (CI와 같은 기준)
 # exit 2면 실패한 마지막 줄이 Claude에게 돌아가 작업을 이어 간다. 서버 테스트 스위트는 일부러
 # 돌리지 않는다(실제 Postgres, 약 90초) — docs/HARNESS.md 참고.
+# 통과한 작업 트리 상태(추적 안 된 파일 포함 트리 해시)를 .git에 기록해 두고, 그 뒤로 아무것도 바뀌지 않았으면
+# 다시 돌리지 않는다 — 커밋하지 않은 변경을 둔 채 질문만 주고받는 턴마다 검사가 다시 도는 것을 막는다.
 set -uo pipefail
 
 input=$(cat)
@@ -19,6 +21,20 @@ cd "$root" || exit 0
 changed=$( { git diff --name-only HEAD 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
 [ -z "$changed" ] && exit 0
 
+# 작업 트리 전체를 임시 인덱스에 담아 트리 해시를 만든다(실제 인덱스는 건드리지 않는다).
+stamp_file=$(git rev-parse --git-path claude-stop-check.ok 2>/dev/null)
+tree=""
+tmp_index=$(mktemp)
+if cp "$(git rev-parse --git-path index)" "$tmp_index" 2>/dev/null \
+   && GIT_INDEX_FILE="$tmp_index" git add -A >/dev/null 2>&1; then
+  tree=$(GIT_INDEX_FILE="$tmp_index" git write-tree 2>/dev/null)
+fi
+rm -f "$tmp_index"
+if [ -n "$tree" ] && [ -n "$stamp_file" ] && [ "$(cat "$stamp_file" 2>/dev/null)" = "$tree" ]; then
+  exit 0
+fi
+skipped=false
+
 fail() { # $1 = label, $2 = output
   {
     echo "종료 전 검사 실패: $1. 끝내기 전에 고친다 (마지막 줄):"
@@ -32,6 +48,7 @@ if grep -qE '^workbridge-server/.*\.ts$' <<<"$changed"; then
     out=$(cd workbridge-server && npm run --silent typecheck 2>&1) || fail "workbridge-server npm run typecheck" "$out"
   else
     echo "stop-check: workbridge-server/node_modules가 없어 typecheck를 건너뛰었다 (npm install 필요)" >&2
+    skipped=true
   fi
 fi
 
@@ -40,6 +57,7 @@ if grep -qE '^workbridge-server/.*\.(ts|js|mjs)$' <<<"$changed"; then
     out=$(cd workbridge-server && npm run --silent lint 2>&1) || fail "workbridge-server npm run lint" "$out"
   else
     echo "stop-check: workbridge-server/node_modules가 없어 lint를 건너뛰었다 (npm install 필요)" >&2
+    skipped=true
   fi
 fi
 
@@ -48,6 +66,12 @@ if grep -qE '^workbridge-client/src/' <<<"$changed"; then
     out=$(cd workbridge-client && npm run --silent lint -- --max-warnings=0 2>&1) || fail "workbridge-client npm run lint -- --max-warnings=0" "$out"
   else
     echo "stop-check: workbridge-client/node_modules가 없어 lint를 건너뛰었다 (npm install 필요)" >&2
+    skipped=true
   fi
+fi
+
+# 모든 검사를 실제로 돌려 통과했을 때만 기록한다.
+if [ "$skipped" = false ] && [ -n "$tree" ] && [ -n "$stamp_file" ]; then
+  echo "$tree" > "$stamp_file"
 fi
 exit 0

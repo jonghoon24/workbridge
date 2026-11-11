@@ -57,7 +57,7 @@
 |---|---|---|
 | PreToolUse `Edit\|Write\|MultiEdit` | `protect-migrations.sh` | 커밋된 마이그레이션은 preview·production에 적용되고 Prisma가 체크섬을 검사한다. 고치면 `migrate deploy`가 멈춘다. git에 없는 폴더(`--create-only` 직후 백필 단계)만 허용하고, 나머지는 exit 2로 막는다 |
 | PostToolUse `Edit\|Write\|MultiEdit` | `regen-openapi.sh` | 서버 `src/`를 고칠 때마다 `openapi.json`을 다시 만든다. 문서는 zod 스키마·OpenAPI 등록·라우트·Prisma enum에서 나와 어느 서버 파일이 바뀌어도 달라질 수 있다. 1초 안에 끝나고 DB가 필요 없다. 편집 도중이라 컴파일되지 않으면 조용히 넘어간다(typecheck와 CI가 잡는다). Stop으로 미루지 않는 것은 Claude가 턴 중간에 커밋하기 때문이다(`pre-pr-review` 스킬, `claude.yml`) — 미루면 오래된 `openapi.json`이 커밋에 들어간다 |
-| Stop | `stop-check.sh` | HEAD 이후 바뀐 쪽의 정적 검사(서버 typecheck·lint, 클라이언트 lint — CI와 같은 기준)를 돌리고, 실패하면 마지막 30줄을 돌려주고 exit 2. `stop_hook_active`가 true면 바로 통과한다(무한 루프 방지) |
+| Stop | `stop-check.sh` | HEAD 이후 바뀐 쪽의 정적 검사(서버 typecheck·lint, 클라이언트 lint — CI와 같은 기준)를 돌리고, 실패하면 마지막 30줄을 돌려주고 exit 2. 통과한 작업 트리 상태(추적 안 된 파일 포함 트리 해시)를 `.git/claude-stop-check.ok`에 적어 두고, 그 뒤로 바뀐 것이 없으면 다시 돌리지 않는다(커밋 전 변경을 둔 채 질문만 하는 턴마다 10초 넘게 붙잡지 않게). `stop_hook_active`가 true면 바로 통과한다(무한 루프 방지) |
 
 **코드 규칙은 훅이 아니라 ESLint에 둔다.** `console.*` 금지, 호스트 시간대 날짜 함수 금지, 서비스·작업 핸들러의
 시계 읽기 금지는 `workbridge-server/eslint.config.mjs`의 `no-console`·`no-restricted-syntax`가 맡는다. 에디터·Stop 훅·CI에서
