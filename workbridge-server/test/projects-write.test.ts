@@ -727,6 +727,36 @@ describe('PATCH /api/projects/:id', () => {
     const frozenMessage =
       'Cannot change budget or recruitment dates after applications have been submitted';
 
+    // #135: the edit's own lookup sees no application, then one commits before the write. Stand-in
+    // for that race: the application is inserted right after the edit's lookup.
+    it('refuses a budget change when an application commits after the edit looked', async () => {
+      const { client, project } = await ownedProject();
+      const freelancer = await makeFreelancer();
+      const findFirst = prisma.project.findFirst.bind(prisma.project);
+      const spy = vi.spyOn(prisma.project, 'findFirst').mockImplementationOnce((async (
+        args: Parameters<typeof findFirst>[0],
+      ) => {
+        const found = await findFirst(args);
+        await makeApplication(project.id, freelancer.id);
+        return found;
+      }) as unknown as typeof prisma.project.findFirst);
+
+      try {
+        const res = await authed(client)
+          .patch(`/api/projects/${project.id}`)
+          .send({ budget: 9_999_999 });
+
+        expect(spy).toHaveBeenCalled();
+        expect(res.status).toBe(400);
+        expect(res.body).toEqual({ error: { message: frozenMessage } });
+      } finally {
+        spy.mockRestore();
+      }
+
+      const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(stored.budget).toBe(project.budget);
+    });
+
     it('refuses a budget change with 400', async () => {
       const { client, project } = await projectWithApplication();
 
@@ -1216,6 +1246,34 @@ describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => 
 });
 
 describe('DELETE /api/projects/:id', () => {
+  // #135: two deletes of one project. Stand-in for the race: the other delete commits right after
+  // this one's lookup. The loser is a 404 and leaves the winner's `deletedAt` alone.
+  it('404s the delete that loses to a delete committed after its lookup', async () => {
+    const { client, project } = await ownedProject();
+    const firstDeletedAt = new Date('2026-01-02T03:04:05.000Z');
+    const findFirst = prisma.project.findFirst.bind(prisma.project);
+    const spy = vi.spyOn(prisma.project, 'findFirst').mockImplementationOnce((async (
+      args: Parameters<typeof findFirst>[0],
+    ) => {
+      const found = await findFirst(args);
+      await prisma.project.update({ where: { id: project.id }, data: { deletedAt: firstDeletedAt } });
+      return found;
+    }) as unknown as typeof prisma.project.findFirst);
+
+    try {
+      const res = await authed(client).delete(`/api/projects/${project.id}`);
+
+      expect(spy).toHaveBeenCalled();
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    } finally {
+      spy.mockRestore();
+    }
+
+    const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    expect(stored.deletedAt).toEqual(firstDeletedAt);
+  });
+
   it('soft-deletes: sets deletedAt and keeps the row', async () => {
     const { client, project } = await ownedProject();
 

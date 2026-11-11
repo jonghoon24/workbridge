@@ -323,10 +323,17 @@ export async function decideApplication(
   }
 
   return prisma.$transaction(async (tx) => {
-    const rejected = await tx.application.update({
-      where: { id: appId },
+    // Only while still pending, as accepting does: an accept (or another reject) that committed
+    // after the check above wins, and this one is the same 409 — no second decision, no second
+    // notification (#135).
+    const { count } = await tx.application.updateMany({
+      where: { id: appId, projectId, status: 'PENDING' },
       data: { status: 'REJECTED' },
     });
+    if (count === 0) {
+      throw new AppError('This application has already been processed', 409);
+    }
+    const rejected = await tx.application.findUniqueOrThrow({ where: { id: appId } });
 
     await notify(tx, {
       userId: application.freelancerId,

@@ -162,7 +162,7 @@ export async function getProjectDetail(projectId: string) {
 export async function editProject(projectId: string, clientId: string, input: ProjectUpdateInput, now: Date) {
   const project = await prisma.project.findFirst({
     where: { id: projectId, deletedAt: null },
-    include: { _count: { select: { applications: true } } },
+    select: { clientId: true },
   });
 
   if (!project) {
@@ -174,41 +174,58 @@ export async function editProject(projectId: string, clientId: string, input: Pr
   }
 
   const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = input;
-  const updateData: Prisma.ProjectUpdateInput = {};
 
-  if (title !== undefined) updateData.title = title;
-  if (description !== undefined) updateData.description = description;
-  if (category !== undefined) updateData.category = category;
-  if (requiredSkills !== undefined) updateData.requiredSkills = requiredSkills;
-
-  // Restrict pricing and recruitment schedule changes if applications exist.
-  if (project._count.applications > 0) {
-    if (budget !== undefined || recruitmentStartDate !== undefined || deadline !== undefined) {
-      throw new AppError('Cannot change budget or recruitment dates after applications have been submitted', 400);
+  return prisma.$transaction(async (tx) => {
+    // Lock the project row before counting its applications, as applying (share lock) and
+    // accepting (update lock) take it first: an application that commits after this count waits
+    // for the edit, and one that committed first is counted — never terms changed under a
+    // submitted application (#135). The row is read again under the lock.
+    const [locked] = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR UPDATE`;
+    if (!locked) {
+      throw new AppError('Project not found', 404);
     }
-  } else {
-    if (budget !== undefined) updateData.budget = budget;
+    const current = await tx.project.findFirstOrThrow({
+      where: { id: projectId, deletedAt: null },
+      include: { _count: { select: { applications: true } } },
+    });
 
-    const parsedDeadline: Date = deadline ?? project.deadline;
-    const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? project.recruitmentStartDate ?? now;
+    const updateData: Prisma.ProjectUpdateInput = {};
 
-    validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
+    if (title !== undefined) updateData.title = title;
+    if (description !== undefined) updateData.description = description;
+    if (category !== undefined) updateData.category = category;
+    if (requiredSkills !== undefined) updateData.requiredSkills = requiredSkills;
 
-    if (deadline !== undefined) updateData.deadline = parsedDeadline;
-    if (recruitmentStartDate !== undefined) {
-      updateData.recruitmentStartDate = parsedRecruitmentStartDate;
+    // Restrict pricing and recruitment schedule changes if applications exist.
+    if (current._count.applications > 0) {
+      if (budget !== undefined || recruitmentStartDate !== undefined || deadline !== undefined) {
+        throw new AppError('Cannot change budget or recruitment dates after applications have been submitted', 400);
+      }
+    } else {
+      if (budget !== undefined) updateData.budget = budget;
+
+      const parsedDeadline: Date = deadline ?? current.deadline;
+      const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? current.recruitmentStartDate ?? now;
+
+      validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
+
+      if (deadline !== undefined) updateData.deadline = parsedDeadline;
+      if (recruitmentStartDate !== undefined) {
+        updateData.recruitmentStartDate = parsedRecruitmentStartDate;
+      }
+      if (
+        ['UPCOMING', 'OPEN'].includes(current.status)
+        && (deadline !== undefined || recruitmentStartDate !== undefined)
+      ) {
+        updateData.status = getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate, now);
+      }
     }
-    if (
-      ['UPCOMING', 'OPEN'].includes(project.status)
-      && (deadline !== undefined || recruitmentStartDate !== undefined)
-    ) {
-      updateData.status = getProjectStatusForRecruitmentStart(parsedRecruitmentStartDate, now);
-    }
-  }
 
-  return prisma.project.update({
-    where: { id: projectId },
-    data: updateData,
+    return tx.project.update({
+      where: { id: projectId },
+      data: updateData,
+    });
   });
 }
 
@@ -228,8 +245,13 @@ export async function softDeleteProject(projectId: string, clientId: string, now
 
   await prisma.$transaction(async (tx) => {
     // Lock the project row so the contract check and the delete see the same state: an accept
-    // that commits a contract first makes this a 409 instead of orphaning a live contract.
-    await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${project.id} FOR UPDATE`;
+    // that commits a contract first makes this a 409 instead of orphaning a live contract. Only a
+    // live row: a delete that committed first leaves nothing to lock, and this one is a 404 (#135).
+    const locked = await tx.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Project" WHERE "id" = ${project.id} AND "deletedAt" IS NULL FOR UPDATE`;
+    if (locked.length === 0) {
+      throw new AppError('Project not found', 404);
+    }
 
     // A contract belongs to the freelancer too: deleting the project would hide it from them
     // (every contract path 404s on a deleted project), along with its conversation. So any
