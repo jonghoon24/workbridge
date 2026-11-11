@@ -210,10 +210,9 @@ gh workflow run attachments-migrate.yml -f environment=preview -f apply=true # �
 
 ### 6. Google 전용 계정의 재인증은 로그인 시각을 확인하지 못한다
 
-Google로만 가입한 회원은 탈퇴 직전에 Google 로그인을 한 번 더 거친다([domain/accounts.md "Google 재인증"](domain/accounts.md#google-재인증)). "방금 로그인했다"의 근거는 Google이 ID 토큰에 담는 로그인 시각(`auth_time`)이다. Google은 이 값을 **게시·인증된 앱이 "Session age claims"를 켰을 때만** 준다. 운영의 Google OAuth 앱은 아직 이 조건을 갖추지 않았다고 보고 기본값(완화 모드)으로 둔다.
+Google로만 가입한 회원은 탈퇴 직전에 Google 로그인을 한 번 더 거친다([domain/accounts.md "Google 재인증"](domain/accounts.md#google-재인증)). 연결된 계정인지는 확인하지만, Google이 로그인 시각(`auth_time`)을 주지 않아 **이 브라우저에 Google 로그인이 살아 있으면 계정을 고르는 클릭만으로 통과한다**(서버 로그 `google reauth without auth_time`).
 
-- **완화 모드(기본)**: 연결된 Google 계정으로 다녀왔는지와 그 계정이 이 회원의 것인지는 확인한다. 시각이 오지 않으면 신선도는 확인하지 못하고 `warn` 로그 `google reauth without auth_time`를 남긴다. 그래서 **이 브라우저에 Google 로그인이 살아 있으면 비밀번호 입력 없이 클릭만으로 통과한다.** 시각이 오면 그때는 확인한다.
-- **엄격 모드로 바꾸는 법**: Google 앱을 게시·인증하고 Session age claims를 켠다([ENV.md](ENV.md#google-oauth) "Google OAuth" 4번). 프리뷰에서 실제 Google 왕복으로 `warn`이 사라진 것을 확인한 뒤, 운영 서버에 `GOOGLE_REAUTH_REQUIRE_AUTH_TIME=true`를 넣는다. 이후 시각이 없는 확인은 받지 않는다(`unavailable`, 화면은 고객센터를 안내). 조건 없이 켜면 Google 전용 회원은 탈퇴할 수 없다.
+시각까지 확인하게 하는 법은 [ENV.md](ENV.md#google-oauth) "Google OAuth" 4번이다. Google 앱 쪽 조건 없이 `GOOGLE_REAUTH_REQUIRE_AUTH_TIME=true`만 켜면 Google 전용 회원은 탈퇴할 수 없다.
 
 ### 7. 그 밖에
 
