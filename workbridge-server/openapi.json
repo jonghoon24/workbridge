@@ -10191,7 +10191,7 @@
             }
           },
           "404": {
-            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약",
+            "description": "찾을 수 없음\n\n- `Contract not found` — 없는 계약, 또는 프로젝트가 삭제됨",
             "content": {
               "application/json": {
                 "schema": {

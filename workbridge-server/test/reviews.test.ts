@@ -353,6 +353,40 @@ describe('POST /api/reviews', () => {
     expect(res.body).toEqual({ error: { message: 'Not authorized' } });
   });
 
+  it('returns 404 for an unknown contract', async () => {
+    const client = await makeClient();
+    const freelancer = await makeFreelancer();
+
+    const res = await authed(client).post('/api/reviews').send({
+      contractId: 'no-such-contract',
+      revieweeId: freelancer.id,
+      rating: 5,
+      content: 'Unknown contract.',
+    });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect(await prisma.review.count()).toBe(0);
+  });
+
+  it('treats a completed contract whose project the client deleted as not found', async () => {
+    const { contract, project, client, freelancer } = await completedScenario();
+    // A completed contract does not block deletion, so the client can remove the project.
+    const deleted = await authed(client).delete(`/api/projects/${project.id}`);
+    expect(deleted.status).toBe(200);
+
+    const res = await authed(freelancer).post('/api/reviews').send({
+      contractId: contract.id,
+      revieweeId: client.id,
+      rating: 5,
+      content: 'Project is gone.',
+    });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: { message: 'Contract not found' } });
+    expect(await prisma.review.count()).toBe(0);
+  });
+
   it.each(['PENDING', 'ACTIVE'] as const)(
     'returns 400 when the contract is %s rather than COMPLETED',
     async (status) => {
