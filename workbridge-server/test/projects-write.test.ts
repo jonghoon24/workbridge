@@ -1169,6 +1169,37 @@ describe('PATCH /api/projects/:id/status — reopening (CLOSED -> OPEN)', () => 
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
   });
 
+  it('refuses a deadline before the recruitment start date with 400 (closed while still upcoming)', async () => {
+    const { client, project } = await ownedProject({
+      status: 'CLOSED',
+      recruitmentStartDate: new Date(Date.now() + 30 * DAY_MS),
+      deadline: new Date(Date.now() + 40 * DAY_MS),
+    });
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: futureDate() });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { message: 'recruitmentStartDate cannot be after deadline' } });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
+  });
+
+  it('reopens a project closed before its recruitment started as UPCOMING', async () => {
+    const { client, project } = await ownedProject({
+      status: 'CLOSED',
+      recruitmentStartDate: new Date(Date.now() + 3 * DAY_MS),
+      deadline: new Date(Date.now() + 10 * DAY_MS),
+    });
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: futureDate() });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('UPCOMING');
+  });
+
   it('refuses an invalid deadline with the validation 400', async () => {
     const { client, project } = await closedProject('CANCELLED');
 

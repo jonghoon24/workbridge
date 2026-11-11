@@ -180,7 +180,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
       '허용 전이: `UPCOMING`→`OPEN`·`CANCELLED`·`CLOSED`, `OPEN`→`CANCELLED`·`CLOSED`, `CLOSED`→`OPEN`(다시 모집하기). '
       + '`IN_PROGRESS`(계약 서명으로 시작)와 `COMPLETED`(마지막 마일스톤 승인)는 시스템만 바꾼다. '
       + '`CLOSED`로 바꾸면 대기 중인 지원을 거절하고 그 지원자에게만 알린다. '
-      + '다시 모집할 때는 새 마감일(`deadline`)이 필요하고, 철회되지 않은 계약이 있으면 할 수 없다. 아무에게도 알리지 않는다.',
+      + '다시 모집할 때는 새 마감일(`deadline`)이 필요하고, 철회되지 않은 계약이 있으면 할 수 없다. 모집 시작일이 아직 오지 않았으면 `UPCOMING`이 된다. 아무에게도 알리지 않는다.',
     security: bearer,
     request: { params: projectId, body: jsonBody(projectStatusBody) },
     responses: {
@@ -191,6 +191,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
           '`Deadline is required to reopen recruitment` — 다시 모집하는데 마감일이 없음',
           '`Deadline must not be in the past` — 다시 모집할 마감일이 이미 지남',
           '`Deadline can only be set when reopening recruitment` — 다시 모집하기가 아닌 전이에 마감일을 보냄',
+          SCHEDULE,
         ),
         ACTIVE_USER,
         role('CLIENT'),

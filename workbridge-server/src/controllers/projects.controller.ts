@@ -447,6 +447,9 @@ export async function updateProjectStatus(req: AuthedRequest, res: Response, nex
       if (deadline === undefined) throw new AppError(REOPEN_DEADLINE_REQUIRED, 400);
       // The lifecycle sweep would close it again at once (the same `deadline < now` rule).
       if (deadline < now) throw new AppError(REOPEN_DEADLINE_PAST, 400);
+      // The schedule every other deadline write keeps: a project closed while still UPCOMING may
+      // start recruiting later than the new deadline.
+      if (project.recruitmentStartDate) validateRecruitmentSchedule(project.recruitmentStartDate, deadline);
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -466,9 +469,10 @@ export async function updateProjectStatus(req: AuthedRequest, res: Response, nex
 
         // Nobody is notified: the earlier applicants were already told of their result, and the
         // ones who may apply again see it in their applications.
+        // `UPCOMING` instead when the project was closed before its recruitment even started.
         return tx.project.update({
           where: { id: project.id },
-          data: { status: 'OPEN', deadline },
+          data: { status: getProjectStatusForRecruitmentStart(project.recruitmentStartDate, now), deadline },
         });
       }
 

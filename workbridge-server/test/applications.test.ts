@@ -1389,6 +1389,71 @@ describe('a project that recruits again after a cancelled contract', () => {
     expect(await flag(rejectedEarlier)).toBe(false);
   });
 
+  describe('locks', () => {
+    type Answer = { status: number; body: unknown };
+    const started = (req: PromiseLike<Answer>) => new Promise<Answer>((resolve, reject) => { req.then(resolve, reject); });
+
+    async function waitForLockWaiters(side: ReturnType<typeof sideClient>, count: number) {
+      const giveUpAt = Date.now() + 5_000;
+      for (;;) {
+        const [{ waiting }] = await side.$queryRaw<{ waiting: number }[]>`
+          SELECT count(*)::int AS waiting FROM pg_stat_activity
+           WHERE datname = current_database() AND wait_event_type = 'Lock'`;
+        if (waiting >= count) return;
+        if (Date.now() > giveUpAt) throw new Error(`expected ${count} lock waiters, saw ${waiting}`);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    }
+
+    // A withdrawal holds the applicant's application rows and then takes the user row. Re-applying
+    // must take them in the same order, or each waits for the other (40P01).
+    it('re-applying waits behind a withdrawal holding the application row, without deadlocking it', async () => {
+      const { project, rejectedEarlier, rejectedApplication } = await reopenedAfterCancel();
+
+      const side = sideClient();
+      let pending: Promise<Answer> | undefined;
+      try {
+        await side.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "id" FROM "Application" WHERE "id" = ${rejectedApplication.id} FOR UPDATE`;
+          pending = started(apply(rejectedEarlier, project.id));
+          await waitForLockWaiters(side, 1);
+          // The withdrawal's next lock. Re-applying has not taken the user row, so this does not wait.
+          await tx.$queryRaw`SELECT "id" FROM "User" WHERE "id" = ${rejectedEarlier.id} FOR UPDATE`;
+        }, { timeout: 10_000 });
+      } finally {
+        await side.$disconnect();
+      }
+
+      const res = await pending!;
+      expect(res.status).toBe(201);
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: rejectedApplication.id } })).status).toBe('PENDING');
+    }, 20_000);
+
+    // An accept locks the project row first. A re-apply that read OPEN before it must not bring a
+    // pending application back on a project the accept just closed.
+    it('re-applying waits for an accept holding the project row, then sees recruitment closed', async () => {
+      const { project, rejectedEarlier, rejectedApplication } = await reopenedAfterCancel();
+
+      const side = sideClient();
+      let pending: Promise<Answer> | undefined;
+      try {
+        await side.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${project.id} FOR UPDATE`;
+          pending = started(apply(rejectedEarlier, project.id));
+          await waitForLockWaiters(side, 1);
+          await tx.project.update({ where: { id: project.id }, data: { status: 'CLOSED' } });
+        }, { timeout: 10_000 });
+      } finally {
+        await side.$disconnect();
+      }
+
+      const res = await pending!;
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { message: 'Project is not accepting applications' } });
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: rejectedApplication.id } })).status).toBe('REJECTED');
+    }, 20_000);
+  });
+
   it('lets the client accept a new applicant: a second contract next to the cancelled one', async () => {
     const { client, project, contractId } = await reopenedAfterCancel();
     const newcomer = await makeFreelancer();

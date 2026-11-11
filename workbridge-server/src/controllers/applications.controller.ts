@@ -4,6 +4,7 @@ import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 // Imported as a value, not a type: the `instanceof` check below needs the runtime object.
 import { Prisma } from '@prisma/client';
+import type { ApplicationStatus } from '@prisma/client';
 import {
   closeExpiredOpenProjects,
   rejectPendingApplicationsForClosedProjects,
@@ -53,18 +54,32 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
     let application;
     try {
       application = await prisma.$transaction(async (tx) => {
+        // Locks in the order accepting an application and withdrawing take them: Project →
+        // Application → User (docs/DATABASE.md "동시성"). Re-applying updates an existing
+        // application row, so taking the user row first would cycle with a withdrawal that holds
+        // that application row and waits for the user row.
+        //
+        // The project is share-locked and read again: an accept or a close that committed after
+        // the reads above must not get a pending application back on a project that is no longer
+        // recruiting (an accept takes the project row FOR UPDATE, so it waits for this, or this
+        // waits for it and sees CLOSED).
+        const [current] = await tx.$queryRaw<{ status: string }[]>`
+          SELECT "status" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR SHARE`;
+        if (!current) throw new AppError('Project not found', 404);
+        if (current.status !== 'OPEN') throw new AppError('Project is not accepting applications', 400);
+
+        // One row per applicant and project. An applicant rejected in a round that ended with a
+        // cancelled contract applies again on the same row (`lib/reapplication.ts`); anyone else
+        // who already applied is a 409. The row is locked so two applies of this freelancer cannot
+        // both reset it; a concurrent first apply loses on the unique constraint (P2002 below).
+        const [existing] = await tx.$queryRaw<{ id: string; status: ApplicationStatus; createdAt: Date }[]>`
+          SELECT "id", "status", "createdAt" FROM "Application"
+          WHERE "projectId" = ${projectId} AND "freelancerId" = ${req.user.id} FOR UPDATE`;
+
         // A withdrawal that committed after `requireActiveUser` must not get an application back
         // (it deleted this freelancer's undecided applications): 401 like the guard.
         await lockActiveUserRow(tx, req.user.id);
 
-        // One row per applicant and project. An applicant rejected in a round that ended with a
-        // cancelled contract applies again on the same row (`lib/reapplication.ts`); anyone else
-        // who already applied is a 409. Concurrent applies of this freelancer are serialized by the
-        // user row lock above; a concurrent first apply loses on the unique constraint (P2002 below).
-        const existing = await tx.application.findUnique({
-          where: { projectId_freelancerId: { projectId, freelancerId: req.user.id } },
-          select: { id: true, status: true, createdAt: true },
-        });
         let created;
         if (existing) {
           const cutoffs = await latestCancelledContractAt([projectId], tx);

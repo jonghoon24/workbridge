@@ -209,11 +209,12 @@ export async function listMyApplications(freelancerId: string) {
 
   // Whether each one may be submitted again now: the project recruits again and this application
   // was rejected in the round that ended with its cancelled contract (`lib/reapplication.ts`).
-  const cutoffs = await latestCancelledContractAt([...new Set(applications.map((a) => a.projectId))]);
+  // Only a rejected application to an open project can qualify, so only those projects are looked up.
+  const mayReapply = (a: (typeof applications)[number]) => a.project.status === 'OPEN' && a.status === 'REJECTED';
+  const cutoffs = await latestCancelledContractAt([...new Set(applications.filter(mayReapply).map((a) => a.projectId))]);
   return applications.map((application) => ({
     ...application,
-    canReapply: application.project.status === 'OPEN'
-      && isFromEndedRound(application, cutoffs.get(application.projectId)),
+    canReapply: mayReapply(application) && isFromEndedRound(application, cutoffs.get(application.projectId)),
   }));
 }
 
