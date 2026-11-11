@@ -33,7 +33,8 @@ paths:
 
 - `throw new AppError(code, message)`(`lib/errors.ts`)로 던지고 `next(err)`로 넘긴다. 코드는 `lib/errorCodes.ts`의 표에서
   고르고, 상태 코드는 그 표가 정한다. 클라이언트가 같은 안내를 하는 원인이면 기존 코드를 쓰고, 다르게 안내해야 하면 표와
-  `test/error-codes.test.ts`의 `PUBLISHED` 끝에 새 코드를 더한다. 기존 코드의 이름·상태를 바꾸거나 지우지 않는다.
+  `test/error-codes.test.ts`의 `PUBLISHED` 끝에 새 코드를 더하고, 클라이언트 `src/lib/errorMessages.js`의 `CODE_MESSAGES`에
+  화면 문구를 넣는다(CI의 `check:error-codes`가 대조한다). 기존 코드의 이름·상태를 바꾸거나 지우지 않는다.
 - 요청 필드가 틀린 것은 서비스에서도 `invalidField(path, fieldCode, message)`(`VALIDATION_FAILED`)로 던진다.
   컨트롤러에서 `res.status(4xx).json(...)`을 직접 쓰지 않는다.
 - 상태 코드: 잘못된 입력 → 400, 유니크 충돌 → 409, 외부 서비스 실패 → 502/400 — 500은 절대 아니다.
