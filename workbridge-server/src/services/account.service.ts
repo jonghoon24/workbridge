@@ -10,6 +10,7 @@ import { publicObjectPath } from '../lib/attachmentStorage';
 import { notifyRecipients } from '../lib/notifications/notify';
 import { clearPasswordConfirmFailures, recordPasswordConfirmFailure } from '../lib/rateLimitRules';
 import { enqueueJob } from '../jobs/queue';
+import { assertRecentGoogleReauth } from './reauth.service';
 import type { ChangePasswordInput } from '../schemas/auth';
 import type { WithdrawalInput } from '../schemas/account';
 import type { PrismaTransactionClient } from '../types/index';
@@ -136,8 +137,9 @@ function isDeadlock(err: unknown): boolean {
 }
 
 /**
- * `POST /api/users/me/withdrawal`. The password (if the account has one) is checked outside the
- * transaction — bcrypt is slow and must not hold the locks. Then one transaction:
+ * `POST /api/users/me/withdrawal`. The caller is confirmed outside the transaction, so the check
+ * holds no locks: an account with a password by it (bcrypt is slow), a Google-only account by a
+ * recent Google re-authentication of its linked Google account. Then one transaction:
  *
  * 1. Locks in the order accepting an application takes them — the caller's projects, then the
  *    applications (theirs and the pending ones on their projects), then the user row — so a
@@ -152,11 +154,16 @@ function isDeadlock(err: unknown): boolean {
  *    the deletion of the public images. Transaction records stay.
  */
 export async function withdrawAccount(userId: string, input: WithdrawalInput, now: Date): Promise<void> {
-  const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { password: true } });
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    select: { id: true, password: true, googleId: true },
+  });
   if (!user) throw new AppError(INACTIVE, 401);
   if (user.password !== null) {
     if (!input.currentPassword) throw new AppError(CURRENT_PASSWORD_REQUIRED, 400);
     await confirmCurrentPassword(userId, user.password, input.currentPassword, now);
+  } else {
+    assertRecentGoogleReauth(user, input.reauthToken, 'withdrawal', now);
   }
 
   const run = () => prisma.$transaction((tx) => withdrawInTransaction(tx, userId, now));

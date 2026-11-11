@@ -5,7 +5,7 @@ import { count } from './common';
 export const withdrawalStatus = z
   .object({
     canWithdraw: z.boolean().openapi({ description: '막는 항목이 하나도 없으면 `true`' }),
-    hasPassword: z.boolean().openapi({ description: '탈퇴할 때 현재 비밀번호를 보내야 하는 계정인지(Google 전용 계정은 `false`)' }),
+    hasPassword: z.boolean().openapi({ description: '탈퇴할 때 현재 비밀번호를 보내야 하는 계정인지. `false`(Google 전용 계정)면 구글 재인증 증명(`reauthToken`)을 보낸다' }),
     blockers: z.object({
       unfinishedContracts: count.openapi({ description: '서명 전(`PENDING`)이거나 진행 중(`ACTIVE`)인 계약. 의뢰인·프리랜서 모두, 프로젝트가 삭제됐어도 센다' }),
       unsettledEarnings: count.openapi({ description: '승인됐지만 아직 주간 정산에 묶이지 않은 마일스톤' }),
