@@ -359,6 +359,24 @@ describe('GET /api/users/me/bookmarks (reflects rows written by the bookmark end
     expect(res.body[0].bookmarkedAt).toBeTruthy();
   });
 
+  it('leaves out a project whose client is soft-deleted, as the public list does', async () => {
+    const { client, freelancer, project } = await freelancerWithProject();
+    const otherClient = await makeClient();
+    const live = await makeProject(otherClient.id);
+    await prisma.projectBookmark.createMany({
+      data: [
+        { projectId: project.id, userId: freelancer.id },
+        { projectId: live.id, userId: freelancer.id },
+      ],
+    });
+    await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).get('/api/users/me/bookmarks');
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((p: { id: string }) => p.id)).toEqual([live.id]);
+  });
+
   it('drops an entry once its bookmark is deleted', async () => {
     const { freelancer, project } = await freelancerWithProject();
     await authed(freelancer).post(bookmarkPath(project.id));
@@ -439,5 +457,22 @@ describe('GET /api/users/me/bookmarks/ids', () => {
 
     await authed(freelancer).delete(bookmarkPath(project.id));
     expect((await authed(freelancer).get(idsPath)).body).toEqual({ projectIds: [] });
+  });
+
+  it('leaves out a project whose client is soft-deleted, as the bookmark list does', async () => {
+    const { client, freelancer, project } = await freelancerWithProject();
+    const live = await makeProject((await makeClient()).id);
+    await prisma.projectBookmark.createMany({
+      data: [
+        { projectId: project.id, userId: freelancer.id },
+        { projectId: live.id, userId: freelancer.id },
+      ],
+    });
+    await prisma.user.update({ where: { id: client.id }, data: { deletedAt: new Date() } });
+
+    const res = await authed(freelancer).get(idsPath);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ projectIds: [live.id] });
   });
 });

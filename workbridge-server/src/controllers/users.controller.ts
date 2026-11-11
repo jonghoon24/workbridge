@@ -192,10 +192,12 @@ export async function getMyBookmarks(req: AuthedRequest, res: Response, next: Ne
       throw new AppError('Only freelancers can view their bookmarks', 403);
     }
 
+    // A project whose client is soft-deleted is gone like a deleted project (docs/domain/README.md
+    // "소프트 삭제": the joined owner too), as in the public list and detail.
     const bookmarks = await prisma.projectBookmark.findMany({
       where: {
         userId: req.user.id,
-        project: { deletedAt: null },
+        project: { deletedAt: null, client: { deletedAt: null } },
       },
       include: {
         project: {
