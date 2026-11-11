@@ -100,7 +100,7 @@ function check(condition, message) {
 
 // ─── Notification wording ─────────────────────────────
 // Copies of src/lib/notifications/templates.ts and of the inline wording of the four types that keep
-// their strings in their controllers (applications.controller.ts). Only the types the seed uses.
+// their strings in their services (applications.service.ts). Only the types the seed uses.
 const milestoneHref = (contractId, milestoneId) => `/contracts/${contractId}/milestones/${milestoneId}`;
 const TEMPLATES = {
   APPLICATION_CREATED: (v) => ({

@@ -29,7 +29,7 @@ stateDiagram-v2
   마감까지 아무도 수락하지 않은 프로젝트가 여기 있다. 양측 서명으로 계약이 `ACTIVE`가 되는 트랜잭션에서 프로젝트는 `IN_PROGRESS`("진행 중")가
   되고, 마지막 마일스톤이 승인되면 `COMPLETED`가 된다.
 - 의뢰인이 손으로 옮길 수 있는 것은 위 그림의 "의뢰인" 화살표뿐이다(`validTransitions`,
-  `src/controllers/projects.controller.ts`). 특히 진행 중인 프로젝트를 손으로 완료하거나 취소하면 마일스톤을
+  `src/services/projects.service.ts`). 특히 진행 중인 프로젝트를 손으로 완료하거나 취소하면 마일스톤을
   건너뛰거나 진행 중인 계약을 남겨 두게 되므로 막는다. 스윕, 지원 수락, 계약 서명, 마지막 마일스톤 승인 같은
   시스템 전이는 이 표를 보지 않는다.
 

@@ -21,3 +21,5 @@ export type ApplicationCreateInput = z.infer<typeof applicationCreateBody>;
 export const applicationDecisionBody = z.object({
   status: bodyEnum('Status', ['ACCEPTED', 'REJECTED'] as const),
 });
+
+export type ApplicationDecisionInput = z.infer<typeof applicationDecisionBody>;

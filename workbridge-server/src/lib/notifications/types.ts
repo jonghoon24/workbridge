@@ -4,7 +4,7 @@
  * digest, with their channel policy in `policy.ts` (docs/domain/messaging-notifications.md).
  */
 export type NotificationType =
-  // Applications and project status; their wording is inline in their controllers.
+  // Applications and project status; their wording is inline in their services.
   | 'APPLICATION_CREATED'
   | 'APPLICATION_ACCEPTED'
   | 'APPLICATION_REJECTED'
