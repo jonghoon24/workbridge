@@ -13,6 +13,15 @@ import { toUserMessage } from '@/lib/errorMessages';
 import useDebounce from '@/lib/useDebounce';
 import useBookmarkedProjectIds from '@/lib/useBookmarkedProjectIds';
 
+// 목록 조건(쿼리)의 검증 오류. 같은 이름이 다른 화면에서는 다른 뜻이라(`status`, `skills`) 여기서 정한다.
+const LIST_ERRORS = {
+  fields: {
+    status: '프로젝트 상태 조건이 올바르지 않습니다.',
+    skills: '기술 조건이 올바르지 않습니다.',
+  },
+  codes: { VALIDATION_FAILED: '목록 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.' },
+};
+
 function ProjectsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -108,7 +117,7 @@ function ProjectsContent() {
       .catch((err) => {
         if (controller.signal.aborted) return;
         setProjects([]);
-        setLoadError(toUserMessage(err, '프로젝트 목록을 불러오지 못했습니다.'));
+        setLoadError(toUserMessage(err, '프로젝트 목록을 불러오지 못했습니다.', LIST_ERRORS));
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);

@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "e2e": "playwright test -c e2e/playwright.config.js"
+    "e2e": "playwright test -c e2e/playwright.config.js",
+    "check:error-codes": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-error-codes.mjs"
   },
   "dependencies": {
     "@tailwindcss/forms": "^0.5.7",

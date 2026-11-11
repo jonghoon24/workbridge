@@ -23,7 +23,7 @@
 | `notifications-logging.md` | 알림은 `notify()` 계열만(채널 정책과 수신자 설정이 거기서 적용된다). 요청 body·query·헤더를 통째로 로그에 넣지 않는다(계좌번호·토큰). 스위트가 "500은 한 번만 error 로그"를 단언한다 |
 | `tests.md` | 테스트를 쓰는 방법: 모든 응답의 OpenAPI 적합성 검사, 실제 Postgres, 가짜 타이머 대신 `now`, 미래 `now`로 작업을 돌릴 때 수명주기 스윕이 프로젝트를 닫는 함정, 공통 관심사는 중앙 매트릭스에서 한 번. 단언을 다루는 원칙은 경로와 무관해 `CLAUDE.md`에 있다 |
 | `prisma.md` | 커밋된 마이그레이션 불변(훅은 Edit/Write만 막는다), 새 테이블의 RLS(Supabase Data API), 새 `String[]` 컬럼의 `NULL` 원소 CHECK(Prisma `P2032`), `Float` 금액 부채, `seed.js`는 CommonJS |
-| `client.md` | JSX 유지, `lib/api.js`만, 첨부 `PUT`에 토큰 금지, 문구를 바꾸면 E2E도 함께 |
+| `client.md` | JSX 유지, `lib/api.js`만, 첨부 `PUT`에 토큰 금지, 서버 오류는 코드로 분기(메시지 비교 금지), 문구를 바꾸면 E2E도 함께 |
 | `deploy.md` | `vercel.json`의 진입점 두 곳과 `regions`, `dist/` 없음(Prisma 생성은 `postinstall`), 클라이언트 `vercel.json`의 자동 감지, 결제 우회·메일 로그의 운영 기본값 |
 
 **한계.** 경로가 맞는 파일을 읽어야 들어온다. 파일을 읽지 않고 답하는 질문에는 rules가 없다.

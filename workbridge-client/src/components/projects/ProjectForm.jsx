@@ -18,6 +18,12 @@ const STEPS = [
 
 const REVIEW_SUBMIT_DELAY_MS = 500;
 
+// 이 폼에서 `title`·`description`은 프로젝트명·프로젝트 설명이다(공용 표의 문구는 마일스톤·포트폴리오용).
+const PROJECT_FIELDS = {
+  title: { REQUIRED: '프로젝트명을 입력해 주세요.', INVALID: '프로젝트명을 다시 입력해 주세요.' },
+  description: { REQUIRED: '프로젝트 설명을 입력해 주세요.', INVALID: '프로젝트 설명을 다시 입력해 주세요.' },
+};
+
 export default function ProjectForm({ initialData = null }) {
   const router = useRouter();
   const isEditing = !!initialData;
@@ -158,7 +164,11 @@ export default function ProjectForm({ initialData = null }) {
         router.push(`/projects/${data.id}`);
       }
     } catch (err) {
-      setErrors({ submit: toUserMessage(err, isEditing ? '프로젝트를 수정하지 못했습니다.' : '프로젝트를 등록하지 못했습니다.') });
+      setErrors({
+        submit: toUserMessage(err, isEditing ? '프로젝트를 수정하지 못했습니다.' : '프로젝트를 등록하지 못했습니다.', {
+          fields: PROJECT_FIELDS,
+        }),
+      });
     } finally {
       setLoading(false);
     }

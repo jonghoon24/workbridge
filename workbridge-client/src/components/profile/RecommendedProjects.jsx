@@ -3,13 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { errorCode } from '@/lib/errorMessages';
 import Card from '@/components/ui/Card';
 import { formatDate, formatKRW } from '@/lib/format';
 import Tag from '@/components/ui/Tag';
 import EmptyState from '@/components/ui/EmptyState';
 import { SparklesIcon } from '@/components/ui/Icons';
-
-const INCOMPLETE_PROFILE = '프로필을 먼저 완성해주세요';
 
 // 프리랜서에게 맞는 프로젝트 추천. 프로필이 미완성이면 서버가 403을 주므로
 // 완성을 유도한다. compact는 홈 화면용(카드 3개 + 더 보기).
@@ -22,7 +21,7 @@ export default function RecommendedProjects({ limit = 10, compact = false }) {
     api.get('/api/users/me/recommended-projects', { params: { limit } })
       .then(({ data }) => setProjects(data.projects))
       .catch((err) => {
-        if (err.response?.data?.error?.message === INCOMPLETE_PROFILE) setIncomplete(true);
+        if (errorCode(err) === 'PROFILE_INCOMPLETE') setIncomplete(true);
         else setError('추천 프로젝트를 불러오지 못했습니다.');
         setProjects([]);
       });

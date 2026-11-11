@@ -1,5 +1,6 @@
 // 메시지 화면 전용 상수와 헬퍼. 공용 lib/format.js는 수정하지 않고 가져다 쓴다.
 import { formatDate, toKstDateInput } from '@/lib/format';
+import { ATTACHMENT_TOO_LARGE_TEXT } from '@/lib/attachments';
 import { toUserMessage } from '@/lib/errorMessages';
 
 // 메시지 입력 한도. 화면 검사는 안내용이고 최종 판단은 서버가 한다.
@@ -40,16 +41,14 @@ export function closedReasonText(closedReason, contractStatus) {
 
 // 메시지 화면에서만 다르게 안내할 서버 오류. 나머지는 공용 변환표가 맡는다.
 const ERROR_TEXT = {
-  'This conversation is closed': CLOSED_REASON_TEXT.CONTRACT_CLOSED,
-  'The other participant is no longer active': CLOSED_REASON_TEXT.COUNTERPART_INACTIVE,
-  'Not authorized': '이 대화방에 접근할 권한이 없습니다.',
+  CONVERSATION_CLOSED: CLOSED_REASON_TEXT.CONTRACT_CLOSED,
+  COUNTERPART_INACTIVE: CLOSED_REASON_TEXT.COUNTERPART_INACTIVE,
+  FORBIDDEN_RESOURCE: '이 대화방에 접근할 권한이 없습니다.',
+  FILE_TOO_LARGE: ATTACHMENT_TOO_LARGE_TEXT,
 };
 
 export function messageErrorText(err, fallback) {
-  return toUserMessage(err, fallback, {
-    status: { 413: '파일은 개당 10MB 이하여야 합니다.' },
-    messages: ERROR_TEXT,
-  });
+  return toUserMessage(err, fallback, { codes: ERROR_TEXT });
 }
 
 // 메시지 옆 시각: 오늘이면 "오후 3:05", 아니면 날짜까지.

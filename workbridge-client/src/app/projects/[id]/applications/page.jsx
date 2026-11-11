@@ -60,7 +60,9 @@ export default function ApplicationsPage() {
         router.push(`/contracts/${result.contract.id}`);
       }
     } catch (err) {
-      alert(toUserMessage(err, '지원을 처리하지 못했습니다.'));
+      alert(toUserMessage(err, '지원을 처리하지 못했습니다.', {
+        fields: { status: { REQUIRED: '처리 방법을 선택해 주세요.', INVALID: '처리 방법이 올바르지 않습니다.' } },
+      }));
     } finally {
       setUpdating(null);
     }
