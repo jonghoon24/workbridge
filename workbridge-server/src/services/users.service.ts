@@ -86,28 +86,21 @@ export async function updateMyProfile(
   // Only while the account is active: a withdrawal that committed after `requireActiveUser` (while
   // the image uploaded) must not get its profile written back. Its just-uploaded image goes to the
   // withdrawal's file cleanup, which finds profile images by the user id in their names.
-  // An empty patch (every field stripped as the other role's) writes nothing: Prisma skips an
-  // `updateMany` without data and reports 0 rows, so check the account instead.
+  // An empty patch (every field stripped as the other role's) skips the write: Prisma would skip an
+  // `updateMany` without data anyway. The read-back below runs under the same condition, so it
+  // refuses both an account that was already gone and a withdrawal that commits between the write
+  // and the read (which has scrubbed the profile) with the same 401 rather than the scrubbed row.
   const active = { id: userId, deletedAt: null };
-  const refuseInactive = async () => {
+  if (Object.keys(updateData).length) {
+    await prisma.user.updateMany({ where: active, data: updateData });
+  }
+
+  const user = await prisma.user.findFirst({ where: active, select: myProfileSelect });
+  if (!user) {
     if (profileImage) {
       await enqueueJob(prisma, { type: 'account.deletePublicFiles', payload: { userId, paths: [] } });
     }
-    return new AppError(ACCOUNT_INACTIVE, 401);
-  };
-
-  const count = Object.keys(updateData).length
-    ? (await prisma.user.updateMany({ where: active, data: updateData })).count
-    : await prisma.user.count({ where: active });
-  if (count === 0) {
-    throw await refuseInactive();
-  }
-
-  // Read back under the same condition: a withdrawal that commits between the write and this read
-  // has scrubbed the profile, and the caller gets the same 401 rather than the scrubbed row.
-  const user = await prisma.user.findFirst({ where: active, select: myProfileSelect });
-  if (!user) {
-    throw await refuseInactive();
+    throw new AppError(ACCOUNT_INACTIVE, 401);
   }
 
   return toMyProfile(user);
