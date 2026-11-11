@@ -19,6 +19,9 @@ jobs:
   review:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    # 한도 둘: 시간은 GitHub Actions가(명령이 멈춰 턴이 넘어가지 않을 때), 턴 수는 아래 --max-turns가 막는다.
+    # 지금까지 가장 큰 PR(#83, 파일 64개)의 리뷰가 20턴 근처를 썼다. 한도에 걸리면 요약 없이 실패하므로 여유를 둔다.
+    timeout-minutes: 20
     permissions:
       contents: read
       pull-requests: read
@@ -70,5 +73,5 @@ jobs:
                새 지적도 남은 지적도 없으면 "새 지적이 없습니다."라고 적습니다. 이전 리뷰가 없으면 "이전 지적" 줄을 뺍니다.
             PR을 승인하거나 요청 변경을 걸지 않습니다. 코드를 고치거나 push하지 않습니다.
           claude_args: |
-            --max-turns 20
+            --max-turns 40
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments:*),Bash(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"

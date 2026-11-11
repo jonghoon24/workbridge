@@ -87,7 +87,7 @@ router.post('/things', ...guard, validate({ body: thingBody }), postThing);
 ## 7. 매트릭스 (여러 엔드포인트에 걸친 테스트 — 필수)
 
 - `test/authorization.test.ts` → `PROTECTED_ROUTES`에 `RouteSpec`을 추가한다
-  (`label`, `method`, `path: (ids) => …`, `body`, `role`, `gate: 'middleware'`). 새 id가 있으면
+  (`label`, `method`, `path: (ids) => …`, `body`, `role`). 새 id가 있으면
   `Ids`/`MISSING`에도 추가한다.
 - `test/soft-delete.test.ts` → 쓰기 라우트면 **`guardedMutations`**에 `Mutation`을 추가한다
   (`setup()`이 `{ actor, send(token), assertUnchanged() }`를 돌려준다).

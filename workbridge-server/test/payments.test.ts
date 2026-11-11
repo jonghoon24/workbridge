@@ -168,14 +168,14 @@ async function collideOnPaymentInsert<T>(
 
 /**
  * Markers that must never appear in an error body. Matched by *shape* rather than
- * by the exact text, so the tests survive a Prisma version bump or a controller edit that moves
- * the offending line: the file:line pattern is `\.ts:\d+:\d+`, not `payments.controller.ts:70:42`.
+ * by the exact text, so the tests survive a Prisma version bump or a service edit that moves
+ * the offending line: the file:line pattern is `\.ts:\d+:\d+`, not `payments.service.ts:70:42`.
  */
 const INTERNALS_MARKERS: Array<[label: string, pattern: RegExp]> = [
   ['an absolute filesystem path', /\/Users\//],
   // Portable stand-in for the above — the home directory differs off macOS, the repo name does not.
   ['an absolute path into the repository', /\/workbridge-server\//],
-  ['a server source directory', /src\/controllers/],
+  ['a server source directory', /src\/(controllers|services)/],
   ['a source file and line reference', /\.ts:\d+:\d+/],
   ['a source excerpt', /→\s*\d+/],
   ['a Prisma client invocation', /prisma\.\w+\.\w+\(\)/],

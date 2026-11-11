@@ -3913,7 +3913,7 @@
             }
           },
           "403": {
-            "description": "권한 없음\n\n- `Only freelancers can view their applications` — FREELANCER가 아님",
+            "description": "권한 없음\n\n- `Insufficient permissions` — FREELANCER 역할이 아님",
             "content": {
               "application/json": {
                 "schema": {
@@ -4088,7 +4088,7 @@
             }
           },
           "403": {
-            "description": "권한 없음\n\n- `Only freelancers can view their bookmarks` — FREELANCER가 아님",
+            "description": "권한 없음\n\n- `Insufficient permissions` — FREELANCER 역할이 아님",
             "content": {
               "application/json": {
                 "schema": {
@@ -4278,7 +4278,7 @@
             }
           },
           "403": {
-            "description": "권한 없음\n\n- `Only clients can view their projects` — CLIENT가 아님",
+            "description": "권한 없음\n\n- `Insufficient permissions` — CLIENT 역할이 아님",
             "content": {
               "application/json": {
                 "schema": {

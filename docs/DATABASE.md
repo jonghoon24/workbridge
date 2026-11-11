@@ -144,7 +144,7 @@ Storage는 secret 키로만 다룬다. 그래서 **모든 테이블에 RLS를 �
 
 **결제 승인은 잠금 대신 선점(조건부 쓰기)으로 직렬화한다.** 토스페이먼츠 호출을 트랜잭션 안에 두지 않기 위해서다. 승인 요청은
 공급자를 부르기 전에 `Payment.confirmStartedAt`을 조건부로 써서 선점하고, 쓰지 못한 요청은 409다. 선점은 임대라서 중간에 죽은
-요청이 그 주문을 영원히 막지 않는다(임대 시간과 공급자 타임아웃의 관계는 `src/controllers/payments.controller.ts` 주석).
+요청이 그 주문을 영원히 막지 않는다(임대 시간과 공급자 타임아웃의 관계는 `src/services/payments.service.ts` 주석).
 
 잠금 순서는 `Contract` → `Milestone` → 이벤트의 다른 쓰기 → `Conversation`이다. 대화방 시스템 메시지(`postSystemMessage`,
 `src/services/messaging.service.ts`)는 언제나 이벤트 트랜잭션의 **마지막 쓰기**라서(`MILESTONE_APPROVED` 다음

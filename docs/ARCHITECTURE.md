@@ -17,7 +17,7 @@ OpenAPI 문서(아래 "API 계약: OpenAPI")가 기준이다.
 
 | | 기존 도메인 | 확장 도메인 |
 | --- | --- | --- |
-| 도메인 | auth, users, projects, applications, contracts, payments, reviews, notifications | milestones, settlements, payout account, contract list, conversations, portfolio/careers, recommendations, notification preferences, bookmark ids |
+| 도메인 | auth, users, projects, applications, contracts, payments, notifications | milestones, settlements, payout account, contract list, conversations, portfolio/careers, recommendations, notification preferences, bookmark ids, reviews |
 | 흐름 | `routes → controllers → lib` | `routes → controllers → services → lib` |
 | 로직 | 컨트롤러 안 | `src/services/*.service.ts`, 일부는 `src/lib/`(추천은 `lib/recommendations.ts`) |
 | 소프트 삭제된 호출자 | 쓰기 라우트만 `requireActiveUser`가 401. 읽기 라우트는 다시 확인하지 않는다 | 모든 라우트에서 `requireActiveUser`(`src/middlewares/activeUser.ts`)가 401 |
@@ -25,7 +25,8 @@ OpenAPI 문서(아래 "API 계약: OpenAPI")가 기준이다.
 요청 검증은 양쪽 모두 zod 스키마(`src/schemas/`)와 `validate()`(`src/middlewares/validate.ts`)가 맡는다. 확장 라우트가 기존
 라우터 파일에 들어간 곳도 있다(지급 계좌 `users.routes.ts`, 계약 목록 `contracts.routes.ts`, 추천 프리랜서 `projects.routes.ts`).
 두 방식이 섞여 있는 것은 의도된 과도기이고, 기존 도메인을 서비스 레이어로 옮기는 계획과 순서는
-[#40](https://github.com/jonghoon24/workbridge/issues/40)에 있다.
+[#40](https://github.com/jonghoon24/workbridge/issues/40)에 있다. #40에서 옮긴 users, notifications(설정 제외), payments는 로직이
+`src/services/`에 있지만, 읽기 라우트에는 `requireActiveUser`가 없어(#7은 쓰기만 막는다) 표에서는 기존 도메인에 둔다.
 
 ### 인증과 권한
 
@@ -64,7 +65,7 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 프로젝트 상태를 시각에 맞춰 바꿔 줄 상주 프로세스가 운영에 없어서, 프로젝트·지원을 읽는 경로가 응답 전에 상태를 맞춘다
 ([지연 스윕](domain/projects-contracts.md#지연-스윕-읽기가-행을-쓴다)). 공개 목록·상세뿐 아니라 내 지원·내 프로젝트·프로젝트의
 지원 목록 같은 GET도 행을 쓴다. 어느 핸들러가 쓰는지는 `src/lib/projectLifecycle.ts`의 `closeExpiredOpenProjects`와
-`rejectPendingApplicationsForClosedProjects`를 부르는 곳(projects·users·applications 컨트롤러)이 기준이다. 작업 큐의
+`rejectPendingApplicationsForClosedProjects`를 부르는 곳(projects·applications 컨트롤러와 users 서비스)이 기준이다. 작업 큐의
 `project.lifecycleSweep`도 같은 함수를 부르지만, 운영에서는 작업 큐가 15분 간격으로만 돌아서 읽기 경로의 스윕이 보장 장치다.
 
 ## 작업 큐 (`src/jobs/`, Postgres `Job` 테이블)

@@ -113,8 +113,6 @@ interface RouteSpec {
   body?: (ids: Ids) => Record<string, unknown>;
   /** Role the route is gated on, `null` when any authenticated user may call it. */
   role: 'CLIENT' | 'FREELANCER' | null;
-  /** Where the role check lives: `requireRole` middleware, or inside the controller. */
-  gate: 'middleware' | 'controller' | null;
 }
 
 /** Ids that match nothing, for tests that must be rejected before any lookup happens. */
@@ -149,7 +147,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/auth/select-role',
     body: () => ({ role: 'CLIENT' }),
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/auth/change-password',
@@ -157,46 +154,40 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/auth/change-password',
     body: () => ({ currentPassword: 'password123', newPassword: 'new-password-1' }),
     role: null,
-    gate: null,
   },
 
   // users.routes.ts
-  { label: 'GET /api/users/me', method: 'get', path: () => '/api/users/me', role: null, gate: null },
+  { label: 'GET /api/users/me', method: 'get', path: () => '/api/users/me', role: null },
   {
     label: 'PATCH /api/users/me',
     method: 'patch',
     path: () => '/api/users/me',
     body: () => ({ name: 'New Name' }),
     role: null,
-    gate: null,
   },
   {
     label: 'GET /api/users/me/applications',
     method: 'get',
     path: () => '/api/users/me/applications',
     role: 'FREELANCER',
-    gate: 'controller',
   },
   {
     label: 'GET /api/users/me/bookmarks',
     method: 'get',
     path: () => '/api/users/me/bookmarks',
     role: 'FREELANCER',
-    gate: 'controller',
   },
   {
     label: 'GET /api/users/me/projects',
     method: 'get',
     path: () => '/api/users/me/projects',
     role: 'CLIENT',
-    gate: 'controller',
   },
   {
     label: 'GET /api/users/me/payout-account',
     method: 'get',
     path: () => '/api/users/me/payout-account',
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'PUT /api/users/me/payout-account',
@@ -204,14 +195,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/users/me/payout-account',
     body: () => ({ bankCode: '004', accountNumber: '110-1234-56789', holderName: 'Nobody' }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'DELETE /api/users/me/payout-account',
     method: 'delete',
     path: () => '/api/users/me/payout-account',
     role: 'FREELANCER',
-    gate: 'middleware',
   },
 
   // profile.routes.ts (the two public GETs are in PUBLIC_ROUTES)
@@ -221,7 +210,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/users/me/portfolio',
     body: () => ({ title: 'A portfolio item' }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'PUT /api/users/me/portfolio/order',
@@ -229,7 +217,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/users/me/portfolio/order',
     body: () => ({ ids: [] }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'PATCH /api/users/me/portfolio/:itemId',
@@ -237,14 +224,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/users/me/portfolio/${ids.portfolioItemId}`,
     body: () => ({ title: 'Renamed' }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'DELETE /api/users/me/portfolio/:itemId',
     method: 'delete',
     path: (ids) => `/api/users/me/portfolio/${ids.portfolioItemId}`,
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'POST /api/users/me/careers',
@@ -252,7 +237,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/users/me/careers',
     body: () => ({ company: 'Codeit', position: 'Developer', employmentType: 'FULL_TIME', startDate: '2021-03' }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'PATCH /api/users/me/careers/:careerId',
@@ -260,28 +244,24 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/users/me/careers/${ids.careerId}`,
     body: () => ({ position: 'Lead' }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'DELETE /api/users/me/careers/:careerId',
     method: 'delete',
     path: (ids) => `/api/users/me/careers/${ids.careerId}`,
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'GET /api/users/me/profile-completion',
     method: 'get',
     path: () => '/api/users/me/profile-completion',
     role: null,
-    gate: null,
   },
   {
     label: 'GET /api/users/me/withdrawal',
     method: 'get',
     path: () => '/api/users/me/withdrawal',
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/users/me/withdrawal',
@@ -289,21 +269,18 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/users/me/withdrawal',
     body: () => ({ currentPassword: 'password123' }),
     role: null,
-    gate: null,
   },
   {
     label: 'GET /api/users/me/bookmarks/ids',
     method: 'get',
     path: () => '/api/users/me/bookmarks/ids',
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'GET /api/users/me/recommended-projects',
     method: 'get',
     path: () => '/api/users/me/recommended-projects',
     role: 'FREELANCER',
-    gate: 'middleware',
   },
 
   // projects.routes.ts
@@ -312,7 +289,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     method: 'get',
     path: (ids) => `/api/projects/${ids.projectId}/recommended-freelancers`,
     role: 'CLIENT',
-    gate: 'middleware',
   },
   {
     label: 'POST /api/projects',
@@ -326,28 +302,24 @@ const PROTECTED_ROUTES: RouteSpec[] = [
       deadline: daysFromNow(20).toISOString(),
     }),
     role: 'CLIENT',
-    gate: 'middleware',
   },
   {
     label: 'GET /api/projects/:id/bookmark',
     method: 'get',
     path: (ids) => `/api/projects/${ids.projectId}/bookmark`,
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'POST /api/projects/:id/bookmark',
     method: 'post',
     path: (ids) => `/api/projects/${ids.projectId}/bookmark`,
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'DELETE /api/projects/:id/bookmark',
     method: 'delete',
     path: (ids) => `/api/projects/${ids.projectId}/bookmark`,
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'PATCH /api/projects/:id',
@@ -355,14 +327,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/projects/${ids.projectId}`,
     body: () => ({ title: 'Edited title' }),
     role: 'CLIENT',
-    gate: 'middleware',
   },
   {
     label: 'DELETE /api/projects/:id',
     method: 'delete',
     path: (ids) => `/api/projects/${ids.projectId}`,
     role: 'CLIENT',
-    gate: 'middleware',
   },
   {
     label: 'PATCH /api/projects/:id/status',
@@ -370,14 +340,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/projects/${ids.projectId}/status`,
     body: () => ({ status: 'CLOSED' }),
     role: 'CLIENT',
-    gate: 'middleware',
   },
   {
     label: 'POST /api/projects/:id/analyze',
     method: 'post',
     path: (ids) => `/api/projects/${ids.projectId}/analyze`,
     role: 'CLIENT',
-    gate: 'middleware',
   },
 
   // applications.routes.ts (also mounted under /api/projects)
@@ -387,14 +355,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/projects/${ids.projectId}/applications`,
     body: () => ({ coverLetter: 'Pick me', expectedRate: 3_000_000, expectedDuration: '3주' }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'GET /api/projects/:id/applications',
     method: 'get',
     path: (ids) => `/api/projects/${ids.projectId}/applications`,
     role: 'CLIENT',
-    gate: 'middleware',
   },
   {
     label: 'PATCH /api/projects/:projectId/applications/:appId',
@@ -402,17 +368,15 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/projects/${ids.projectId}/applications/${ids.applicationId}`,
     body: () => ({ status: 'REJECTED' }),
     role: 'CLIENT',
-    gate: 'middleware',
   },
 
   // contracts.routes.ts
-  { label: 'GET /api/contracts', method: 'get', path: () => '/api/contracts', role: null, gate: null },
+  { label: 'GET /api/contracts', method: 'get', path: () => '/api/contracts', role: null },
   {
     label: 'GET /api/contracts/:id/milestones',
     method: 'get',
     path: (ids) => `/api/contracts/${ids.contractId}/milestones`,
     role: null,
-    gate: null,
   },
   {
     label: 'PUT /api/contracts/:id/milestones',
@@ -420,14 +384,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/contracts/${ids.contractId}/milestones`,
     body: () => ({ milestones: [{ title: 'All', amount: 4_000_000, dueDate: '2099-01-01' }] }),
     role: 'CLIENT',
-    gate: 'middleware',
   },
   {
     label: 'GET /api/contracts/:id',
     method: 'get',
     path: (ids) => `/api/contracts/${ids.contractId}`,
     role: null,
-    gate: null,
   },
   {
     label: 'PATCH /api/contracts/:id',
@@ -435,21 +397,18 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/contracts/${ids.contractId}`,
     body: () => ({ status: 'COMPLETED' }),
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/contracts/:id/sign',
     method: 'post',
     path: (ids) => `/api/contracts/${ids.contractId}/sign`,
     role: null,
-    gate: null,
   },
   {
     label: 'GET /api/contracts/:id/conversation',
     method: 'get',
     path: (ids) => `/api/contracts/${ids.contractId}/conversation`,
     role: null,
-    gate: null,
   },
 
   // payments.routes.ts
@@ -459,7 +418,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/payments',
     body: (ids) => ({ milestoneId: ids.milestoneId }),
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/payments/confirm',
@@ -467,7 +425,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/payments/confirm',
     body: (ids) => ({ paymentKey: 'test_payment_key', orderId: ids.orderId, amount: 4_000_000 }),
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/payments/dev-complete',
@@ -475,9 +432,8 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/payments/dev-complete',
     body: (ids) => ({ milestoneId: ids.milestoneId }),
     role: null,
-    gate: null,
   },
-  { label: 'GET /api/payments', method: 'get', path: () => '/api/payments', role: null, gate: null },
+  { label: 'GET /api/payments', method: 'get', path: () => '/api/payments', role: null },
 
   // milestones.routes.ts
   {
@@ -485,14 +441,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     method: 'get',
     path: (ids) => `/api/milestones/${ids.milestoneId}`,
     role: null,
-    gate: null,
   },
   {
     label: 'GET /api/milestones/:id/attachments/:attachmentId/download',
     method: 'get',
     path: (ids) => `/api/milestones/${ids.milestoneId}/attachments/missing-attachment-id/download`,
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/milestones/:id/uploads',
@@ -500,7 +454,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/milestones/${ids.milestoneId}/uploads`,
     body: () => ({ files: [{ fileName: 'a.pdf', mimeType: 'application/pdf', size: 10 }] }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'POST /api/milestones/:id/submissions',
@@ -508,14 +461,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/milestones/${ids.milestoneId}/submissions`,
     body: () => ({ message: 'Done', links: [] }),
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'POST /api/milestones/:id/approve',
     method: 'post',
     path: (ids) => `/api/milestones/${ids.milestoneId}/approve`,
     role: 'CLIENT',
-    gate: 'middleware',
   },
   {
     label: 'POST /api/milestones/:id/reject',
@@ -523,7 +474,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/milestones/${ids.milestoneId}/reject`,
     body: () => ({ reason: 'Please fix the layout.' }),
     role: 'CLIENT',
-    gate: 'middleware',
   },
 
   // settlements.routes.ts
@@ -532,21 +482,18 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     method: 'get',
     path: () => '/api/settlements',
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'GET /api/settlements/summary',
     method: 'get',
     path: () => '/api/settlements/summary',
     role: 'FREELANCER',
-    gate: 'middleware',
   },
   {
     label: 'GET /api/settlements/:id',
     method: 'get',
     path: (ids) => `/api/settlements/${ids.settlementId}`,
     role: 'FREELANCER',
-    gate: 'middleware',
   },
 
   // reviews.routes.ts
@@ -561,31 +508,27 @@ const PROTECTED_ROUTES: RouteSpec[] = [
       content: 'Great work',
     }),
     role: null,
-    gate: null,
   },
 
   // notifications.routes.ts
-  { label: 'GET /api/notifications', method: 'get', path: () => '/api/notifications', role: null, gate: null },
+  { label: 'GET /api/notifications', method: 'get', path: () => '/api/notifications', role: null },
   {
     label: 'GET /api/notifications/unread-count',
     method: 'get',
     path: () => '/api/notifications/unread-count',
     role: null,
-    gate: null,
   },
   {
     label: 'PATCH /api/notifications/read-all',
     method: 'patch',
     path: () => '/api/notifications/read-all',
     role: null,
-    gate: null,
   },
   {
     label: 'PATCH /api/notifications/:id/read',
     method: 'patch',
     path: (ids) => `/api/notifications/${ids.notificationId}/read`,
     role: null,
-    gate: null,
   },
   // notifications.routes.ts — notification preferences
   {
@@ -593,7 +536,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     method: 'get',
     path: () => '/api/notifications/preferences',
     role: null,
-    gate: null,
   },
   {
     label: 'PUT /api/notifications/preferences',
@@ -601,31 +543,27 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: () => '/api/notifications/preferences',
     body: () => ({ preferences: [{ type: 'MILESTONE_DUE_SOON', email: false }] }),
     role: null,
-    gate: null,
   },
 
   // conversations.routes.ts
-  { label: 'GET /api/conversations', method: 'get', path: () => '/api/conversations', role: null, gate: null },
+  { label: 'GET /api/conversations', method: 'get', path: () => '/api/conversations', role: null },
   {
     label: 'GET /api/conversations/unread-count',
     method: 'get',
     path: () => '/api/conversations/unread-count',
     role: null,
-    gate: null,
   },
   {
     label: 'GET /api/conversations/:id',
     method: 'get',
     path: (ids) => `/api/conversations/${ids.conversationId}`,
     role: null,
-    gate: null,
   },
   {
     label: 'GET /api/conversations/:id/messages',
     method: 'get',
     path: (ids) => `/api/conversations/${ids.conversationId}/messages`,
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/conversations/:id/uploads',
@@ -633,14 +571,12 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/conversations/${ids.conversationId}/uploads`,
     body: () => ({ files: [{ fileName: 'a.pdf', mimeType: 'application/pdf', size: 10 }] }),
     role: null,
-    gate: null,
   },
   {
     label: 'GET /api/conversations/:id/attachments/:attachmentId/download',
     method: 'get',
     path: (ids) => `/api/conversations/${ids.conversationId}/attachments/missing-attachment-id/download`,
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/conversations/:id/messages',
@@ -648,21 +584,18 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     path: (ids) => `/api/conversations/${ids.conversationId}/messages`,
     body: () => ({ body: 'Hello' }),
     role: null,
-    gate: null,
   },
   {
     label: 'POST /api/conversations/:id/read',
     method: 'post',
     path: (ids) => `/api/conversations/${ids.conversationId}/read`,
     role: null,
-    gate: null,
   },
   {
     label: 'DELETE /api/conversations/:id/messages/:messageId',
     method: 'delete',
     path: (ids) => `/api/conversations/${ids.conversationId}/messages/${ids.messageId}`,
     role: null,
-    gate: null,
   },
 ];
 
@@ -838,8 +771,6 @@ describe('the route table itself', () => {
 
   it('records a role gate for exactly the 35 role-gated routes', () => {
     expect(ROLE_GATED_ROUTES).toHaveLength(35);
-    expect(ROLE_GATED_ROUTES.every((r) => r.gate !== null)).toBe(true);
-    expect(PROTECTED_ROUTES.filter((r) => r.role === null).every((r) => r.gate === null)).toBe(true);
   });
 });
 
@@ -1038,18 +969,14 @@ describe('authorization — role gating', () => {
     const res = await call(route, ids, { Authorization: `Bearer ${tokenFor(freelancer)}` });
 
     expectErrorEnvelope(res, 403);
-    if (route.gate === 'middleware') {
-      expect(res.body.error.message).toBe('Insufficient permissions');
-    }
+    expect(res.body.error.message).toBe('Insufficient permissions');
   });
 
   it.each(freelancerOnly)('$label → 403 for a CLIENT', async (route) => {
     const res = await call(route, ids, { Authorization: `Bearer ${tokenFor(client)}` });
 
     expectErrorEnvelope(res, 403);
-    if (route.gate === 'middleware') {
-      expect(res.body.error.message).toBe('Insufficient permissions');
-    }
+    expect(res.body.error.message).toBe('Insufficient permissions');
   });
 
   // Without this the 403s above could be coming from something other than the role gate.
@@ -1871,7 +1798,7 @@ describe('error envelope', () => {
 
     const res = await authed(freelancer).get('/api/users/me/projects');
 
-    expectExactEnvelope(res, 403, 'Only clients can view their projects');
+    expectExactEnvelope(res, 403, 'Insufficient permissions');
   });
 
   it('is exactly { error: { message } } on 404', async () => {

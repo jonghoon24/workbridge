@@ -2,7 +2,7 @@ import { z } from '../../lib/zod';
 import { count, dateTime, id, roleEnum, won } from './common';
 import { career, careerSummary, portfolioItem } from './profile';
 
-/** Profile fields both `GET /me` and the public profile select (`users.controller.ts`). */
+/** Profile fields both `GET /me` and the public profile select (`users.service.ts`). */
 const profileFields = {
   id,
   name: z.string(),

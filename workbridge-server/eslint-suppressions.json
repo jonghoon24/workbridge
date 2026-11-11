@@ -12,17 +12,6 @@
       "count": 1
     }
   },
-  "src/controllers/payments.controller.ts": {
-    "@typescript-eslint/no-unsafe-argument": {
-      "count": 2
-    },
-    "@typescript-eslint/no-unsafe-assignment": {
-      "count": 11
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 2
-    }
-  },
   "src/controllers/projects.controller.ts": {
     "@typescript-eslint/no-unsafe-argument": {
       "count": 1
