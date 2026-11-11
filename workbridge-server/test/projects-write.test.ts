@@ -350,6 +350,25 @@ describe('POST /api/projects', () => {
     expect(stored.recruitmentStartDate!.getTime()).toBeLessThanOrEqual(after + 30_000);
   });
 
+  // #140: the same rule as reopening — a deadline before now is refused; today (KST) is allowed.
+  // The recruitment start is earlier still, so the schedule check alone let these through (201).
+  it.each([
+    ['yesterday as a KST date', () => kstDateString(new Date(Date.now() - DAY_MS))],
+    ['an instant an hour ago', () => new Date(Date.now() - 60 * 60_000).toISOString()],
+  ])('refuses a deadline in the past (%s) with 400 and creates nothing', async (_label, deadline) => {
+    const client = await makeClient();
+
+    const res = await authed(client).post('/api/projects').send({
+      ...validBody(),
+      recruitmentStartDate: kstDateString(new Date(Date.now() - 3 * DAY_MS)),
+      deadline: deadline(),
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual(invalidBody('deadline', 'TOO_SMALL', 'Deadline must not be in the past'));
+    expect(await prisma.project.count()).toBe(0);
+  });
+
   describe('date-only values are KST calendar days', () => {
     it('a deadline of today lasts until 23:59:59.999 KST, so the project stays OPEN', async () => {
       const client = await makeClient();
@@ -837,6 +856,30 @@ describe('PATCH /api/projects/:id', () => {
   });
 
   describe('with no applications, dates re-validate and the status is recomputed', () => {
+    // #140: the same rule as creating and reopening.
+    it('refuses a deadline in the past with 400 and leaves the stored one', async () => {
+      const { client, project } = await ownedProject({ deadline: daysFromNow(30) });
+
+      const res = await authed(client)
+        .patch(`/api/projects/${project.id}`)
+        .send({ deadline: kstDateString(new Date(Date.now() - DAY_MS)) });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual(invalidBody('deadline', 'TOO_SMALL', 'Deadline must not be in the past'));
+      const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(stored.deadline.toISOString()).toBe(project.deadline.toISOString());
+    });
+
+    it('accepts a deadline of today (KST)', async () => {
+      const { client, project } = await ownedProject({ deadline: daysFromNow(30) });
+      const today = kstDateString(new Date());
+
+      const res = await authed(client).patch(`/api/projects/${project.id}`).send({ deadline: today });
+
+      expect(res.status).toBe(200);
+      expect(res.body.deadline).toBe(kstDateToEndOfDay(today).toISOString());
+    });
+
     it('rejects a deadline that lands before the existing recruitmentStartDate with 400', async () => {
       const { client, project } = await ownedProject({
         status: 'UPCOMING',
@@ -989,29 +1032,6 @@ describe('PATCH /api/projects/:id', () => {
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.status).toBe('OPEN');
-    });
-
-    // `getProjectStatusForRecruitmentStart` only ever answers UPCOMING or OPEN, so moving the
-    // deadline into the past does not close the project on the spot — the lazy lifecycle sweep
-    // converges it on the next read. Only the converged state is asserted.
-    it('converges to CLOSED on the next read when the deadline is moved into the past', async () => {
-      const { client, project } = await ownedProject({
-        status: 'OPEN',
-        recruitmentStartDate: daysFromNow(-10),
-        deadline: daysFromNow(30),
-      });
-
-      const patched = await authed(client)
-        .patch(`/api/projects/${project.id}`)
-        .send({ deadline: daysFromNow(-1).toISOString() });
-      expect(patched.status).toBe(200);
-
-      const read = await api().get(`/api/projects/${project.id}`);
-      expect(read.status).toBe(200);
-      expect(read.body.status).toBe('CLOSED');
-
-      const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
-      expect(stored.status).toBe('CLOSED');
     });
 
     it('does not touch the status when only non-schedule fields change', async () => {
