@@ -147,11 +147,13 @@ describe('row level security', () => {
     expect(tables.filter((t) => !t.rls).map((t) => t.name)).toEqual([]);
   });
 
-  it('leaves the app, which connects as the table owner, able to read and write', async () => {
-    const client = await makeClient();
+  it('is not forced, so the app (the table owner) still bypasses it', async () => {
+    const forced = await prisma.$queryRaw<Array<{ name: string }>>`
+      SELECT c.relname AS name
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'p') AND c.relforcerowsecurity`;
 
-    await expect(prisma.user.findFirst({ where: { id: client.id, deletedAt: null } })).resolves.toMatchObject({
-      id: client.id,
-    });
+    expect(forced.map((t) => t.name)).toEqual([]);
   });
 });

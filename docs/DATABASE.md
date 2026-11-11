@@ -168,7 +168,8 @@ DB를 통째로 읽은 사람(백업, SQL 접근)도 키 없이는 계좌번호�
 Supabase는 `public` 스키마를 Data API(PostgREST)로 공개한다. 그래서 RLS가 꺼진 테이블은 프로젝트 URL과 anon(publishable) 키만
 있으면 누구나 읽고 쓸 수 있다. 앱은 Data API를 쓰지 않는다. 서버는 Prisma로 테이블 소유자 역할로 접속하고(소유자는 RLS를 우회한다),
 Storage는 secret 키로만 다룬다. 그래서 **모든 테이블에 RLS를 켜고 정책은 두지 않는다**. anon·authenticated 역할은 아무 행도 보지
-못하고, 앱 동작은 바뀌지 않는다(`20261111024733_enable_row_level_security`, `_prisma_migrations` 포함).
+못하고, 앱 동작은 바뀌지 않는다(`20261111024733_enable_row_level_security`, `_prisma_migrations` 포함). 이 마이그레이션은
+마이그레이션 역할이 소유하지 않은 테이블(확장이 만든 테이블 등)을 건너뛰고 `NOTICE`만 남긴다. 그런 테이블은 대시보드에서 따로 확인한다.
 
 - 새 테이블은 그 테이블을 만드는 마이그레이션에서 RLS를 켠다. `--create-only`로 만든 SQL 끝에
   `ALTER TABLE "<Model>" ENABLE ROW LEVEL SECURITY;`를 붙인다(`db-migration` 스킬). 빠뜨리면 `test/db-constraints.test.ts`의
