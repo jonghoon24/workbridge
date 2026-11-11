@@ -17,7 +17,7 @@
 
 | 파일 | 왜 있는가 |
 |---|---|
-| `server-layers.md` | 기존/확장 레이어가 섞여 있고 이전은 #40에서 따로 한다. 새 라우트의 가드 체인과 OpenAPI 등록, 환경변수는 `env.ts`로만, 공개 핸들러의 `req.user`(타입이 경고하지 않는다), 트랜잭션 아웃박스, 트랜잭션 안 P2002(Postgres가 트랜잭션을 이미 중단했다), 잠금 순서(`lockUserRow` 첫 문장, 시스템 메시지는 마지막 쓰기), raw SQL의 시각(9시간 어긋남) |
+| `server-layers.md` | 라우트 → 컨트롤러 → 서비스 레이어. 새 라우트의 가드 체인과 OpenAPI 등록, 환경변수는 `env.ts`로만, 공개 핸들러의 `req.user`(타입이 경고하지 않는다), 트랜잭션 아웃박스, 트랜잭션 안 P2002(Postgres가 트랜잭션을 이미 중단했다), 잠금 순서(`lockUserRow` 첫 문장, 시스템 메시지는 마지막 쓰기), raw SQL의 시각(9시간 어긋남) |
 | `money-time.md` | 수수료·부가세·반올림은 `lib/money.ts`에만(인라인 계산은 1원 어긋남). CI·Vercel은 UTC, 개발 PC는 KST라 호스트 시간대 함수는 기기마다 답이 다르다. 테스트가 시간을 제어하도록 `now`를 인자로 |
 | `jobs.md` | 작업 등록 위치, 멱등 핸들러, 외부로 보내는 작업의 플래그 |
 | `notifications-logging.md` | 알림은 `notify()` 계열만(채널 정책과 수신자 설정이 거기서 적용된다). 요청 body·query·헤더를 통째로 로그에 넣지 않는다(계좌번호·토큰). 스위트가 "500은 한 번만 error 로그"를 단언한다 |
@@ -71,9 +71,9 @@
 | 스킬 | 왜 있는가 |
 |---|---|
 | `run-workbridge` | 로컬 Postgres, `.env` 두 개, 마이그레이션, 시드, dev 서버 두 개를 띄우는 절차가 길다. 로컬 로그인이 모두 루프백 한 주소로 세어져 로그인 제한에 걸리고, Supabase는 `localhost` 스텁이 필요하다. 화면 하나는 `npx playwright cli`로 직접 조작한다 |
-| `add-endpoint` | 확장 라우트 하나에 손댈 곳이 열 군데다. 동작 → zod → 서비스 → 얇은 컨트롤러 → 가드 → OpenAPI 등록 → `PROTECTED_ROUTES`·`guardedMutations` → 테스트 → 문서 |
+| `add-endpoint` | 라우트 하나에 손댈 곳이 열 군데다. 동작 → zod → 서비스 → 얇은 컨트롤러 → 가드 → OpenAPI 등록 → `PROTECTED_ROUTES`·`guardedMutations` → 테스트 → 문서 |
 | `db-migration` | 스키마 변경 뒤에 빠뜨리기 쉬운 후속 작업이 많다(손으로 붙이는 RLS·CHECK SQL, `TABLES`, `seed.js`, 응답에 나가는 필드면 OpenAPI 응답 스키마) |
-| `pre-pr-review` | `/code-review`와 `REVIEW.md` 번호 항목으로 diff를 보고, 국소적인 것만 고치고, 기존 테스트 단언 완화·기존 컨트롤러 개조는 사람에게 넘긴다. `allowed-tools`로 쓸 수 있는 커맨드를 묶었다 |
+| `pre-pr-review` | `/code-review`와 `REVIEW.md` 번호 항목으로 diff를 보고, 국소적인 것만 고치고, 기존 테스트 단언 완화·레이어 이동은 사람에게 넘긴다. `allowed-tools`로 쓸 수 있는 커맨드를 묶었다 |
 
 **한계.** 스킬은 설명이 요청과 맞을 때만 불린다. 스킬 전체를 끝까지 실행하는 자동 테스트는 없다.
 

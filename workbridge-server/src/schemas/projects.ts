@@ -105,10 +105,10 @@ export type ProjectListQuery = z.infer<typeof projectListQuery>;
 // ---------------------------------------------------------------------------------------------
 
 /**
- * `recruitmentStartDate` defaults to now (the controller's job, so "now" is request time); sent
- * empty or `null` it is absent too. `requiredSkills` is normalized and de-duplicated; omitted or
- * `null` → `[]`. Whether `recruitmentStartDate <= deadline` is the controller's check, shared
- * with PATCH, which compares against stored dates.
+ * `recruitmentStartDate` defaults to now (the service's job, with the request time the controller
+ * passes); sent empty or `null` it is absent too. `requiredSkills` is normalized and de-duplicated;
+ * omitted or `null` → `[]`. Whether `recruitmentStartDate <= deadline` is the service's check,
+ * shared with PATCH, which compares against stored dates.
  */
 export const projectCreateBody = z.object({
   title: requiredString('Project title'),
@@ -127,7 +127,7 @@ export const projectCreateBody = z.object({
 
 /**
  * Every field optional; only present ones change. Once the project has applications, sending
- * `budget`, `recruitmentStartDate` or `deadline` at all is refused by the controller.
+ * `budget`, `recruitmentStartDate` or `deadline` at all is refused by the service.
  */
 export const projectUpdateBody = z.object({
   title: requiredString('Project title').optional(),
@@ -140,6 +140,9 @@ export const projectUpdateBody = z.object({
     .nullish()
     .transform((value) => (value === undefined ? undefined : normalizeSkillList(value ?? []))),
 });
+
+export type ProjectCreateInput = z.infer<typeof projectCreateBody>;
+export type ProjectUpdateInput = z.infer<typeof projectUpdateBody>;
 
 // ---------------------------------------------------------------------------------------------
 // PATCH /api/projects/:id/status
@@ -155,9 +158,9 @@ const PROJECT_STATUSES = [
 ] as const satisfies readonly ProjectStatus[];
 
 /**
- * Any `ProjectStatus`; whether the transition is allowed is the controller's check, after the
+ * Any `ProjectStatus`; whether the transition is allowed is the service's check, after the
  * ownership check, with its own `Cannot transition from X to Y`. `deadline` belongs to reopening a
- * `CLOSED` project (`OPEN`), where it is required; the controller refuses it anywhere else.
+ * `CLOSED` project (`OPEN`), where it is required; the service refuses it anywhere else.
  */
 export const projectStatusBody = z.object({
   status: bodyEnum('Project status', PROJECT_STATUSES),

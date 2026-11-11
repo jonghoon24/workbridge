@@ -6,7 +6,7 @@ import type { NotificationType } from './types';
  * Wording and links of the contract, milestone and settlement notification types and of the
  * email-only unread-message digest, plus the email rendering every type shares. The four
  * application and project-status types (excluded from `TemplateType` below) keep their strings
- * inline in their controllers.
+ * inline in their services (`applications.service.ts`, `projects.service.ts`).
  */
 
 export type TemplateType = Exclude<

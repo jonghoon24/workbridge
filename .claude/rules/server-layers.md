@@ -5,13 +5,7 @@ paths:
 
 # 서버 레이어 (workbridge-server/src)
 
-## 기존 라우트와 확장 라우트
-
-- 새 라우트는 아래 확장 방식으로 만든다. 로직이 컨트롤러 안에 있는 기존 라우트는 고칠 때도 그 방식을 유지한다.
-- 기존 컨트롤러의 로직을 서비스 레이어로 옮기는 일은 #40에서 도메인 단위로 한다(대상 도메인은 `REVIEW.md` #2).
-  다른 변경에 섞지 않는다.
-
-## 새 라우트 만드는 법 (확장 방식)
+## 라우트 만드는 법
 
 - 체인: `authenticate → requireActiveUser → requireRole(...) → validate({ body|query|params }) → controller`.
   가드는 **라우트마다** 붙이고 `router.use`는 쓰지 않는다(같은 접두사에 나중에 마운트된 라우터로 가야 할
@@ -52,7 +46,7 @@ paths:
 
 - 행 두 개 이상을 바꾸는 변경은 `prisma.$transaction` 하나다. 알림(`notify()`)과 작업(`enqueueJob()`)도 그 트랜잭션
   클라이언트로 쓴다 — 롤백된 변경이 알림이나 작업을 남기면 안 된다(`docs/domain/README.md` "원자성").
-  기준 예: `applications.controller.ts`의 지원 수락.
+  기준 예: `applications.service.ts`의 지원 수락.
 - 트랜잭션 안팎에서 모두 쓰는 헬퍼는 `PrismaTransactionClient`(`src/types/index.ts`)를 받는다.
 - 인터랙티브 트랜잭션 *안에서* `create` 후 P2002를 catch하지 않는다 — Postgres가 처음 실패한 문장에서 트랜잭션 전체를
   이미 중단했다. `createMany({ skipDuplicates: true })`(`jobs/queue.ts` 참고)를 쓰거나 트랜잭션 밖에서 catch해 409로 바꾼다.

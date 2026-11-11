@@ -46,8 +46,8 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 
 ## 구조 요약
 
-- 서버: `src/index.ts`가 `/api/*` 라우터를 마운트하고 `export default app`(Vercel). 기존 도메인은
-  `routes → controllers → lib`, 확장 도메인은 `src/services/`를 더 쓴다(`docs/ARCHITECTURE.md`).
+- 서버: `src/index.ts`가 `/api/*` 라우터를 마운트하고 `export default app`(Vercel). 요청은
+  `routes → controllers → services`를 거친다(`docs/ARCHITECTURE.md`).
 - 데이터: `User → Project → Application → Contract → Milestone/Payment → Review`.
   `User`와 `Project`는 소프트 삭제(`deletedAt`) — 어디서나 `deletedAt: null`로 거른다.
 

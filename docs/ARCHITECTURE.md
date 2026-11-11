@@ -67,7 +67,7 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 프로젝트 상태를 시각에 맞춰 바꿔 줄 상주 프로세스가 운영에 없어서, 프로젝트·지원을 읽는 경로가 응답 전에 상태를 맞춘다
 ([지연 스윕](domain/projects-contracts.md#지연-스윕-읽기가-행을-쓴다)). 공개 목록·상세뿐 아니라 내 지원·내 프로젝트·프로젝트의
 지원 목록 같은 GET도 행을 쓴다. 어느 핸들러가 쓰는지는 `src/lib/projectLifecycle.ts`의 `closeExpiredOpenProjects`와
-`rejectPendingApplicationsForClosedProjects`를 부르는 곳(projects·applications 컨트롤러와 users 서비스)이 기준이다. 작업 큐의
+`rejectPendingApplicationsForClosedProjects`를 부르는 곳(projects·applications·users 서비스)이 기준이다. 작업 큐의
 `project.lifecycleSweep`도 같은 함수를 부르지만, 운영에서는 작업 큐가 15분 간격으로만 돌아서 읽기 경로의 스윕이 보장 장치다.
 
 ## 작업 큐 (`src/jobs/`, Postgres `Job` 테이블)

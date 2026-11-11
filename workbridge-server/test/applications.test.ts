@@ -171,6 +171,8 @@ describe('POST /api/projects/:id/applications', () => {
     const { message } = res.body.error;
     expect(message).not.toContain('src/controllers');
     expect(message).not.toContain('applications.controller');
+    expect(message).not.toContain('src/services');
+    expect(message).not.toContain('applications.service');
     expect(message).not.toMatch(/→/);
   });
 
