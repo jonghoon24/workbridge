@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
@@ -15,14 +15,17 @@ import UnreadBadge from '@/components/messages/UnreadBadge';
 import { formatDate, formatKRW } from '@/lib/format';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
 import PageLoader from '@/components/ui/PageLoader';
+import EmptyState from '@/components/ui/EmptyState';
+import { LockIcon } from '@/components/ui/Icons';
 import { toUserMessage } from '@/lib/errorMessages';
 
 export default function ContractPage() {
   const { id } = useParams();
-  const router = useRouter();
   const { user } = useAuthStore();
   const [contract, setContract] = useState(null);
   const [loading, setLoading] = useState(true);
+  // 처음 불러오기 실패: { kind: 'notFound' | 'forbidden' | 'error', message }. 이동하지 않고 화면에 보여 준다.
+  const [loadError, setLoadError] = useState(null);
   const [signing, setSigning] = useState(false);
   const [editingPlan, setEditingPlan] = useState(false);
   const [planNotice, setPlanNotice] = useState('');
@@ -40,12 +43,23 @@ export default function ContractPage() {
     [id]
   );
 
+  const fetchContract = useCallback(() => {
+    setLoading(true);
+    setLoadError(null);
+    return loadContract()
+      .catch((err) => {
+        const status = err.response?.status;
+        if (status === 404) setLoadError({ kind: 'notFound' });
+        else if (status === 403) setLoadError({ kind: 'forbidden' });
+        else setLoadError({ kind: 'error', message: toUserMessage(err, '계약을 불러오지 못했습니다.') });
+      })
+      .finally(() => setLoading(false));
+  }, [loadContract]);
+
   useEffect(() => {
     useAuthStore.getState().initAuth();
-    loadContract()
-      .catch(() => router.push('/'))
-      .finally(() => setLoading(false));
-  }, [loadContract, router]);
+    fetchContract();
+  }, [fetchContract]);
 
   // 계약의 대화방과 안 읽은 메시지 수. 대화방이 없으면(데이터 복구 상황) 버튼을 숨긴다.
   useEffect(() => {
@@ -162,7 +176,29 @@ export default function ContractPage() {
   }
 
   if (loading) return <PageLoader />;
-  if (!contract) return null;
+
+  if (loadError || !contract) {
+    const myContractsLink = (
+      <Link href="/my/contracts" className="text-primary-600 hover:text-primary-700 font-semibold">
+        내 계약으로 →
+      </Link>
+    );
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+        {loadError?.kind === 'forbidden' ? (
+          <EmptyState icon={LockIcon} title="이 계약을 볼 권한이 없습니다." description="계약 당사자만 볼 수 있습니다." action={myContractsLink} />
+        ) : loadError?.kind === 'error' ? (
+          <EmptyState
+            tone="error"
+            title={loadError.message}
+            action={<Button variant="secondary" onClick={fetchContract}>다시 시도</Button>}
+          />
+        ) : (
+          <EmptyState tone="error" title="계약을 찾을 수 없습니다." action={myContractsLink} />
+        )}
+      </div>
+    );
+  }
 
   const currentUser = user || useAuthStore.getState().user;
   const isClient = currentUser?.id === contract.clientId;
