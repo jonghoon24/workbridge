@@ -1,21 +1,39 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
-import Badge, { StatusPill } from '@/components/ui/Badge';
+import Badge, { StatusPill, statusLabels } from '@/components/ui/Badge';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { BriefcaseIcon } from '@/components/ui/Icons';
 import { formatDate } from '@/lib/format';
 import { toUserMessage } from '@/lib/errorMessages';
 
+// The endpoint returns every application unpaged, so tabs filter on the client (server-side filtering: #50).
+const TABS = [
+  { value: '', label: '전체' },
+  ...['PENDING', 'ACCEPTED', 'REJECTED'].map((value) => ({ value, label: statusLabels[value] })),
+];
+
 export default function MyApplicationsPage() {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
+
+  const counts = useMemo(() => {
+    const byStatus = { '': applications.length };
+    for (const app of applications) byStatus[app.status] = (byStatus[app.status] || 0) + 1;
+    return byStatus;
+  }, [applications]);
+
+  const visible = useMemo(
+    () => (status ? applications.filter((app) => app.status === status) : applications),
+    [applications, status],
+  );
 
   useEffect(() => {
     useAuthStore.getState().initAuth();
@@ -46,49 +64,74 @@ export default function MyApplicationsPage() {
           )}
         />
       ) : (
-        <div className="space-y-4">
-          {applications.map((app) => (
-            <Card key={app.id} data-testid="application-card" className="p-5">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Link href={`/projects/${app.project?.id}`} className="font-medium text-gray-900 hover:text-primary-600">
-                      {app.project?.title}
-                    </Link>
-                    <Badge variant={app.status}>{app.status}</Badge>
-                    {app.contract?.status === 'CANCELLED' && <StatusPill tone="gray">계약 철회</StatusPill>}
+        <>
+          <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
+            {TABS.map((tab) => (
+              <button
+                key={tab.value || 'all'}
+                type="button"
+                aria-pressed={status === tab.value}
+                onClick={() => setStatus(tab.value)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
+                  status === tab.value
+                    ? 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label}
+                <span className="ml-1.5 text-xs text-gray-400">{counts[tab.value] || 0}</span>
+              </button>
+            ))}
+          </div>
+
+          {visible.length === 0 ? (
+            <EmptyState icon={BriefcaseIcon} title="해당 상태의 지원이 없습니다" />
+          ) : (
+            <div className="space-y-4">
+              {visible.map((app) => (
+                <Card key={app.id} data-testid="application-card" className="p-5">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Link href={`/projects/${app.project?.id}`} className="font-medium text-gray-900 hover:text-primary-600">
+                          {app.project?.title}
+                        </Link>
+                        <Badge variant={app.status}>{app.status}</Badge>
+                        {app.contract?.status === 'CANCELLED' && <StatusPill tone="gray">계약 철회</StatusPill>}
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        {app.project?.category} · {app.project?.client?.companyName || app.project?.client?.name}
+                      </p>
+                      <p className="text-sm text-gray-600 mt-2 line-clamp-2">{app.coverLetter}</p>
+                      {app.contract?.id && (
+                        <Link href={`/contracts/${app.contract.id}`} className="inline-block mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium">
+                          계약서 보기 →
+                        </Link>
+                      )}
+                      {app.canReapply && (
+                        <p className="mt-3 text-sm text-gray-600">
+                          의뢰인이 다시 모집하고 있습니다.{' '}
+                          <Link href={`/projects/${app.project?.id}`} className="text-primary-600 hover:text-primary-700 font-medium">
+                            다시 지원하기 →
+                          </Link>
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right ml-4">
+                      <p className="text-sm font-medium text-gray-900">
+                        {app.expectedRate?.toLocaleString()}원
+                      </p>
+                      <p className="text-xs text-gray-500">{app.expectedDuration}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {formatDate(app.createdAt)}
+                      </p>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-500">
-                    {app.project?.category} · {app.project?.client?.companyName || app.project?.client?.name}
-                  </p>
-                  <p className="text-sm text-gray-600 mt-2 line-clamp-2">{app.coverLetter}</p>
-                  {app.contract?.id && (
-                    <Link href={`/contracts/${app.contract.id}`} className="inline-block mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium">
-                      계약서 보기 →
-                    </Link>
-                  )}
-                  {app.canReapply && (
-                    <p className="mt-3 text-sm text-gray-600">
-                      의뢰인이 다시 모집하고 있습니다.{' '}
-                      <Link href={`/projects/${app.project?.id}`} className="text-primary-600 hover:text-primary-700 font-medium">
-                        다시 지원하기 →
-                      </Link>
-                    </p>
-                  )}
-                </div>
-                <div className="text-right ml-4">
-                  <p className="text-sm font-medium text-gray-900">
-                    {app.expectedRate?.toLocaleString()}원
-                  </p>
-                  <p className="text-xs text-gray-500">{app.expectedDuration}</p>
-                  <p className="text-xs text-gray-400 mt-1">
-                    {formatDate(app.createdAt)}
-                  </p>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
