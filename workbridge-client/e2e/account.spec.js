@@ -1,5 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { apiSignup } = require('./helpers/api');
+const { ACCOUNTS, PASSWORD } = require('./helpers/accounts');
+const { acceptDialogs } = require('./helpers/fixtures');
 
 // 계정 설정. 비밀번호와 계정 자체를 바꾸므로 시드 계정이 아니라 매번 새로 가입한 계정을 쓴다.
 
@@ -81,5 +83,51 @@ test.describe('계정 설정', () => {
     // 401이 아니라서 로그인이 풀리지 않는다.
     await expect(page).toHaveURL(/\/my\/account$/);
     await expect(header(page).getByRole('button', { name: account.name })).toBeVisible();
+  });
+
+  test('거래가 남은 회원은 탈퇴 화면에서 막는 이유를 보고 탈퇴할 수 없다', async ({ page }) => {
+    // 시드 의뢰인(김서준)은 서명 전·진행 중 계약이 있다. 화면만 보고 아무것도 쓰지 않는다.
+    await loginThroughForm(page, ACCOUNTS.client.email, PASSWORD);
+    await expect(header(page).getByRole('button', { name: ACCOUNTS.client.name })).toBeVisible();
+
+    await page.goto('/my/account');
+    await page.getByRole('link', { name: '회원 탈퇴' }).click();
+    await expect(page.getByRole('heading', { name: '회원 탈퇴' })).toBeVisible();
+    await expect(page.getByText('지금은 탈퇴할 수 없습니다')).toBeVisible();
+    await expect(page.getByText(/진행 중이거나 서명 전인 계약이 \d+건 있습니다\./)).toBeVisible();
+    await expect(page.getByRole('link', { name: '내 계약 보기' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '회원 탈퇴' })).toBeDisabled();
+  });
+
+  test('거래가 없는 회원은 탈퇴하면 로그인할 수 없고, 같은 이메일로 다시 가입할 수 있다', async ({ page }) => {
+    const dialogs = acceptDialogs(page);
+    const account = await apiSignup({ label: 'withdraw' });
+    await loginThroughForm(page, account.email, account.password);
+    await expect(header(page).getByRole('button', { name: account.name })).toBeVisible();
+
+    await page.goto('/my/account/withdrawal');
+    await expect(page.getByText('탈퇴하기 전에 확인해 주세요')).toBeVisible();
+    await expect(page.getByText('지금은 탈퇴할 수 없습니다')).toHaveCount(0);
+    await page.getByLabel('안내 사항을 모두 확인했으며 탈퇴에 동의합니다.').check();
+    await page.getByLabel('현재 비밀번호').fill(account.password);
+    await page.getByRole('button', { name: '회원 탈퇴' }).click();
+
+    await expect(page).toHaveURL(/\/$/);
+    await expect(header(page).getByRole('link', { name: '로그인' })).toBeVisible();
+    expect(dialogs).toEqual([
+      '정말 탈퇴하시겠습니까? 탈퇴하면 되돌릴 수 없습니다.',
+      '탈퇴가 완료되었습니다. 그동안 WorkBridge를 이용해 주셔서 감사합니다.',
+    ]);
+
+    await loginThroughForm(page, account.email, account.password);
+    await expect(page.getByText('이메일 또는 비밀번호가 올바르지 않습니다.')).toBeVisible();
+
+    await page.goto('/signup');
+    await page.getByLabel('이름').fill('다시 가입한 회원');
+    await page.getByLabel('이메일').fill(account.email);
+    await page.getByLabel('비밀번호').fill(account.password);
+    await page.getByRole('button', { name: /프리랜서/ }).click();
+    await page.getByRole('button', { name: '회원가입' }).click();
+    await expect(header(page).getByRole('button', { name: '다시 가입한 회원' })).toBeVisible();
   });
 });

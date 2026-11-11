@@ -4,6 +4,8 @@ import type { AuthedFileRequest, AuthedRequest } from '../types/index';
 import type { ProfileUpdateInput } from '../schemas/users';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
+import { ACCOUNT_INACTIVE } from '../lib/locks';
+import { enqueueJob } from '../jobs/queue';
 import {
   closeExpiredOpenProjects,
   rejectPendingApplicationsForClosedProjects,
@@ -72,14 +74,25 @@ export async function updateMe(req: AuthedFileRequest, res: Response, next: Next
       profileImage = await uploadToSupabase(req.file.buffer, req.file.mimetype, filename);
     }
 
-    const updateData: Prisma.UserUpdateInput = { ...fields };
+    const updateData: Prisma.UserUpdateManyMutationInput = { ...fields };
     if (profileImage) updateData.profileImage = profileImage;
 
-    const user = await prisma.user.update({
-      where: { id: req.user.id },
-      data: updateData,
-      select: myProfileSelect,
-    });
+    // Only while the account is active: a withdrawal that committed after `requireActiveUser` (while
+    // the image uploaded) must not get its profile written back. Its just-uploaded image goes to the
+    // withdrawal's file cleanup, which finds profile images by the user id in their names.
+    // An empty patch (every field stripped as the other role's) writes nothing: Prisma skips an
+    // `updateMany` without data and reports 0 rows, so check the account instead.
+    const active = { id: req.user.id, deletedAt: null };
+    const count = Object.keys(updateData).length
+      ? (await prisma.user.updateMany({ where: active, data: updateData })).count
+      : await prisma.user.count({ where: active });
+    if (count === 0) {
+      if (profileImage) {
+        await enqueueJob(prisma, { type: 'account.deletePublicFiles', payload: { userId: req.user.id, paths: [] } });
+      }
+      throw new AppError(ACCOUNT_INACTIVE, 401);
+    }
+    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user.id }, select: myProfileSelect });
 
     res.json(toMyProfile(user));
   } catch (err) {

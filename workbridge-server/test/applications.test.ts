@@ -505,6 +505,18 @@ describe('GET /api/projects/:id/applications', () => {
     expect(res.body).toEqual([]);
   });
 
+  it('leaves out a soft-deleted freelancer\'s application', async () => {
+    const client = await makeClient();
+    const project = await makeProject(client.id);
+    const active = await makeApplication(project.id, (await makeFreelancer()).id);
+    await makeApplication(project.id, (await makeFreelancer({ deletedAt: new Date() })).id);
+
+    const res = await authed(client).get(`/api/projects/${project.id}/applications`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.map((app: { id: string }) => app.id)).toEqual([active.id]);
+  });
+
   it('returns applications newest first', async () => {
     const client = await makeClient();
     const project = await makeProject(client.id);
@@ -770,6 +782,31 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
   });
 
   describe('ACCEPTED', () => {
+    it('answers 404 for a soft-deleted freelancer\'s pending application and makes no contract', async () => {
+      const s = await scenario();
+      await prisma.user.update({ where: { id: s.winner.id }, data: { deletedAt: new Date() } });
+
+      const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' });
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'Application not found' } });
+      expect(await prisma.contract.count()).toBe(0);
+      const stored = await prisma.application.findMany({ where: { projectId: s.project.id } });
+      expect(stored.every((a) => a.status === 'PENDING')).toBe(true);
+      expect(await prisma.notification.count()).toBe(0);
+    });
+
+    it('does not notify a soft-deleted applicant that their application was rejected', async () => {
+      const s = await scenario();
+      await prisma.user.update({ where: { id: s.loserB.id }, data: { deletedAt: new Date() } });
+
+      const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' });
+
+      expect(res.status).toBe(200);
+      const rejected = await prisma.notification.findMany({ where: { type: 'APPLICATION_REJECTED' } });
+      expect(rejected.map((n) => n.userId)).toEqual([s.loserA.id]);
+    });
+
     it('performs every effect of the accept transaction', async () => {
       const s = await scenario();
       const before = Date.now();
@@ -1185,8 +1222,10 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
 
       const [a, b] = await Promise.all([first!, second!]);
       expect([a.status, b.status].sort()).toEqual([200, 409]);
+      // The winner rejected the loser's application before the loser got the project row, so the
+      // loser's conditional accept finds it decided.
       const loser = a.status === 409 ? a : b;
-      expect(loser.body).toEqual({ error: { message: 'A contract already exists for this project' } });
+      expect(loser.body).toEqual({ error: { message: 'This application has already been processed' } });
       expect(await prisma.contract.count()).toBe(1);
       expect(
         await prisma.application.count({ where: { projectId: s.project.id, status: 'ACCEPTED' } }),

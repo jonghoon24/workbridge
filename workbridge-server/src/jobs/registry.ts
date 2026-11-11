@@ -10,6 +10,7 @@ import { settlementPayout, settlementWeeklyBatch } from './handlers/settlementJo
 import { messageUnreadDigest } from './handlers/messageDigest';
 import { notificationEmail } from './handlers/notificationEmail';
 import { attachmentDeleteObjects } from './handlers/attachmentJobs';
+import { accountDeletePublicFiles } from './handlers/accountJobs';
 import type { JobHandler, JobType } from './types';
 
 /** One handler per job type. The mapped type makes a missing handler a compile error. */
@@ -25,6 +26,7 @@ export const registry: { [T in JobType]: JobHandler<T> } = {
   'message.unreadDigest': messageUnreadDigest,
   'notification.email': notificationEmail,
   'attachment.deleteObjects': attachmentDeleteObjects,
+  'account.deletePublicFiles': accountDeletePublicFiles,
 };
 
 export function handlerFor(type: string): JobHandler | undefined {

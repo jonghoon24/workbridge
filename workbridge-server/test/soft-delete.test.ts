@@ -472,6 +472,24 @@ const guardedMutations: Mutation[] = [
     },
   },
 
+  {
+    label: 'POST /api/users/me/withdrawal',
+    async setup() {
+      const actor = await makeFreelancer({ name: 'Before deletion' });
+      const item = await makePortfolioItem(actor.id);
+      return {
+        actor,
+        send: (token) => bearer(token).post('/api/users/me/withdrawal').send({ currentPassword: TEST_PASSWORD }),
+        async assertUnchanged() {
+          const stored = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
+          expect(stored.name).toBe('Before deletion');
+          expect(stored.email).toBe(actor.email);
+          expect(await prisma.portfolioItem.count({ where: { id: item.id } })).toBe(1);
+        },
+      };
+    },
+  },
+
   // Existing-domain writes: users, projects, applications, contracts, payments, reviews,
   // notifications.
   {

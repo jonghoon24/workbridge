@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
@@ -170,6 +171,13 @@ export default function AccountSettingsPage() {
         </Card>
 
         {profile?.hasPassword && <PasswordCard />}
+      </div>
+
+      <div className="mt-10 flex items-center justify-between border-t border-gray-200 pt-6 text-sm">
+        <p className="text-gray-500">더 이상 WorkBridge를 이용하지 않으시나요?</p>
+        <Link href="/my/account/withdrawal" className="font-medium text-gray-500 underline hover:text-gray-700">
+          회원 탈퇴
+        </Link>
       </div>
     </div>
   );

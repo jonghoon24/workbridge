@@ -3,7 +3,7 @@ import type { PayoutAccount } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { bankName, maskAccountNumber } from '../lib/banks';
-import { lockUserRow } from '../lib/locks';
+import { lockActiveUserRow, lockUserRow } from '../lib/locks';
 import { logger } from '../lib/logger';
 import {
   decryptAccountNumber,
@@ -44,7 +44,7 @@ export function holderMatches(holderName: string, userName: string): boolean {
  * removal while a payout is processing.
  */
 async function lockAndAssertNotProcessing(tx: PrismaTransactionClient, userId: string): Promise<void> {
-  await lockUserRow(tx, userId);
+  await lockActiveUserRow(tx, userId);
   const processing = await tx.settlement.count({ where: { freelancerId: userId, status: 'PROCESSING' } });
   if (processing > 0) throw new AppError(LOCKED, 409);
 }

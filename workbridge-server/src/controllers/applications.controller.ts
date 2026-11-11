@@ -10,7 +10,8 @@ import {
 } from '../lib/projectLifecycle';
 import { createDefaultMilestone, defaultMilestoneDueDate } from '../services/milestones.service';
 import { openContractConversation } from '../services/messaging.service';
-import { notify, notifyMany } from '../lib/notifications/notify';
+import { notify, notifyRecipients } from '../lib/notifications/notify';
+import { lockActiveUserRow } from '../lib/locks';
 import type { AuthedRequest } from '../types/index';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
@@ -48,6 +49,10 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
     let application;
     try {
       application = await prisma.$transaction(async (tx) => {
+        // A withdrawal that committed after `requireActiveUser` must not get an application back
+        // (it deleted this freelancer's undecided applications): 401 like the guard.
+        await lockActiveUserRow(tx, req.user.id);
+
         const created = await tx.application.create({
           data: {
             projectId,
@@ -102,8 +107,9 @@ export async function getApplications(req: AuthedRequest, res: Response, next: N
 
     await rejectPendingApplicationsForClosedProjects({ projectId });
 
+    // A soft-deleted freelancer's application is gone for the client too (and cannot be decided).
     const applications = await prisma.application.findMany({
-      where: { projectId },
+      where: { projectId, freelancer: { deletedAt: null } },
       include: {
         freelancer: {
           select: {
@@ -148,8 +154,9 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
       throw new AppError('Not authorized', 403);
     }
 
+    // A soft-deleted freelancer's application does not exist for the client: no contract with them.
     const application = await prisma.application.findFirst({
-      where: { id: appId, projectId },
+      where: { id: appId, projectId, freelancer: { deletedAt: null } },
     });
 
     if (!application) {
@@ -181,14 +188,26 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
             throw new AppError('Project not found', 404);
           }
 
+          // Accept only while still pending and the applicant still active, under the application's
+          // row lock: a withdrawal that deleted it while this waited (or an operator deletion) is
+          // a 404, a decision that landed first a 409 — never a contract with a withdrawn user.
+          const accepted = await tx.application.updateMany({
+            where: { id: appId, projectId, status: 'PENDING', freelancer: { deletedAt: null } },
+            data: { status: 'ACCEPTED' },
+          });
+          if (accepted.count === 0) {
+            const current = await tx.application.findFirst({
+              where: { id: appId, projectId, freelancer: { deletedAt: null } },
+              select: { id: true },
+            });
+            if (!current) throw new AppError('Application not found', 404);
+            throw new AppError('This application has already been processed', 409);
+          }
+          const updatedApp = await tx.application.findUniqueOrThrow({ where: { id: appId } });
+
           const rejectedApplications = await tx.application.findMany({
             where: { projectId, id: { not: appId }, status: 'PENDING' },
-            select: { freelancerId: true },
-          });
-
-          const updatedApp = await tx.application.update({
-            where: { id: appId },
-            data: { status: 'ACCEPTED' },
+            select: { freelancer: { select: { id: true, deletedAt: true } } },
           });
 
           await tx.application.updateMany({
@@ -226,13 +245,12 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
             href: `/contracts/${contract.id}`,
           }, now);
 
-          await notifyMany(tx, rejectedApplications.map((rejected) => ({
-            userId: rejected.freelancerId,
-            type: 'APPLICATION_REJECTED' as const,
+          await notifyRecipients(tx, rejectedApplications.map((rejected) => rejected.freelancer), {
+            type: 'APPLICATION_REJECTED',
             title: '지원 결과를 알려 드립니다',
             message: `'${project.title}' 프로젝트 지원이 거절되었습니다.`,
             href: '/my/applications',
-          })), now);
+          }, now);
 
           // 7. The conversation, its participants and `CONTRACT_CREATED` — last, so the
           // conversation lock is the last one taken.

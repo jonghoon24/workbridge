@@ -4,7 +4,7 @@
  * (`run-workbridge` skill). In memory, no auth: never expose it. Implements the calls the server
  * and the browser make: uploads to the public bucket (profile/portfolio images) and their public
  * URLs, signed upload URLs and the browser's `PUT`, object info, signed download URLs and the
- * downloads themselves, copy and remove. CORS is open so the browser can `PUT` from :3000.
+ * downloads themselves, copy, list and remove. CORS is open so the browser can `PUT` from :3000.
  *
  *   node scripts/storage-stub.mjs            # http://localhost:54321
  *   STORAGE_STUB_PORT=54399 node scripts/storage-stub.mjs
@@ -122,6 +122,17 @@ createServer(async (req, res) => {
       if (!object) return notFound(res);
       objects.set(`${destinationBucket || bucketId}/${destinationKey}`, { ...object });
       return send(res, 200, { Key: `${destinationBucket || bucketId}/${destinationKey}` });
+    }
+    if (req.method === 'POST' && (m = /^\/object\/list\/([^/]+)$/.exec(path))) {
+      // The files directly in `prefix` whose names contain `search` (withdrawal's profile-image cleanup).
+      const { prefix = '', search = '', limit = 100, offset = 0 } = json();
+      const folder = `${m[1]}/${prefix ? `${prefix.replace(/\/$/, '')}/` : ''}`;
+      const names = [...objects.keys()]
+        .filter((key) => key.startsWith(folder) && !key.slice(folder.length).includes('/'))
+        .map((key) => key.slice(folder.length))
+        .filter((name) => name.includes(search))
+        .sort();
+      return send(res, 200, names.slice(offset, offset + limit).map((name) => ({ name, id: `${folder}${name}`, metadata: {} })));
     }
     if (req.method === 'DELETE' && (m = /^\/object\/([^/]+)$/.exec(path))) {
       const { prefixes = [] } = json();

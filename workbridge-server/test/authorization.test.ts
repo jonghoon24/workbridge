@@ -277,6 +277,21 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     gate: null,
   },
   {
+    label: 'GET /api/users/me/withdrawal',
+    method: 'get',
+    path: () => '/api/users/me/withdrawal',
+    role: null,
+    gate: null,
+  },
+  {
+    label: 'POST /api/users/me/withdrawal',
+    method: 'post',
+    path: () => '/api/users/me/withdrawal',
+    body: () => ({ currentPassword: 'password123' }),
+    role: null,
+    gate: null,
+  },
+  {
     label: 'GET /api/users/me/bookmarks/ids',
     method: 'get',
     path: () => '/api/users/me/bookmarks/ids',

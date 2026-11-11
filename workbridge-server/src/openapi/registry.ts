@@ -1,6 +1,7 @@
 import { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { SECURITY_SCHEMES } from './common';
+import { registerAccountPaths } from './paths/account';
 import { registerApplicationPaths } from './paths/applications';
 import { registerAuthPaths } from './paths/auth';
 import { registerContractPaths } from './paths/contracts';
@@ -48,6 +49,7 @@ export function buildRegistry(): OpenAPIRegistry {
   registerAuthPaths(registry);
   registerUserPaths(registry);
   registerProfilePaths(registry);
+  registerAccountPaths(registry);
   registerProjectPaths(registry);
   registerApplicationPaths(registry);
   registerContractPaths(registry);

@@ -408,3 +408,56 @@ export function makeEmailDelivery(
     },
   });
 }
+
+// ─── Settlements ─────────────────────────────────────────────────────────
+
+/**
+ * A settlement item of `milestone` (approved) for the contract's freelancer, unsettled unless
+ * `settlementId` is given. Amounts are a fixed whole-won breakdown; tests here care about states.
+ */
+export function makeSettlementItem(
+  milestone: Pick<Milestone, 'id' | 'contractId'>,
+  freelancerId: string,
+  overrides: Partial<Prisma.SettlementItemUncheckedCreateInput> = {},
+) {
+  return prisma.settlementItem.create({
+    data: {
+      milestoneId: milestone.id,
+      contractId: milestone.contractId,
+      freelancerId,
+      grossAmount: 1_000_000,
+      feeRateBps: 1000,
+      feeAmount: 100_000,
+      feeVatAmount: 10_000,
+      netAmount: 890_000,
+      approvedAt: new Date(),
+      ...overrides,
+    },
+  });
+}
+
+let settlementWeek = 0;
+
+/** A settlement of `freelancerId` in the given status, each call a different (past) week. */
+export function makeSettlement(
+  freelancerId: string,
+  overrides: Partial<Prisma.SettlementUncheckedCreateInput> = {},
+) {
+  settlementWeek += 1;
+  const periodStart = new Date(Date.UTC(2026, 0, 4, 15) + settlementWeek * 7 * 86_400_000);
+  return prisma.settlement.create({
+    data: {
+      freelancerId,
+      periodStart,
+      periodEnd: new Date(periodStart.getTime() + 7 * 86_400_000),
+      scheduledPayoutAt: new Date(periodStart.getTime() + 9 * 86_400_000),
+      status: 'SCHEDULED',
+      itemCount: 1,
+      grossAmount: 1_000_000,
+      feeAmount: 100_000,
+      feeVatAmount: 10_000,
+      netAmount: 890_000,
+      ...overrides,
+    },
+  });
+}
