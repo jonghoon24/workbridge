@@ -1,6 +1,6 @@
 ---
 name: pre-pr-review
-description: PR을 열기 전에 main 대비 브랜치 diff를 /code-review와 REVIEW.md의 번호 항목으로 리뷰하고(pre-PR review), 수정을 적용해 커밋하고, 사람이 봐야 할 지적을 표시한 뒤 리포지토리 템플릿으로 PR을 연다(open a PR)
+description: PR을 열기 전에 main 대비 브랜치 diff를 /code-review와 .github/REVIEW.md의 번호 항목으로 리뷰하고(pre-PR review), 수정을 적용해 커밋하고, 사람이 봐야 할 지적을 표시한 뒤 리포지토리 템플릿으로 PR을 연다(open a PR)
 allowed-tools: Bash(git fetch:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(npm run typecheck:*), Bash(npm run lint:*), Bash(npm run build:*), Bash(npm run openapi:*), Bash(npx vitest run:*), Read, Grep, Glob, Edit, Skill
 ---
 
@@ -24,11 +24,11 @@ git log --oneline origin/main..HEAD
 `code-review`, 인자는 `medium --fix`와 대상인 현재 브랜치). 지적마다 결과를 적는다:
 `fixed` 또는 `skipped`(와 그 이유).
 
-## 3. WorkBridge 기준 — `REVIEW.md`
+## 3. WorkBridge 기준 — `.github/REVIEW.md`
 
-`REVIEW.md`를 읽고 diff를 **번호 항목 하나하나**와 대조한다. 항목마다 있는 "확인 방법" 줄을 쓴다
-(대부분 `git diff origin/main...HEAD -- <path>`와 grep). 항목마다 `해당 없음`, `통과`, `위반`(file:line과
-함께) 중 하나를 적는다.
+`.github/REVIEW.md`를 읽고 diff를 **번호 항목 하나하나**와 대조한다. 항목마다 있는 "확인:" 줄을 쓴다
+(대부분 `git diff origin/main...HEAD -- <path>`와 grep). ESLint·CI가 검사한다고 적힌 부분은 4단계의 lint가 맡는다.
+항목마다 `해당 없음`, `통과`, `위반`(file:line과 함께) 중 하나를 적는다.
 
 - 위반은 고치는 방법이 국소적이고 분명할 때만 고친다(예: `console.log` → `logger.info`,
   빠진 `deletedAt: null`, `guardedMutations`에 빠진 라우트).
@@ -60,8 +60,8 @@ git add -A && git commit -m "fix: 리뷰 지적 반영 — <요약>"
 
 ## 6. 보고하고 기다리기
 
-표를 출력한다: 출처(`code-review` / `REVIEW.md #n`), file:line, 지적, 결과
-(`fixed` / `skipped` / `위반 — 사람 확인 필요`). `skipped`인 지적과 고치지 않은 REVIEW.md 위반은 모두
+표를 출력한다: 출처(`code-review` / `REVIEW #n`), file:line, 지적, 결과
+(`fixed` / `skipped` / `위반 — 사람 확인 필요`). `skipped`인 지적과 고치지 않은 REVIEW 위반은 모두
 **"사람이 확인해야 할 항목"** 아래에 적는다. 그다음 **사용자의 진행 승인을 기다린다**.
 
 ## 7. PR 열기
