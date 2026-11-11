@@ -39,7 +39,6 @@ import {
  * `:itemId`. The public `GET /:id/portfolio` and `GET /:id/careers` must not read `req.user`;
  * there is no `/me/portfolio` or `/me/careers` read, so with the id `me` they are a 404 like any
  * unknown user.
- * `GET /api/projects/:id/recommended-freelancers` lives on the projects router instead.
  *
  * Attach guards per route, never with `router.use` — unmatched paths and public GETs pass through
  * here (an unmatched path must still fall through to the final JSON 404 rather than a guard's 401,

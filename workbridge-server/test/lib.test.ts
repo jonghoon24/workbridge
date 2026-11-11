@@ -11,12 +11,10 @@ import {
 } from '../src/lib/skills';
 import type { ProfileCompletionInput, ProfileScoreInput } from '../src/types/index';
 import {
-  compareFreelancers,
   compareProjects,
   freshnessPoints,
   matchSkills,
   roundScore,
-  scoreFreelancer,
   scoreProject,
 } from '../src/lib/recommendations';
 import { isKstMonth, kstMonthIndex, kstMonthString, kstMonthToDate } from '../src/lib/time';
@@ -660,29 +658,6 @@ describe('recommendation scoring', () => {
     expect(matchSkills([], ['React'])).toEqual([]);
   });
 
-  it('scores a freelancer with 2 of 3 skills, the same category, 4 years and a 4.5 rating at 69.17', () => {
-    const result = scoreFreelancer(
-      { requiredSkills: ['React', 'Node.js', 'SQL'], category: '웹 개발' },
-      {
-        skills: ['React', 'PostgreSQL', 'Java'],
-        activityCategory: '웹 개발',
-        experienceYears: 4,
-        portfolioSkills: [['React']],
-        avgRating: 4.5,
-      },
-    );
-
-    expect(result).toEqual({ score: 69.17, matchedSkills: ['React', 'SQL'] });
-  });
-
-  it('gives 9 rating points with no reviews, caps experience at 10 years, compares category exactly', () => {
-    const base = { skills: [], portfolioSkills: [], experienceYears: 25, avgRating: null };
-    const project = { requiredSkills: [], category: '웹 개발' };
-
-    expect(scoreFreelancer(project, { ...base, activityCategory: '웹 개발' }).score).toBe(15 + 9 + 10);
-    expect(scoreFreelancer(project, { ...base, activityCategory: '웹 개발 ' }).score).toBe(9 + 10);
-  });
-
   it('scores a project sharing 1 of 2 skills and the category, 14 days old and due in 10 days, at 66.96', () => {
     const now = new Date('2026-10-21T00:00:00.000Z');
     const result = scoreProject(
@@ -719,15 +694,7 @@ describe('recommendation scoring', () => {
     expect(scoreProject(project(3 * 86_400_000 - 1), caller, now).score).toBe(0);
   });
 
-  it('sorts deterministically: score, then reviewCount / deadline, then id', () => {
-    const freelancers = [
-      { id: 'b', score: 50, reviewCount: 0 },
-      { id: 'a', score: 50, reviewCount: 0 },
-      { id: 'c', score: 50, reviewCount: 2 },
-      { id: 'd', score: 60, reviewCount: 0 },
-    ];
-    expect([...freelancers].sort(compareFreelancers).map((f) => f.id)).toEqual(['d', 'c', 'a', 'b']);
-
+  it('sorts projects deterministically: score, then deadline, then id', () => {
     const later = new Date('2026-11-02T00:00:00Z');
     const sooner = new Date('2026-11-01T00:00:00Z');
     const projects = [

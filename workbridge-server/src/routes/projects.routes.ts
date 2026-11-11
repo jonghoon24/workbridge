@@ -10,12 +10,10 @@ import {
   deleteProject,
   updateProjectStatus,
 } from '../controllers/projects.controller';
-import { getRecommendedFreelancers } from '../controllers/recommendations.controller';
 import { authenticate, requireRole } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
 import { requireCompleteProfile } from '../middlewares/profile';
 import { validate } from '../middlewares/validate';
-import { recommendationQuery } from '../schemas/profile';
 import { projectCreateBody, projectListQuery, projectStatusBody, projectUpdateBody } from '../schemas/projects';
 
 const router = Router();
@@ -53,17 +51,6 @@ router.patch(
   requireRole('CLIENT'),
   validate({ body: projectStatusBody }),
   updateProjectStatus,
-);
-
-// Freelancers recommended for the caller's project. Read-only —
-// unlike `GET /:id`, it runs no lifecycle sweep.
-router.get(
-  '/:id/recommended-freelancers',
-  authenticate,
-  requireActiveUser,
-  requireRole('CLIENT'),
-  validate({ query: recommendationQuery }),
-  getRecommendedFreelancers,
 );
 
 export default router;

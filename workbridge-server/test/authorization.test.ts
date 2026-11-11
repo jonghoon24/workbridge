@@ -254,12 +254,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
 
   // projects.routes.ts
   {
-    label: 'GET /api/projects/:id/recommended-freelancers',
-    method: 'get',
-    path: (ids) => `/api/projects/${ids.projectId}/recommended-freelancers`,
-    role: 'CLIENT',
-  },
-  {
     label: 'POST /api/projects',
     method: 'post',
     path: () => '/api/projects',
@@ -745,8 +739,8 @@ describe('the route table itself', () => {
     expect(mounted.length).toBeGreaterThan(70);
   });
 
-  it('records a role gate for exactly the 34 role-gated routes', () => {
-    expect(ROLE_GATED_ROUTES).toHaveLength(34);
+  it('records a role gate for exactly the 33 role-gated routes', () => {
+    expect(ROLE_GATED_ROUTES).toHaveLength(33);
   });
 });
 
@@ -936,8 +930,8 @@ describe('authorization — role gating', () => {
   const clientOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'CLIENT');
   const freelancerOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'FREELANCER');
 
-  it('splits the role-gated routes into 11 CLIENT-only and 23 FREELANCER-only', () => {
-    expect(clientOnly).toHaveLength(11);
+  it('splits the role-gated routes into 10 CLIENT-only and 23 FREELANCER-only', () => {
+    expect(clientOnly).toHaveLength(10);
     expect(freelancerOnly).toHaveLength(23);
   });
 
@@ -1590,20 +1584,6 @@ describe('ownership is checked after existence', () => {
       : await prisma.career.findUnique({ where: { id: row.id } });
     expect(stillThere).toMatchObject({ id: row.id, userId: owner.id });
     expect(JSON.stringify(stillThere)).not.toContain('Taken over');
-  });
-
-  it('GET /api/projects/:id/recommended-freelancers → 404 for a missing project, 403 for another client\'s', async () => {
-    const owner = await makeClient();
-    const outsider = await makeClient();
-    const project = await makeProject(owner.id);
-
-    const missing = await authed(outsider).get('/api/projects/missing-project-id/recommended-freelancers');
-    const foreign = await authed(outsider).get(`/api/projects/${project.id}/recommended-freelancers`);
-
-    expectErrorEnvelope(missing, 404);
-    expect(missing.body.error.message).toBe('Project not found');
-    expectErrorEnvelope(foreign, 403);
-    expect(foreign.body.error.message).toBe('Not authorized');
   });
 
   it('GET /api/projects/:id/applications → 404 for a project owned by nobody', async () => {

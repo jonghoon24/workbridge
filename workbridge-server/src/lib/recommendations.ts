@@ -1,16 +1,14 @@
 import prisma from './prisma';
-import { AppError } from './errors';
 import { DAY_MS, HOUR_MS } from './time';
-import { isProfileComplete } from './profileCompletion';
 import { expandSkillSearchTerms, normalizeSkill } from './skills';
 
 /**
- * Skill-based recommendations (docs/domain/projects-contracts.md): freelancers for a client's project, and
- * projects for a freelancer. Both are read-only — no lifecycle sweep — and work in two stages: a
- * database prefilter ordered **before** it is cut to `PREFILTER_LIMIT` rows (so which rows enter
- * never varies between runs), then scoring in memory with a deterministic tie-break.
+ * Skill-based project recommendations for a freelancer (docs/domain/projects-contracts.md). Read-only —
+ * no lifecycle sweep — and in two stages: a database prefilter ordered **before** it is cut to
+ * `PREFILTER_LIMIT` rows (so which rows enter never varies between runs), then scoring in memory
+ * with a deterministic tie-break.
  *
- * The score tables are stated once, here: `scoreFreelancer` and `scoreProject`.
+ * The score table is stated once, here: `scoreProject`.
  */
 
 export const PREFILTER_LIMIT = 200;
@@ -32,143 +30,6 @@ function canonicalSkills(skills: readonly string[]): string[] {
 export function matchSkills(requiredSkills: readonly string[], candidateSkills: readonly string[]): string[] {
   const owned = new Set(candidateSkills.map(normalizeSkill));
   return canonicalSkills(requiredSkills).filter((skill) => owned.has(skill));
-}
-
-// ---------------------------------------------------------------------------------------------
-// A freelancer for a project
-// ---------------------------------------------------------------------------------------------
-
-export interface FreelancerScoreInput {
-  skills: readonly string[];
-  activityCategory: string | null;
-  experienceYears: number;
-  /** Each portfolio item's skills. */
-  portfolioSkills: readonly (readonly string[])[];
-  /** Mean received rating, `null` with no reviews. */
-  avgRating: number | null;
-}
-
-/**
- * A freelancer's score, out of 100:
- *
- * | component  | points                                                                   |
- * |------------|--------------------------------------------------------------------------|
- * | skills     | `|matched| / |required| × 50`                                            |
- * | portfolio  | `|required skills in any portfolio item's skills| / |required| × 10`     |
- * | category   | 15 when `activityCategory === project.category` (stored values, exact)   |
- * | rating     | `avgRating / 5 × 15`; 9 (= 0.6 × 15) with no reviews                     |
- * | experience | `min(experienceYears, 10) / 10 × 10`                                     |
- *
- * Against a project with no required skills both skill components are 0.
- */
-export function scoreFreelancer(
-  project: { requiredSkills: readonly string[]; category: string },
-  candidate: FreelancerScoreInput,
-): { score: number; matchedSkills: string[] } {
-  const required = canonicalSkills(project.requiredSkills);
-  const matchedSkills = matchSkills(required, candidate.skills);
-  const portfolioMatched = matchSkills(required, candidate.portfolioSkills.flat());
-
-  const skills = required.length ? (matchedSkills.length / required.length) * 50 : 0;
-  const portfolio = required.length ? (portfolioMatched.length / required.length) * 10 : 0;
-  const category = candidate.activityCategory === project.category ? 15 : 0;
-  const rating = candidate.avgRating === null ? 0.6 * 15 : (candidate.avgRating / 5) * 15;
-  const experience = (Math.min(candidate.experienceYears, 10) / 10) * 10;
-
-  return { score: roundScore(skills + portfolio + category + rating + experience), matchedSkills };
-}
-
-/** Score desc → `reviewCount` desc → `id` asc. */
-export function compareFreelancers(
-  a: { score: number; reviewCount: number; id: string },
-  b: { score: number; reviewCount: number; id: string },
-): number {
-  return b.score - a.score || b.reviewCount - a.reviewCount || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-}
-
-/** `GET /api/projects/:id/recommended-freelancers`. */
-export async function recommendFreelancers(projectId: string, clientId: string, limit: number) {
-  const project = await prisma.project.findFirst({
-    where: { id: projectId, deletedAt: null },
-    select: { id: true, clientId: true, requiredSkills: true, category: true },
-  });
-  if (!project) throw new AppError('Project not found', 404);
-  if (project.clientId !== clientId) throw new AppError('Not authorized', 403);
-
-  const searchTerms = expandSkillSearchTerms(project.requiredSkills);
-  const candidates = await prisma.user.findMany({
-    where: {
-      role: 'FREELANCER',
-      deletedAt: null,
-      // Rule 4's gate, as far as the database can express it; a blank `activityCategory` is
-      // dropped after the cut.
-      AND: [
-        { skills: { isEmpty: false } },
-        ...(searchTerms.length ? [{ skills: { hasSome: searchTerms } }] : []),
-      ],
-      activityCategory: { not: null },
-      experienceYears: { gte: 0 },
-      hourlyRate: { gt: 0 },
-      applications: { none: { projectId } },
-    },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    take: PREFILTER_LIMIT,
-    select: {
-      id: true,
-      name: true,
-      role: true,
-      profileImage: true,
-      companyName: true,
-      businessField: true,
-      activityCategory: true,
-      experienceYears: true,
-      hourlyRate: true,
-      skills: true,
-      portfolioItems: {
-        // In `PORTFOLIO_ORDER`, as `portfolio.service.ts` orders them, so the preview is the profile's first three.
-        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
-        select: { id: true, title: true, imageUrl: true, skills: true },
-      },
-      receivedReviews: { select: { rating: true } },
-    },
-  });
-
-  return {
-    freelancers: candidates
-      .filter((candidate) => isProfileComplete(candidate))
-      .map((candidate) => {
-        const reviewCount = candidate.receivedReviews.length;
-        const avgRating = reviewCount
-          ? candidate.receivedReviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount
-          : null;
-        const { score, matchedSkills } = scoreFreelancer(project, {
-          skills: candidate.skills,
-          activityCategory: candidate.activityCategory,
-          experienceYears: candidate.experienceYears ?? 0,
-          portfolioSkills: candidate.portfolioItems.map((item) => item.skills),
-          avgRating,
-        });
-
-        return {
-          id: candidate.id,
-          name: candidate.name,
-          profileImage: candidate.profileImage,
-          activityCategory: candidate.activityCategory,
-          experienceYears: candidate.experienceYears,
-          hourlyRate: candidate.hourlyRate,
-          skills: candidate.skills,
-          score,
-          matchedSkills,
-          avgRating,
-          reviewCount,
-          portfolioPreview: candidate.portfolioItems
-            .slice(0, 3)
-            .map((item) => ({ id: item.id, title: item.title, imageUrl: item.imageUrl })),
-        };
-      })
-      .sort(compareFreelancers)
-      .slice(0, limit),
-  };
 }
 
 // ---------------------------------------------------------------------------------------------
