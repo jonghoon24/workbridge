@@ -1,7 +1,6 @@
 import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { z } from '../../lib/zod';
-import { recommendationQuery } from '../../schemas/profile';
 import { projectCreateBody, projectListQuery, projectStatusBody, projectUpdateBody } from '../../schemas/projects';
 import {
   ACTIVE_USER,
@@ -26,7 +25,6 @@ import {
   project,
   projectDetail,
   projectList,
-  recommendedFreelancers,
 } from '../responses/projects';
 
 const tags = ['Projects'];
@@ -226,21 +224,6 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
           '`AI analysis did not return valid feature pricing` — JSON이 아닌 내용이거나 금액이 있는 기능이 하나도 없음',
         ],
       }),
-    },
-  });
-
-  registry.registerPath({
-    method: 'get',
-    path: '/api/projects/{id}/recommended-freelancers',
-    operationId: 'getRecommendedFreelancers',
-    tags: ['Recommendations'],
-    summary: '프로젝트에 맞는 프리랜서(소유 의뢰인)',
-    description: '기술·카테고리·평점·경력으로 점수를 매긴다. 프로필이 완성되지 않았거나 이미 지원한 프리랜서는 빠진다. 읽기 전용.',
-    security: bearer,
-    request: { params: projectId, query: recommendationQuery },
-    responses: {
-      200: ok(recommendedFreelancers, '점수 내림차순'),
-      ...errors(invalid(), ACTIVE_USER, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND),
     },
   });
 }

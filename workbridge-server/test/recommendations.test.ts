@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Prisma, User } from '@prisma/client';
+import type { User } from '@prisma/client';
 
 import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
@@ -7,265 +7,24 @@ import {
   daysFromNow,
   makeApplication,
   makeClient,
-  makeContract,
   makeFreelancer,
-  makePortfolioItem,
   makeProject,
 } from './helpers/factories';
 
 /**
- * Skill-based recommendations (scoring tables in the JSDoc of `src/lib/recommendations.ts`). The
- * role matrix and the 404/403 rows live in `authorization.test.ts`; the pure scoring functions are
- * pinned in `lib.test.ts`.
+ * Skill-based project recommendations (scoring table in the JSDoc of `src/lib/recommendations.ts`).
+ * The role matrix lives in `authorization.test.ts`; the pure scoring functions are pinned in
+ * `lib.test.ts`.
  */
 
 // ---------------------------------------------------------------------------------------------
 // Local helpers
 // ---------------------------------------------------------------------------------------------
 
-/** One received review per rating, each on its own completed contract with its own client. */
-async function giveReviews(freelancerId: string, ratings: number[]) {
-  for (const rating of ratings) {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { status: 'COMPLETED' });
-    const application = await makeApplication(project.id, freelancerId, { status: 'ACCEPTED' });
-    const contract = await makeContract(
-      { projectId: project.id, applicationId: application.id, clientId: client.id, freelancerId },
-      { status: 'COMPLETED' },
-    );
-    await prisma.review.create({
-      data: { contractId: contract.id, reviewerId: client.id, revieweeId: freelancerId, rating, content: '좋아요', tags: [] },
-    });
-  }
-}
-
-let bulkSeq = 0;
-
-/** Many complete freelancers at once (no password: they never log in). */
-async function bulkFreelancers(count: number, data: (index: number) => Partial<Prisma.UserCreateManyInput>) {
-  const batch = (bulkSeq += 1);
-  await prisma.user.createMany({
-    data: Array.from({ length: count }, (_, index) => ({
-      email: `bulk${batch}-${index}@test.local`,
-      name: `Bulk ${index}`,
-      role: 'FREELANCER' as const,
-      skills: ['React'],
-      activityCategory: '디자인',
-      experienceYears: 0,
-      hourlyRate: 10_000,
-      ...data(index),
-    })),
-  });
-}
-
-const recommendedFreelancers = (client: User, projectId: string, query = '') =>
-  authed(client).get(`/api/projects/${projectId}/recommended-freelancers${query}`);
-
 const recommendedProjects = (freelancer: User, query = '') =>
   authed(freelancer).get(`/api/users/me/recommended-projects${query}`);
 
 const ids = (list: { id: string }[]) => list.map((entry) => entry.id);
-
-// ---------------------------------------------------------------------------------------------
-// Freelancers recommended for a project
-// ---------------------------------------------------------------------------------------------
-
-describe('GET /api/projects/:id/recommended-freelancers', () => {
-  it('scores a partial skill, portfolio and rating match at 69.17', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { requiredSkills: ['React', 'Node.js', 'SQL'], category: '웹 개발' });
-    // Stored under an alias: the prefilter must still find it, and the score compares normalized.
-    const candidate = await makeFreelancer({ skills: ['React', 'PostgreSQL', 'Java'], activityCategory: '웹 개발', experienceYears: 4 });
-    await makePortfolioItem(candidate.id, { skills: ['React'] });
-    await giveReviews(candidate.id, [4, 5]);
-
-    const res = await recommendedFreelancers(client, project.id);
-
-    expect(res.status).toBe(200);
-    expect(res.body.freelancers).toHaveLength(1);
-    expect(res.body.freelancers[0]).toMatchObject({
-      id: candidate.id,
-      score: 69.17,
-      matchedSkills: ['React', 'SQL'],
-      avgRating: 4.5,
-      reviewCount: 2,
-    });
-  });
-
-  it('returns exactly the public profile fields — no email — with the first 3 portfolio items as a preview', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const candidate = await makeFreelancer({ profileImage: 'https://img.example.com/me.png' });
-    const items = [];
-    for (let i = 0; i < 4; i += 1) items.push(await makePortfolioItem(candidate.id, { imageUrl: i === 0 ? 'https://img.example.com/p.png' : null }));
-
-    const res = await recommendedFreelancers(client, project.id);
-    const [entry] = res.body.freelancers;
-
-    expect(Object.keys(entry).sort()).toEqual([
-      'activityCategory', 'avgRating', 'experienceYears', 'hourlyRate', 'id', 'matchedSkills', 'name',
-      'portfolioPreview', 'profileImage', 'reviewCount', 'score', 'skills',
-    ]);
-    expect(entry).toMatchObject({
-      name: candidate.name,
-      profileImage: 'https://img.example.com/me.png',
-      activityCategory: '웹 개발',
-      experienceYears: 3,
-      hourlyRate: 50_000,
-      skills: ['React', 'Node.js'],
-      avgRating: null,
-      reviewCount: 0,
-    });
-    expect(entry.portfolioPreview).toEqual(items.slice(0, 3).map((item) => ({ id: item.id, title: item.title, imageUrl: item.imageUrl })));
-    expect(JSON.stringify(res.body)).not.toContain(candidate.email);
-  });
-
-  it('prefilters to complete, active freelancers who share a skill and never applied', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { requiredSkills: ['React'] });
-    const eligible = await makeFreelancer();
-    const excluded = [
-      await makeFreelancer({ deletedAt: new Date() }),
-      await makeFreelancer({ skills: ['Java'] }),
-      await makeFreelancer({ skills: [] }),
-      await makeFreelancer({ activityCategory: null }),
-      await makeFreelancer({ activityCategory: '   ' }),
-      await makeFreelancer({ experienceYears: null }),
-      await makeFreelancer({ experienceYears: -1 }),
-      await makeFreelancer({ hourlyRate: null }),
-      await makeFreelancer({ hourlyRate: 0 }),
-      await makeClient({ skills: ['React'] }),
-    ];
-    const rejectedApplicant = await makeFreelancer();
-    await makeApplication(project.id, rejectedApplicant.id, { status: 'REJECTED' });
-    const pendingApplicant = await makeFreelancer();
-    await makeApplication(project.id, pendingApplicant.id);
-
-    const res = await recommendedFreelancers(client, project.id);
-
-    expect(res.status).toBe(200);
-    expect(ids(res.body.freelancers)).toEqual([eligible.id]);
-    expect(excluded).toHaveLength(10);
-  });
-
-  it('against a project with no required skills, every complete freelancer is a candidate with 0 skill points', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { requiredSkills: [], category: '웹 개발' });
-    const a = await makeFreelancer({ skills: ['Java'], experienceYears: 10 });
-    const b = await makeFreelancer({ skills: ['Figma'], activityCategory: '디자인', experienceYears: 0 });
-
-    const res = await recommendedFreelancers(client, project.id);
-
-    expect(res.body.freelancers.map((f: { id: string; score: number; matchedSkills: string[] }) => [f.id, f.score, f.matchedSkills]))
-      .toEqual([[a.id, 15 + 9 + 10, []], [b.id, 9, []]]);
-  });
-
-  it('breaks score ties by reviewCount desc, then id asc', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { requiredSkills: ['React'] });
-    // A single 3-star review is worth 9 rating points — exactly the no-review default.
-    const reviewed = await makeFreelancer();
-    await giveReviews(reviewed.id, [3]);
-    const plainA = await makeFreelancer();
-    const plainB = await makeFreelancer();
-
-    const res = await recommendedFreelancers(client, project.id);
-
-    const scores = res.body.freelancers.map((f: { score: number }) => f.score);
-    expect(new Set(scores).size).toBe(1);
-    expect(ids(res.body.freelancers)).toEqual([reviewed.id, ...[plainA.id, plainB.id].sort()]);
-  });
-
-  it('cuts the prefilter at 200 rows ordered by createdAt asc, id asc — before scoring', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { requiredSkills: ['React'], category: '웹 개발' });
-    const base = Date.now() - 1_000_000;
-    await bulkFreelancers(200, (index) => ({ createdAt: new Date(base + index) }));
-    // The best candidate by far, but the 201st row in prefilter order.
-    const late = await makeFreelancer({ activityCategory: '웹 개발', experienceYears: 10 });
-
-    const res = await recommendedFreelancers(client, project.id, '?limit=20');
-
-    expect(res.body.freelancers).toHaveLength(20);
-    expect(ids(res.body.freelancers)).not.toContain(late.id);
-
-    // Positive control: the same candidate inside the first 200 tops the list.
-    await prisma.user.update({ where: { id: late.id }, data: { createdAt: new Date(base - 1) } });
-    const again = await recommendedFreelancers(client, project.id, '?limit=20');
-    expect(again.body.freelancers[0].id).toBe(late.id);
-  });
-
-  it('returns 10 by default and caps limit at 20', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { requiredSkills: ['React'] });
-    await bulkFreelancers(25, () => ({}));
-
-    const byDefault = await recommendedFreelancers(client, project.id);
-    const capped = await recommendedFreelancers(client, project.id, '?limit=500');
-    const three = await recommendedFreelancers(client, project.id, '?limit=3');
-    const empty = await recommendedFreelancers(client, project.id, '?limit=');
-
-    expect(byDefault.body.freelancers).toHaveLength(10);
-    expect(capped.body.freelancers).toHaveLength(20);
-    expect(three.body.freelancers).toHaveLength(3);
-    expect(empty.body.freelancers).toHaveLength(10);
-  });
-
-  it.each(['?limit=0', '?limit=-1', '?limit=1.5', '?limit=2abc', '?limit=1&limit=2', '?page=2&limit=x'])(
-    '400s %s',
-    async (query) => {
-      const client = await makeClient();
-      const project = await makeProject(client.id);
-
-      const res = await recommendedFreelancers(client, project.id, query);
-
-      expect(res.status).toBe(400);
-      expect(res.body.error.message.startsWith('limit: ')).toBe(true);
-    },
-  );
-
-  it('orders its checks role → validation → existence', async () => {
-    const client = await makeClient();
-    const freelancer = await makeFreelancer();
-
-    const asFreelancer = await authed(freelancer).get('/api/projects/missing-project-id/recommended-freelancers?limit=0');
-    const invalidOnMissing = await recommendedFreelancers(client, 'missing-project-id', '?limit=0');
-    const validOnMissing = await recommendedFreelancers(client, 'missing-project-id');
-
-    expect(asFreelancer.status).toBe(403);
-    expect(asFreelancer.body).toEqual({ error: { message: 'Insufficient permissions' } });
-    expect(invalidOnMissing.status).toBe(400);
-    expect(validOnMissing.status).toBe(404);
-    expect(validOnMissing.body).toEqual({ error: { message: 'Project not found' } });
-  });
-
-  it('404s a soft-deleted project', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id, { deletedAt: new Date() });
-
-    const res = await recommendedFreelancers(client, project.id);
-
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
-  });
-
-  it('works for any project status and is read-only: no lifecycle sweep', async () => {
-    const client = await makeClient();
-    const expired = await makeProject(client.id, { status: 'OPEN', deadline: daysFromNow(-2) });
-    const applicant = await makeFreelancer();
-    const application = await makeApplication(expired.id, applicant.id);
-    const completed = await makeProject(client.id, { status: 'COMPLETED' });
-    await makeFreelancer();
-
-    const onExpired = await recommendedFreelancers(client, expired.id);
-    const onCompleted = await recommendedFreelancers(client, completed.id);
-
-    expect(onExpired.status).toBe(200);
-    expect(onCompleted.status).toBe(200);
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: expired.id } })).status).toBe('OPEN');
-    expect((await prisma.application.findUniqueOrThrow({ where: { id: application.id } })).status).toBe('PENDING');
-  });
-});
 
 // ---------------------------------------------------------------------------------------------
 // Projects recommended for a freelancer
@@ -409,6 +168,18 @@ describe('GET /api/users/me/recommended-projects', () => {
     expect(byDefault.body.projects).toHaveLength(10);
     expect(capped.body.projects).toHaveLength(20);
   });
+
+  it.each(['?limit=0', '?limit=-1', '?limit=1.5', '?limit=2abc', '?limit=1&limit=2', '?page=2&limit=x'])(
+    '400s %s',
+    async (query) => {
+      const freelancer = await makeFreelancer();
+
+      const res = await recommendedProjects(freelancer, query);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.message.startsWith('limit: ')).toBe(true);
+    },
+  );
 
   it('orders its checks role → complete profile → validation', async () => {
     const client = await makeClient();

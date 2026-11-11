@@ -11,14 +11,12 @@ import {
   updateProjectStatus,
   analyzeProject,
 } from '../controllers/projects.controller';
-import { getRecommendedFreelancers } from '../controllers/recommendations.controller';
 import { authenticate, requireRole } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
 import { requireCompleteProfile } from '../middlewares/profile';
 import { rateLimit } from '../middlewares/rateLimit';
 import { validate } from '../middlewares/validate';
 import { ANALYZE_DAILY_RULE, ANALYZE_HOURLY_RULE } from '../lib/rateLimitRules';
-import { recommendationQuery } from '../schemas/profile';
 import { projectCreateBody, projectListQuery, projectStatusBody, projectUpdateBody } from '../schemas/projects';
 
 const router = Router();
@@ -67,17 +65,6 @@ router.post(
   rateLimit(ANALYZE_HOURLY_RULE),
   rateLimit(ANALYZE_DAILY_RULE),
   analyzeProject,
-);
-
-// Freelancers recommended for the caller's project. Read-only —
-// unlike `GET /:id`, it runs no lifecycle sweep.
-router.get(
-  '/:id/recommended-freelancers',
-  authenticate,
-  requireActiveUser,
-  requireRole('CLIENT'),
-  validate({ query: recommendationQuery }),
-  getRecommendedFreelancers,
 );
 
 export default router;

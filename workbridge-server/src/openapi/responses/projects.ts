@@ -85,23 +85,3 @@ export const projectDetail = z
   .openapi('ProjectDetail');
 
 export const bookmarkState = z.object({ bookmarked: z.boolean() });
-
-/** `recommendFreelancers` in `lib/recommendations.ts`. */
-export const recommendedFreelancers = z.object({
-  freelancers: z.array(
-    z.object({
-      id,
-      name: z.string(),
-      profileImage: z.string().nullable(),
-      activityCategory: z.string().nullable(),
-      experienceYears: z.number().int().nullable(),
-      hourlyRate: won.nullable(),
-      skills: z.array(z.string()),
-      score: z.number().min(0).max(100).openapi({ description: '0–100, 소수 둘째 자리' }),
-      matchedSkills: z.array(z.string()),
-      avgRating: z.number().nullable(),
-      reviewCount: count,
-      portfolioPreview: z.array(z.object({ id, title: z.string(), imageUrl: z.string().nullable() })).max(3),
-    }),
-  ),
-});
