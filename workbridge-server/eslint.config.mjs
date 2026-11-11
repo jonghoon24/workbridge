@@ -3,6 +3,32 @@ import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+// CI and Vercel run in UTC, dev machines in KST: calendar math goes through the fixed UTC+9 helpers.
+const HOST_TIME_ZONE = [
+  {
+    selector: 'CallExpression[callee.property.name=/^(get|set)(Date|Day|Hours|Month|FullYear)$/]',
+    message:
+      'Host-time-zone Date getter/setter. Use the fixed UTC+9 helpers in src/lib/time.ts (startOfKstDay, kstDateString, kstMonthString, nextKstWeekday…). See .claude/rules/money-time.md.',
+  },
+  {
+    selector: "CallExpression[callee.property.name='toLocaleDateString']",
+    message: 'toLocaleDateString() follows the host time zone. Use src/lib/time.ts (kstDateString…). See .claude/rules/money-time.md.',
+  },
+];
+
+// Services and job handlers take `now` as an argument so tests control time (handlers use ctx.now).
+// A `now: Date = new Date()` default parameter is allowed: callers can still pass it.
+const READS_CLOCK = [
+  {
+    selector: ":not(AssignmentPattern) > NewExpression[callee.name='Date'][arguments.length=0]",
+    message: 'Reads the clock. Take `now: Date` as an argument (job handlers: ctx.now). See .claude/rules/money-time.md.',
+  },
+  {
+    selector: "CallExpression[callee.object.name='Date'][callee.property.name='now']",
+    message: 'Reads the clock. Take `now: Date` as an argument (job handlers: ctx.now). See .claude/rules/money-time.md.',
+  },
+];
+
 export default tseslint.config(
   { ignores: ['node_modules/', 'prisma/migrations/'] },
 
@@ -41,6 +67,18 @@ export default tseslint.config(
     files: ['src/**/*.ts'],
     ignores: ['src/lib/logger.ts', 'src/jobs/cli.ts'],
     rules: { 'no-console': 'error' },
+  },
+
+  // Time rules (.claude/rules/money-time.md). `no-restricted-syntax` does not merge across config
+  // blocks, so the services/handlers block repeats the host-time-zone selectors.
+  {
+    files: ['src/**/*.ts'],
+    ignores: ['src/lib/time.ts'],
+    rules: { 'no-restricted-syntax': ['error', ...HOST_TIME_ZONE] },
+  },
+  {
+    files: ['src/services/**/*.ts', 'src/jobs/handlers/**/*.ts'],
+    rules: { 'no-restricted-syntax': ['error', ...HOST_TIME_ZONE, ...READS_CLOCK] },
   },
 
   // Express 4 calls handlers without awaiting them, so every async handler and middleware catches

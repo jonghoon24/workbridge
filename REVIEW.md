@@ -18,7 +18,7 @@
 
 4. **달력 규칙은 `lib/time.ts`(고정 UTC+9)로 계산하고 `now`를 인자로 받는다.**
    - 왜: CI와 Vercel은 UTC, 개발 PC는 KST라 `getDate()`·`setHours()` 같은 호스트 시간대 함수는 기기마다 다른 "오늘"을 만든다. 서비스와 작업 핸들러가 `new Date()`를 직접 읽으면 테스트가 `runJobs(now)`로 시간을 제어할 수 없다.
-   - 확인: 추가된 줄에서 `getDate(`·`getDay(`·`getHours(`·`getMonth(`·`getFullYear(`와 같은 이름의 `set*(`, `toLocaleDateString(`, 그리고 `src/services/`·`src/jobs/handlers/`의 `new Date()`를 grep한다. 핸들러는 `ctx.now`를 써야 한다.
+   - 확인: 추가된 줄에서 `getDate(`·`getDay(`·`getHours(`·`getMonth(`·`getFullYear(`와 같은 이름의 `set*(`, `toLocaleDateString(`, 그리고 `src/services/`·`src/jobs/handlers/`의 `new Date()`·`Date.now()`를 grep한다(서버 `src/`는 ESLint `no-restricted-syntax`도 잡는다 — 새 `eslint-disable`·`eslint-suppressions.json` 항목은 이유가 맞는지 본다). 핸들러는 `ctx.now`를 써야 한다.
 
 5. **여러 행을 바꾸는 변경은 하나의 `prisma.$transaction`이고, 그 안에서 P2002를 catch하지 않는다.**
    - 왜: 인터랙티브 트랜잭션에서 실패한 문장은 Postgres가 트랜잭션 전체를 중단시켜서 catch해도 이미 망가져 있다. 중복은 `createMany({ skipDuplicates: true })`(`enqueueJob`의 방식)로 피하거나 트랜잭션 밖에서 catch해 409로 바꾼다(지원 수락 `updateApplication`의 방식). 진 쪽이 이긴 쪽 결과를 그대로 받아도 되면 밖에서 catch하고 한 번 다시 실행한다(결제 생성과 dev-complete의 `retryOnceOnPaymentConflict`).

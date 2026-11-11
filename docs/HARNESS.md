@@ -56,12 +56,16 @@
 | 이벤트 | 파일 | 왜 있는가 |
 |---|---|---|
 | PreToolUse `Edit\|Write\|MultiEdit` | `protect-migrations.sh` | 커밋된 마이그레이션은 preview·production에 적용되고 Prisma가 체크섬을 검사한다. 고치면 `migrate deploy`가 멈춘다. git에 없는 폴더(`--create-only` 직후 백필 단계)만 허용하고, 나머지는 exit 2로 막는다 |
-| PostToolUse `Edit\|Write\|MultiEdit` | `server-rules.sh` | 서버 `src/`에 **방금 쓴 텍스트**에서 `console.`, 서비스·작업 핸들러의 `new Date()`, 호스트 시간대 getter/setter를 찾아 exit 2로 알린다. 파일 전체가 아니라 쓴 텍스트만 보는 것은 문서화된 기존 예외가 매번 다시 걸리지 않게 하려는 것이다. `toLocaleString`은 금액 포맷과 겹쳐 넣지 않았다 |
-| PostToolUse `Edit\|Write\|MultiEdit` | `regen-openapi.sh` | 서버 `src/`를 고칠 때마다 `openapi.json`을 다시 만든다. 문서는 zod 스키마·OpenAPI 등록·라우트·Prisma enum에서 나와 어느 서버 파일이 바뀌어도 달라질 수 있다. 1초 안에 끝나고 DB가 필요 없다. 편집 도중이라 컴파일되지 않으면 조용히 넘어간다(typecheck와 CI가 잡는다) |
+| PostToolUse `Edit\|Write\|MultiEdit` | `regen-openapi.sh` | 서버 `src/`를 고칠 때마다 `openapi.json`을 다시 만든다. 문서는 zod 스키마·OpenAPI 등록·라우트·Prisma enum에서 나와 어느 서버 파일이 바뀌어도 달라질 수 있다. 1초 안에 끝나고 DB가 필요 없다. 편집 도중이라 컴파일되지 않으면 조용히 넘어간다(typecheck와 CI가 잡는다). Stop으로 미루지 않는 것은 Claude가 턴 중간에 커밋하기 때문이다(`pre-pr-review` 스킬, `claude.yml`) — 미루면 오래된 `openapi.json`이 커밋에 들어간다 |
 | Stop | `stop-check.sh` | HEAD 이후 바뀐 쪽의 정적 검사(서버 typecheck·lint, 클라이언트 lint — CI와 같은 기준)를 돌리고, 실패하면 마지막 30줄을 돌려주고 exit 2. `stop_hook_active`가 true면 바로 통과한다(무한 루프 방지) |
 
-**한계.** PostToolUse 훅은 편집이 일어난 뒤에 알린다. 막지 않고 고치게 한다. 텍스트 패턴이라 `req.user`나
-`deletedAt: null` 같은 의미 규칙은 잡지 못한다. 훅 스크립트는 `jq`가 필요하다.
+**코드 규칙은 훅이 아니라 ESLint에 둔다.** `console.*` 금지, 호스트 시간대 날짜 함수 금지, 서비스·작업 핸들러의
+시계 읽기 금지는 `workbridge-server/eslint.config.mjs`의 `no-console`·`no-restricted-syntax`가 맡는다. 에디터·Stop 훅·CI에서
+사람과 Claude에게 똑같이 걸리고, AST로 보므로 주석·문자열에 오탐하지 않으며, 예외는 코드 옆의
+`eslint-disable-next-line … -- 이유`나 `eslint-suppressions.json`(기존 위반)에 남는다. 그래서 편집 직후 텍스트 패턴을 보는
+PostToolUse 훅은 두지 않는다 — 위반은 같은 턴의 Stop 훅 lint에서 돌아온다.
+
+**한계.** 훅 스크립트는 `jq`가 필요하다. 마이그레이션 보호는 Edit/Write만 막고 Bash(`sed -i`, `rm`)는 `rules/prisma.md`가 맡는다.
 
 **서버 테스트 스위트는 Stop 훅에서 돌리지 않는다.** 실제 Postgres가 필요하고 한 번에 약 90초 걸린다. DB가 없는
 환경에서는 매번 실패해 Claude를 붙잡는다. 파일 단위 테스트는 Claude가 `npx vitest run`으로 돌리고, 전체는 CI가 돌린다.
@@ -121,7 +125,7 @@ PR은 그 PR 안에서 새 기준으로 리뷰받지 않는다 — 머지한 뒤
 
 - **서브에이전트 정의** — 반복해서 맡기는 작업이 아직 없다. 리뷰는 `/code-review`와 `REVIEW.md`로 충분하다.
 - **테스트를 돌리는 훅** — 실제 DB와 90초가 필요하다. Stop 훅은 정적 검사만 한다.
-- **포매터/린터 PostToolUse 훅** — Prettier 설정이 없고, 클라이언트 lint는 Stop 훅에서 한 번 돈다.
+- **포매터/린터 PostToolUse 훅** — Prettier 설정이 없고, lint는 Stop 훅에서 한 번 돈다. 코드 패턴 규칙도 훅이 아니라 ESLint에 둔다(4절).
 - **CodeRabbit 같은 외부 리뷰 봇** — CI 리뷰어는 같은 `REVIEW.md`를 읽는 Claude다. 기준이 두 곳으로 갈라지지 않는다.
 - **`req.user`, `deletedAt: null`, `notify()`를 검사하는 훅** — 텍스트 패턴으로는 오탐이 많다. rules, `REVIEW.md`, 중앙 매트릭스 테스트가 맡는다.
 - **샌드박스 설정** — 목적이 실수 방지라 OS 수준 격리는 넣지 않았다.
