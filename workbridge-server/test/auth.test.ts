@@ -819,6 +819,59 @@ describe('POST /api/auth/select-role', () => {
     expect(stored.role).toBe('FREELANCER');
   });
 
+  // Deterministic stand-ins for a withdrawal racing the choice: it commits right before the role
+  // write (the old read-then-write let that write and issued tokens) or right after it.
+  it.each([
+    ['right before the role is written', 'before'],
+    ['right after the role is written', 'after'],
+  ] as const)('answers 404 and issues no session when the account withdraws %s', async (_label, timing) => {
+    const user = await makeUser({ role: 'FREELANCER', roleSelected: false });
+    const withdraw = () =>
+      prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date(), name: '탈퇴한 회원' } });
+    const update = prisma.user.update.bind(prisma.user);
+    const updateMany = prisma.user.updateMany.bind(prisma.user);
+    let withdrawn = false;
+    const once = async () => {
+      if (!withdrawn) {
+        withdrawn = true;
+        await withdraw();
+      }
+    };
+    const spies = [
+      vi.spyOn(prisma.user, 'update').mockImplementation(((args: Parameters<typeof update>[0]) => {
+        // The withdrawal itself goes through `update` too; only the handler's write is intercepted.
+        if (withdrawn || args.where.id !== user.id || !('roleSelected' in args.data)) return update(args);
+        return (async () => {
+          if (timing === 'before') await once();
+          const written = await update(args);
+          if (timing === 'after') await once();
+          return written;
+        })();
+      }) as unknown as typeof prisma.user.update),
+      vi.spyOn(prisma.user, 'updateMany').mockImplementation((async (args: Parameters<typeof updateMany>[0]) => {
+        if (timing === 'before') await once();
+        const written = await updateMany(args);
+        if (timing === 'after') await once();
+        return written;
+      }) as unknown as typeof prisma.user.updateMany),
+    ];
+
+    try {
+      const res = await authed(user).post('/api/auth/select-role').send({ role: 'CLIENT' });
+
+      expect(withdrawn).toBe(true);
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: { message: 'User not found' } });
+      expect(refreshCookie(res)).toBeUndefined();
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
+    if (timing === 'before') {
+      const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+      expect(stored.roleSelected).toBe(false);
+    }
+  });
+
   it('sets the role, marks roleSelected, and returns the updated user', async () => {
     const user = await makeUser({ role: 'FREELANCER', roleSelected: false });
 
