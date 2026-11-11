@@ -173,15 +173,18 @@ export async function completeGoogleLogin(code: string): Promise<GoogleLoginResu
   let needsRoleSelection: boolean;
 
   if (user) {
-    // Only while still active: a withdrawal that commits in between must not get a picture back.
+    // Only while still active: a withdrawal that commits in between must not get a picture back,
+    // and one that commits after the write must not get a session — so the read-back has the same
+    // condition, and either case is the same failure (the login screen's `oauth_failed`).
+    const active = { id: user.id, deletedAt: null };
     const { count } = await prisma.user.updateMany({
-      where: { id: user.id, deletedAt: null },
+      where: active,
       data: { profileImage: user.profileImage || picture },
     });
-    if (count === 0) {
+    user = count === 0 ? null : await prisma.user.findFirst({ where: active });
+    if (!user) {
       throw new Error('Google account was withdrawn during login');
     }
-    user = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     needsRoleSelection = !user.roleSelected;
   } else {
     user = await prisma.user.create({
@@ -200,20 +203,34 @@ export async function completeGoogleLogin(code: string): Promise<GoogleLoginResu
   return { kind: 'signedIn', user, needsRoleSelection };
 }
 
-/** `POST /api/auth/select-role`: a Google signup's one-time role choice; the updated user. */
+/**
+ * `POST /api/auth/select-role`: a Google signup's one-time role choice; the updated user.
+ *
+ * One conditional write — only an active account whose role is still to be chosen — so a withdrawal
+ * that commits first is never written to, and of two concurrent choices only one lands. When it
+ * writes nothing, a re-read tells the cases apart in the same order as before: no active account →
+ * 404, role already chosen → 400. The read-back has the same active condition, so a withdrawal
+ * that commits right after the write gets no session either.
+ */
 export async function chooseRole(userId: string, role: SelectRoleInput['role']): Promise<User> {
-  const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null } });
+  const active = { id: userId, deletedAt: null };
 
-  if (!user) {
-    throw new AppError('User not found', 404);
-  }
+  const { count } = await prisma.user.updateMany({
+    where: { ...active, roleSelected: false },
+    data: { role, roleSelected: true },
+  });
 
-  if (user.roleSelected) {
+  if (count === 0) {
+    const user = await prisma.user.findFirst({ where: active, select: { id: true } });
+    if (!user) {
+      throw new AppError('User not found', 404);
+    }
     throw new AppError('Role has already been selected', 400);
   }
 
-  return prisma.user.update({
-    where: { id: user.id },
-    data: { role, roleSelected: true },
-  });
+  const updated = await prisma.user.findFirst({ where: active });
+  if (!updated) {
+    throw new AppError('User not found', 404);
+  }
+  return updated;
 }
