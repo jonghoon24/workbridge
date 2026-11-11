@@ -40,10 +40,10 @@
 | deny: `migrate reset`, `--force-reset`, `--accept-data-loss` | 스키마와 데이터를 통째로 지운다. 스키마 변경은 새 마이그레이션으로만 한다 |
 | deny: 강제 push | 공유 브랜치 히스토리를 덮어쓴다 |
 | deny: `vercel pull`·`vercel env pull` | 운영 비밀값을 로컬 파일로 내려받는다. 그 파일은 `.env` deny 밖에 놓일 수 있다 |
-| ask: `dropdb`, `DROP TABLE`·`DROP DATABASE`, `TRUNCATE` | 병렬 작업이 만든 로컬 DB를 정리할 때는 정당하지만, 잘못 겨누면 데이터를 잃는다. 테스트 DB는 코드 안의 `resetDb()`가 비우므로 커맨드로 지울 일은 드물다 |
+| ask: `dropdb`, `DROP TABLE`·`DROP DATABASE`·`DROP SCHEMA`, `TRUNCATE` | 병렬 작업이 만든 로컬 DB를 정리할 때는 정당하지만, 잘못 겨누면 데이터를 잃는다. 테스트 DB는 코드 안의 `resetDb()`가 비우므로 커맨드로 지울 일은 드물다 |
 | ask: `supabase.co`/`supabase.com` | Preview와 Production DB, 저장소가 Supabase에 있다. 원격 DB 마이그레이션은 `migrate.yml`, 데이터 작업은 수동 워크플로로 하고, 커맨드로 직접 닿는 것은 사람이 그때마다 정한다 |
-| ask: `seed.yml` 실행 | 원격 DB의 모든 테이블을 비우고 시드로 되돌린다. 워크플로의 `confirm=seed`는 에이전트도 넣을 수 있어서 승인을 따로 받는다 |
-| ask: `vercel … --prod` | 운영 배포는 보통 `main` 머지 → Vercel Git 연동으로 한다. 배포 한도로 막힌 배포를 다시 낼 때처럼 손으로 할 때만 승인한다 |
+| ask: `gh workflow run` | 수동 실행할 수 있는 워크플로(`seed`, `migrate`, `jobs`, `payout-encrypt`, `attachments-migrate`)는 모두 원격 DB나 저장소를 바꾼다. `seed.yml`은 모든 테이블을 비운다. 워크플로의 `confirm=…` 입력은 에이전트도 넣을 수 있어서 승인을 따로 받는다 |
+| ask: `vercel … --prod`, `vercel promote`·`rollback`, `vercel env …` | 운영 배포는 보통 `main` 머지 → Vercel Git 연동으로 한다. 배포 한도로 막힌 배포를 다시 낼 때처럼 손으로 운영 배포·승격·롤백하거나 환경변수를 바꿀 때만 승인한다(`vercel env pull`은 deny가 먼저 막는다) |
 | allow: 검사 커맨드, `npm run openapi`, 읽기 전용 git·gh | 수정 → 검사 루프가 매번 승인을 묻지 않게 한다. `npm run openapi`는 DB·환경변수·네트워크 없이 `openapi.json` 한 파일만 결정적으로 다시 쓴다. 쓰는 git, `gh pr create`, `prisma migrate dev`는 일부러 넣지 않았다(사람이 승인한다) |
 
 **한계.** Bash 규칙은 커맨드 텍스트만 본다. `bash -c '…'`처럼 다른 형태로 부르면 걸리지 않는다. 보안 경계가 아니라
