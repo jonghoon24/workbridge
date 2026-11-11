@@ -6,7 +6,7 @@ allowed-tools: Bash(git fetch:*), Bash(git status:*), Bash(git diff:*), Bash(git
 
 # PR 전 리뷰
 
-리포지토리 루트에서, 기능 브랜치에서 돌린다(`main`에서는 절대 돌리지 않는다).
+리포지토리 루트에서, 기능 브랜치에서 돌린다. 5단계가 커밋하는데 `main`은 PR로만 바뀌므로 `main`에서는 돌리지 않는다.
 
 ## 1. 범위
 
@@ -67,12 +67,12 @@ git add -A && git commit -m "fix: 리뷰 지적 반영 — <요약>"
 ## 7. PR 열기
 
 `.github/PULL_REQUEST_TEMPLATE.md`를 채운다(읽고, 제목과 체크박스를 모두 유지한다): 무엇을 왜 바꿨는지,
-관련 이슈 번호(버그 수정이면 `Closes #N`), 어떻게 검증했는지(돌린 검사만 체크한다). 6단계의 "사람이 확인해야
+관련 이슈 번호(이슈가 있으면 `Closes #N`), 어떻게 검증했는지(돌린 검사만 체크한다). 6단계의 "사람이 확인해야
 할 항목"은 템플릿의 **"리뷰어가 볼 곳"** 절에 적는다. 본문을 임시 파일에 쓰고:
 
 ```bash
 git push -u origin HEAD        # 사용자의 승인이 있을 때만
-gh pr create --base main --title "<한국어 제목>" --body-file <tmpfile>
+gh pr create --base main --title "<type(scope): 한국어 제목>" --body-file <tmpfile>
 ```
 
 PR URL을 출력한다.

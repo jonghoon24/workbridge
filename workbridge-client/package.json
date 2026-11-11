@@ -9,7 +9,7 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "next lint --max-warnings=0",
     "e2e": "playwright test -c e2e/playwright.config.js"
   },
   "dependencies": {
