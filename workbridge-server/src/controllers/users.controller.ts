@@ -1,243 +1,65 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { Prisma } from '@prisma/client';
-import type { AuthedFileRequest, AuthedRequest } from '../types/index';
-import type { ProfileUpdateInput } from '../schemas/users';
-import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
-import { ACCOUNT_INACTIVE } from '../lib/locks';
-import { enqueueJob } from '../jobs/queue';
+
 import {
-  closeExpiredOpenProjects,
-  rejectPendingApplicationsForClosedProjects,
-} from '../lib/projectLifecycle';
-import { uploadToSupabase } from '../middlewares/upload';
-import { listCareers } from '../services/careers.service';
-import { listPortfolioItems } from '../services/portfolio.service';
-import { v4 as uuidv4 } from 'uuid';
+  getMyProfile,
+  getPublicProfile,
+  listMyApplications,
+  listMyBookmarks,
+  listMyProjects,
+  updateMyProfile,
+} from '../services/users.service';
+import type { ProfileUpdateInput } from '../schemas/users';
+import type { AuthedFileRequest, AuthedRequest } from '../types/index';
 
-/**
- * The caller's own profile (`GET`/`PATCH /me`). `password` is read only to tell the client whether
- * the account has one ({@link toMyProfile}); the hash itself never leaves this module.
- */
-const myProfileSelect = {
-  id: true,
-  email: true,
-  name: true,
-  role: true,
-  profileImage: true,
-  bio: true,
-  companyName: true,
-  businessField: true,
-  website: true,
-  skills: true,
-  activityCategory: true,
-  experienceYears: true,
-  hourlyRate: true,
-  portfolioUrl: true,
-  createdAt: true,
-  password: true,
-} satisfies Prisma.UserSelect;
-
-/** Drops the hash and adds `hasPassword` — false for an account that signs in with Google only. */
-function toMyProfile({ password, ...profile }: Prisma.UserGetPayload<{ select: typeof myProfileSelect }>) {
-  return { ...profile, hasPassword: password !== null };
-}
-
+/** `GET /api/users/me`. */
 export async function getMe(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // `findFirst`, not `findUnique`: a soft-deleted user holding a still-valid access token
-    // must not be able to read their profile. `deletedAt` is not part of a unique constraint.
-    const user = await prisma.user.findFirst({
-      where: { id: req.user.id, deletedAt: null },
-      select: myProfileSelect,
-    });
-
-    if (!user) {
-      throw new AppError('User not found', 404);
-    }
-
-    res.json(toMyProfile(user));
+    res.json(await getMyProfile(req.user.id));
   } catch (err) {
     next(err);
   }
 }
 
+/** `PATCH /api/users/me`. The body was validated by the caller's role's schema; `profileImage` is optional. */
 export async function updateMe(req: AuthedFileRequest, res: Response, next: NextFunction) {
   try {
-    // Parsed by the caller's role's schema (`profileUpdateBodyByRole`): only that role's fields
-    // are present, already typed, and absent fields stay absent.
-    const fields = req.body as ProfileUpdateInput;
-
-    let profileImage: string | undefined;
-    if (req.file) {
-      const filename = `${req.user.id}-${uuidv4()}.${req.file.mimetype.split('/')[1]}`;
-      profileImage = await uploadToSupabase(req.file.buffer, req.file.mimetype, filename);
-    }
-
-    const updateData: Prisma.UserUpdateManyMutationInput = { ...fields };
-    if (profileImage) updateData.profileImage = profileImage;
-
-    // Only while the account is active: a withdrawal that committed after `requireActiveUser` (while
-    // the image uploaded) must not get its profile written back. Its just-uploaded image goes to the
-    // withdrawal's file cleanup, which finds profile images by the user id in their names.
-    // An empty patch (every field stripped as the other role's) writes nothing: Prisma skips an
-    // `updateMany` without data and reports 0 rows, so check the account instead.
-    const active = { id: req.user.id, deletedAt: null };
-    const count = Object.keys(updateData).length
-      ? (await prisma.user.updateMany({ where: active, data: updateData })).count
-      : await prisma.user.count({ where: active });
-    if (count === 0) {
-      if (profileImage) {
-        await enqueueJob(prisma, { type: 'account.deletePublicFiles', payload: { userId: req.user.id, paths: [] } });
-      }
-      throw new AppError(ACCOUNT_INACTIVE, 401);
-    }
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.user.id }, select: myProfileSelect });
-
-    res.json(toMyProfile(user));
+    res.json(await updateMyProfile(req.user.id, req.body as ProfileUpdateInput, req.file));
   } catch (err) {
     next(err);
   }
 }
 
-// Public route (no `authenticate`) — must not read `req.user`.
+/** `GET /api/users/:id`. Public route (no `authenticate`) — must not read `req.user`. */
 export async function getUserById(req: Request, res: Response, next: NextFunction) {
   try {
-    // Soft-deleted users must not remain publicly visible.
-    const user = await prisma.user.findFirst({
-      where: { id: req.params.id, deletedAt: null },
-      select: {
-        id: true,
-        name: true,
-        role: true,
-        profileImage: true,
-        bio: true,
-        companyName: true,
-        businessField: true,
-        website: true,
-        skills: true,
-        activityCategory: true,
-        experienceYears: true,
-        hourlyRate: true,
-        portfolioUrl: true,
-        createdAt: true,
-        receivedReviews: {
-          select: {
-            id: true,
-            rating: true,
-            content: true,
-            tags: true,
-            createdAt: true,
-            reviewer: {
-              select: { id: true, name: true, profileImage: true },
-            },
-          },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    });
-
-    if (!user) {
-      throw new AppError('User not found', 404);
-    }
-
-    const avgRating = user.receivedReviews.length > 0
-      ? user.receivedReviews.reduce((sum, r) => sum + r.rating, 0) / user.receivedReviews.length
-      : null;
-
-    // The public portfolio and career lists, exactly as `GET /:id/portfolio` and `GET /:id/careers`
-    // return them.
-    const [portfolioItems, { careers, careerSummary }] = await Promise.all([
-      listPortfolioItems(user.id),
-      listCareers(user.id),
-    ]);
-
-    res.json({
-      ...user,
-      avgRating,
-      reviewCount: user.receivedReviews.length,
-      portfolioItems,
-      careers,
-      careerSummary,
-    });
+    res.json(await getPublicProfile(req.params.id));
   } catch (err) {
     next(err);
   }
 }
 
+/** `GET /api/users/me/applications`. Runs the lazy lifecycle sweep, so it writes rows. */
 export async function getMyApplications(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    await closeExpiredOpenProjects();
-    await rejectPendingApplicationsForClosedProjects({ freelancerId: req.user.id });
-
-    const applications = await prisma.application.findMany({
-      where: { freelancerId: req.user.id },
-      include: {
-        contract: { select: { id: true, status: true } },
-        project: {
-          select: {
-            id: true,
-            title: true,
-            category: true,
-            budget: true,
-            status: true,
-            deadline: true,
-            client: { select: { id: true, name: true, companyName: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    res.json(applications);
+    res.json(await listMyApplications(req.user.id));
   } catch (err) {
     next(err);
   }
 }
 
+/** `GET /api/users/me/bookmarks`. */
 export async function getMyBookmarks(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    // A project whose client is soft-deleted is gone like a deleted project (docs/domain/README.md
-    // "소프트 삭제": the joined owner too), as in the public list and detail.
-    const bookmarks = await prisma.projectBookmark.findMany({
-      where: {
-        userId: req.user.id,
-        project: { deletedAt: null, client: { deletedAt: null } },
-      },
-      include: {
-        project: {
-          include: {
-            client: { select: { id: true, name: true, companyName: true, profileImage: true } },
-            _count: { select: { applications: true } },
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    res.json(bookmarks.map((bookmark) => ({
-      ...bookmark.project,
-      isBookmarked: true,
-      bookmarkedAt: bookmark.createdAt,
-    })));
+    res.json(await listMyBookmarks(req.user.id));
   } catch (err) {
     next(err);
   }
 }
 
+/** `GET /api/users/me/projects`. Runs the lazy lifecycle sweep, so it writes rows. */
 export async function getMyProjects(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    await closeExpiredOpenProjects();
-
-    const projects = await prisma.project.findMany({
-      where: { clientId: req.user.id, deletedAt: null },
-      include: {
-        _count: { select: { applications: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    res.json(projects);
+    res.json(await listMyProjects(req.user.id));
   } catch (err) {
     next(err);
   }

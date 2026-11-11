@@ -25,7 +25,7 @@ OpenAPI 문서(아래 "API 계약: OpenAPI")가 기준이다.
 요청 검증은 양쪽 모두 zod 스키마(`src/schemas/`)와 `validate()`(`src/middlewares/validate.ts`)가 맡는다. 확장 라우트가 기존
 라우터 파일에 들어간 곳도 있다(지급 계좌 `users.routes.ts`, 계약 목록 `contracts.routes.ts`, 추천 프리랜서 `projects.routes.ts`).
 두 방식이 섞여 있는 것은 의도된 과도기이고, 기존 도메인을 서비스 레이어로 옮기는 계획과 순서는
-[#40](https://github.com/jonghoon24/workbridge/issues/40)에 있다. #40에서 옮긴 notifications(설정 제외)와 payments는 로직이
+[#40](https://github.com/jonghoon24/workbridge/issues/40)에 있다. #40에서 옮긴 users, notifications(설정 제외), payments는 로직이
 `src/services/`에 있지만, 읽기 라우트에는 `requireActiveUser`가 없어(#7은 쓰기만 막는다) 표에서는 기존 도메인에 둔다.
 
 ### 인증과 권한
