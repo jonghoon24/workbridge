@@ -22,9 +22,11 @@ argument-hint: <METHOD> <path> — <하는 일>
 ## 1. 동작 먼저 정하기
 
 코드를 쓰기 전에 다음을 정한다:
-- 검사 순서: 역할(403 `Insufficient permissions`) → 업로드(413/400) → 검증(400
-  `<path>: <message>`) → 존재(404) → 소유권(403 `Not authorized`) → 상태(409);
-- 정확한 메시지, 응답 모양과 상태 코드(`201 { item }`, `200 { items, meta }`) — 6단계에서 OpenAPI에 그대로 적는다;
+- 검사 순서: 역할(403 `FORBIDDEN_ROLE`) → 업로드(413/400) → 검증(400 `VALIDATION_FAILED`, `<path>: <message>`)
+  → 존재(404 `<RESOURCE>_NOT_FOUND`) → 소유권(403 `FORBIDDEN_RESOURCE`) → 상태(409);
+- 원인마다 오류 코드(`src/lib/errorCodes.ts`)와 메시지. 클라이언트가 같은 안내를 하는 원인이면 기존 코드를 쓰고, 아니면
+  새 코드를 표와 `test/error-codes.test.ts`의 `PUBLISHED` 끝에 더한다(이름 규칙은 표의 주석). 응답 모양과 상태 코드
+  (`201 { item }`, `200 { items, meta }`)와 함께 6단계에서 OpenAPI에 그대로 적는다;
 - 한 트랜잭션에서 바뀌는 행, `notify()`로 보내는 알림, 넣는 작업(`docs/domain/README.md` "원자성");
 - 소프트 삭제: 삭제된 프로젝트/사용자 때문에 무엇이 안 보이게 되는지(`docs/domain/README.md` "소프트 삭제");
 - 동시성: 트랜잭션이 `lockUserRow`로 시작하는지, 경합하면 결과가 어떻게 되는지.
@@ -42,7 +44,8 @@ argument-hint: <METHOD> <path> — <하는 일>
 
 ## 3. 서비스 — `src/services/<domain>.service.ts`
 
-- 모든 로직과 모든 `throw new AppError(message, status)`는 여기에 둔다. 시간에 따라 달라지면 `now: Date`를 받는다.
+- 모든 로직과 모든 `throw new AppError(code, message)`는 여기에 둔다(상태 코드는 코드가 정한다). 저장된 값과 비교해야 하는
+  필드 검사는 `invalidField(path, fieldCode, message)`로 던진다. 시간에 따라 달라지면 `now: Date`를 받는다.
 - 1단계에서 정한 트랜잭션 경계, 잠금, 알림, 작업을 그대로 옮긴다.
 - 읽기는 `User`/`Project`(그리고 `contract.project`를 거치는 경우도)에 `deletedAt: null`을 건다.
 
@@ -78,8 +81,9 @@ router.post('/things', ...guard, validate({ body: thingBody }), postThing);
 - 응답 모양: `src/openapi/responses/<domain>.ts`에 zod 스키마로(공통 조각은 `responses/common.ts`). 실제 응답의
   필드를 빠짐없이 적는다 — 테스트가 응답을 strict하게 검사하므로 빠진 필드는 실패다.
 - 경로: `src/openapi/paths/<domain>.ts`에 `registry.registerPath({...})`. `request`에는 2단계의 스키마를 그대로
-  넣고, `responses`에는 성공 응답(`ok`/`created`)과 1단계의 오류를 상태 코드별로 적는다(`errors(invalid(…),
-  ACTIVE_USER, role(…), notFound(…), NOT_OWNER, {409: [...]})`). 500은 적지 않는다.
+  넣고, `responses`에는 성공 응답(`ok`/`created`)과 1단계의 오류를 원인마다 적는다(`errors(invalid(…),
+  ACTIVE_USER, role(…), notFound('<RESOURCE>_NOT_FOUND', '<언제>'), NOT_OWNER, cause('<CODE>', '<언제>'))`). 상태 코드는
+  코드가 정하고, 경로마다 적은 코드만 응답 스키마에 들어가므로 빠진 원인은 그 응답을 받는 테스트가 실패한다. 500은 적지 않는다.
 - 새 도메인 파일이면 `src/openapi/registry.ts`의 `buildRegistry()`에 등록 함수를 추가한다.
 - 다시 만든 `openapi.json`을 함께 커밋한다(CI가 최신인지 검사한다). 로컬 서버의 `GET /api/docs`에서 화면으로
   확인할 수 있다.

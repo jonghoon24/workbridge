@@ -10,8 +10,9 @@ OpenAPI 문서(아래 "API 계약: OpenAPI")가 기준이다.
 
 `src/index.ts`가 공통 미들웨어(요청 ID와 접근 로그, CORS, 본문·쿠키 파서, 요청 컨텍스트) → 도메인 라우터
 (`src/routes/*.routes.ts`) → `notFound` → `errorHandler` 순으로 건다. 같은 접두어에 라우터가 둘인 곳(`/api/users`,
-`/api/projects`)은 경로가 겹치면 먼저 마운트된 쪽이 이긴다. 오류는 `AppError`로 던져 `errorHandler`가
-`{ error: { message } }`로 응답한다.
+`/api/projects`)은 경로가 겹치면 먼저 마운트된 쪽이 이긴다. 오류는 `AppError(code, message)`로 던져 `errorHandler`가
+`{ error: { code, message } }`(검증 실패는 `fields`도)로 응답한다. 코드와 그 상태 코드는 `src/lib/errorCodes.ts`의 표 하나가
+정하고, `AppError`가 아닌 오류는 모두 500 `INTERNAL_ERROR`다.
 
 ### 레이어
 
@@ -43,7 +44,7 @@ OpenAPI 문서(아래 "API 계약: OpenAPI")가 기준이다.
 ### API 계약: OpenAPI
 
 API 문서(OpenAPI 3.1)는 코드에서 생성한다. 요청 스키마는 `validate()`가 쓰는 `src/schemas/*.ts` 그대로이고,
-응답 스키마는 `src/openapi/responses/`, 경로 등록(상태 코드별 응답과 오류 메시지)은 `src/openapi/paths/<도메인>.ts`에
+응답 스키마는 `src/openapi/responses/`, 경로 등록(상태 코드별 응답과 그 오류 코드)은 `src/openapi/paths/<도메인>.ts`에
 있다. 모든 스키마는 `.openapi()`가 붙은 `z`(`src/lib/zod.ts`)를 import한다. `npm run openapi`가 커밋되는
 `workbridge-server/openapi.json`을 쓴다. 문서는 `GET /api/docs`(Scalar)와 `GET /api/openapi.json`으로도 보이고, 운영에서는
 꺼진다([ENV.md](ENV.md)의 `VERCEL_ENV`). 어긋남은 두 테스트가 막는다: `test/openapi.test.ts`가 앱의 라우트와 문서의 경로를
