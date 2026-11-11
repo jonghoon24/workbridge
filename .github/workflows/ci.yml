@@ -144,7 +144,7 @@ jobs:
         run: npm ci
 
       - name: 린트
-        run: npm run lint -- --max-warnings=0
+        run: npm run lint
 
       # 클라이언트에는 단위 테스트가 없어서 운영 빌드가 깨끗이 끝나는 것이 정합성 검사다
       # (CLAUDE.md). API URL은 요청 때만 읽으므로 어떤 값이든 빌드된다.

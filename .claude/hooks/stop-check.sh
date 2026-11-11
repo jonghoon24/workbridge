@@ -2,7 +2,7 @@
 # Stop: Claude가 끝내기 전에 HEAD 이후 바뀐 곳의 가벼운 정적 검사를 돌린다.
 #   workbridge-server/**/*.ts 변경 → npm run typecheck (src/와 test/ 모두)
 #   workbridge-server/**/*.{ts,js,mjs} 변경 → npm run lint (CI와 같은 기준)
-#   workbridge-client/src/** 변경   → npm run lint -- --max-warnings=0 (CI와 같은 기준)
+#   workbridge-client/src/** 변경   → npm run lint (경고도 실패. 기준은 package.json)
 # exit 2면 실패한 마지막 줄이 Claude에게 돌아가 작업을 이어 간다.
 # 서버 테스트 스위트는 일부러 돌리지 않는다. 실제 Postgres가 필요하고 오래 걸려서, DB가 없는 환경에서는
 # 매번 실패해 Claude를 붙잡는다. 파일 단위 테스트는 Claude가 `npx vitest run`으로 돌리고, 전체는 ci.yml이 돌린다.
@@ -64,7 +64,7 @@ fi
 
 if grep -qE '^workbridge-client/src/' <<<"$changed"; then
   if [ -d workbridge-client/node_modules ]; then
-    out=$(cd workbridge-client && npm run --silent lint -- --max-warnings=0 2>&1) || fail "workbridge-client npm run lint -- --max-warnings=0" "$out"
+    out=$(cd workbridge-client && npm run --silent lint 2>&1) || fail "workbridge-client npm run lint" "$out"
   else
     echo "stop-check: workbridge-client/node_modules가 없어 lint를 건너뛰었다 (npm install 필요)" >&2
     skipped=true
