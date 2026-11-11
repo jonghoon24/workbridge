@@ -25,7 +25,7 @@ async function findMilestoneForPayment(milestoneId: string) {
     include: { contract: true, payment: true },
   });
   if (!milestone) {
-    throw new AppError('Milestone not found', 404);
+    throw new AppError('MILESTONE_NOT_FOUND', 'Milestone not found');
   }
   return milestone;
 }
@@ -97,24 +97,24 @@ async function openPaymentOrder(
   const { contract, payment } = milestone;
 
   if (contract.clientId !== clientId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   if (contract.status !== 'ACTIVE') {
-    throw new AppError('Contract must be active to proceed with payment', 400);
+    throw new AppError('CONTRACT_NOT_ACTIVE', 'Contract must be active to proceed with payment');
   }
 
   if (await hasUnfundedPredecessor(contract.id, milestone.sequence)) {
-    throw new AppError('Earlier milestones must be funded first', 400);
+    throw new AppError('EARLIER_MILESTONE_UNFUNDED', 'Earlier milestones must be funded first');
   }
 
   if (milestone.status !== 'PENDING') {
-    throw new AppError('Milestone is already funded', 409);
+    throw new AppError('MILESTONE_ALREADY_FUNDED', 'Milestone is already funded');
   }
 
   if (payment?.status === 'COMPLETED') {
     // Only reachable in an inconsistent state: milestone PENDING, payment COMPLETED.
-    throw new AppError('Payment already completed for this milestone', 409);
+    throw new AppError('MILESTONE_ALREADY_FUNDED', 'Payment already completed for this milestone');
   }
 
   if (payment?.status === 'PENDING') {
@@ -143,7 +143,7 @@ async function openPaymentOrder(
 
   if (payment) {
     // REFUNDED
-    throw new AppError('Payment cannot be created for this milestone', 409);
+    throw new AppError('MILESTONE_REFUNDED', 'Payment cannot be created for this milestone');
   }
 
   const orderId = uuidv4();
@@ -177,19 +177,19 @@ export async function confirmTossPayment(clientId: string, input: PaymentConfirm
   });
 
   if (!payment) {
-    throw new AppError('Payment not found', 404);
+    throw new AppError('PAYMENT_NOT_FOUND', 'Payment not found');
   }
 
   if (payment.clientId !== clientId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   if (payment.status !== 'PENDING') {
-    throw new AppError('Payment has already been processed', 409);
+    throw new AppError('PAYMENT_ALREADY_PROCESSED', 'Payment has already been processed');
   }
 
   if (requestedAmount !== payment.amount) {
-    throw new AppError('Payment amount does not match the contract amount', 400);
+    throw new AppError('PAYMENT_AMOUNT_MISMATCH', 'Payment amount does not match the contract amount');
   }
 
   // The read above can be stale: two confirms may both see PENDING. Claiming the payment is a
@@ -206,7 +206,7 @@ export async function confirmTossPayment(clientId: string, input: PaymentConfirm
     data: { confirmStartedAt: now },
   });
   if (claimed.count === 0) {
-    throw new AppError('Payment has already been processed', 409);
+    throw new AppError('PAYMENT_ALREADY_PROCESSED', 'Payment has already been processed');
   }
 
   // Verify with Toss Payments
@@ -228,7 +228,7 @@ export async function confirmTossPayment(clientId: string, input: PaymentConfirm
     );
 
     if (Number(tossPayment.totalAmount) !== payment.amount || tossPayment.status !== 'DONE') {
-      throw new AppError('Payment verification failed', 400);
+      throw new AppError('PAYMENT_VERIFICATION_FAILED', 'Payment verification failed');
     }
 
     // The payment and the milestone's funding commit together. `markFunded` is a no-op,
@@ -250,7 +250,7 @@ export async function confirmTossPayment(clientId: string, input: PaymentConfirm
       data: { status: 'FAILED' },
     });
 
-    throw new AppError('Payment verification failed', 400);
+    throw new AppError('PAYMENT_VERIFICATION_FAILED', 'Payment verification failed');
   }
 }
 
@@ -273,26 +273,26 @@ async function completeMilestonePayment(
   const { contract, payment } = milestone;
 
   if (contract.clientId !== clientId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   if (contract.status !== 'ACTIVE') {
-    throw new AppError('Contract must be active to proceed with payment', 400);
+    throw new AppError('CONTRACT_NOT_ACTIVE', 'Contract must be active to proceed with payment');
   }
 
   if (await hasUnfundedPredecessor(contract.id, milestone.sequence)) {
-    throw new AppError('Earlier milestones must be funded first', 400);
+    throw new AppError('EARLIER_MILESTONE_UNFUNDED', 'Earlier milestones must be funded first');
   }
 
   if (milestone.status !== 'PENDING') {
     if (payment?.status === 'COMPLETED') {
       return { created: false, payment };
     }
-    throw new AppError('Milestone is already funded', 409);
+    throw new AppError('MILESTONE_ALREADY_FUNDED', 'Milestone is already funded');
   }
 
   if (payment?.status === 'REFUNDED') {
-    throw new AppError('Payment cannot be completed for a refunded milestone', 409);
+    throw new AppError('MILESTONE_REFUNDED', 'Payment cannot be completed for a refunded milestone');
   }
 
   const paymentData = {

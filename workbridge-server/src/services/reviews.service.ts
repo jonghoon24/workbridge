@@ -21,15 +21,15 @@ export async function writeReview(reviewerId: string, input: ReviewInput) {
   });
 
   if (!contract) {
-    throw new AppError('Contract not found', 404);
+    throw new AppError('CONTRACT_NOT_FOUND', 'Contract not found');
   }
 
   if (contract.clientId !== reviewerId && contract.freelancerId !== reviewerId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   if (contract.status !== 'COMPLETED') {
-    throw new AppError('Reviews can only be written after project completion', 400);
+    throw new AppError('CONTRACT_NOT_COMPLETED', 'Reviews can only be written after project completion');
   }
 
   // Verify reviewee is the other party
@@ -38,7 +38,7 @@ export async function writeReview(reviewerId: string, input: ReviewInput) {
     : contract.clientId;
 
   if (revieweeId !== expectedRevieweeId) {
-    throw new AppError('Invalid reviewee', 400);
+    throw new AppError('REVIEWEE_INVALID', 'Invalid reviewee');
   }
 
   try {
@@ -54,7 +54,7 @@ export async function writeReview(reviewerId: string, input: ReviewInput) {
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new AppError('You have already reviewed this contract', 409);
+      throw new AppError('REVIEW_ALREADY_EXISTS', 'You have already reviewed this contract');
     }
     throw err;
   }

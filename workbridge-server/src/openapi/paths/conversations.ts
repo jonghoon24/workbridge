@@ -5,15 +5,16 @@ import { uploadRequestBody } from '../../schemas/attachments';
 import {
   ACTIVE_USER,
   ATTACHMENT_DOWNLOAD,
-  UPLOAD_CLAIM,
-  UPLOAD_POLICY,
   bearer,
+  cause,
   created,
   errors,
   invalid,
   jsonBody,
   ok,
   pathParams,
+  UPLOAD_CLAIM,
+  UPLOAD_POLICY,
 } from '../common';
 import { attachmentDownload, uploadsIssued } from '../responses/contracts';
 import { unreadCountBody } from '../responses/common';
@@ -23,10 +24,10 @@ const tags = ['Conversations'];
 
 const conversationId = pathParams({ id: '대화방 ID' });
 /** Every `/:id` route looks the conversation up first: missing → 404, not a participant → 403. */
-const LOOKUP = {
-  403: ['`Not authorized` — 대화방 참여자가 아님'],
-  404: ['`Conversation not found` — 없는 대화방, 또는 프로젝트가 삭제됨'],
-};
+const LOOKUP = [
+  cause('FORBIDDEN_RESOURCE', '대화방 참여자가 아님'),
+  cause('CONVERSATION_NOT_FOUND', '없는 대화방, 또는 프로젝트가 삭제됨'),
+];
 
 export function registerConversationPaths(registry: OpenAPIRegistry): void {
   registry.registerPath({
@@ -43,7 +44,7 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     request: { query: conversationListQuery },
     responses: {
       200: ok(conversationList),
-      ...errors(invalid('`q: must be at most 100 characters` — 검색어가 앞뒤 공백을 빼고 100자 넘음'), ACTIVE_USER),
+      ...errors(invalid('`q` `TOO_LARGE` — 검색어가 앞뒤 공백을 빼고 100자 넘음'), ACTIVE_USER),
     },
   });
 
@@ -84,8 +85,8 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
       200: ok(messagePage),
       ...errors(
         invalid(
-          '`before: Use either before or after, not both` — 커서를 둘 다 보냄',
-          '`before: Message not found in this conversation` — 커서 메시지가 이 대화방에 없음(`after`도 같음)',
+          '`before` `CONFLICT` — 커서를 둘 다 보냄',
+          '`before`·`after` `INVALID` — 커서 메시지가 이 대화방에 없음',
         ),
         ACTIVE_USER,
         LOOKUP,
@@ -93,12 +94,10 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     },
   });
 
-  const CLOSED = {
-    409: [
-      '`This conversation is closed` — 계약이 완료되거나 철회된 뒤 30일이 지남',
-      '`The other participant is no longer active` — 상대방이 탈퇴함',
-    ],
-  };
+  const CLOSED = [
+    cause('CONVERSATION_CLOSED', '계약이 완료되거나 철회된 뒤 30일이 지남'),
+    cause('COUNTERPART_INACTIVE', '상대방이 탈퇴함'),
+  ];
 
   registry.registerPath({
     method: 'post',
@@ -133,16 +132,12 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     responses: {
       201: created(messageResult),
       ...errors(
-        invalid('`body: Message or attachment is required` — 본문도 첨부도 없음'),
+        invalid('`body` `REQUIRED` — 본문도 첨부도 없음'),
         ACTIVE_USER,
         LOOKUP,
         UPLOAD_CLAIM,
-        {
-          409: [
-            '`This conversation is closed` — 계약이 완료되거나 철회된 뒤 30일이 지남',
-            '`The other participant is no longer active` — 상대방이 탈퇴함',
-          ],
-        },
+        cause('CONVERSATION_CLOSED', '계약이 완료되거나 철회된 뒤 30일이 지남'),
+        cause('COUNTERPART_INACTIVE', '상대방이 탈퇴함'),
       ),
     },
   });
@@ -172,11 +167,13 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     request: { params: pathParams({ id: '대화방 ID', messageId: '메시지 ID' }) },
     responses: {
       200: ok(messageResult, '지운 메시지(흔적)'),
-      ...errors(ACTIVE_USER, {
-        403: [...LOOKUP[403], '`Not authorized` — 내가 보낸 `TEXT` 메시지가 아님'],
-        404: [...LOOKUP[404], '`Message not found` — 이 대화방의 메시지가 아님'],
-        409: ['`Messages can only be deleted within 5 minutes` — 5분이 지남'],
-      }),
+      ...errors(
+        ACTIVE_USER,
+        LOOKUP,
+        cause('FORBIDDEN_RESOURCE', '내가 보낸 `TEXT` 메시지가 아님'),
+        cause('MESSAGE_NOT_FOUND', '이 대화방의 메시지가 아님'),
+        cause('MESSAGE_DELETE_WINDOW_EXPIRED', '5분이 지남'),
+      ),
     },
   });
 
@@ -191,10 +188,12 @@ export function registerConversationPaths(registry: OpenAPIRegistry): void {
     request: { params: pathParams({ id: '대화방 ID', attachmentId: '첨부 ID' }) },
     responses: {
       200: ok(attachmentDownload),
-      ...errors(ACTIVE_USER, {
-        403: LOOKUP[403],
-        404: [...LOOKUP[404], '`Attachment not found` — 이 대화방의 첨부가 아니거나 메시지가 삭제됨'],
-      }, ATTACHMENT_DOWNLOAD),
+      ...errors(
+        ACTIVE_USER,
+        LOOKUP,
+        cause('ATTACHMENT_NOT_FOUND', '이 대화방의 첨부가 아니거나 메시지가 삭제됨'),
+        ATTACHMENT_DOWNLOAD,
+      ),
     },
   });
 }

@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { Contract, MessageKind, Role } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { logger } from '../lib/logger';
 import { DAY_MS, MINUTE_MS } from '../lib/time';
 import { PermanentJobError } from '../jobs/errors';
@@ -472,8 +472,8 @@ async function findConversationForRoute(conversationId: string, userId: string):
     where: { id: conversationId, contract: { project: { deletedAt: null } } },
     include: conversationInclude,
   });
-  if (!row) throw new AppError(CONVERSATION_NOT_FOUND, 404);
-  if (!row.participants.some((p) => p.userId === userId)) throw new AppError(NOT_AUTHORIZED, 403);
+  if (!row) throw new AppError('CONVERSATION_NOT_FOUND', CONVERSATION_NOT_FOUND);
+  if (!row.participants.some((p) => p.userId === userId)) throw new AppError('FORBIDDEN_RESOURCE', NOT_AUTHORIZED);
   return row;
 }
 
@@ -556,7 +556,7 @@ export async function listMessages(conversationId: string, userId: string, query
       where: { id: query[cursorField], conversationId },
       select: { id: true, createdAt: true },
     });
-    if (!cursor) throw new AppError(`${cursorField}: Message not found in this conversation`, 400);
+    if (!cursor) throw invalidField(cursorField, 'INVALID', `${cursorField}: Message not found in this conversation`);
   }
 
   const take = query.limit + 1;
@@ -595,8 +595,8 @@ export async function listMessages(conversationId: string, userId: string, query
 function assertCanPost(row: ConversationRow, userId: string, now: Date): void {
   const { counterpartUser } = sides(row, userId);
   const state = postingState(row.contract, counterpartUser, now);
-  if (state.closedReason === 'CONTRACT_CLOSED') throw new AppError('This conversation is closed', 409);
-  if (state.closedReason === 'COUNTERPART_INACTIVE') throw new AppError('The other participant is no longer active', 409);
+  if (state.closedReason === 'CONTRACT_CLOSED') throw new AppError('CONVERSATION_CLOSED', 'This conversation is closed');
+  if (state.closedReason === 'COUNTERPART_INACTIVE') throw new AppError('COUNTERPART_INACTIVE', 'The other participant is no longer active');
 }
 
 /**
@@ -689,10 +689,10 @@ export async function deleteMessage(conversationId: string, messageId: string, u
   const { counterpartLastReadAt } = sides(row, userId);
 
   const message = await prisma.message.findFirst({ where: { id: messageId, conversationId }, include: messageInclude });
-  if (!message) throw new AppError('Message not found', 404);
-  if (message.kind !== 'TEXT' || message.senderId !== userId) throw new AppError(NOT_AUTHORIZED, 403);
+  if (!message) throw new AppError('MESSAGE_NOT_FOUND', 'Message not found');
+  if (message.kind !== 'TEXT' || message.senderId !== userId) throw new AppError('FORBIDDEN_RESOURCE', NOT_AUTHORIZED);
 
-  const tooLate = () => new AppError('Messages can only be deleted within 5 minutes', 409);
+  const tooLate = () => new AppError('MESSAGE_DELETE_WINDOW_EXPIRED', 'Messages can only be deleted within 5 minutes');
   if (!message.deletedAt) {
     const windowStart = new Date(now.getTime() - DELETE_WINDOW_MS);
     if (message.createdAt <= windowStart) throw tooLate();
@@ -733,7 +733,7 @@ export async function getMessageAttachmentDownload(
     where: { id: attachmentId, message: { conversationId, deletedAt: null } },
     select: { storageKey: true, url: true, fileName: true },
   });
-  if (!attachment) throw new AppError('Attachment not found', 404);
+  if (!attachment) throw new AppError('ATTACHMENT_NOT_FOUND', 'Attachment not found');
   return downloadUrlFor(attachment, now);
 }
 
@@ -742,9 +742,9 @@ export async function getContractConversation(contractId: string, userId: string
     where: { id: contractId, project: { deletedAt: null } },
     select: { clientId: true, freelancerId: true, conversation: { select: { id: true } } },
   });
-  if (!contract) throw new AppError('Contract not found', 404);
-  if (contract.clientId !== userId && contract.freelancerId !== userId) throw new AppError(NOT_AUTHORIZED, 403);
-  if (!contract.conversation) throw new AppError(CONVERSATION_NOT_FOUND, 404);
+  if (!contract) throw new AppError('CONTRACT_NOT_FOUND', 'Contract not found');
+  if (contract.clientId !== userId && contract.freelancerId !== userId) throw new AppError('FORBIDDEN_RESOURCE', NOT_AUTHORIZED);
+  if (!contract.conversation) throw new AppError('CONVERSATION_NOT_FOUND', CONVERSATION_NOT_FOUND);
 
   const { id } = contract.conversation;
   const unread = await unreadByConversation(userId, [id]);

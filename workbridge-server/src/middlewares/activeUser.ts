@@ -17,7 +17,7 @@ export async function requireActiveUser(req: Request, res: Response, next: NextF
     });
 
     if (!user) {
-      throw new AppError('Account is no longer active', 401);
+      throw new AppError('ACCOUNT_INACTIVE', 'Account is no longer active');
     }
 
     next();

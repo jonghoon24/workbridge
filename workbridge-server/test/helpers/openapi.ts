@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { ZodTypeAny } from 'zod';
 
 import { buildRegistry } from '../../src/openapi/registry';
-import { errorBody } from '../../src/openapi/responses/common';
+import { internalErrorBody } from '../../src/openapi/responses/common';
 
 /**
  * Response conformance: every response a test receives through `api()` / `authed()` is checked
@@ -17,8 +17,12 @@ import { errorBody } from '../../src/openapi/responses/common';
  * - A request whose path matches no documented route is not checked — it is the app's JSON 404
  *   for an unknown path (`middlewares/notFound.ts`), or one of the docs routes (`UNDOCUMENTED_ROUTES`).
  *   `test/openapi.test.ts` keeps the documented routes equal to the mounted ones.
- * - A 500 is never documented — it is a bug by definition — so it is only checked to be
- *   the error envelope. The suite's deliberate 500s (`test/helpers/faults.ts`, and the profile image upload's 500 for a bad file) pass that.
+ * - An error response is checked like any other: its `code` must be one the route documents for that
+ *   status (`errors()` in `src/openapi/common.ts` lists exactly those), and only a `VALIDATION_FAILED`
+ *   may carry `fields`.
+ * - A 500 is never documented — it is a bug by definition — so it is only checked to be exactly
+ *   `{ code: 'INTERNAL_ERROR', message: 'Internal Server Error' }`. The suite's deliberate 500s
+ *   (`test/helpers/faults.ts`, and the profile image upload's 500 for a bad file) pass that.
  * - A documented response without content (the OAuth redirects) has its body ignored.
  */
 
@@ -139,8 +143,8 @@ export function conformanceError(res: Response): string | null {
   const contentType = String(res.headers['content-type'] ?? '');
 
   if (res.status === 500) {
-    const parsed = errorBody.strict().safeParse(res.body);
-    return parsed.success ? null : `${label}: a 500 must still be the error envelope\n${formatIssues(parsed.error)}`;
+    const parsed = strictDeep(internalErrorBody).safeParse(res.body);
+    return parsed.success ? null : `${label}: a 500 must be exactly the INTERNAL_ERROR envelope\n${formatIssues(parsed.error)}`;
   }
 
   const documented = operation.responses[String(res.status)];

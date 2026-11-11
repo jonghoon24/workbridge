@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
 
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { loadProfileCompletion } from '../lib/profileCompletion';
 import {
   createCareer,
@@ -66,7 +66,7 @@ export async function patchPortfolioItem(req: AuthedFileRequest, res: Response, 
     const input = req.body as PortfolioPatchInput;
     // Still validation, so before the existence check — the schema cannot see the file.
     if (req.file && input.removeImage) {
-      throw new AppError('removeImage: Cannot upload and remove an image at once', 400);
+      throw invalidField('removeImage', 'CONFLICT', 'removeImage: Cannot upload and remove an image at once');
     }
     res.json(await updatePortfolioItem(req.user.id, req.params.itemId, input, req.file));
   } catch (err) {
@@ -132,7 +132,7 @@ export async function getMyProfileCompletion(req: AuthedRequest, res: Response, 
   try {
     const completion = await loadProfileCompletion(req.user.id);
     // `requireActiveUser` has just read the row, so this is only a delete in between.
-    if (!completion) throw new AppError('User not found', 404);
+    if (!completion) throw new AppError('USER_NOT_FOUND', 'User not found');
     res.json(completion);
   } catch (err) {
     next(err);

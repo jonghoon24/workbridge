@@ -1,4 +1,5 @@
 import { z } from '../lib/zod';
+import { fieldCode } from './common';
 
 import { uploadIdsField } from './attachments';
 import { MAX_MILESTONES, MIN_MILESTONE_AMOUNT, MIN_MILESTONES } from '../lib/money';
@@ -42,7 +43,7 @@ const planItem = z.object({
     if (!isCalendarDate(value)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: DUE_DATE_FORMAT_MESSAGE });
     } else if (value < kstDateString(new Date())) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date cannot be in the past' });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Due date cannot be in the past', params: fieldCode('TOO_SMALL') });
     }
   }).openapi({ format: 'date', description: 'KST 날짜. 오늘 이전은 안 된다.', example: '2026-12-31' }),
 });
@@ -62,7 +63,7 @@ export const milestonePlanBody = z
   .superRefine((body, ctx) => {
     body.milestones.forEach((item, index) => {
       if (index > 0 && item.dueDate < body.milestones[index - 1].dueDate) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['milestones', index, 'dueDate'], message: 'Due dates must not decrease' });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['milestones', index, 'dueDate'], message: 'Due dates must not decrease', params: fieldCode('CONFLICT') });
       }
     });
   });

@@ -10,7 +10,7 @@ import { AppError } from '../lib/errors';
  */
 export function requirePaymentBypass(_req: Request, _res: Response, next: NextFunction) {
   if (env.ALLOW_PAYMENT_BYPASS !== 'true') {
-    return next(new AppError('Payment bypass is disabled', 403));
+    return next(new AppError('PAYMENT_BYPASS_DISABLED', 'Payment bypass is disabled'));
   }
   next();
 }

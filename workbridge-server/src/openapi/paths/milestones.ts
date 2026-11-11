@@ -5,9 +5,8 @@ import { rejectBody, submissionBody } from '../../schemas/milestones';
 import {
   ACTIVE_USER,
   ATTACHMENT_DOWNLOAD,
-  UPLOAD_CLAIM,
-  UPLOAD_POLICY,
   bearer,
+  cause,
   created,
   errors,
   invalid,
@@ -16,7 +15,10 @@ import {
   ok,
   pathParams,
   role,
+  UPLOAD_CLAIM,
+  UPLOAD_POLICY,
 } from '../common';
+import type { ErrorSpec } from '../common';
 import {
   attachmentDownload,
   milestoneApproved,
@@ -29,8 +31,8 @@ import {
 const tags = ['Milestones'];
 
 const milestoneId = pathParams({ id: '마일스톤 ID' });
-const MILESTONE_NOT_FOUND = notFound('Milestone not found', '없는 마일스톤, 또는 프로젝트가 삭제됨');
-const NOT_AWAITING_REVIEW = { 409: ['`Milestone is not awaiting review` — 제출(`SUBMITTED`) 상태가 아님'] };
+const MILESTONE_NOT_FOUND = notFound('MILESTONE_NOT_FOUND', '없는 마일스톤, 또는 프로젝트가 삭제됨');
+const NOT_AWAITING_REVIEW = cause('MILESTONE_NOT_AWAITING_REVIEW', '제출(`SUBMITTED`) 상태가 아님');
 
 export function registerMilestonePaths(registry: OpenAPIRegistry): void {
   registry.registerPath({
@@ -44,14 +46,14 @@ export function registerMilestonePaths(registry: OpenAPIRegistry): void {
     request: { params: milestoneId },
     responses: {
       200: ok(milestoneDetail),
-      ...errors(ACTIVE_USER, { 403: ['`Not authorized` — 계약 당사자가 아님'] }, MILESTONE_NOT_FOUND),
+      ...errors(ACTIVE_USER, cause('FORBIDDEN_RESOURCE', '계약 당사자가 아님'), MILESTONE_NOT_FOUND),
     },
   });
 
-  const SUBMITTABLE = [
-    { 403: ['`Not authorized` — 계약의 프리랜서가 아님'] },
+  const SUBMITTABLE: ErrorSpec = [
+    cause('FORBIDDEN_RESOURCE', '계약의 프리랜서가 아님'),
     MILESTONE_NOT_FOUND,
-    { 409: ['`Milestone is not awaiting a submission` — 제출할 수 있는 상태가 아님'] },
+    cause('MILESTONE_NOT_AWAITING_SUBMISSION', '제출할 수 있는 상태가 아님'),
   ];
 
   registry.registerPath({
@@ -68,7 +70,7 @@ export function registerMilestonePaths(registry: OpenAPIRegistry): void {
     request: { params: milestoneId, body: jsonBody(uploadRequestBody) },
     responses: {
       201: created(uploadsIssued),
-      ...errors(invalid(), UPLOAD_POLICY, ACTIVE_USER, role('FREELANCER'), ...SUBMITTABLE),
+      ...errors(invalid(), UPLOAD_POLICY, ACTIVE_USER, role('FREELANCER'), SUBMITTABLE),
     },
   });
 
@@ -85,7 +87,7 @@ export function registerMilestonePaths(registry: OpenAPIRegistry): void {
     request: { params: milestoneId, body: jsonBody(submissionBody) },
     responses: {
       201: created(submissionCreated),
-      ...errors(invalid(), ACTIVE_USER, role('FREELANCER'), ...SUBMITTABLE, UPLOAD_CLAIM),
+      ...errors(invalid(), ACTIVE_USER, role('FREELANCER'), SUBMITTABLE, UPLOAD_CLAIM),
     },
   });
 
@@ -102,8 +104,9 @@ export function registerMilestonePaths(registry: OpenAPIRegistry): void {
       200: ok(attachmentDownload),
       ...errors(
         ACTIVE_USER,
-        { 403: ['`Not authorized` — 계약 당사자가 아님'] },
-        { 404: [...(MILESTONE_NOT_FOUND[404] ?? []), '`Attachment not found` — 이 마일스톤의 첨부가 아님'] },
+        cause('FORBIDDEN_RESOURCE', '계약 당사자가 아님'),
+        MILESTONE_NOT_FOUND,
+        cause('ATTACHMENT_NOT_FOUND', '이 마일스톤의 첨부가 아님'),
         ATTACHMENT_DOWNLOAD,
       ),
     },
@@ -123,7 +126,7 @@ export function registerMilestonePaths(registry: OpenAPIRegistry): void {
       ...errors(
         ACTIVE_USER,
         role('CLIENT'),
-        { 403: ['`Not authorized` — 계약의 의뢰인이 아님'] },
+        cause('FORBIDDEN_RESOURCE', '계약의 의뢰인이 아님'),
         MILESTONE_NOT_FOUND,
         NOT_AWAITING_REVIEW,
       ),
@@ -144,7 +147,7 @@ export function registerMilestonePaths(registry: OpenAPIRegistry): void {
         invalid(),
         ACTIVE_USER,
         role('CLIENT'),
-        { 403: ['`Not authorized` — 계약의 의뢰인이 아님'] },
+        cause('FORBIDDEN_RESOURCE', '계약의 의뢰인이 아님'),
         MILESTONE_NOT_FOUND,
         NOT_AWAITING_REVIEW,
       ),

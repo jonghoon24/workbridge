@@ -1,4 +1,14 @@
+import type { FieldErrorCode } from '../lib/errorCodes';
 import { z } from '../lib/zod';
+
+/**
+ * The `params` of a custom zod issue that names its field code (`fields[].code` of the 400), for a
+ * custom check whose cause is not `INVALID` — the default `validate()` gives a custom issue:
+ * `ctx.addIssue({ code: z.ZodIssueCode.custom, message, params: fieldCode('CONFLICT') })`.
+ */
+export function fieldCode(code: FieldErrorCode): { fieldCode: FieldErrorCode } {
+  return { fieldCode: code };
+}
 
 /**
  * Query-string building blocks for every route's query schema: an empty
@@ -47,11 +57,11 @@ export function queryInt(
 
     const parsed = Number(raw);
     if (min !== undefined && parsed < min) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `must be at least ${min}` });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `must be at least ${min}`, params: fieldCode('TOO_SMALL') });
       return z.NEVER;
     }
     if (max !== undefined && parsed > max) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `must be at most ${max}` });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `must be at most ${max}`, params: fieldCode('TOO_LARGE') });
       return z.NEVER;
     }
     return parsed;
@@ -110,7 +120,7 @@ export function queryNumber({ min }: QueryNumberOptions = {}) {
 
     const parsed = Number(raw);
     if (min !== undefined && parsed < min) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `must be at least ${min}` });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `must be at least ${min}`, params: fieldCode('TOO_SMALL') });
       return z.NEVER;
     }
     return parsed;

@@ -5,6 +5,7 @@ import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer } from './helpers/factories';
 import { renderTemplate } from '../src/lib/notifications/templates';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * Local factory — there is no notification factory in `test/helpers`, and every test here
@@ -171,21 +172,21 @@ describe('GET /api/notifications', () => {
   });
 
   it.each([
-    ['0', 'limit: must be at least 1'],
-    ['-1', 'limit: must be at least 1'],
-    ['-50', 'limit: must be at least 1'],
-    ['abc', 'limit: must be an integer'],
-    ['null', 'limit: must be an integer'],
-    ['NaN', 'limit: must be an integer'],
-    ['Infinity', 'limit: must be an integer'],
-  ])('rejects limit=%s with 400', async (limit, message) => {
+    ['0', 'limit: must be at least 1', 'TOO_SMALL'],
+    ['-1', 'limit: must be at least 1', 'TOO_SMALL'],
+    ['-50', 'limit: must be at least 1', 'TOO_SMALL'],
+    ['abc', 'limit: must be an integer', 'INVALID'],
+    ['null', 'limit: must be an integer', 'INVALID'],
+    ['NaN', 'limit: must be an integer', 'INVALID'],
+    ['Infinity', 'limit: must be an integer', 'INVALID'],
+  ] as const)('rejects limit=%s with 400', async (limit, message, code) => {
     const caller = await makeClient();
     await seedNotifications(caller.id, 2);
 
     const res = await authed(caller).get(`/api/notifications?limit=${limit}`);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
   });
 
   it('falls back to the default when limit is present but empty', async () => {
@@ -208,7 +209,7 @@ describe('GET /api/notifications', () => {
     const res = await authed(caller).get('/api/notifications?limit=1.5');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'limit: must be an integer' } });
+    expect(res.body).toEqual(invalidBody('limit', 'INVALID', 'limit: must be an integer'));
   });
 
   // #37: same root cause — "3abc" used to parse to 3 rather than being rejected.
@@ -219,7 +220,7 @@ describe('GET /api/notifications', () => {
     const res = await authed(caller).get('/api/notifications?limit=3abc');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'limit: must be an integer' } });
+    expect(res.body).toEqual(invalidBody('limit', 'INVALID', 'limit: must be an integer'));
   });
 
   // A repeated query parameter is a 400. It used to stringify to '1,2' and
@@ -233,7 +234,7 @@ describe('GET /api/notifications', () => {
       const res = await authed(caller).get(`/api/notifications?${query}`);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'limit: must be a single value' } });
+      expect(res.body).toEqual(invalidBody('limit', 'INVALID', 'limit: must be a single value'));
     },
   );
 

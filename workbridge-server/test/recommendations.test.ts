@@ -191,9 +191,9 @@ describe('GET /api/users/me/recommended-projects', () => {
     const invalid = await recommendedProjects(complete, '?limit=0');
 
     expect(asClient.status).toBe(403);
-    expect(asClient.body).toEqual({ error: { message: 'Insufficient permissions' } });
+    expect(asClient.body).toEqual({ error: { code: 'FORBIDDEN_ROLE', message: 'Insufficient permissions' } });
     expect(asIncomplete.status).toBe(403);
-    expect(asIncomplete.body).toEqual({ error: { message: '프로필을 먼저 완성해주세요' } });
+    expect(asIncomplete.body).toEqual({ error: { code: 'PROFILE_INCOMPLETE', message: '프로필을 먼저 완성해주세요' } });
     expect(invalid.status).toBe(400);
   });
 });

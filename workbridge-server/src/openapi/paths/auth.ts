@@ -9,7 +9,19 @@ import {
   selectRoleBody,
   signupBody,
 } from '../../schemas/auth';
-import { ACTIVE_USER, AUTHENTICATED, bearer, created, errors, invalid, jsonBody, ok, publicRoute, SECURITY_SCHEMES } from '../common';
+import {
+  ACTIVE_USER,
+  AUTHENTICATED,
+  bearer,
+  cause,
+  created,
+  errors,
+  invalid,
+  jsonBody,
+  ok,
+  publicRoute,
+  SECURITY_SCHEMES,
+} from '../common';
 import { accessTokenBody, authSession } from '../responses/auth';
 import { messageBody } from '../responses/common';
 
@@ -36,7 +48,7 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     request: { body: jsonBody(signupBody) },
     responses: {
       201: { ...created(authSession, '가입하고 로그인됨'), headers: setsRefreshCookie },
-      ...errors(invalid(), { 409: ['`Email already in use` — 이미 쓰는 이메일(대소문자만 다른 주소, 탈퇴한 계정 포함)'] }),
+      ...errors(invalid(), cause('EMAIL_ALREADY_IN_USE', '이미 쓰는 이메일(대소문자만 다른 주소, 탈퇴한 계정 포함)')),
     },
   });
 
@@ -53,10 +65,10 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     request: { body: jsonBody(loginBody) },
     responses: {
       200: { ...ok(authSession, '로그인됨'), headers: setsRefreshCookie },
-      ...errors(invalid(), {
-        401: ['`Invalid credentials` — 이메일이나 비밀번호가 틀림, 탈퇴한 계정, 비밀번호 없는(구글) 계정'],
-        429: ['`Too many requests. Try again later.` — 로그인 한도 초과'],
-      }),
+      ...errors(invalid(), [
+        cause('INVALID_CREDENTIALS', '이메일이나 비밀번호가 틀림, 탈퇴한 계정, 비밀번호 없는(구글) 계정'),
+        cause('RATE_LIMITED', '로그인 한도 초과'),
+      ]),
     },
   });
 
@@ -85,13 +97,11 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     security: [{ [SECURITY_SCHEMES.refreshCookie]: [] }],
     responses: {
       200: ok(accessTokenBody, '새 Access Token'),
-      ...errors({
-        401: [
-          '`Refresh token not found` — `refreshToken` 쿠키가 없음',
-          '`Invalid or expired refresh token` — 쿠키가 위조됐거나 만료됨, 또는 비밀번호가 바뀌기 전에 발급됨(다른 기기 로그아웃)',
-          '`User not found` — 탈퇴한 사용자',
-        ],
-      }),
+      ...errors([
+        cause('REFRESH_TOKEN_INVALID', '`refreshToken` 쿠키가 없음'),
+        cause('REFRESH_TOKEN_INVALID', '쿠키가 위조됐거나 만료됨, 또는 비밀번호가 바뀌기 전에 발급됨(다른 기기 로그아웃)'),
+        cause('REFRESH_TOKEN_INVALID', '탈퇴한 사용자'),
+      ]),
     },
   });
 
@@ -106,9 +116,7 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     request: { body: jsonBody(selectRoleBody) },
     responses: {
       200: { ...ok(authSession, '역할이 정해지고 토큰이 다시 발급됨'), headers: setsRefreshCookie },
-      ...errors(invalid('`Role has already been selected` — 이미 역할을 골랐음'), AUTHENTICATED, {
-        404: ['`User not found` — 탈퇴한 사용자'],
-      }),
+      ...errors(invalid(), cause('ROLE_ALREADY_SELECTED', '이미 역할을 골랐음'), AUTHENTICATED, cause('USER_NOT_FOUND', '탈퇴한 사용자')),
     },
   });
 
@@ -127,18 +135,12 @@ export function registerAuthPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: { ...ok(accessTokenBody, '비밀번호가 바뀌고 이 기기의 토큰이 다시 발급됨'), headers: setsRefreshCookie },
       ...errors(
-        invalid(
-          '`newPassword: New password must be different from the current password` — 새 비밀번호가 현재 비밀번호와 같음',
-          '`Current password is incorrect` — 현재 비밀번호가 틀림(실패로 센다)',
-        ),
+        invalid('`newPassword` `CONFLICT` — 새 비밀번호가 현재 비밀번호와 같음'),
+        cause('CURRENT_PASSWORD_INCORRECT', '현재 비밀번호가 틀림(실패로 센다)'),
         ACTIVE_USER,
-        {
-          409: [
-            '`Account has no password` — Google로만 가입해 비밀번호가 없는 계정',
-            '`Password has already been changed` — 동시에 들어온 다른 변경이 먼저 끝남',
-          ],
-          429: ['`Too many requests. Try again later.` — 현재 비밀번호를 너무 많이 틀림'],
-        },
+        cause('PASSWORD_NOT_SET', 'Google로만 가입해 비밀번호가 없는 계정'),
+        cause('PASSWORD_ALREADY_CHANGED', '동시에 들어온 다른 변경이 먼저 끝남'),
+        cause('RATE_LIMITED', '현재 비밀번호를 너무 많이 틀림'),
       ),
     },
   });

@@ -49,11 +49,11 @@ export async function submitApplication(
   });
 
   if (!project) {
-    throw new AppError('Project not found', 404);
+    throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   if (project.status !== 'OPEN') {
-    throw new AppError('Project is not accepting applications', 400);
+    throw new AppError('PROJECT_NOT_ACCEPTING_APPLICATIONS', 'Project is not accepting applications');
   }
 
   const freelancer = await prisma.user.findUnique({
@@ -76,8 +76,8 @@ export async function submitApplication(
       // waits for it and sees CLOSED).
       const [current] = await tx.$queryRaw<{ status: string }[]>`
         SELECT "status" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR SHARE`;
-      if (!current) throw new AppError('Project not found', 404);
-      if (current.status !== 'OPEN') throw new AppError('Project is not accepting applications', 400);
+      if (!current) throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
+      if (current.status !== 'OPEN') throw new AppError('PROJECT_NOT_ACCEPTING_APPLICATIONS', 'Project is not accepting applications');
 
       // One row per applicant and project. An applicant rejected in a round that ended with a
       // cancelled contract applies again on the same row (`lib/reapplication.ts`); anyone else
@@ -95,7 +95,7 @@ export async function submitApplication(
       if (existing) {
         const cutoffs = await latestCancelledContractAt([projectId], tx);
         if (!isFromEndedRound(existing, cutoffs.get(projectId))) {
-          throw new AppError(ALREADY_APPLIED, 409);
+          throw new AppError('APPLICATION_ALREADY_EXISTS', ALREADY_APPLIED);
         }
         created = await tx.application.update({
           where: { id: existing.id },
@@ -128,7 +128,7 @@ export async function submitApplication(
     });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new AppError(ALREADY_APPLIED, 409);
+      throw new AppError('APPLICATION_ALREADY_EXISTS', ALREADY_APPLIED);
     }
     throw err;
   }
@@ -144,11 +144,11 @@ export async function listProjectApplications(projectId: string, clientId: strin
   });
 
   if (!project) {
-    throw new AppError('Project not found', 404);
+    throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   if (project.clientId !== clientId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   await rejectPendingApplicationsForClosedProjects({ projectId });
@@ -194,11 +194,11 @@ export async function decideApplication(
   });
 
   if (!project) {
-    throw new AppError('Project not found', 404);
+    throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   if (project.clientId !== clientId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   // A soft-deleted freelancer's application does not exist for the client: no contract with them.
@@ -207,14 +207,14 @@ export async function decideApplication(
   });
 
   if (!application) {
-    throw new AppError('Application not found', 404);
+    throw new AppError('APPLICATION_NOT_FOUND', 'Application not found');
   }
 
   // Only a pending application can be decided. Without this, accepting an already-decided
   // application would proceed and attempt a second live Contract on the project — and there is
   // at most one per project (a partial unique index), so that surfaced as a 500 rather than a conflict.
   if (application.status !== 'PENDING') {
-    throw new AppError('This application has already been processed', 409);
+    throw new AppError('APPLICATION_ALREADY_PROCESSED', 'This application has already been processed');
   }
 
   if (status === 'ACCEPTED') {
@@ -230,7 +230,7 @@ export async function decideApplication(
         const locked = await tx.$queryRaw<{ id: string }[]>`
           SELECT "id" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR UPDATE`;
         if (locked.length === 0) {
-          throw new AppError('Project not found', 404);
+          throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
         }
 
         // Accept only while still pending and the applicant still active, under the application's
@@ -245,14 +245,14 @@ export async function decideApplication(
             where: { id: appId, projectId, freelancer: { deletedAt: null } },
             select: { id: true },
           });
-          if (!current) throw new AppError('Application not found', 404);
+          if (!current) throw new AppError('APPLICATION_NOT_FOUND', 'Application not found');
           // Lost to a concurrent accept of another application on this project (it rejected this
           // one before this accept got the project row): the same conflict as the unique contract.
           // A cancelled contract does not count — the project may have recruited again since.
           if (await tx.contract.findFirst({ where: { projectId, status: { not: 'CANCELLED' } }, select: { id: true } })) {
-            throw new AppError('A contract already exists for this project', 409);
+            throw new AppError('CONTRACT_ALREADY_EXISTS', 'A contract already exists for this project');
           }
-          throw new AppError('This application has already been processed', 409);
+          throw new AppError('APPLICATION_ALREADY_PROCESSED', 'This application has already been processed');
         }
         const updatedApp = await tx.application.findUniqueOrThrow({ where: { id: appId } });
 
@@ -316,7 +316,7 @@ export async function decideApplication(
       // both pass it — the constraint is the real backstop, so surface it as a conflict
       // rather than letting P2002 become a 500.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new AppError('A contract already exists for this project', 409);
+        throw new AppError('CONTRACT_ALREADY_EXISTS', 'A contract already exists for this project');
       }
       throw err;
     }
@@ -331,7 +331,7 @@ export async function decideApplication(
       data: { status: 'REJECTED' },
     });
     if (count === 0) {
-      throw new AppError('This application has already been processed', 409);
+      throw new AppError('APPLICATION_ALREADY_PROCESSED', 'This application has already been processed');
     }
     const rejected = await tx.application.findUniqueOrThrow({ where: { id: appId } });
 

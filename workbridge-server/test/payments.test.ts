@@ -14,6 +14,7 @@ import {
   makeProject,
 } from './helpers/factories';
 import { fundableMilestone, withFailingPaymentInsert } from './helpers/faults';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * TossPayments is mocked at the module boundary. Every test in this file must go through
@@ -203,7 +204,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
+    expect(res.body).toEqual(invalidBody('milestoneId', 'REQUIRED', 'milestoneId: Milestone ID is required'));
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -213,7 +214,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({ contractId: contract.id });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
+    expect(res.body).toEqual(invalidBody('milestoneId', 'REQUIRED', 'milestoneId: Milestone ID is required'));
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -225,7 +226,7 @@ describe('POST /api/payments', () => {
       .send({ milestoneId: '00000000-0000-0000-0000-000000000000' });
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Milestone not found' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_NOT_FOUND', message: 'Milestone not found' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -236,7 +237,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Milestone not found' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_NOT_FOUND', message: 'Milestone not found' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -246,7 +247,7 @@ describe('POST /api/payments', () => {
     const res = await authed(freelancer).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
+    expect(res.body).toEqual({ error: { code: 'FORBIDDEN_RESOURCE', message: 'Not authorized' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -300,7 +301,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({ milestoneId: second.id });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Earlier milestones must be funded first' } });
+    expect(res.body).toEqual({ error: { code: 'EARLIER_MILESTONE_UNFUNDED', message: 'Earlier milestones must be funded first' } });
     expect(await prisma.payment.count()).toBe(0);
   });
 
@@ -336,7 +337,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Milestone is already funded' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_ALREADY_FUNDED', message: 'Milestone is already funded' } });
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: completed.id } });
     expect(after).toMatchObject({ status: 'COMPLETED', orderId: completed.orderId, paymentKey: 'pk_settled' });
@@ -457,7 +458,7 @@ describe('POST /api/payments', () => {
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({
-      error: { message: 'Payment already completed for this milestone' },
+      error: { code: 'MILESTONE_ALREADY_FUNDED', message: 'Payment already completed for this milestone' },
     });
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: completed.id } });
@@ -475,7 +476,7 @@ describe('POST /api/payments', () => {
     const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Payment cannot be created for this milestone' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_REFUNDED', message: 'Payment cannot be created for this milestone' } });
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: refunded.id } });
     expect(after).toMatchObject({ status: 'REFUNDED', orderId: refunded.orderId });
@@ -514,16 +515,16 @@ describe('POST /api/payments', () => {
   // milestone lookup: a 500 whose body carried the absolute source path. It is a 400 now, and a
   // 500's body is a generic sentence (see the errorHandler tests below).
   it.each([
-    ['a number', 12345, 'milestoneId: Milestone ID must be a string'],
-    ['an empty string', '', 'milestoneId: Milestone ID is required'],
-    ['an object', { id: 'x' }, 'milestoneId: Milestone ID must be a string'],
-  ])('rejects %s as milestoneId with 400, exposing no internals', async (_label, milestoneId, message) => {
+    ['a number', 12345, 'milestoneId: Milestone ID must be a string', 'INVALID'],
+    ['an empty string', '', 'milestoneId: Milestone ID is required', 'REQUIRED'],
+    ['an object', { id: 'x' }, 'milestoneId: Milestone ID must be a string', 'INVALID'],
+  ] as const)('rejects %s as milestoneId with 400, exposing no internals', async (_label, milestoneId, message, code) => {
     const { client } = await activeScenario();
 
     const res = await authed(client).post('/api/payments').send({ milestoneId });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     assertNoInternalsLeak(res.body.error.message);
     expect(await prisma.payment.count()).toBe(0);
   });
@@ -560,7 +561,7 @@ describe('POST /api/payments/confirm', () => {
     const res = await authed(client).post('/api/payments/confirm').send(payload);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: `${field}: ${message}` } });
+    expect(res.body).toEqual(invalidBody(field, 'REQUIRED', `${field}: ${message}`));
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -577,7 +578,7 @@ describe('POST /api/payments/confirm', () => {
     const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, 0));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'amount: Amount must be a positive whole number of won' } });
+    expect(res.body).toEqual(invalidBody('amount', 'INVALID', 'amount: Amount must be a positive whole number of won'));
     expect(tossPost).not.toHaveBeenCalled();
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe('PENDING');
@@ -605,7 +606,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, amount as number | string));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'amount: Amount must be a positive whole number of won' } });
+    expect(res.body).toEqual(invalidBody('amount', 'INVALID', 'amount: Amount must be a positive whole number of won'));
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -620,7 +621,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body('order-does-not-exist', CONTRACT_AMOUNT));
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Payment not found' } });
+    expect(res.body).toEqual({ error: { code: 'PAYMENT_NOT_FOUND', message: 'Payment not found' } });
     expect(tossPost).not.toHaveBeenCalled();
   });
 
@@ -633,7 +634,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, CONTRACT_AMOUNT));
 
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
+    expect(res.body).toEqual({ error: { code: 'FORBIDDEN_RESOURCE', message: 'Not authorized' } });
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -663,7 +664,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, CONTRACT_AMOUNT));
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Payment has already been processed' } });
+    expect(res.body).toEqual({ error: { code: 'PAYMENT_ALREADY_PROCESSED', message: 'Payment has already been processed' } });
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
@@ -705,7 +706,7 @@ describe('POST /api/payments/confirm', () => {
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
-      error: { message: 'Payment amount does not match the contract amount' },
+      error: { code: 'PAYMENT_AMOUNT_MISMATCH', message: 'Payment amount does not match the contract amount' },
     });
     expect(tossPost).not.toHaveBeenCalled();
 
@@ -787,7 +788,7 @@ describe('POST /api/payments/confirm', () => {
     const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Payment verification failed' } });
+    expect(res.body).toEqual({ error: { code: 'PAYMENT_VERIFICATION_FAILED', message: 'Payment verification failed' } });
     expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).status).toBe('FAILED');
   });
 
@@ -813,7 +814,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, CONTRACT_AMOUNT));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Payment verification failed' } });
+    expect(res.body).toEqual({ error: { code: 'PAYMENT_VERIFICATION_FAILED', message: 'Payment verification failed' } });
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after).toMatchObject({ status: 'FAILED', paymentKey: null });
@@ -843,7 +844,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, CONTRACT_AMOUNT));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Payment verification failed' } });
+    expect(res.body).toEqual({ error: { code: 'PAYMENT_VERIFICATION_FAILED', message: 'Payment verification failed' } });
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe('FAILED');
@@ -894,7 +895,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, CONTRACT_AMOUNT));
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Payment not found' } });
+    expect(res.body).toEqual({ error: { code: 'PAYMENT_NOT_FOUND', message: 'Payment not found' } });
     expect(tossPost).not.toHaveBeenCalled();
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe('PENDING');
@@ -971,7 +972,7 @@ describe('POST /api/payments/confirm', () => {
 
     expect(responses.map((r) => r.status).sort()).toEqual([200, 409]);
     const loser = responses.find((r) => r.status === 409)!;
-    expect(loser.body).toEqual({ error: { message: 'Payment has already been processed' } });
+    expect(loser.body).toEqual({ error: { code: 'PAYMENT_ALREADY_PROCESSED', message: 'Payment has already been processed' } });
     expect(tossPost).toHaveBeenCalledTimes(1);
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe('COMPLETED');
@@ -984,7 +985,7 @@ describe('POST /api/payments/confirm', () => {
     const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, CONTRACT_AMOUNT));
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Payment has already been processed' } });
+    expect(res.body).toEqual({ error: { code: 'PAYMENT_ALREADY_PROCESSED', message: 'Payment has already been processed' } });
     expect(tossPost).not.toHaveBeenCalled();
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe('PENDING');
@@ -1104,7 +1105,9 @@ describe('POST /api/payments/confirm', () => {
         .send(body(payment.orderId, CONTRACT_AMOUNT));
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'Payment verification failed' } });
+      // Known bug #3: a failure after capture is answered as a verification failure (400) with
+      // the code of a declined payment. This pins today's answer until #3 is fixed.
+      expect(res.body).toEqual({ error: { code: 'PAYMENT_VERIFICATION_FAILED', message: 'Payment verification failed' } });
       const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
       expect(after.status).toBe('FAILED');
       const milestoneAfter = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
@@ -1129,7 +1132,7 @@ describe('POST /api/payments/dev-complete', () => {
         .send({ milestoneId: milestone.id });
 
       expect(res.status).toBe(403);
-      expect(res.body).toEqual({ error: { message: 'Payment bypass is disabled' } });
+      expect(res.body).toEqual({ error: { code: 'PAYMENT_BYPASS_DISABLED', message: 'Payment bypass is disabled' } });
       expect(await prisma.payment.count()).toBe(0);
       const after = await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } });
       expect(after.status).toBe('PENDING');
@@ -1201,7 +1204,7 @@ describe('POST /api/payments/dev-complete', () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID is required' } });
+      expect(res.body).toEqual(invalidBody('milestoneId', 'REQUIRED', 'milestoneId: Milestone ID is required'));
       expect(await prisma.payment.count()).toBe(0);
     });
 
@@ -1213,7 +1216,7 @@ describe('POST /api/payments/dev-complete', () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'milestoneId: Milestone ID must be a string' } });
+      expect(res.body).toEqual(invalidBody('milestoneId', 'INVALID', 'milestoneId: Milestone ID must be a string'));
       expect(await prisma.payment.count()).toBe(0);
     });
 
@@ -1380,7 +1383,7 @@ describe('POST /api/payments/dev-complete', () => {
       );
 
       expect(res.status).toBe(409);
-      expect(res.body).toEqual({ error: { message: 'Milestone is already funded' } });
+      expect(res.body).toEqual({ error: { code: 'MILESTONE_ALREADY_FUNDED', message: 'Milestone is already funded' } });
     });
 
     it('repairs a PENDING milestone whose payment is already COMPLETED: funds it, 200', async () => {
@@ -1619,7 +1622,7 @@ describe('errorHandler logging: only a 500 is logged at error level', () => {
         authed(client).post('/api/payments').send({ milestoneId: milestone.id }));
 
       expect(res.status).toBe(500);
-      expect(res.body).toEqual({ error: { message: 'Internal Server Error' } });
+      expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal Server Error' } });
       assertNoInternalsLeak(res.body.error.message);
 
       // The cause is not lost: the one error line carries the database's own message.

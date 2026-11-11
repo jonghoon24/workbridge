@@ -151,7 +151,7 @@ export function assertRecentGoogleReauth(
   purpose: ReauthPurpose,
   now: Date,
 ): void {
-  if (!token) throw new AppError(REAUTH_REQUIRED, 400);
+  if (!token) throw new AppError('REAUTH_REQUIRED', REAUTH_REQUIRED);
   const proof = verifyReauthProof(token, now);
   if (
     !proof
@@ -161,6 +161,6 @@ export function assertRecentGoogleReauth(
     || proof.googleSub !== user.googleId
     || (requiresAuthTime() && !proof.authTimeVerified)
   ) {
-    throw new AppError(REAUTH_INVALID, 400);
+    throw new AppError('REAUTH_INVALID', REAUTH_INVALID);
   }
 }

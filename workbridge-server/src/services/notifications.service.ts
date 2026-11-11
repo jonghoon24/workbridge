@@ -40,7 +40,7 @@ export async function readNotification(notificationId: string, userId: string, n
 
   // Someone else's notification is 404, not 403, so ids cannot be probed for existence.
   if (!notification) {
-    throw new AppError('Notification not found', 404);
+    throw new AppError('NOTIFICATION_NOT_FOUND', 'Notification not found');
   }
 
   return prisma.notification.update({

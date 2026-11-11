@@ -67,7 +67,7 @@ describe('with SENTRY_DSN', () => {
     const { res, client } = await provoke500('trace-sentry');
 
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
+    expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal Server Error' } });
     expect(console.error).toHaveBeenCalledTimes(1);
 
     expect(sentry.captureException).toHaveBeenCalledTimes(1);

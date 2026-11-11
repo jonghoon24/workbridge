@@ -33,7 +33,7 @@ function validateProfileUpdate(req: Request, res: Response, next: NextFunction) 
   const role = req.user.role;
   const body = Object.hasOwn(profileUpdateBodyByRole, role) ? profileUpdateBodyByRole[role] : undefined;
   if (!body) {
-    return next(new AppError('Insufficient permissions', 403));
+    return next(new AppError('FORBIDDEN_ROLE', 'Insufficient permissions'));
   }
   return validate({ body })(req, res, next);
 }

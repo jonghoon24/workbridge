@@ -4,6 +4,7 @@ import type { User } from '@prisma/client';
 import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeNotificationPreference } from './helpers/factories';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 import { notify } from '../src/lib/notifications/notify';
 
 /**
@@ -113,41 +114,41 @@ describe('PUT /api/notifications/preferences — validation', () => {
   const longArray = Array.from({ length: 22 }, () => ({ type: 'MILESTONE_DUE_SOON', email: false }));
 
   it.each([
-    ['missing', {}],
-    ['not an array', { preferences: { type: 'MILESTONE_DUE_SOON', email: false } }],
-    ['empty', { preferences: [] }],
-    ['longer than 21', { preferences: longArray }],
-    ['a body that is an array', [{ type: 'MILESTONE_DUE_SOON', email: false }]],
-  ])('preferences %s → 400 `preferences: Expected 1 to 21 entries`', async (_label, body) => {
+    ['missing', {}, 'REQUIRED'],
+    ['not an array', { preferences: { type: 'MILESTONE_DUE_SOON', email: false } }, 'INVALID'],
+    ['empty', { preferences: [] }, 'REQUIRED'],
+    ['longer than 21', { preferences: longArray }, 'TOO_LARGE'],
+    ['a body that is an array', [{ type: 'MILESTONE_DUE_SOON', email: false }], 'INVALID'],
+  ] as const)('preferences %s → 400 `preferences: Expected 1 to 21 entries`', async (_label, body, code) => {
     const user = await makeFreelancer();
 
     const res = await put(user, body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'preferences: Expected 1 to 21 entries' } });
+    expect(res.body).toEqual(invalidBody('preferences', code, 'preferences: Expected 1 to 21 entries'));
   });
 
   it.each([
-    ['an entry that is not an object', [{ type: 'MILESTONE_DUE_SOON', email: false }, 'x'], 'preferences.1: Expected an object'],
-    ['an array entry', [[]], 'preferences.0: Expected an object'],
-    ['a null entry', [null], 'preferences.0: Expected an object'],
-    ['an unknown type', [{ type: 'NOPE', email: false }], 'preferences.0.type: Unknown notification type'],
-    ['a missing type', [{ email: false }], 'preferences.0.type: Unknown notification type'],
-    ['a string inApp', [{ type: 'MILESTONE_DUE_SOON', inApp: 'false' }], 'preferences.0.inApp: Expected a boolean'],
-    ['a numeric inApp', [{ type: 'MILESTONE_DUE_SOON', inApp: 0 }], 'preferences.0.inApp: Expected a boolean'],
-    ['a null email', [{ type: 'MILESTONE_DUE_SOON', email: null }], 'preferences.0.email: Expected a boolean'],
-    ['neither channel', [{ type: 'MILESTONE_DUE_SOON' }], 'preferences.0: Specify inApp or email'],
-    ['a duplicate type', [{ type: 'MILESTONE_DUE_SOON', email: false }, { type: 'MILESTONE_DUE_SOON', inApp: false }], 'preferences.1.type: Duplicate notification type'],
-    ['the digest\'s in-app turned on', [{ type: 'MESSAGE_UNREAD_DIGEST', inApp: true }], 'preferences.0.inApp: MESSAGE_UNREAD_DIGEST has no in-app notifications'],
-    ['a locked in-app turned off', [{ type: 'MILESTONE_FUNDED', inApp: false }], 'preferences.0.inApp: MILESTONE_FUNDED in-app notifications cannot be disabled'],
-    ['a locked email turned off', [{ type: 'SETTLEMENT_ON_HOLD', email: false }], 'preferences.0.email: SETTLEMENT_ON_HOLD email notifications cannot be disabled'],
-  ])('%s → 400 with the exact path-prefixed message', async (_label, preferences, message) => {
+    ['an entry that is not an object', [{ type: 'MILESTONE_DUE_SOON', email: false }, 'x'], 'preferences.1: Expected an object', 'INVALID'],
+    ['an array entry', [[]], 'preferences.0: Expected an object', 'INVALID'],
+    ['a null entry', [null], 'preferences.0: Expected an object', 'INVALID'],
+    ['an unknown type', [{ type: 'NOPE', email: false }], 'preferences.0.type: Unknown notification type', 'INVALID'],
+    ['a missing type', [{ email: false }], 'preferences.0.type: Unknown notification type', 'REQUIRED'],
+    ['a string inApp', [{ type: 'MILESTONE_DUE_SOON', inApp: 'false' }], 'preferences.0.inApp: Expected a boolean', 'INVALID'],
+    ['a numeric inApp', [{ type: 'MILESTONE_DUE_SOON', inApp: 0 }], 'preferences.0.inApp: Expected a boolean', 'INVALID'],
+    ['a null email', [{ type: 'MILESTONE_DUE_SOON', email: null }], 'preferences.0.email: Expected a boolean', 'INVALID'],
+    ['neither channel', [{ type: 'MILESTONE_DUE_SOON' }], 'preferences.0: Specify inApp or email', 'REQUIRED'],
+    ['a duplicate type', [{ type: 'MILESTONE_DUE_SOON', email: false }, { type: 'MILESTONE_DUE_SOON', inApp: false }], 'preferences.1.type: Duplicate notification type', 'NOT_UNIQUE'],
+    ['the digest\'s in-app turned on', [{ type: 'MESSAGE_UNREAD_DIGEST', inApp: true }], 'preferences.0.inApp: MESSAGE_UNREAD_DIGEST has no in-app notifications', 'NOT_ALLOWED'],
+    ['a locked in-app turned off', [{ type: 'MILESTONE_FUNDED', inApp: false }], 'preferences.0.inApp: MILESTONE_FUNDED in-app notifications cannot be disabled', 'NOT_ALLOWED'],
+    ['a locked email turned off', [{ type: 'SETTLEMENT_ON_HOLD', email: false }], 'preferences.0.email: SETTLEMENT_ON_HOLD email notifications cannot be disabled', 'NOT_ALLOWED'],
+  ] as const)('%s → 400 with the exact path-prefixed message', async (_label, preferences, message, code) => {
     const user = await makeFreelancer();
 
     const res = await put(user, { preferences });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
   });
 
   it('checks type → inApp → email within an entry', async () => {

@@ -42,8 +42,8 @@ function isErrorLike(value: unknown): value is Record<string, unknown> {
 
 /**
  * `Error`'s `name`, `message` and `stack` are non-enumerable, so `JSON.stringify(err)` yields
- * `{}`. Spell them out, plus the fields our errors and Prisma's carry: `code` (P2002, …),
- * `statusCode` (AppError) and `meta` (Prisma).
+ * `{}`. Spell them out, plus the fields our errors and Prisma's carry: `code` (Prisma's P2002, …,
+ * or an AppError's error code), `statusCode` (AppError) and `meta` (Prisma).
  */
 export function serializeError(err: unknown, seen: WeakSet<object> = new WeakSet()): Record<string, unknown> {
   if (!isErrorLike(err)) {

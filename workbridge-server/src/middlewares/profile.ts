@@ -16,7 +16,7 @@ const profileSelect = {
 export async function requireCompleteProfile(req: Request, res: Response, next: NextFunction) {
   try {
     if (!req.user) {
-      throw new AppError('Authentication required', 401);
+      throw new AppError('AUTH_REQUIRED', 'Authentication required');
     }
 
     const user = await prisma.user.findUnique({
@@ -25,7 +25,7 @@ export async function requireCompleteProfile(req: Request, res: Response, next: 
     });
 
     if (!isProfileComplete(user)) {
-      throw new AppError('프로필을 먼저 완성해주세요', 403);
+      throw new AppError('PROFILE_INCOMPLETE', '프로필을 먼저 완성해주세요');
     }
 
     next();

@@ -59,7 +59,7 @@ export async function getMyProfile(userId: string) {
   });
 
   if (!user) {
-    throw new AppError('User not found', 404);
+    throw new AppError('USER_NOT_FOUND', 'User not found');
   }
 
   return toMyProfile(user);
@@ -101,7 +101,7 @@ export async function updateMyProfile(
     if (profileImage) {
       await enqueueJob(prisma, { type: 'account.deletePublicFiles', payload: { userId, paths: [] } });
     }
-    throw new AppError(ACCOUNT_INACTIVE, 401);
+    throw new AppError('ACCOUNT_INACTIVE', ACCOUNT_INACTIVE);
   }
 
   return toMyProfile(user);
@@ -146,7 +146,7 @@ export async function getPublicProfile(userId: string) {
   });
 
   if (!user) {
-    throw new AppError('User not found', 404);
+    throw new AppError('USER_NOT_FOUND', 'User not found');
   }
 
   const avgRating = user.receivedReviews.length > 0

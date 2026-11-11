@@ -32,6 +32,8 @@ import { jobsOf } from './helpers/jobs';
 import { storage, STORAGE_BASE } from './helpers/storageFake';
 import { runDueJobs } from '../src/jobs/runner';
 import { issueReauthProof, REAUTH_AUDIENCE } from '../src/lib/reauth';
+import type { ErrorCode } from '../src/lib/errorCodes';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * `GET`/`POST /api/users/me/withdrawal` (docs/domain/accounts.md "회원 탈퇴"), and the writes that
@@ -41,7 +43,7 @@ import { issueReauthProof, REAUTH_AUDIENCE } from '../src/lib/reauth';
 
 const PUBLIC = 'workbridge';
 const publicUrl = (path: string) => `${STORAGE_BASE}/object/public/${PUBLIC}/${path}`;
-const BLOCKED = { error: { message: 'Cannot withdraw while contracts or settlements are unfinished' } };
+const BLOCKED = { error: { code: 'WITHDRAWAL_BLOCKED', message: 'Cannot withdraw while contracts or settlements are unfinished' } };
 const NONE = { unfinishedContracts: 0, unsettledEarnings: 0, unpaidSettlements: 0, heldSettlements: 0 };
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
 
@@ -200,31 +202,31 @@ describe('POST /api/users/me/withdrawal', () => {
       const wrong = await withdraw(user, { currentPassword: 'not-my-password' });
 
       expect(missing.status).toBe(400);
-      expect(missing.body).toEqual({ error: { message: 'Current password is required' } });
+      expect(missing.body).toEqual(invalidBody('currentPassword', 'REQUIRED', 'Current password is required'));
       expect(wrong.status).toBe(400);
-      expect(wrong.body).toEqual({ error: { message: 'Current password is incorrect' } });
+      expect(wrong.body).toEqual({ error: { code: 'CURRENT_PASSWORD_INCORRECT', message: 'Current password is incorrect' } });
       expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).deletedAt).toBeNull();
     });
 
     it.each([
-      [{ currentPassword: '' }, 'currentPassword: Current password is required'],
-      [{ currentPassword: 1234 }, 'currentPassword: Current password must be a string'],
-    ])('rejects %j with 400', async (body, message) => {
+      [{ currentPassword: '' }, 'currentPassword: Current password is required', 'REQUIRED'],
+      [{ currentPassword: 1234 }, 'currentPassword: Current password must be a string', 'INVALID'],
+    ] as const)('rejects %j with 400', async (body, message, code) => {
       const user = await makeFreelancer();
 
       const res = await withdraw(user, body);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message } });
+      expect(res.body).toEqual(invalidBodyFor(code, message));
     });
 
     describe('a Google-only account', () => {
       const GOOGLE_SUB = 'google-uid-reauth';
       const googleOnly = () => makeClient({ password: null, googleId: GOOGLE_SUB });
-      const refused = async (user: User, body: Record<string, unknown>, message: string) => {
+      const refused = async (user: User, body: Record<string, unknown>, code: ErrorCode, message: string) => {
         const res = await withdraw(user, body);
         expect(res.status).toBe(400);
-        expect(res.body).toEqual({ error: { message } });
+        expect(res.body).toEqual({ error: { code, message } });
         expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).deletedAt).toBeNull();
       };
       const INVALID = 'Google re-authentication is invalid or expired';
@@ -236,34 +238,34 @@ describe('POST /api/users/me/withdrawal', () => {
       it('requires a Google re-authentication, consent alone is not enough', async () => {
         const user = await googleOnly();
 
-        await refused(user, {}, 'Google re-authentication is required');
-        await refused(user, { currentPassword: TEST_PASSWORD }, 'Google re-authentication is required');
+        await refused(user, {}, 'REAUTH_REQUIRED', 'Google re-authentication is required');
+        await refused(user, { currentPassword: TEST_PASSWORD }, 'REAUTH_REQUIRED', 'Google re-authentication is required');
       });
 
       it('refuses a proof whose Google sign-in is older than the window', async () => {
         const user = await googleOnly();
 
-        await refused(user, { reauthToken: reauthProof(user, { authTime: new Date(Date.now() - 6 * MINUTE_MS) }) }, INVALID);
+        await refused(user, { reauthToken: reauthProof(user, { authTime: new Date(Date.now() - 6 * MINUTE_MS) }) }, 'REAUTH_INVALID', INVALID);
       });
 
       it('refuses a proof without auth_time once its window from the callback has passed', async () => {
         const user = await googleOnly();
         const sixMinutesAgo = new Date(Date.now() - 6 * MINUTE_MS);
 
-        await refused(user, { reauthToken: reauthProof(user, { authTime: null, issuedAt: sixMinutesAgo }) }, INVALID);
+        await refused(user, { reauthToken: reauthProof(user, { authTime: null, issuedAt: sixMinutesAgo }) }, 'REAUTH_INVALID', INVALID);
       });
 
       it('refuses another member\'s proof', async () => {
         const user = await googleOnly();
         const other = await makeClient({ password: null, googleId: 'google-uid-other' });
 
-        await refused(user, { reauthToken: reauthProof(other) }, INVALID);
+        await refused(user, { reauthToken: reauthProof(other) }, 'REAUTH_INVALID', INVALID);
       });
 
       it('refuses a proof for a Google account that is not the one linked', async () => {
         const user = await googleOnly();
 
-        await refused(user, { reauthToken: reauthProof(user, { googleSub: 'google-uid-other' }) }, INVALID);
+        await refused(user, { reauthToken: reauthProof(user, { googleSub: 'google-uid-other' }) }, 'REAUTH_INVALID', INVALID);
       });
 
       it('refuses a proof for another purpose', async () => {
@@ -276,13 +278,13 @@ describe('POST /api/users/me/withdrawal', () => {
           { algorithm: 'HS256', audience: REAUTH_AUDIENCE, subject: user.id, expiresIn: '5m' },
         );
 
-        await refused(user, { reauthToken: otherPurpose }, INVALID);
+        await refused(user, { reauthToken: otherPurpose }, 'REAUTH_INVALID', INVALID);
       });
 
       it('refuses an access token in place of a proof', async () => {
         const user = await googleOnly();
 
-        await refused(user, { reauthToken: tokenFor(user) }, INVALID);
+        await refused(user, { reauthToken: tokenFor(user) }, 'REAUTH_INVALID', INVALID);
       });
 
       it('accepts a lax-mode proof without auth_time, but strict mode demands one backed by auth_time', async () => {
@@ -292,15 +294,20 @@ describe('POST /api/users/me/withdrawal', () => {
         expect((await withdraw(lax, { reauthToken: reauthProof(lax, { authTime: null }) })).status).toBe(200);
 
         process.env.GOOGLE_REAUTH_REQUIRE_AUTH_TIME = 'true';
-        await refused(strict, { reauthToken: reauthProof(strict, { authTime: null }) }, INVALID);
+        await refused(strict, { reauthToken: reauthProof(strict, { authTime: null }) }, 'REAUTH_INVALID', INVALID);
         expect((await withdraw(strict, { reauthToken: reauthProof(strict) })).status).toBe(200);
       });
 
       it('rejects a non-string or empty reauthToken with 400', async () => {
         const user = await googleOnly();
 
-        await refused(user, { reauthToken: '' }, 'reauthToken: Google re-authentication is required');
-        await refused(user, { reauthToken: 42 }, 'reauthToken: Reauth token must be a string');
+        const empty = await withdraw(user, { reauthToken: '' });
+        const numeric = await withdraw(user, { reauthToken: 42 });
+
+        expect(empty.status).toBe(400);
+        expect(empty.body).toEqual(invalidBody('reauthToken', 'REQUIRED', 'reauthToken: Google re-authentication is required'));
+        expect(numeric.status).toBe(400);
+        expect(numeric.body).toEqual(invalidBody('reauthToken', 'INVALID', 'reauthToken: Reauth token must be a string'));
       });
     });
 
@@ -310,7 +317,7 @@ describe('POST /api/users/me/withdrawal', () => {
       const res = await withdraw(user, { reauthToken: reauthProof(user) });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'Current password is required' } });
+      expect(res.body).toEqual(invalidBody('currentPassword', 'REQUIRED', 'Current password is required'));
     });
 
     it('shares the wrong-password limit with changing the password', async () => {
@@ -535,7 +542,7 @@ describe('POST /api/users/me/withdrawal', () => {
       const res = await api().post('/api/auth/signup').send({ email: `withdrawn:${user.id}`, password: TEST_PASSWORD, name: 'x', role: 'CLIENT' });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'email: Email must be a valid email address' } });
+      expect(res.body).toEqual(invalidBody('email', 'INVALID', 'email: Email must be a valid email address'));
     });
   });
 
@@ -615,7 +622,7 @@ describe('POST /api/users/me/withdrawal', () => {
       const [w, a] = await Promise.all([withdrawal!, accept!]);
       expect(w.status).toBe(200);
       expect(a.status).toBe(404);
-      expect(a.body).toEqual({ error: { message: 'Application not found' } });
+      expect(a.body).toEqual({ error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found' } });
       expect(await prisma.contract.count()).toBe(0);
     }, 20_000);
 
@@ -673,7 +680,7 @@ describe('writes that overlap a withdrawal', () => {
     return pending!;
   }
 
-  const INACTIVE = { error: { message: 'Account is no longer active' } };
+  const INACTIVE = { error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } };
 
   it('a profile update writes nothing back', async () => {
     const user = await makeFreelancer();

@@ -6,6 +6,7 @@ import {
   ACTIVE_USER,
   AUTHENTICATED,
   bearer,
+  cause,
   COMPLETE_PROFILE,
   created,
   errors,
@@ -36,12 +37,13 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
     responses: {
       201: created(application),
       ...errors(
-        invalid('`Project is not accepting applications` — 모집 중이 아님(마감이 지난 프로젝트는 스윕이 먼저 마감한다)'),
+        invalid(),
+        cause('PROJECT_NOT_ACCEPTING_APPLICATIONS', '모집 중이 아님(마감이 지난 프로젝트는 스윕이 먼저 마감한다)'),
         ACTIVE_USER,
         role('FREELANCER'),
         COMPLETE_PROFILE,
-        { 404: ['`Project not found` — 없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트'] },
-        { 409: ['`You have already applied to this project` — 이미 지원함(다시 지원할 수 있는 경우가 아님)'] },
+        cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트'),
+        cause('APPLICATION_ALREADY_EXISTS', '이미 지원함(다시 지원할 수 있는 경우가 아님)'),
       ),
     },
   });
@@ -57,7 +59,7 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
     request: { params: pathParams({ id: '프로젝트 ID' }) },
     responses: {
       200: ok(z.array(projectApplication)),
-      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, { 404: ['`Project not found` — 없거나 삭제된 프로젝트'] }),
+      ...errors(AUTHENTICATED, role('CLIENT'), NOT_OWNER, cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트')),
     },
   });
 
@@ -82,16 +84,10 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
         ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
-        {
-          404: [
-            '`Project not found` — 없거나 삭제된 프로젝트',
-            '`Application not found` — 이 프로젝트의 지원이 아님, 지원자가 탈퇴했거나 삭제됨(수락 도중 포함)',
-          ],
-          409: [
-            '`This application has already been processed` — 대기 중이 아님',
-            '`A contract already exists for this project` — 동시에 다른 지원이 수락됨',
-          ],
-        },
+        cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트'),
+        cause('APPLICATION_NOT_FOUND', '이 프로젝트의 지원이 아님, 지원자가 탈퇴했거나 삭제됨(수락 도중 포함)'),
+        cause('APPLICATION_ALREADY_PROCESSED', '대기 중이 아님'),
+        cause('CONTRACT_ALREADY_EXISTS', '동시에 다른 지원이 수락됨'),
       ),
     },
   });

@@ -3,7 +3,7 @@ import type { ProjectStatus } from '@prisma/client';
 
 import { normalizeSkillList } from '../lib/skills';
 import { kstDateToEndOfDay, startOfKstDay } from '../lib/time';
-import { bodyEnum, bodyWholeWon, queryEnum, queryInt, queryNumber, queryString, requiredString } from './common';
+import { bodyEnum, bodyWholeWon, fieldCode, queryEnum, queryInt, queryNumber, queryString, requiredString } from './common';
 import { MAX_PAGE, MAX_PAGE_SIZE } from './pagination';
 
 /**
@@ -94,7 +94,7 @@ export const projectListQuery = z
   })
   .superRefine((query, ctx) => {
     if (query.minBudget !== undefined && query.maxBudget !== undefined && query.minBudget > query.maxBudget) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['minBudget'], message: 'must not be greater than maxBudget' });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['minBudget'], message: 'must not be greater than maxBudget', params: fieldCode('CONFLICT') });
     }
   });
 

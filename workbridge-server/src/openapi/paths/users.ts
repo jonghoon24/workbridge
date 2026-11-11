@@ -7,6 +7,7 @@ import {
   ACTIVE_USER,
   AUTHENTICATED,
   bearer,
+  cause,
   errors,
   invalid,
   jsonBody,
@@ -29,7 +30,7 @@ import {
 const tags = ['Users'];
 const payoutTags = ['Payout account'];
 
-const PAYOUT_LOCKED = { 409: ['`Payout account cannot be changed while a payout is processing` — 지급 중(`PROCESSING`)인 정산이 있음'] };
+const PAYOUT_LOCKED = cause('PAYOUT_ACCOUNT_LOCKED', '지급 중(`PROCESSING`)인 정산이 있음');
 
 export function registerUserPaths(registry: OpenAPIRegistry): void {
   // `PATCH /me` validates the caller's role's fields only and strips the other role's: one
@@ -53,7 +54,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     security: bearer,
     responses: {
       200: ok(myProfile),
-      ...errors(AUTHENTICATED, { 404: ['`User not found` — 탈퇴한 사용자'] }),
+      ...errors(AUTHENTICATED, cause('USER_NOT_FOUND', '탈퇴한 사용자')),
     },
   });
 
@@ -82,9 +83,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     },
     responses: {
       200: ok(myProfile, '수정된 프로필'),
-      ...errors(invalid(), ACTIVE_USER, {
-        403: ['`Insufficient permissions` — 토큰의 역할이 CLIENT·FREELANCER가 아님(검증할 스키마가 없음)'],
-      }),
+      ...errors(invalid(), ACTIVE_USER, cause('FORBIDDEN_ROLE', '토큰의 역할이 CLIENT·FREELANCER가 아님(검증할 스키마가 없음)')),
     },
   });
 
@@ -174,7 +173,8 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(payoutAccountPutBody),
       ...errors(
-        invalid('`Account holder must match your name` — 예금주가 회원 이름과 다름'),
+        invalid(),
+        cause('ACCOUNT_HOLDER_MISMATCH', '예금주가 회원 이름과 다름'),
         ACTIVE_USER,
         role('FREELANCER'),
         PAYOUT_LOCKED,
@@ -221,7 +221,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     request: { params: pathParams({ id: '사용자 ID' }) },
     responses: {
       200: ok(publicProfile),
-      ...errors({ 404: ['`User not found` — 없거나 탈퇴한 사용자'] }),
+      ...errors(cause('USER_NOT_FOUND', '없거나 탈퇴한 사용자')),
     },
   });
 }

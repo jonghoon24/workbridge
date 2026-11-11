@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import type { User } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { logger } from '../lib/logger';
 import { ACCOUNT_INACTIVE, lockUserRow } from '../lib/locks';
 import { publicObjectPath } from '../lib/attachmentStorage';
@@ -49,7 +49,7 @@ export function withdrawnEmail(userId: string): string {
 async function confirmCurrentPassword(userId: string, hash: string, password: string, now: Date): Promise<void> {
   if (await bcrypt.compare(password, hash)) return;
   await recordPasswordConfirmFailure(userId, now);
-  throw new AppError(WRONG_CURRENT_PASSWORD, 400);
+  throw new AppError('CURRENT_PASSWORD_INCORRECT', WRONG_CURRENT_PASSWORD);
 }
 
 /**
@@ -69,8 +69,8 @@ export async function changePassword(
     where: { id: userId, deletedAt: null },
     select: { id: true, email: true, role: true, password: true },
   });
-  if (!user) throw new AppError(INACTIVE, 401);
-  if (user.password === null) throw new AppError(NO_PASSWORD, 409);
+  if (!user) throw new AppError('ACCOUNT_INACTIVE', INACTIVE);
+  if (user.password === null) throw new AppError('PASSWORD_NOT_SET', NO_PASSWORD);
 
   await confirmCurrentPassword(user.id, user.password, input.currentPassword, now);
 
@@ -79,7 +79,7 @@ export async function changePassword(
     where: { id: user.id, deletedAt: null, password: user.password },
     data: { password: hash, passwordChangedAt: now },
   });
-  if (written.count === 0) throw new AppError(PASSWORD_ALREADY_CHANGED, 409);
+  if (written.count === 0) throw new AppError('PASSWORD_ALREADY_CHANGED', PASSWORD_ALREADY_CHANGED);
 
   await clearPasswordConfirmFailures(user.id);
   logger.info('password changed', { userId: user.id });
@@ -119,7 +119,7 @@ const isBlocked = (blockers: WithdrawalBlockers) => Object.values(blockers).some
 /** `GET /api/users/me/withdrawal`: whether the caller can withdraw now, and what stands in the way. */
 export async function getWithdrawalStatus(userId: string) {
   const user = await prisma.user.findFirst({ where: { id: userId, deletedAt: null }, select: { password: true } });
-  if (!user) throw new AppError(INACTIVE, 401);
+  if (!user) throw new AppError('ACCOUNT_INACTIVE', INACTIVE);
   const blockers = await countBlockers(prisma, userId);
   return { canWithdraw: !isBlocked(blockers), hasPassword: user.password !== null, blockers };
 }
@@ -159,9 +159,9 @@ export async function withdrawAccount(userId: string, input: WithdrawalInput, no
     where: { id: userId, deletedAt: null },
     select: { id: true, password: true, googleId: true },
   });
-  if (!user) throw new AppError(INACTIVE, 401);
+  if (!user) throw new AppError('ACCOUNT_INACTIVE', INACTIVE);
   if (user.password !== null) {
-    if (!input.currentPassword) throw new AppError(CURRENT_PASSWORD_REQUIRED, 400);
+    if (!input.currentPassword) throw invalidField('currentPassword', 'REQUIRED', CURRENT_PASSWORD_REQUIRED);
     await confirmCurrentPassword(userId, user.password, input.currentPassword, now);
   } else {
     assertRecentGoogleReauth(user, input.reauthToken, 'withdrawal', now);
@@ -190,10 +190,10 @@ async function withdrawInTransaction(tx: PrismaTransactionClient, userId: string
     WHERE "freelancerId" = ${userId} OR ("projectId" = ANY(${projectIds}::text[]) AND "status" = 'PENDING')
     ORDER BY "id" FOR UPDATE`;
   const locked = await lockUserRow(tx, userId);
-  if (!locked || locked.deletedAt) throw new AppError(INACTIVE, 401);
+  if (!locked || locked.deletedAt) throw new AppError('ACCOUNT_INACTIVE', INACTIVE);
 
   // 2. Nothing may be left in progress or owed.
-  if (isBlocked(await countBlockers(tx, userId))) throw new AppError(WITHDRAWAL_BLOCKED, 409);
+  if (isBlocked(await countBlockers(tx, userId))) throw new AppError('WITHDRAWAL_BLOCKED', WITHDRAWAL_BLOCKED);
 
   // 3a. The client's projects with no live contract (none at all, or only cancelled ones): their
   // pending applicants are told the recruitment closed (the manual close's wording) and their

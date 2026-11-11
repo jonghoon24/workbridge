@@ -13,6 +13,7 @@ import {
   ACTIVE_USER,
   bearer,
   binaryFile,
+  cause,
   COMPLETE_PROFILE,
   created,
   errors,
@@ -39,10 +40,10 @@ import {
 
 const tags = ['Portfolio & careers'];
 
-const FREELANCER: ErrorSpec[] = [ACTIVE_USER, role('FREELANCER')];
-const USER_NOT_FOUND = notFound('User not found', '없거나 탈퇴한 사용자');
-const ITEM_NOT_FOUND = notFound('Portfolio item not found', '없는 포트폴리오 항목');
-const CAREER_NOT_FOUND = notFound('Career not found', '없는 경력');
+const FREELANCER: ErrorSpec = [...ACTIVE_USER, role('FREELANCER')];
+const USER_NOT_FOUND = notFound('USER_NOT_FOUND', '없거나 탈퇴한 사용자');
+const ITEM_NOT_FOUND = notFound('PORTFOLIO_ITEM_NOT_FOUND', '없는 포트폴리오 항목');
+const CAREER_NOT_FOUND = notFound('CAREER_NOT_FOUND', '없는 경력');
 
 /** JSON, or multipart with the optional `image` file. */
 function withImage(schema: z.ZodTypeAny) {
@@ -91,9 +92,7 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     request: { body: withImage(portfolioCreateBody) },
     responses: {
       201: created(portfolioItemBody),
-      ...errors(invalid(), IMAGE_UPLOAD, ...FREELANCER, {
-        409: ['`Portfolio is limited to 20 items` — 이미 20개'],
-      }),
+      ...errors(invalid(), IMAGE_UPLOAD, FREELANCER, cause('PORTFOLIO_LIMIT_REACHED', '이미 20개')),
     },
   });
 
@@ -108,8 +107,9 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(portfolioList, '새 순서의 전체 목록'),
       ...errors(
-        invalid('`ids: Must list each of your portfolio items exactly once` — 내 항목 전부를 한 번씩 담지 않음'),
-        ...FREELANCER,
+        invalid(),
+        cause('PORTFOLIO_ORDER_MISMATCH', '내 항목 전부를 한 번씩 담지 않음'),
+        FREELANCER,
       ),
     },
   });
@@ -127,11 +127,11 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
       200: ok(portfolioItemBody),
       ...errors(
         invalid(
-          '`removeImage: Cannot upload and remove an image at once` — 이미지 업로드와 삭제를 함께 요청함',
-          '`endedAt: <월 규칙>` — 저장된 값과 합친 시작·끝 월이 맞지 않음',
+          '`removeImage` `CONFLICT` — 이미지 업로드와 삭제를 함께 요청함',
+          '`endedAt` `CONFLICT` — 저장된 값과 합친 시작·끝 월이 맞지 않음',
         ),
         IMAGE_UPLOAD,
-        ...FREELANCER,
+        FREELANCER,
         NOT_OWNER,
         ITEM_NOT_FOUND,
       ),
@@ -147,7 +147,7 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     description: '남은 항목의 `sortOrder`는 바꾸지 않는다.',
     security: bearer,
     request: { params: pathParams({ itemId: '포트폴리오 항목 ID' }) },
-    responses: { 200: ok(deletedBody), ...errors(...FREELANCER, NOT_OWNER, ITEM_NOT_FOUND) },
+    responses: { 200: ok(deletedBody), ...errors(FREELANCER, NOT_OWNER, ITEM_NOT_FOUND) },
   });
 
   registry.registerPath({
@@ -161,7 +161,7 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     request: { body: jsonBody(careerCreateBody) },
     responses: {
       201: created(careerBody),
-      ...errors(invalid(), ...FREELANCER, { 409: ['`Careers are limited to 30 entries` — 이미 30개'] }),
+      ...errors(invalid(), FREELANCER, cause('CAREER_LIMIT_REACHED', '이미 30개')),
     },
   });
 
@@ -177,8 +177,8 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(careerBody),
       ...errors(
-        invalid('`endDate: <월 규칙>` — 저장된 값과 합친 시작·끝 월이 맞지 않음'),
-        ...FREELANCER,
+        invalid('`endDate` `CONFLICT` — 저장된 값과 합친 시작·끝 월이 맞지 않음'),
+        FREELANCER,
         NOT_OWNER,
         CAREER_NOT_FOUND,
       ),
@@ -193,7 +193,7 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     summary: '경력 삭제',
     security: bearer,
     request: { params: pathParams({ careerId: '경력 ID' }) },
-    responses: { 200: ok(deletedBody), ...errors(...FREELANCER, NOT_OWNER, CAREER_NOT_FOUND) },
+    responses: { 200: ok(deletedBody), ...errors(FREELANCER, NOT_OWNER, CAREER_NOT_FOUND) },
   });
 
   registry.registerPath({
@@ -206,7 +206,7 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     security: bearer,
     responses: {
       200: ok(profileCompletion),
-      ...errors(ACTIVE_USER, { 404: ['`User not found` — 요청 도중 탈퇴함'] }),
+      ...errors(ACTIVE_USER, cause('USER_NOT_FOUND', '요청 도중 탈퇴함')),
     },
   });
 
@@ -221,7 +221,7 @@ export function registerProfilePaths(registry: OpenAPIRegistry): void {
     request: { query: recommendationQuery },
     responses: {
       200: ok(recommendedProjects, '점수 내림차순'),
-      ...errors(invalid(), ...FREELANCER, COMPLETE_PROFILE),
+      ...errors(invalid(), FREELANCER, COMPLETE_PROFILE),
     },
   });
 }

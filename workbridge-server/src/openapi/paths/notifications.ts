@@ -2,7 +2,7 @@ import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { preferencesBody } from '../../schemas/notificationPreferences';
 import { notificationListQuery } from '../../schemas/notifications';
-import { ACTIVE_USER, AUTHENTICATED, bearer, errors, invalid, jsonBody, ok, pathParams } from '../common';
+import { ACTIVE_USER, AUTHENTICATED, bearer, cause, errors, invalid, jsonBody, ok, pathParams } from '../common';
 import { messageBody, unreadCountBody } from '../responses/common';
 import { notification, notificationList, notificationPreferences } from '../responses/notifications';
 
@@ -52,7 +52,7 @@ export function registerNotificationPaths(registry: OpenAPIRegistry): void {
     request: { params: pathParams({ id: '알림 ID' }) },
     responses: {
       200: ok(notification),
-      ...errors(ACTIVE_USER, { 404: ['`Notification not found` — 없거나 내 알림이 아님'] }),
+      ...errors(ACTIVE_USER, cause('NOTIFICATION_NOT_FOUND', '없거나 내 알림이 아님')),
     },
   });
 

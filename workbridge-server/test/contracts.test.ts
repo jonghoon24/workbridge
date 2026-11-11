@@ -12,7 +12,9 @@ import {
   makePayment,
   makeSubmission,
 } from './helpers/factories';
+import { invalidBody } from './helpers/errors';
 import { jobsOf } from './helpers/jobs';
+import type { ErrorCode } from '../src/lib/errorCodes';
 
 /**
  * Contracts — `/api/contracts`, plus the error envelope, authentication, authorization and
@@ -31,9 +33,9 @@ async function systemEvents(conversationId: string) {
   return messages.map((m) => m.systemEvent);
 }
 
-/** Every error body is exactly `{ error: { message } }`. */
-function expectErrorEnvelope(body: unknown, message?: string) {
-  expect(body).toEqual({ error: { message: message ?? expect.any(String) } });
+/** Every error body is exactly `{ error: { code, message } }`. */
+function expectErrorEnvelope(body: unknown, code: ErrorCode, message: string) {
+  expect(body).toEqual({ error: { code, message } });
 }
 
 /** Distinctive so a 500 caused by the injection cannot be confused with a real product error. */
@@ -474,7 +476,7 @@ describe('POST /api/contracts/:id/sign', () => {
     const res = await authed(client).post(`/api/contracts/${contract.id}/sign`);
 
     expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'A completed contract cannot be signed again');
+    expectErrorEnvelope(res.body, 'CONTRACT_ALREADY_COMPLETED', 'A completed contract cannot be signed again');
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after.status).toBe('COMPLETED');
   });
@@ -566,7 +568,7 @@ describe('POST /api/contracts/:id/sign', () => {
 
     expect(res.status).toBe(500);
     // A 500's body is generic; the injected error itself only reaches the log.
-    expectErrorEnvelope(res.body, 'Internal Server Error');
+    expectErrorEnvelope(res.body, 'INTERNAL_ERROR', 'Internal Server Error');
     // Proves the failure landed on the activation and not on the signature write (the project
     // moved to IN_PROGRESS between the two, in the same transaction).
     expect(injection.steps).toEqual(['contract.update', 'project.updateMany', 'contract.update']);
@@ -622,7 +624,7 @@ describe('POST /api/contracts/:id/sign', () => {
     const res = await authed(client).post(`/api/contracts/${contract.id}/sign`);
 
     expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Cannot sign a contract without a valid milestone plan');
+    expectErrorEnvelope(res.body, 'MILESTONE_PLAN_INVALID', 'Cannot sign a contract without a valid milestone plan');
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after).toMatchObject({ clientSigned: false, freelancerSigned: false, status: 'PENDING' });
   });
@@ -637,7 +639,7 @@ describe('POST /api/contracts/:id/sign', () => {
     const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
 
     expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body, 'Cannot sign a contract without a valid milestone plan');
+    expectErrorEnvelope(res.body, 'MILESTONE_PLAN_INVALID', 'Cannot sign a contract without a valid milestone plan');
   });
 
   it('accepts a plan that adds up to the rounded contract amount', async () => {
@@ -770,7 +772,7 @@ describe('PATCH /api/contracts/:id', () => {
     const res = await authed(client).patch(`/api/contracts/${contract.id}`).send({ status: 'COMPLETED' });
 
     expect(res.status).toBe(410);
-    expectErrorEnvelope(res.body, GONE);
+    expectErrorEnvelope(res.body, 'MANUAL_COMPLETION_REMOVED', GONE);
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after.status).toBe('ACTIVE');
     const projectAfter = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
@@ -786,7 +788,7 @@ describe('PATCH /api/contracts/:id', () => {
     const res = await authed(client).patch(`/api/contracts/${contract.id}`).send(payload);
 
     expect(res.status).toBe(410);
-    expectErrorEnvelope(res.body, GONE);
+    expectErrorEnvelope(res.body, 'MANUAL_COMPLETION_REMOVED', GONE);
   });
 
   it('is 410 for a contract that does not exist and for a third party', async () => {
@@ -872,21 +874,21 @@ describe('GET /api/contracts (list)', () => {
   });
 
   it.each([
-    ['an unknown status', '?status=REFUNDED'],
-    ['a zero page', '?page=0'],
-    ['a negative limit', '?limit=-1'],
-    ['a fractional limit', '?limit=1.5'],
-    ['trailing garbage', '?page=2abc'],
-    ['a repeated parameter', '?limit=1&limit=2'],
-    ['a page above 1,000,000', '?page=1000001'],
-    ['a page that would overflow skip', '?page=999999999999999999'],
-  ])('rejects %s with 400', async (_label, query) => {
+    ['an unknown status', '?status=REFUNDED', 'status', 'INVALID', 'must be one of PENDING, ACTIVE, COMPLETED, CANCELLED'],
+    ['a zero page', '?page=0', 'page', 'TOO_SMALL', 'must be at least 1'],
+    ['a negative limit', '?limit=-1', 'limit', 'TOO_SMALL', 'must be at least 1'],
+    ['a fractional limit', '?limit=1.5', 'limit', 'INVALID', 'must be an integer'],
+    ['trailing garbage', '?page=2abc', 'page', 'INVALID', 'must be an integer'],
+    ['a repeated parameter', '?limit=1&limit=2', 'limit', 'INVALID', 'must be a single value'],
+    ['a page above 1,000,000', '?page=1000001', 'page', 'TOO_LARGE', 'must be at most 1000000'],
+    ['a page that would overflow skip', '?page=999999999999999999', 'page', 'TOO_LARGE', 'must be at most 1000000'],
+  ] as const)('rejects %s with 400', async (_label, query, field, code, sentence) => {
     const { client } = await makeContractScenario();
 
     const res = await authed(client).get(`/api/contracts${query}`);
 
     expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body);
+    expect(res.body).toEqual(invalidBody(field, code, `${field}: ${sentence}`));
   });
 
   it('accepts page 1,000,000 (the bound) with an empty page of results', async () => {
@@ -999,7 +1001,7 @@ describe('POST /api/contracts/:id/cancel', () => {
     const res = await cancel(client, contract.id);
 
     expect(res.status).toBe(409);
-    expectErrorEnvelope(res.body, 'Only a contract awaiting signatures can be cancelled');
+    expectErrorEnvelope(res.body, 'CONTRACT_NOT_CANCELLABLE', 'Only a contract awaiting signatures can be cancelled');
     expect(await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).toEqual(before);
     expect(await prisma.notification.count()).toBe(0);
     expect(await systemEvents(conversation.id)).toEqual([]);
@@ -1014,7 +1016,7 @@ describe('POST /api/contracts/:id/cancel', () => {
 
     for (const res of [again, other]) {
       expect(res.status).toBe(409);
-      expectErrorEnvelope(res.body, 'This contract has been cancelled');
+      expectErrorEnvelope(res.body, 'CONTRACT_CANCELLED', 'This contract has been cancelled');
     }
     expect(await prisma.notification.count()).toBe(1);
   });
@@ -1025,7 +1027,7 @@ describe('POST /api/contracts/:id/cancel', () => {
     const res = await cancel(client, '00000000-0000-0000-0000-000000000000');
 
     expect(res.status).toBe(404);
-    expectErrorEnvelope(res.body, 'Contract not found');
+    expectErrorEnvelope(res.body, 'CONTRACT_NOT_FOUND', 'Contract not found');
   });
 
   it('notifies the counterpart once, in-app and by email (the policy default), and not the one who cancelled', async () => {
@@ -1107,7 +1109,7 @@ describe('POST /api/contracts/:id/cancel', () => {
 
         expect(results.map((r) => r.status).sort(), `iteration ${iteration}`).toEqual([200, 409]);
         const loser = results.find((r) => r.status === 409)!;
-        expectErrorEnvelope(loser.body, 'This contract has been cancelled');
+        expectErrorEnvelope(loser.body, 'CONTRACT_CANCELLED', 'This contract has been cancelled');
         expect(await prisma.notification.count({ where: { userId: { in: [client.id, freelancer.id] } } })).toBe(1);
         expect(await systemEvents(conversation.id)).toEqual(['CONTRACT_CANCELLED']);
       }
@@ -1127,14 +1129,14 @@ describe('POST /api/contracts/:id/cancel', () => {
         const storedProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
         if (cancelled.status === 200) {
           expect(signed.status, `iteration ${iteration}`).toBe(409);
-          expectErrorEnvelope(signed.body, 'This contract has been cancelled');
+          expectErrorEnvelope(signed.body, 'CONTRACT_CANCELLED', 'This contract has been cancelled');
           expect(stored).toMatchObject({ status: 'CANCELLED', freelancerSigned: false });
           expect(storedProject.status).toBe('CLOSED');
           expect(await prisma.notification.count({ where: { type: 'CONTRACT_ACTIVATED' } })).toBe(0);
           expect(await systemEvents(conversation.id)).toEqual(['CONTRACT_CANCELLED']);
         } else {
           expect(cancelled.status, `iteration ${iteration}`).toBe(409);
-          expectErrorEnvelope(cancelled.body, 'Only a contract awaiting signatures can be cancelled');
+          expectErrorEnvelope(cancelled.body, 'CONTRACT_NOT_CANCELLABLE', 'Only a contract awaiting signatures can be cancelled');
           expect(signed.status).toBe(200);
           expect(stored.status).toBe('ACTIVE');
           expect(storedProject.status).toBe('IN_PROGRESS');
@@ -1164,7 +1166,7 @@ describe('POST /api/contracts/:id/cancel', () => {
         expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('CANCELLED');
         const milestones = await prisma.milestone.findMany({ where: { contractId: contract.id } });
         if (replaced.status === 409) {
-          expectErrorEnvelope(replaced.body, 'This contract has been cancelled');
+          expectErrorEnvelope(replaced.body, 'CONTRACT_CANCELLED', 'This contract has been cancelled');
           expect(milestones.map((m) => m.id)).toEqual([milestone.id]);
         } else {
           expect(milestones).toHaveLength(2);
@@ -1223,7 +1225,7 @@ describe('POST /api/contracts/:id/sign — a cancelled contract', () => {
     const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
 
     expect(res.status).toBe(409);
-    expectErrorEnvelope(res.body, 'This contract has been cancelled');
+    expectErrorEnvelope(res.body, 'CONTRACT_CANCELLED', 'This contract has been cancelled');
     expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).freelancerSigned).toBe(false);
   });
 });

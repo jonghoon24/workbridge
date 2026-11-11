@@ -58,10 +58,10 @@ export function isAllowedAttachmentType(mimetype: string): boolean {
  */
 export function assertAttachmentPolicy(file: { mimeType: string; size: number }): void {
   if (!isAllowedAttachmentType(file.mimeType)) {
-    throw new AppError(`Unsupported file type: ${file.mimeType}`, 400);
+    throw new AppError('FILE_TYPE_UNSUPPORTED', `Unsupported file type: ${file.mimeType}`);
   }
   if (file.size > ATTACHMENT_MAX_BYTES) {
-    throw new AppError(`File too large (max ${ATTACHMENT_MAX_BYTES / MB}MB)`, 413);
+    throw new AppError('FILE_TOO_LARGE', `File too large (max ${ATTACHMENT_MAX_BYTES / MB}MB)`);
   }
 }
 
@@ -92,7 +92,7 @@ export async function createUploadUrl(key: string): Promise<string> {
   const { data, error } = await bucket().createSignedUploadUrl(key);
   if (error || !data) {
     logger.warn('attachment upload url failed', { key, err: error });
-    throw new AppError(UPLOAD_FAILED, 502);
+    throw new AppError('UPLOAD_FAILED', UPLOAD_FAILED);
   }
   return data.signedUrl;
 }
@@ -111,7 +111,7 @@ export async function statObject(key: string): Promise<{ size: number; mimeType:
   if (error) {
     if (isNotFound(error)) return null;
     logger.warn('attachment info failed', { key, err: error });
-    throw new AppError(STORAGE_UNAVAILABLE, 502);
+    throw new AppError('STORAGE_UNAVAILABLE', STORAGE_UNAVAILABLE);
   }
   // `metadata` is untyped in storage-js; read it as unknown values.
   const metadata: Record<string, unknown> = data.metadata ?? {};
@@ -141,7 +141,7 @@ export async function signDownloadUrl(key: string, fileName: string, ttlSeconds:
   const { data, error } = await bucket().createSignedUrl(key, ttlSeconds, { download: fileName });
   if (error || !data) {
     logger.warn('attachment download url failed', { key, err: error });
-    throw new AppError(STORAGE_UNAVAILABLE, 502);
+    throw new AppError('STORAGE_UNAVAILABLE', STORAGE_UNAVAILABLE);
   }
   return data.signedUrl;
 }

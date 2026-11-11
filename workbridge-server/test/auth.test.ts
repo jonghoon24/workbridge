@@ -19,6 +19,7 @@ import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeUser, TEST_PASSWORD } from './helpers/factories';
 import { generateRefreshToken } from '../src/lib/jwt';
 import type { JwtUserPayload, RefreshTokenPayload } from '../src/types/index';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 // ---------------------------------------------------------------------------
 // Local helpers (kept in this file on purpose — the shared harness is off limits)
@@ -117,15 +118,15 @@ describe('POST /api/auth/signup', () => {
   };
 
   it.each([
-    ['email', { ...valid, email: undefined }, 'email: Email is required'],
-    ['password', { ...valid, password: undefined }, 'password: Password is required'],
-    ['name', { ...valid, name: undefined }, 'name: Name is required'],
-    ['role', { ...valid, role: undefined }, 'role: Role must be CLIENT or FREELANCER'],
-  ])('rejects a request missing %s with 400', async (_field, body, message) => {
+    ['email', { ...valid, email: undefined }, 'email: Email is required', 'REQUIRED'],
+    ['password', { ...valid, password: undefined }, 'password: Password is required', 'REQUIRED'],
+    ['name', { ...valid, name: undefined }, 'name: Name is required', 'REQUIRED'],
+    ['role', { ...valid, role: undefined }, 'role: Role must be CLIENT or FREELANCER', 'REQUIRED'],
+  ] as const)('rejects a request missing %s with 400', async (_field, body, message, code) => {
     const res = await api().post('/api/auth/signup').send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect(await prisma.user.count()).toBe(0);
   });
 
@@ -137,17 +138,17 @@ describe('POST /api/auth/signup', () => {
   });
 
   it.each([
-    ['an empty email', { email: '' }, 'email: Email is required'],
-    ['an empty password', { password: '' }, 'password: Password is required'],
-    ['a blank name', { name: '   ' }, 'name: Name is required'],
-    ['a numeric email', { email: 12345 }, 'email: Email must be a string'],
-    ['an object password', { password: { length: 8 } }, 'password: Password must be a string'],
-    ['an array name', { name: ['a', 'b'] }, 'name: Name must be a string'],
-  ])('rejects %s with 400 and creates no user', async (_label, patch, message) => {
+    ['an empty email', { email: '' }, 'email: Email is required', 'REQUIRED'],
+    ['an empty password', { password: '' }, 'password: Password is required', 'REQUIRED'],
+    ['a blank name', { name: '   ' }, 'name: Name is required', 'REQUIRED'],
+    ['a numeric email', { email: 12345 }, 'email: Email must be a string', 'INVALID'],
+    ['an object password', { password: { length: 8 } }, 'password: Password must be a string', 'INVALID'],
+    ['an array name', { name: ['a', 'b'] }, 'name: Name must be a string', 'INVALID'],
+  ] as const)('rejects %s with 400 and creates no user', async (_label, patch, message, code) => {
     const res = await api().post('/api/auth/signup').send({ ...valid, ...patch });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect(await prisma.user.count()).toBe(0);
   });
 
@@ -166,7 +167,7 @@ describe('POST /api/auth/signup', () => {
       const res = await api().post('/api/auth/signup').send({ ...valid, email });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'email: Email must be a valid email address' } });
+      expect(res.body).toEqual(invalidBody('email', 'INVALID', 'email: Email must be a valid email address'));
       expect(await prisma.user.count()).toBe(0);
     },
   );
@@ -175,7 +176,7 @@ describe('POST /api/auth/signup', () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, email: '   ' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
+    expect(res.body).toEqual(invalidBody('email', 'REQUIRED', 'email: Email is required'));
   });
 
   it('stores the email trimmed and lowercased', async () => {
@@ -192,7 +193,7 @@ describe('POST /api/auth/signup', () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, password });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'password: Password must be at least 8 characters' } });
+    expect(res.body).toEqual(invalidBody('password', 'TOO_SMALL', 'password: Password must be at least 8 characters'));
     expect(await prisma.user.count()).toBe(0);
   });
 
@@ -206,7 +207,7 @@ describe('POST /api/auth/signup', () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, role: 'ADMIN' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'role: Role must be CLIENT or FREELANCER' } });
+    expect(res.body).toEqual(invalidBody('role', 'INVALID', 'role: Role must be CLIENT or FREELANCER'));
     expect(await prisma.user.count()).toBe(0);
   });
 
@@ -225,7 +226,7 @@ describe('POST /api/auth/signup', () => {
       .send({ ...valid, email: existing.email });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Email already in use' } });
+    expect(res.body).toEqual({ error: { code: 'EMAIL_ALREADY_IN_USE', message: 'Email already in use' } });
     expect(await prisma.user.count()).toBe(1);
   });
 
@@ -235,7 +236,7 @@ describe('POST /api/auth/signup', () => {
     const res = await api().post('/api/auth/signup').send({ ...valid, email: 'Taken@TEST.local' });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Email already in use' } });
+    expect(res.body).toEqual({ error: { code: 'EMAIL_ALREADY_IN_USE', message: 'Email already in use' } });
     expect(await prisma.user.count()).toBe(1);
   });
 
@@ -342,7 +343,7 @@ describe('POST /api/auth/login', () => {
     const res = await api().post('/api/auth/login').send({ password: TEST_PASSWORD });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
+    expect(res.body).toEqual(invalidBody('email', 'REQUIRED', 'email: Email is required'));
   });
 
   it('rejects a missing password with 400', async () => {
@@ -356,17 +357,17 @@ describe('POST /api/auth/login', () => {
   // object became a Prisma filter (`{ not: '' }` matches the first user) or a 500. It is a 400
   // now, before any lookup.
   it.each([
-    ['an operator object as email', { email: { not: '' }, password: TEST_PASSWORD }, 'email: Email must be a string'],
-    ['a numeric email', { email: 42, password: TEST_PASSWORD }, 'email: Email must be a string'],
-    ['an object password', { email: 'someone@test.local', password: { a: 1 } }, 'password: Password must be a string'],
-    ['an empty password', { email: 'someone@test.local', password: '' }, 'password: Password is required'],
-  ])('rejects %s with 400 and issues no session', async (_label, body, message) => {
+    ['an operator object as email', { email: { not: '' }, password: TEST_PASSWORD }, 'email: Email must be a string', 'INVALID'],
+    ['a numeric email', { email: 42, password: TEST_PASSWORD }, 'email: Email must be a string', 'INVALID'],
+    ['an object password', { email: 'someone@test.local', password: { a: 1 } }, 'password: Password must be a string', 'INVALID'],
+    ['an empty password', { email: 'someone@test.local', password: '' }, 'password: Password is required', 'REQUIRED'],
+  ] as const)('rejects %s with 400 and issues no session', async (_label, body, message, code) => {
     await makeUser();
 
     const res = await api().post('/api/auth/login').send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect(refreshCookie(res)).toBeUndefined();
   });
 
@@ -376,7 +377,7 @@ describe('POST /api/auth/login', () => {
     const res = await api().post('/api/auth/login').send({ email: 'not-an-email', password: TEST_PASSWORD });
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+    expect(res.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } });
   });
 
   // Signup trims the email, so login must too: the address typed with the same stray spaces at
@@ -410,7 +411,7 @@ describe('POST /api/auth/login', () => {
     const res = await api().post('/api/auth/login').send({ email: '   ', password: TEST_PASSWORD });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'email: Email is required' } });
+    expect(res.body).toEqual(invalidBody('email', 'REQUIRED', 'email: Email is required'));
   });
 
   it('logs in an existing account whose password is shorter than the signup minimum', async () => {
@@ -427,7 +428,7 @@ describe('POST /api/auth/login', () => {
       .send({ email: 'nobody@test.local', password: TEST_PASSWORD });
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+    expect(res.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } });
   });
 
   it('rejects a password-less OAuth-only account with 401 Invalid credentials', async () => {
@@ -438,7 +439,7 @@ describe('POST /api/auth/login', () => {
       .send({ email: oauthOnly.email, password: TEST_PASSWORD });
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+    expect(res.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } });
   });
 
   it('rejects a wrong password with 401 Invalid credentials', async () => {
@@ -449,7 +450,7 @@ describe('POST /api/auth/login', () => {
       .send({ email: user.email, password: 'definitely-not-the-password' });
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+    expect(res.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } });
   });
 
   it('returns an identical response for unknown email, no password, and wrong password', async () => {
@@ -469,7 +470,7 @@ describe('POST /api/auth/login', () => {
     // Indistinguishable, so the endpoint cannot be used to enumerate accounts.
     for (const res of [unknown, noPassword, wrongPassword]) {
       expect(res.status).toBe(401);
-      expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+      expect(res.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } });
       expect(refreshCookie(res)).toBeUndefined();
     }
     expect(noPassword.body).toEqual(unknown.body);
@@ -591,7 +592,7 @@ describe('POST /api/auth/refresh', () => {
     const res = await api().post('/api/auth/refresh');
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Refresh token not found' } });
+    expect(res.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'Refresh token not found' } });
   });
 
   it('rejects a garbage token with 401', async () => {
@@ -600,7 +601,7 @@ describe('POST /api/auth/refresh', () => {
       .set('Cookie', 'refreshToken=not-a-jwt');
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired refresh token' } });
+    expect(res.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'Invalid or expired refresh token' } });
   });
 
   it('rejects a token signed with the wrong secret with 401', async () => {
@@ -655,7 +656,7 @@ describe('POST /api/auth/refresh', () => {
       .set('Cookie', `refreshToken=${token}`);
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'User not found' } });
   });
 
   it('returns a new accessToken and nothing else on success', async () => {
@@ -718,7 +719,7 @@ describe('POST /api/auth/refresh', () => {
     const res = await api().post('/api/auth/refresh').set('Cookie', `refreshToken=${before}`);
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { message: 'Invalid or expired refresh token' } });
+    expect(res.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'Invalid or expired refresh token' } });
   });
 
   it('accepts a refresh token minted with the current password change time', async () => {
@@ -745,7 +746,7 @@ describe('POST /api/auth/refresh', () => {
 
     expect(ok.status).toBe(200);
     expect(refused.status).toBe(401);
-    expect(refused.body).toEqual({ error: { message: 'Invalid or expired refresh token' } });
+    expect(refused.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'Invalid or expired refresh token' } });
   });
 
   it('reflects the current role, not the role in the refresh token', async () => {
@@ -778,7 +779,7 @@ describe('POST /api/auth/select-role', () => {
     const res = await authed(user).post('/api/auth/select-role').send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'role: Role must be CLIENT or FREELANCER' } });
+    expect(res.body).toEqual(invalidBody('role', 'REQUIRED', 'role: Role must be CLIENT or FREELANCER'));
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(stored.roleSelected).toBe(false);
   });
@@ -805,7 +806,7 @@ describe('POST /api/auth/select-role', () => {
       .send({ role: 'CLIENT' });
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
   });
 
   it('rejects a second selection with 400 and leaves the role untouched', async () => {
@@ -814,7 +815,7 @@ describe('POST /api/auth/select-role', () => {
     const res = await authed(user).post('/api/auth/select-role').send({ role: 'CLIENT' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Role has already been selected' } });
+    expect(res.body).toEqual({ error: { code: 'ROLE_ALREADY_SELECTED', message: 'Role has already been selected' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(stored.role).toBe('FREELANCER');
   });
@@ -861,7 +862,7 @@ describe('POST /api/auth/select-role', () => {
 
       expect(withdrawn).toBe(true);
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'User not found' } });
+      expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
       expect(refreshCookie(res)).toBeUndefined();
     } finally {
       spies.forEach((spy) => spy.mockRestore());
@@ -1002,7 +1003,7 @@ describe('GET /api/auth/google', () => {
       expect(res.status).toBe(500);
       // A 500's body is generic (docs/domain/README.md "오류 응답"); the missing variable is named
       // in the error log, where the operator looks.
-      expect(res.body).toEqual({ error: { message: 'Internal Server Error' } });
+      expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Internal Server Error' } });
       expect(logs.mock.calls).toHaveLength(1);
       expect(String(logs.mock.calls[0][0])).toMatch(/GOOGLE_CLIENT_ID/);
     } finally {

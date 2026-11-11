@@ -82,7 +82,7 @@ describe('GET /api/projects/:id/bookmark', () => {
     const res = await authed(freelancer).get(bookmarkPath(MISSING_PROJECT_ID));
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
   });
 
   it('returns 404 for a soft-deleted project even when the bookmark row is still there', async () => {
@@ -93,7 +93,7 @@ describe('GET /api/projects/:id/bookmark', () => {
     const res = await authed(freelancer).get(bookmarkPath(project.id));
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
   });
 });
 
@@ -147,7 +147,7 @@ describe('POST /api/projects/:id/bookmark', () => {
     const res = await authed(freelancer).post(bookmarkPath(MISSING_PROJECT_ID));
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
     expect(await countBookmarks()).toBe(0);
   });
 
@@ -322,7 +322,7 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     const res = await authed(freelancer).delete(bookmarkPath(MISSING_PROJECT_ID));
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
   });
 
   it('returns 404 for a soft-deleted project and leaves the bookmark row in place', async () => {
@@ -333,7 +333,7 @@ describe('DELETE /api/projects/:id/bookmark', () => {
     const res = await authed(freelancer).delete(bookmarkPath(project.id));
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
     expect(await countBookmarks({ projectId: project.id, userId: freelancer.id })).toBe(1);
   });
 });
@@ -354,7 +354,7 @@ describe('a project whose client is soft-deleted', () => {
     const fresh = await authed(other).post(bookmarkPath(project.id));
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
     expect(fresh.status).toBe(404);
     expect(await countBookmarks({ projectId: project.id })).toBe(1);
   });

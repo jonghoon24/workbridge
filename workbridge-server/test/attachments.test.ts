@@ -11,9 +11,11 @@ import { storage } from './helpers/storageFake';
 import { ATTACHMENT_BUCKET, pdf, png, uploadFiles } from './helpers/attachments';
 import { prisma } from './helpers/db';
 import { makeContractScenario, makeMessage, makePayment, makeSubmission } from './helpers/factories';
+import { invalidBody } from './helpers/errors';
 import { runDueJobs } from '../src/jobs/runner';
 import { legacyKeyOf, migrateLegacyAttachments } from '../src/services/attachments.service';
 import { HOUR_MS, MINUTE_MS } from '../src/lib/time';
+import type { ErrorCode, FieldErrorCode } from '../src/lib/errorCodes';
 
 /**
  * Message and submission attachments in the private bucket (docs/domain/messaging-notifications.md
@@ -88,22 +90,22 @@ describe('POST /api/conversations/:id/uploads', () => {
     expect(res.status).toBe(201);
   });
 
-  it.each<[string, Record<string, unknown>, number, string]>([
-    ['a file over 10 MB', { files: [pdf('a.pdf', 10 * MB + 1)] }, 413, 'File too large (max 10MB)'],
-    ['a disallowed type', { files: [{ fileName: 'setup.exe', mimeType: 'application/x-msdownload', size: 2 }] }, 400, 'Unsupported file type: application/x-msdownload'],
-    ['an unknown type', { files: [{ fileName: 'x.bin', mimeType: 'application/octet-stream', size: 2 }] }, 400, 'Unsupported file type: application/octet-stream'],
-    ['six files', { files: Array.from({ length: 6 }, (_, i) => pdf(`${i}.pdf`)) }, 400, 'files: Too many files (max 5)'],
-    ['no files', { files: [] }, 400, 'files: At least one file is required'],
-    ['a missing list', {}, 400, 'files: At least one file is required'],
-    ['a fractional size', { files: [{ fileName: 'a.pdf', mimeType: 'application/pdf', size: 1.5 }] }, 400, 'files.0.size: File size must be a whole number of bytes'],
-    ['a blank name', { files: [{ fileName: ' ', mimeType: 'application/pdf', size: 1 }] }, 400, 'files.0.fileName: File name is required'],
-  ])('rejects %s before looking the conversation up', async (_label, body, status, message) => {
+  it.each<[string, Record<string, unknown>, number, unknown]>([
+    ['a file over 10 MB', { files: [pdf('a.pdf', 10 * MB + 1)] }, 413, { error: { code: 'FILE_TOO_LARGE', message: 'File too large (max 10MB)' } }],
+    ['a disallowed type', { files: [{ fileName: 'setup.exe', mimeType: 'application/x-msdownload', size: 2 }] }, 400, { error: { code: 'FILE_TYPE_UNSUPPORTED', message: 'Unsupported file type: application/x-msdownload' } }],
+    ['an unknown type', { files: [{ fileName: 'x.bin', mimeType: 'application/octet-stream', size: 2 }] }, 400, { error: { code: 'FILE_TYPE_UNSUPPORTED', message: 'Unsupported file type: application/octet-stream' } }],
+    ['six files', { files: Array.from({ length: 6 }, (_, i) => pdf(`${i}.pdf`)) }, 400, invalidBody('files', 'TOO_LARGE', 'files: Too many files (max 5)')],
+    ['no files', { files: [] }, 400, invalidBody('files', 'REQUIRED', 'files: At least one file is required')],
+    ['a missing list', {}, 400, invalidBody('files', 'REQUIRED', 'files: At least one file is required')],
+    ['a fractional size', { files: [{ fileName: 'a.pdf', mimeType: 'application/pdf', size: 1.5 }] }, 400, invalidBody('files.0.size', 'INVALID', 'files.0.size: File size must be a whole number of bytes')],
+    ['a blank name', { files: [{ fileName: ' ', mimeType: 'application/pdf', size: 1 }] }, 400, invalidBody('files.0.fileName', 'REQUIRED', 'files.0.fileName: File name is required')],
+  ])('rejects %s before looking the conversation up', async (_label, body, status, expected) => {
     const { client } = await makeContractScenario();
 
     const res = await authed(client).post('/api/conversations/missing-conversation-id/uploads').send(body);
 
     expect(res.status).toBe(status);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(expected);
     expect(files().createSignedUploadUrl).not.toHaveBeenCalled();
     expect(await prisma.attachmentUpload.count()).toBe(0);
   });
@@ -115,7 +117,7 @@ describe('POST /api/conversations/:id/uploads', () => {
     const res = await authed(scenario.client).post(`${conversationPath(scenario)}/uploads`).send({ files: [pdf()] });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'The other participant is no longer active' } });
+    expect(res.body).toEqual({ error: { code: 'COUNTERPART_INACTIVE', message: 'The other participant is no longer active' } });
     expect(await prisma.attachmentUpload.count()).toBe(0);
   });
 
@@ -126,7 +128,7 @@ describe('POST /api/conversations/:id/uploads', () => {
     const res = await authed(scenario.client).post(`${conversationPath(scenario)}/uploads`).send({ files: [pdf()] });
 
     expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: { message: 'File upload failed' } });
+    expect(res.body).toEqual({ error: { code: 'UPLOAD_FAILED', message: 'File upload failed' } });
     expect(await prisma.attachmentUpload.count()).toBe(0);
   });
 });
@@ -150,7 +152,7 @@ describe('POST /api/milestones/:id/uploads', () => {
     const res = await authed(freelancer).post(`/api/milestones/${milestone.id}/uploads`).send({ files: [pdf()] });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Milestone is not awaiting a submission' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_NOT_AWAITING_SUBMISSION', message: 'Milestone is not awaiting a submission' } });
   });
 
   it('checks the file policy before the milestone exists', async () => {
@@ -195,7 +197,7 @@ describe('claiming uploads on a message', () => {
     const res = await sendMessage(scenario, caller, ids, 'second');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'uploadIds: Upload not found or expired' } });
+    expect(res.body).toEqual({ error: { code: 'UPLOAD_NOT_FOUND', message: 'uploadIds: Upload not found or expired' } });
     expect(await prisma.message.count({ where: { body: 'second' } })).toBe(0);
   });
 
@@ -213,7 +215,7 @@ describe('claiming uploads on a message', () => {
     const res = await sendMessage(second, first.client, ids, 'elsewhere');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'uploadIds: Upload not found or expired' } });
+    expect(res.body).toEqual({ error: { code: 'UPLOAD_NOT_FOUND', message: 'uploadIds: Upload not found or expired' } });
   });
 
   it('400s when the file was never uploaded, and the upload stays claimable', async () => {
@@ -224,15 +226,15 @@ describe('claiming uploads on a message', () => {
     const res = await sendMessage(scenario, scenario.client, ids, 'where is it');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'uploadIds: File has not been uploaded' } });
+    expect(res.body).toEqual({ error: { code: 'FILE_NOT_UPLOADED', message: 'uploadIds: File has not been uploaded' } });
     expect(await prisma.message.count({ where: { body: 'where is it' } })).toBe(0);
     expect(await prisma.attachmentUpload.count()).toBe(1);
   });
 
-  it.each<[string, { size: number; contentType: string }, number, string]>([
-    ['a stored file over 10 MB', { size: 10 * MB + 1, contentType: 'application/pdf' }, 413, 'File too large (max 10MB)'],
-    ['a stored file of a disallowed type', { size: 10, contentType: 'application/x-msdownload' }, 400, 'Unsupported file type: application/x-msdownload'],
-  ])('rejects %s even though the declaration passed', async (_label, object, status, message) => {
+  it.each<[string, { size: number; contentType: string }, number, ErrorCode, string]>([
+    ['a stored file over 10 MB', { size: 10 * MB + 1, contentType: 'application/pdf' }, 413, 'FILE_TOO_LARGE', 'File too large (max 10MB)'],
+    ['a stored file of a disallowed type', { size: 10, contentType: 'application/x-msdownload' }, 400, 'FILE_TYPE_UNSUPPORTED', 'Unsupported file type: application/x-msdownload'],
+  ])('rejects %s even though the declaration passed', async (_label, object, status, code, message) => {
     const scenario = await makeContractScenario();
     const { ids, keys } = await uploadFiles(storage, scenario.client, conversationPath(scenario), [pdf()]);
     storage.put(ATTACHMENT_BUCKET, keys[0], object);
@@ -240,21 +242,21 @@ describe('claiming uploads on a message', () => {
     const res = await sendMessage(scenario, scenario.client, ids);
 
     expect(res.status).toBe(status);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual({ error: { code, message } });
     expect(await prisma.messageAttachment.count()).toBe(0);
   });
 
-  it.each<[string, unknown, string]>([
-    ['six uploads', ['1', '2', '3', '4', '5', '6'], 'uploadIds: Too many files (max 5)'],
-    ['a repeated upload', ['same', 'same'], 'uploadIds: Upload ids must be unique'],
-    ['a non-list', 'one-id', 'uploadIds: Upload ids must be a list'],
-  ])('400s for %s before any lookup', async (_label, uploadIds, message) => {
+  it.each<[string, unknown, FieldErrorCode, string]>([
+    ['six uploads', ['1', '2', '3', '4', '5', '6'], 'TOO_LARGE', 'uploadIds: Too many files (max 5)'],
+    ['a repeated upload', ['same', 'same'], 'NOT_UNIQUE', 'uploadIds: Upload ids must be unique'],
+    ['a non-list', 'one-id', 'INVALID', 'uploadIds: Upload ids must be a list'],
+  ])('400s for %s before any lookup', async (_label, uploadIds, code, message) => {
     const { client } = await makeContractScenario();
 
     const res = await authed(client).post('/api/conversations/missing-conversation-id/messages').send({ body: 'x', uploadIds });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBody('uploadIds', code, message));
   });
 });
 
@@ -268,7 +270,7 @@ describe('claiming uploads on a submission', () => {
       .send({ message: 'done', uploadIds: ids });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'uploadIds: Upload not found or expired' } });
+    expect(res.body).toEqual({ error: { code: 'UPLOAD_NOT_FOUND', message: 'uploadIds: Upload not found or expired' } });
     expect((await prisma.milestone.findUniqueOrThrow({ where: { id: scenario.milestone.id } })).status).toBe('FUNDED');
   });
 });
@@ -398,7 +400,7 @@ describe('GET /api/conversations/:id/attachments/:attachmentId/download', () => 
 
     for (const res of [gone, foreign]) {
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'Attachment not found' } });
+      expect(res.body).toEqual({ error: { code: 'ATTACHMENT_NOT_FOUND', message: 'Attachment not found' } });
     }
     expect(files().createSignedUrl).not.toHaveBeenCalled();
   });
@@ -413,7 +415,7 @@ describe('GET /api/conversations/:id/attachments/:attachmentId/download', () => 
     const res = await authed(scenario.client).get(`${conversationPath(scenario)}/attachments/${message.attachments[0].id}/download`);
 
     expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: { message: 'File storage is unavailable' } });
+    expect(res.body).toEqual({ error: { code: 'STORAGE_UNAVAILABLE', message: 'File storage is unavailable' } });
   });
 });
 
@@ -434,7 +436,7 @@ describe('GET /api/milestones/:id/attachments/:attachmentId/download', () => {
     expect(asClient.body.url).toContain(`download=${encodeURIComponent('소스.zip')}`);
     expect(asFreelancer.status).toBe(200);
     expect(wrongMilestone.status).toBe(404);
-    expect(wrongMilestone.body).toEqual({ error: { message: 'Attachment not found' } });
+    expect(wrongMilestone.body).toEqual({ error: { code: 'ATTACHMENT_NOT_FOUND', message: 'Attachment not found' } });
   });
 });
 
