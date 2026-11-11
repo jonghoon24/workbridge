@@ -89,16 +89,26 @@ export async function updateMyProfile(
   // An empty patch (every field stripped as the other role's) writes nothing: Prisma skips an
   // `updateMany` without data and reports 0 rows, so check the account instead.
   const active = { id: userId, deletedAt: null };
+  const refuseInactive = async () => {
+    if (profileImage) {
+      await enqueueJob(prisma, { type: 'account.deletePublicFiles', payload: { userId, paths: [] } });
+    }
+    return new AppError(ACCOUNT_INACTIVE, 401);
+  };
+
   const count = Object.keys(updateData).length
     ? (await prisma.user.updateMany({ where: active, data: updateData })).count
     : await prisma.user.count({ where: active });
   if (count === 0) {
-    if (profileImage) {
-      await enqueueJob(prisma, { type: 'account.deletePublicFiles', payload: { userId, paths: [] } });
-    }
-    throw new AppError(ACCOUNT_INACTIVE, 401);
+    throw await refuseInactive();
   }
-  const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: myProfileSelect });
+
+  // Read back under the same condition: a withdrawal that commits between the write and this read
+  // has scrubbed the profile, and the caller gets the same 401 rather than the scrubbed row.
+  const user = await prisma.user.findFirst({ where: active, select: myProfileSelect });
+  if (!user) {
+    throw await refuseInactive();
+  }
 
   return toMyProfile(user);
 }
@@ -169,13 +179,22 @@ export async function getPublicProfile(userId: string) {
 /**
  * `GET /me/applications`, newest first. **Writes rows** before reading: the lazy lifecycle sweep
  * closes expired open projects and rejects this freelancer's pending applications to closed ones.
+ *
+ * An application to a soft-deleted project is left out, as the project and its contract are gone
+ * (docs/domain/README.md "소프트 삭제"). One to a project whose client is soft-deleted is left out
+ * like that project is everywhere else — unless it became a contract: a relationship already made
+ * stays visible to its party, as in the contract list.
  */
 export async function listMyApplications(freelancerId: string) {
   await closeExpiredOpenProjects();
   await rejectPendingApplicationsForClosedProjects({ freelancerId });
 
   return prisma.application.findMany({
-    where: { freelancerId },
+    where: {
+      freelancerId,
+      project: { deletedAt: null },
+      OR: [{ project: { client: { deletedAt: null } } }, { contract: { isNot: null } }],
+    },
     include: {
       contract: { select: { id: true, status: true } },
       project: {
@@ -211,7 +230,8 @@ export async function listMyBookmarks(userId: string) {
         },
       },
     },
-    orderBy: { createdAt: 'desc' },
+    // The same order as `listBookmarkedProjectIds`, so the two never disagree on equal timestamps.
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });
 
   return bookmarks.map((bookmark) => ({
