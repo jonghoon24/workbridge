@@ -98,7 +98,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     security: bearer,
     responses: {
       200: ok(z.array(myApplication)),
-      ...errors(AUTHENTICATED, { 403: ['`Only freelancers can view their applications` — FREELANCER가 아님'] }),
+      ...errors(AUTHENTICATED, role('FREELANCER')),
     },
   });
 
@@ -112,7 +112,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     security: bearer,
     responses: {
       200: ok(z.array(bookmarkedProject)),
-      ...errors(AUTHENTICATED, { 403: ['`Only freelancers can view their bookmarks` — FREELANCER가 아님'] }),
+      ...errors(AUTHENTICATED, role('FREELANCER')),
     },
   });
 
@@ -142,7 +142,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     security: bearer,
     responses: {
       200: ok(z.array(myProject)),
-      ...errors(AUTHENTICATED, { 403: ['`Only clients can view their projects` — CLIENT가 아님'] }),
+      ...errors(AUTHENTICATED, role('CLIENT')),
     },
   });
 

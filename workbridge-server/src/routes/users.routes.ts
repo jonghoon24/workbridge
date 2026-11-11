@@ -42,9 +42,9 @@ router.get('/me', authenticate, getMe);
 // The upload runs before validation (multer fills `req.body`); its errors come first. A
 // non-image or oversized file is currently a 500, not a 400.
 router.patch('/me', authenticate, requireActiveUser, upload.single('profileImage'), validateProfileUpdate, updateMe);
-router.get('/me/applications', authenticate, getMyApplications);
-router.get('/me/bookmarks', authenticate, getMyBookmarks);
-router.get('/me/projects', authenticate, getMyProjects);
+router.get('/me/applications', authenticate, requireRole('FREELANCER'), getMyApplications);
+router.get('/me/bookmarks', authenticate, requireRole('FREELANCER'), getMyBookmarks);
+router.get('/me/projects', authenticate, requireRole('CLIENT'), getMyProjects);
 
 // The payout account. Must stay before `/:id`.
 const payoutGuard = [authenticate, requireActiveUser, requireRole('FREELANCER')];

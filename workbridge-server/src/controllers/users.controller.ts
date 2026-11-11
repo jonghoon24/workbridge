@@ -167,10 +167,6 @@ export async function getUserById(req: Request, res: Response, next: NextFunctio
 
 export async function getMyApplications(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    if (req.user.role !== 'FREELANCER') {
-      throw new AppError('Only freelancers can view their applications', 403);
-    }
-
     await closeExpiredOpenProjects();
     await rejectPendingApplicationsForClosedProjects({ freelancerId: req.user.id });
 
@@ -201,10 +197,6 @@ export async function getMyApplications(req: AuthedRequest, res: Response, next:
 
 export async function getMyBookmarks(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    if (req.user.role !== 'FREELANCER') {
-      throw new AppError('Only freelancers can view their bookmarks', 403);
-    }
-
     // A project whose client is soft-deleted is gone like a deleted project (docs/domain/README.md
     // "소프트 삭제": the joined owner too), as in the public list and detail.
     const bookmarks = await prisma.projectBookmark.findMany({
@@ -235,10 +227,6 @@ export async function getMyBookmarks(req: AuthedRequest, res: Response, next: Ne
 
 export async function getMyProjects(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
-    if (req.user.role !== 'CLIENT') {
-      throw new AppError('Only clients can view their projects', 403);
-    }
-
     await closeExpiredOpenProjects();
 
     const projects = await prisma.project.findMany({
