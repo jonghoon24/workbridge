@@ -55,7 +55,7 @@ async function discoverIds(page, role) {
 
   if (role === 'client') {
     const mine = (await apiGet(page, '/api/users/me/projects')) || [];
-    const owned = mine.find((p) => p.pricingAnalysis) || mine.find((p) => p.status === 'OPEN' && p._count?.applications) || mine[0];
+    const owned = mine.find((p) => p.status === 'OPEN' && p._count?.applications) || mine[0];
     if (owned) ids.project = owned.id;
   }
 
@@ -91,7 +91,6 @@ function routes(ids) {
     ['/projects/new'],
     [`/projects/${x(ids.project)}`, 'projects_[id]'],
     [`/projects/${x(ids.project)}/edit`, 'projects_[id]_edit'],
-    [`/projects/${x(ids.project)}/analysis`, 'projects_[id]_analysis'],
     [`/projects/${x(ids.project)}/applications`, 'projects_[id]_applications'],
     [`/contracts/${x(ids.contract)}`, 'contracts_[id]'],
     [`/contracts/${x(ids.contract)}/milestones/${x(ids.milestone)}`, 'contracts_[id]_milestones_[milestoneId]'],

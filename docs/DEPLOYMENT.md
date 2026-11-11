@@ -106,7 +106,7 @@ Vercel에는 상주 프로세스가 없어서 개발 서버가 띄우는 워커(
 
 ### 2. 요청 제한 카운터와 완료 작업 정리
 
-로그인과 AI 단가 분석의 요청 제한 카운터(`RateLimitCounter`) 중 만료된 행과 오래된 완료 작업은 `maintenance.cleanup` 작업(매일)이 지운다. 운영에서는 위 크론이 이 작업을 돌린다. 크론이 멈췄을 때는 직접 지운다.
+요청 제한 카운터(`RateLimitCounter`) 중 만료된 행과 오래된 완료 작업은 `maintenance.cleanup` 작업(매일)이 지운다. 운영에서는 위 크론이 이 작업을 돌린다. 크론이 멈췄을 때는 직접 지운다.
 
 ```sql
 DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';

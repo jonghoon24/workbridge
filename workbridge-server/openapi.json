@@ -34,7 +34,7 @@
     },
     {
       "name": "Projects",
-      "description": "프로젝트 등록·탐색·북마크와 AI 단가 분석"
+      "description": "프로젝트 등록·탐색·북마크"
     },
     {
       "name": "Applications",
@@ -1184,85 +1184,6 @@
           "createdAt"
         ]
       },
-      "PricingAnalysis": {
-        "type": [
-          "object",
-          "null"
-        ],
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "projectId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "features": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                },
-                "estimatedCost": {
-                  "type": "integer",
-                  "description": "원 단위 정수"
-                },
-                "rationale": {
-                  "type": "string"
-                },
-                "duration": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                }
-              },
-              "required": [
-                "name",
-                "description",
-                "estimatedCost",
-                "rationale",
-                "duration"
-              ]
-            }
-          },
-          "totalAmount": {
-            "type": "integer",
-            "description": "기능별 금액의 합계"
-          },
-          "summary": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "marketReference": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "projectId",
-          "features",
-          "totalAmount",
-          "summary",
-          "marketReference",
-          "createdAt"
-        ]
-      },
       "ProjectDetail": {
         "type": "object",
         "properties": {
@@ -1367,9 +1288,6 @@
               "applications"
             ],
             "description": "지원 수"
-          },
-          "pricingAnalysis": {
-            "$ref": "#/components/schemas/PricingAnalysis"
           }
         },
         "required": [
@@ -1386,8 +1304,7 @@
           "deletedAt",
           "createdAt",
           "client",
-          "_count",
-          "pricingAnalysis"
+          "_count"
         ]
       },
       "Application": {
@@ -6678,7 +6595,7 @@
           "Projects"
         ],
         "summary": "프로젝트 상세",
-        "description": "AI 단가 분석 결과가 있으면 함께 준다. **행을 쓴다:** 응답 전에 지연 수명주기 스윕을 돌린다 — 모집 시작일이 지난 `UPCOMING`은 `OPEN`, 마감이 지난 `UPCOMING`·`OPEN`은 `CLOSED`로 바꾸고 그 프로젝트의 대기 중인 지원을 거절한다.",
+        "description": "**행을 쓴다:** 응답 전에 지연 수명주기 스윕을 돌린다 — 모집 시작일이 지난 `UPCOMING`은 `OPEN`, 마감이 지난 `UPCOMING`·`OPEN`은 `CLOSED`로 바꾸고 그 프로젝트의 대기 중인 지원을 거절한다.",
         "security": [],
         "parameters": [
           {
@@ -7027,111 +6944,6 @@
           },
           "404": {
             "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/projects/{id}/analyze": {
-      "post": {
-        "operationId": "analyzeProject",
-        "tags": [
-          "Projects"
-        ],
-        "summary": "AI 단가 분석(소유 의뢰인)",
-        "description": "OpenAI(`gpt-4o-mini`)로 기능별 예상 단가를 산정해 저장한다(다시 부르면 덮어쓴다). 총액은 기능별 금액의 합이다. 레이트 리밋: 사용자당 1시간 5회, 하루 20회 — 프로젝트를 찾기 전에 세므로 404·403·502도 센다.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "format": "uuid",
-              "description": "프로젝트 ID"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "성공",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "allOf": [
-                    {
-                      "$ref": "#/components/schemas/PricingAnalysis"
-                    },
-                    {
-                      "type": "object"
-                    }
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "인증 실패\n\n- `Authentication required` — `Authorization: Bearer <토큰>` 헤더가 없음\n- `Invalid or expired token` — 토큰이 위조됐거나 만료됨\n- `Account is no longer active` — 탈퇴(소프트 삭제)한 사용자",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "권한 없음\n\n- `Insufficient permissions` — CLIENT 역할이 아님\n- `Not authorized` — 호출자의 리소스가 아님",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "찾을 수 없음\n\n- `Project not found` — 없거나 삭제된 프로젝트",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "요청 한도 초과\n\n- `Too many requests. Try again later.` — 분석 한도 초과",
-            "headers": {
-              "Retry-After": {
-                "schema": {
-                  "type": "string",
-                  "description": "다시 시도할 수 있을 때까지의 초"
-                },
-                "required": true
-              }
-            },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "502": {
-            "description": "외부 서비스 실패\n\n- `AI analysis provider request failed` — 공급자 호출 실패(네트워크 오류, 공급자 5xx 등). 공급자 메시지는 싣지 않는다\n- `AI analysis did not return a response` — 모델이 빈 응답을 줌(`choices`가 비었거나 내용이 없음)\n- `AI analysis did not return valid feature pricing` — JSON이 아닌 내용이거나 금액이 있는 기능이 하나도 없음",
             "content": {
               "application/json": {
                 "schema": {

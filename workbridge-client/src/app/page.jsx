@@ -4,7 +4,7 @@ import ProjectCardGrid from '@/components/projects/ProjectCardGrid';
 import HeroActions from '@/components/home/HeroActions';
 import ProjectDiscovery from '@/components/home/ProjectDiscovery';
 import HomeRecommendedProjects from '@/components/profile/HomeRecommendedProjects';
-import { ShieldCheckIcon, SparklesIcon, StarIcon } from '@/components/ui/Icons';
+import { MessageIcon, ShieldCheckIcon, StarIcon } from '@/components/ui/Icons';
 
 // 최근 프로젝트는 요청마다 서버에서 읽는다. axios 호출은 Next가 동적 데이터로 알아채지 못해서
 // 그냥 두면 빌드 때 정적으로 굳는다. 그러면 목록이 다음 배포까지 바뀌지 않고, 빌드가 그 환경의
@@ -55,14 +55,14 @@ export default async function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
             {[
               {
-                icon: SparklesIcon,
-                title: 'AI 단가 분석',
-                desc: '프로젝트 설명과 필요 기술을 바탕으로 기능별 예상 비용을 계산합니다. 예산을 정할 때 참고할 수 있습니다.',
-              },
-              {
                 icon: ShieldCheckIcon,
                 title: '전자 계약과 안전결제',
                 desc: '양측이 마일스톤 계획에 서명하면 계약이 시작됩니다. 결제한 금액은 WorkBridge가 보관하다가 결과물이 승인되면 정산합니다.',
+              },
+              {
+                icon: MessageIcon,
+                title: '계약별 대화방',
+                desc: '지원이 수락되면 의뢰인과 프리랜서 둘만의 대화방이 열립니다. 파일을 주고받고, 서명과 결제 같은 진행 상황도 대화방에 기록됩니다.',
               },
               {
                 icon: StarIcon,

@@ -12,7 +12,7 @@
       "count": 17
     },
     "@typescript-eslint/no-unsafe-member-access": {
-      "count": 7
+      "count": 1
     }
   },
   "src/lib/skills.ts": {

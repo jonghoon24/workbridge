@@ -72,8 +72,6 @@ const MESSAGES = {
     '지원자가 있는 프로젝트는 예산과 모집 기간을 바꿀 수 없습니다.',
   'Cannot delete a project with an unfinished contract':
     '진행 중이거나 서명 대기 중인 계약이 있는 프로젝트는 삭제할 수 없습니다.',
-  'AI analysis did not return a response': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
-  'AI analysis did not return valid feature pricing': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
 
   // 지원
   'You have already applied to this project': '이미 지원한 프로젝트입니다. 내 지원 현황에서 확인할 수 있습니다.',

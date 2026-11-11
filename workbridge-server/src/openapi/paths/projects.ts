@@ -22,7 +22,6 @@ import {
 import { messageBody } from '../responses/common';
 import {
   bookmarkState,
-  pricingAnalysis,
   project,
   projectDetail,
   projectList,
@@ -121,7 +120,7 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     operationId: 'getProjectById',
     tags,
     summary: '프로젝트 상세',
-    description: `AI 단가 분석 결과가 있으면 함께 준다. ${LAZY_SWEEP}`,
+    description: LAZY_SWEEP,
     security: publicRoute,
     request: { params: projectId },
     responses: { 200: ok(projectDetail), ...errors(PUBLIC_PROJECT_NOT_FOUND) },
@@ -191,30 +190,6 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
         NOT_OWNER,
         PROJECT_NOT_FOUND,
       ),
-    },
-  });
-
-  registry.registerPath({
-    method: 'post',
-    path: '/api/projects/{id}/analyze',
-    operationId: 'analyzeProject',
-    tags,
-    summary: 'AI 단가 분석(소유 의뢰인)',
-    description:
-      'OpenAI(`gpt-4o-mini`)로 기능별 예상 단가를 산정해 저장한다(다시 부르면 덮어쓴다). 총액은 기능별 금액의 합이다. '
-      + '레이트 리밋: 사용자당 1시간 5회, 하루 20회 — 프로젝트를 찾기 전에 세므로 404·403·502도 센다.',
-    security: bearer,
-    request: { params: projectId },
-    responses: {
-      200: ok(pricingAnalysis),
-      ...errors(ACTIVE_USER, role('CLIENT'), NOT_OWNER, PROJECT_NOT_FOUND, {
-        429: ['`Too many requests. Try again later.` — 분석 한도 초과'],
-        502: [
-          '`AI analysis provider request failed` — 공급자 호출 실패(네트워크 오류, 공급자 5xx 등). 공급자 메시지는 싣지 않는다',
-          '`AI analysis did not return a response` — 모델이 빈 응답을 줌(`choices`가 비었거나 내용이 없음)',
-          '`AI analysis did not return valid feature pricing` — JSON이 아닌 내용이거나 금액이 있는 기능이 하나도 없음',
-        ],
-      }),
     },
   });
 

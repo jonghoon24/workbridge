@@ -10,7 +10,7 @@ OpenAPI가 원본이라 여기서는 상수 이름만 가리킨다. 코드 구�
 | 문서 | 다루는 것 |
 | --- | --- |
 | [accounts.md](accounts.md) | 가입·로그인·토큰, 비밀번호 변경, Google 재인증, 회원 탈퇴, Google 로그인과 역할 선택, 프로필과 프로필 완성, 포트폴리오, 경력, 공개 프로필 |
-| [projects-contracts.md](projects-contracts.md) | 프로젝트 수명주기와 지연 스윕, 북마크, AI 단가 분석, 지원, 지원 수락과 계약 체결·서명, 리뷰, 추천 |
+| [projects-contracts.md](projects-contracts.md) | 프로젝트 수명주기와 지연 스윕, 북마크, 지원, 지원 수락과 계약 체결·서명, 리뷰, 추천 |
 | [milestones-payments.md](milestones-payments.md) | 돈 계산 규칙, 마일스톤 계획과 상태, 안전결제, 제출·검수·자동 승인, 주간 정산과 지급, 지급 계좌 |
 | [messaging-notifications.md](messaging-notifications.md) | 계약 대화방, 시스템 메시지, 읽음, 인앱 알림, 알림 설정과 이메일, 미확인 메시지 다이제스트 |
 | [jobs.md](jobs.md) | 비동기 작업이 무엇을 언제 하는지, 재시도와 플래그로 꺼 둔 작업 |

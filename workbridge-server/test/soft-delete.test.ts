@@ -1,15 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * `src/lib/openai` and `axios` (TossPayments) are mocked so `POST /api/projects/:id/analyze` and
- * `POST /api/payments/confirm` can be exercised without touching a real service. Toss rejects by
- * default; a row that needs it to answer sets the answer in its `setup`.
+ * `axios` (TossPayments) is mocked so `POST /api/payments/confirm` can be exercised without
+ * touching a real service. Toss rejects by default; a row that needs it to answer sets the answer
+ * in its `setup`.
  */
-const { openaiCreate, tossPost } = vi.hoisted(() => ({ openaiCreate: vi.fn(), tossPost: vi.fn() }));
-
-vi.mock('../src/lib/openai', () => ({
-  default: { chat: { completions: { create: openaiCreate } } },
-}));
+const { tossPost } = vi.hoisted(() => ({ tossPost: vi.fn() }));
 
 vi.mock('axios', () => ({
   default: { post: tossPost },
@@ -88,7 +84,6 @@ async function withBypassEnabled<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 beforeEach(() => {
-  openaiCreate.mockReset();
   tossPost.mockReset();
   tossPost.mockRejectedValue(new Error('unexpected TossPayments call'));
 });
@@ -639,39 +634,6 @@ const guardedMutations: Mutation[] = [
     },
   },
   {
-    label: 'POST /api/projects/:id/analyze',
-    async setup() {
-      const actor = await makeClient();
-      const project = await makeProject(actor.id);
-      openaiCreate.mockResolvedValue({
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              features: [{
-                name: '회원 인증',
-                description: GHOST,
-                estimatedCost: 1_000_000,
-                rationale: '표준 구현 기준',
-                duration: '1주',
-              }],
-              totalAmount: 1_000_000,
-              summary: GHOST,
-              marketReference: '유사 프로젝트 1,000,000원 내외',
-            }),
-          },
-        }],
-      });
-      return {
-        actor,
-        send: (token) => bearer(token).post(`/api/projects/${project.id}/analyze`),
-        async assertUnchanged() {
-          expect(await prisma.pricingAnalysis.count()).toBe(0);
-          expect(openaiCreate).not.toHaveBeenCalled();
-        },
-      };
-    },
-  },
-  {
     label: 'POST /api/contracts/:id/sign',
     async setup() {
       const { freelancer, contract } = await makeContractScenario();
@@ -1026,10 +988,6 @@ const deletedProjectRoutes: { label: string; send: (fx: DeletedProjectFixture) =
       authed(fx.client).patch(`/api/projects/${fx.projectId}/status`).send({ status: 'CLOSED' }),
   },
   {
-    label: 'POST /api/projects/:id/analyze',
-    send: (fx) => authed(fx.client).post(`/api/projects/${fx.projectId}/analyze`),
-  },
-  {
     label: 'POST /api/projects/:id/applications',
     send: (fx) => authed(fx.otherFreelancer).post(`/api/projects/${fx.projectId}/applications`).send({
       coverLetter: GHOST,
@@ -1165,16 +1123,6 @@ describe('a soft-deleted project', () => {
     expect(after.title).toBe(before.title);
     expect(after.status).toBe(before.status);
     expect(after.deletedAt?.getTime()).toBe(before.deletedAt?.getTime());
-  });
-
-  it('is not analyzed: OpenAI is never reached and no analysis row is written', async () => {
-    const fx = await deletedProjectFixture();
-
-    const res = await authed(fx.client).post(`/api/projects/${fx.projectId}/analyze`);
-
-    expect(res.status).toBe(404);
-    expect(openaiCreate).not.toHaveBeenCalled();
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
   });
 });
 

@@ -310,9 +310,6 @@ export default function ProjectDetailPage() {
               <Link href={`/projects/${id}/applications`}>
                 <Button variant="secondary" size="sm">지원자 관리</Button>
               </Link>
-              <Link href={`/projects/${id}/analysis`}>
-                <Button variant="secondary" size="sm">AI 분석</Button>
-              </Link>
               {canClose && (
                 <Button variant="secondary" size="sm" onClick={handleCloseProject}>모집 마감</Button>
               )}

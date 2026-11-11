@@ -25,7 +25,7 @@ export const PROFILE_MESSAGES = {
 /** `experienceYears` is an `Int` column; a larger value would be a database error (a 500). */
 const MAX_INT32 = 2_147_483_647;
 
-/** An hourly rate above 100 million won is a typo, not a price; it would also skew rate analysis. */
+/** An hourly rate above 100 million won is a typo, not a price. */
 export const MAX_HOURLY_RATE = 100_000_000;
 
 /** A text column that may be cleared: a string (an empty one is stored as is) or JSON `null`. */

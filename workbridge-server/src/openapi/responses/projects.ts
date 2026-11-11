@@ -53,34 +53,12 @@ export const bookmarkedProjectIds = z.object({
   projectIds: z.array(z.string()),
 });
 
-/** One row of `PricingAnalysis.features`, normalized before it was stored (`analyzeProject`). */
-const pricingFeature = z.object({
-  name: z.string(),
-  description: z.string(),
-  estimatedCost: won,
-  rationale: z.string(),
-  duration: z.string().nullable(),
-});
-
-export const pricingAnalysis = z
-  .object({
-    id,
-    projectId: id,
-    features: z.array(pricingFeature),
-    totalAmount: won.openapi({ description: '기능별 금액의 합계' }),
-    summary: z.string().nullable(),
-    marketReference: z.string().nullable(),
-    createdAt: dateTime,
-  })
-  .openapi('PricingAnalysis');
-
 /** `GET /api/projects/:id`. */
 export const projectDetail = z
   .object({
     ...projectFields,
     client: projectClient.extend({ businessField: z.string().nullable() }),
     _count: applicationCount,
-    pricingAnalysis: pricingAnalysis.nullable(),
   })
   .openapi('ProjectDetail');
 

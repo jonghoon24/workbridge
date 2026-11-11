@@ -1,5 +1,5 @@
-import type { Prisma, ProjectStatus, User } from '@prisma/client';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Prisma, ProjectStatus } from '@prisma/client';
+import { describe, expect, it, vi } from 'vitest';
 
 import { api, authed } from './helpers/api';
 import { prisma } from './helpers/db';
@@ -16,12 +16,10 @@ import { DAY_MS, kstDateString, kstDateToEndOfDay, startOfKstDay } from '../src/
 /**
  * The project mutation endpoints. Product rules: `docs/domain/projects-contracts.md`.
  *
- * Two module-boundary mocks, and nothing else:
- *  - `src/lib/openai` — `POST /:id/analyze` must never reach the real provider.
- *  - `src/lib/projectLifecycle` — a passthrough by default, switchable to throw so the
- *    `CLOSED` transaction's rollback can be observed (atomicity).
+ * One module-boundary mock, and nothing else: `src/lib/projectLifecycle` — a passthrough by
+ * default, switchable to throw so the `CLOSED` transaction's rollback can be observed (atomicity).
  *
- * Scope limit on that second mock, worth stating because it is easy to over-read: replacing the
+ * Scope limit on that mock, worth stating because it is easy to over-read: replacing the
  * module's exports only intercepts calls made *through the module boundary*, i.e. the
  * controller's own `rejectPendingApplicationsForClosedProjects(...)` in `updateProjectStatus`.
  * `closeExpiredOpenProjects` reaches the same helper through a module-internal reference inside
@@ -29,12 +27,6 @@ import { DAY_MS, kstDateString, kstDateToEndOfDay, startOfKstDay } from '../src/
  * exercises the rollback of the **`PATCH /:id/status` transaction only** — the lazy sweep's own
  * transaction is *not* covered anywhere in this file (another unit covers it).
  */
-
-const openaiCreate = vi.hoisted(() => vi.fn());
-
-vi.mock('../src/lib/openai', () => ({
-  default: { chat: { completions: { create: openaiCreate } } },
-}));
 
 const lifecycleFault = vi.hoisted(() => ({ failRejectPending: false }));
 
@@ -64,21 +56,6 @@ async function ownedProject(overrides: Partial<Prisma.ProjectUncheckedCreateInpu
   const project = await makeProject(client.id, overrides);
   return { client, project };
 }
-
-/** The OpenAI chat-completion envelope the controller reads (`choices[0].message.content`). */
-function modelResponse(payload: unknown) {
-  return { choices: [{ message: { content: JSON.stringify(payload) } }] };
-}
-
-function rawContent(content: string | null) {
-  return { choices: [{ message: { content } }] };
-}
-
-type CreateArgs = {
-  model: string;
-  messages: Array<{ role: string; content: string }>;
-  response_format: { type: string };
-};
 
 const ALL_STATUSES: ProjectStatus[] = [
   'UPCOMING',
@@ -536,21 +513,12 @@ describe('POST /api/projects', () => {
 // ======================================================================================
 
 describe('GET /api/projects/:id', () => {
-  it('returns the project with its client, application count, and pricingAnalysis', async () => {
+  it('returns the project with its client and application count', async () => {
     const { client, project } = await ownedProject();
     const freelancerA = await makeFreelancer();
     const freelancerB = await makeFreelancer();
     await makeApplication(project.id, freelancerA.id);
     await makeApplication(project.id, freelancerB.id);
-    await prisma.pricingAnalysis.create({
-      data: {
-        projectId: project.id,
-        features: [{ name: '로그인', description: '이메일 로그인', estimatedCost: 500_000, rationale: '근거', duration: '3일' }],
-        totalAmount: 500_000,
-        summary: '요약',
-        marketReference: '참고',
-      },
-    });
 
     const res = await api().get(`/api/projects/${project.id}`);
 
@@ -567,20 +535,14 @@ describe('GET /api/projects/:id', () => {
       _count: { applications: 2 },
     });
     expect(res.body.client).not.toHaveProperty('email');
-    expect(res.body.pricingAnalysis).toMatchObject({
-      projectId: project.id,
-      totalAmount: 500_000,
-      summary: '요약',
-    });
   });
 
-  it('returns pricingAnalysis: null when there is no analysis', async () => {
+  it('counts zero applications for a project nobody applied to', async () => {
     const { project } = await ownedProject();
 
     const res = await api().get(`/api/projects/${project.id}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.pricingAnalysis).toBeNull();
     expect(res.body._count.applications).toBe(0);
   });
 
@@ -1425,381 +1387,5 @@ describe('PATCH /api/projects/:id/status', () => {
       ).toBe('PENDING');
       expect(await prisma.notification.count()).toBe(0);
     });
-  });
-});
-
-// ======================================================================================
-// POST /api/projects/:id/analyze
-// ======================================================================================
-
-describe('POST /api/projects/:id/analyze', () => {
-  const twoFeatures = {
-    features: [
-      {
-        name: '회원 인증',
-        description: '이메일 로그인과 소셜 로그인',
-        estimatedCost: 1_000_000,
-        rationale: '표준 구현 기준',
-        duration: '1주',
-      },
-      {
-        name: '결제 연동',
-        description: 'PG 연동',
-        estimatedCost: 2_000_000,
-        rationale: '외부 연동 난이도',
-        duration: '2주',
-      },
-    ],
-    totalAmount: 99,
-    summary: '전체 요약',
-    marketReference: '유사 프로젝트 3,000,000원 내외',
-  };
-
-  let client: User;
-  let project: Awaited<ReturnType<typeof makeProject>>;
-
-  beforeEach(async () => {
-    openaiCreate.mockReset();
-    client = await makeClient();
-    project = await makeProject(client.id, { budget: 7_777_777 });
-  });
-
-  afterEach(() => {
-    openaiCreate.mockReset();
-  });
-
-  it('returns 404 for an unknown id', async () => {
-    const res = await authed(client).post(
-      '/api/projects/00000000-0000-0000-0000-000000000000/analyze',
-    );
-
-    expect(res.status).toBe(404);
-    expect(openaiCreate).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 Not authorized for a client who does not own the project', async () => {
-    const intruder = await makeClient();
-
-    const res = await authed(intruder).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
-    expect(openaiCreate).not.toHaveBeenCalled();
-  });
-
-  it('calls gpt-4o-mini in JSON mode and withholds the client budget from the prompt', async () => {
-    openaiCreate.mockResolvedValue(modelResponse(twoFeatures));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(200);
-    expect(openaiCreate).toHaveBeenCalledTimes(1);
-
-    const args = openaiCreate.mock.calls[0][0] as CreateArgs;
-    expect(args.model).toBe('gpt-4o-mini');
-    expect(args.response_format).toEqual({ type: 'json_object' });
-
-    const prompt = args.messages.map((m) => m.content).join('\n');
-    expect(prompt).toContain(project.title);
-    expect(prompt).toContain(project.category);
-    expect(prompt).not.toContain('7777777');
-    expect(prompt).not.toContain('7,777,777');
-  });
-
-  it('normalizes a well-formed response and persists it', async () => {
-    openaiCreate.mockResolvedValue(modelResponse(twoFeatures));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({
-      projectId: project.id,
-      totalAmount: 3_000_000,
-      summary: '전체 요약',
-      marketReference: '유사 프로젝트 3,000,000원 내외',
-    });
-
-    const stored = await prisma.pricingAnalysis.findUniqueOrThrow({
-      where: { projectId: project.id },
-    });
-    expect(stored.features).toEqual([
-      {
-        name: '회원 인증',
-        description: '이메일 로그인과 소셜 로그인',
-        estimatedCost: 1_000_000,
-        rationale: '표준 구현 기준',
-        duration: '1주',
-      },
-      {
-        name: '결제 연동',
-        description: 'PG 연동',
-        estimatedCost: 2_000_000,
-        rationale: '외부 연동 난이도',
-        duration: '2주',
-      },
-    ]);
-    expect(stored.totalAmount).toBe(3_000_000);
-  });
-
-  it('recomputes totalAmount as the sum of surviving features, ignoring the model total', async () => {
-    openaiCreate.mockResolvedValue(modelResponse(twoFeatures));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(200);
-    expect(twoFeatures.totalAmount).toBe(99);
-    expect(res.body.totalAmount).toBe(3_000_000);
-
-    const stored = await prisma.pricingAnalysis.findUniqueOrThrow({
-      where: { projectId: project.id },
-    });
-    expect(stored.totalAmount).toBe(3_000_000);
-  });
-
-  it('drops the summary sentences that state an amount, so the summary cannot contradict the recomputed total', async () => {
-    openaiCreate.mockResolvedValue(modelResponse({
-      ...twoFeatures,
-      summary: '쇼핑몰 리뉴얼 프로젝트입니다. 총 11,000,000원이 예상됩니다. 디자인 비중이 큽니다! 결제는 1100만 원 수준입니다.',
-    }));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.totalAmount).toBe(3_000_000);
-    expect(res.body.summary).toBe('쇼핑몰 리뉴얼 프로젝트입니다. 디자인 비중이 큽니다!');
-    const stored = await prisma.pricingAnalysis.findUniqueOrThrow({ where: { projectId: project.id } });
-    expect(stored.summary).toBe('쇼핑몰 리뉴얼 프로젝트입니다. 디자인 비중이 큽니다!');
-  });
-
-  it('stores a null summary when every sentence states an amount', async () => {
-    openaiCreate.mockResolvedValue(modelResponse({ ...twoFeatures, summary: '예상 총액은 1.2억원입니다.' }));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.summary).toBeNull();
-  });
-
-  it('asks the model to keep amounts out of the summary', async () => {
-    openaiCreate.mockResolvedValue(modelResponse(twoFeatures));
-
-    await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    const prompt = (openaiCreate.mock.calls[0][0] as CreateArgs).messages.map((m) => m.content).join('\n');
-    expect(prompt).toContain('summary에는 금액을 쓰지 마세요');
-  });
-
-  it('drops features whose estimatedCost is zero or negative and re-sums the rest', async () => {
-    openaiCreate.mockResolvedValue(
-      modelResponse({
-        features: [
-          { name: '유효', description: 'ok', estimatedCost: 400_000, rationale: 'r', duration: '3일' },
-          { name: '영원', description: 'zero', estimatedCost: 0, rationale: 'r' },
-          { name: '음수', description: 'negative', estimatedCost: -500_000, rationale: 'r' },
-        ],
-        totalAmount: 1_000_000,
-      }),
-    );
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.totalAmount).toBe(400_000);
-
-    const stored = await prisma.pricingAnalysis.findUniqueOrThrow({
-      where: { projectId: project.id },
-    });
-    expect(stored.features).toEqual([
-      { name: '유효', description: 'ok', estimatedCost: 400_000, rationale: 'r', duration: '3일' },
-    ]);
-  });
-
-  it('coerces every feature field: string costs, missing names, missing duration', async () => {
-    openaiCreate.mockResolvedValue(
-      modelResponse({
-        features: [
-          { estimatedCost: '1,500,000원' },
-          { name: '반올림', estimatedCost: 1000.6, description: null, rationale: undefined },
-        ],
-        summary: '   여백 있는 요약   ',
-      }),
-    );
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.summary).toBe('여백 있는 요약');
-    expect(res.body.marketReference).toBeNull();
-
-    const stored = await prisma.pricingAnalysis.findUniqueOrThrow({
-      where: { projectId: project.id },
-    });
-    expect(stored.features).toEqual([
-      { name: '기능 1', description: '', estimatedCost: 1_500_000, rationale: '', duration: null },
-      { name: '반올림', description: '', estimatedCost: 1001, rationale: '', duration: null },
-    ]);
-    expect(stored.totalAmount).toBe(1_501_001);
-  });
-
-  it('returns 502 when the model returns no content', async () => {
-    openaiCreate.mockResolvedValue(rawContent(null));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: { message: 'AI analysis did not return a response' } });
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
-  });
-
-  it('returns 502 when the content is an empty string', async () => {
-    openaiCreate.mockResolvedValue(rawContent(''));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: { message: 'AI analysis did not return a response' } });
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
-  });
-
-  it('returns 502 when features is an empty array', async () => {
-    openaiCreate.mockResolvedValue(modelResponse({ features: [], totalAmount: 500 }));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(502);
-    expect(res.body).toEqual({
-      error: { message: 'AI analysis did not return valid feature pricing' },
-    });
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
-  });
-
-  it('returns 502 when every feature is priced at zero or below', async () => {
-    openaiCreate.mockResolvedValue(
-      modelResponse({
-        features: [
-          { name: 'a', estimatedCost: 0 },
-          { name: 'b', estimatedCost: -1 },
-          { name: 'c', estimatedCost: 'free' },
-        ],
-        totalAmount: 1_000_000,
-      }),
-    );
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(502);
-    expect(res.body.error.message).toBe('AI analysis did not return valid feature pricing');
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
-  });
-
-  it('returns 502 when features is not an array at all', async () => {
-    openaiCreate.mockResolvedValue(modelResponse({ features: 'lots of stuff', totalAmount: 10 }));
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(502);
-    expect(res.body.error.message).toBe('AI analysis did not return valid feature pricing');
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
-  });
-
-  it('leaves an existing analysis untouched when a re-analysis fails validation', async () => {
-    openaiCreate.mockResolvedValue(modelResponse(twoFeatures));
-    await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    openaiCreate.mockResolvedValue(modelResponse({ features: [] }));
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(res.status).toBe(502);
-
-    const stored = await prisma.pricingAnalysis.findUniqueOrThrow({
-      where: { projectId: project.id },
-    });
-    expect(stored.totalAmount).toBe(3_000_000);
-  });
-
-  it('upserts on re-analysis rather than creating a second row', async () => {
-    openaiCreate.mockResolvedValue(modelResponse(twoFeatures));
-    const first = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    expect(first.status).toBe(200);
-
-    openaiCreate.mockResolvedValue(
-      modelResponse({
-        features: [
-          { name: '재분석', description: 'd', estimatedCost: 750_000, rationale: 'r', duration: '5일' },
-        ],
-        totalAmount: 0,
-        summary: '두 번째 요약',
-        marketReference: null,
-      }),
-    );
-    const second = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect(second.status).toBe(200);
-    expect(second.body.id).toBe(first.body.id);
-    expect(second.body.totalAmount).toBe(750_000);
-    expect(second.body.summary).toBe('두 번째 요약');
-    expect(second.body.marketReference).toBeNull();
-
-    expect(await prisma.pricingAnalysis.count()).toBe(1);
-    const stored = await prisma.pricingAnalysis.findUniqueOrThrow({
-      where: { projectId: project.id },
-    });
-    expect(stored.id).toBe(first.body.id);
-    expect(stored.totalAmount).toBe(750_000);
-    expect(stored.summary).toBe('두 번째 요약');
-  });
-
-  it('returns 502 without echoing the provider error when the provider call fails', async () => {
-    openaiCreate.mockRejectedValue(new Error('socket hang up'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    const errorLogs = consoleError.mock.calls.length;
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: { message: 'AI analysis provider request failed' } });
-    expect(errorLogs).toBe(0);
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
-  });
-
-  it('returns 502 when the model content is not JSON', async () => {
-    openaiCreate.mockResolvedValue(rawContent('not json at all'));
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    const errorLogs = consoleError.mock.calls.length;
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-    expect(res.body).toEqual({
-      error: { message: 'AI analysis did not return valid feature pricing' },
-    });
-    expect(errorLogs).toBe(0);
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
-  });
-
-  it('returns 502 when the provider response has no choices', async () => {
-    openaiCreate.mockResolvedValue({ choices: [] });
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-    const errorLogs = consoleError.mock.calls.length;
-    consoleError.mockRestore();
-
-    expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: { message: 'AI analysis did not return a response' } });
-    expect(errorLogs).toBe(0);
-    expect(await prisma.pricingAnalysis.count()).toBe(0);
-  });
-
-  it('exposes the analysis through GET /api/projects/:id afterwards', async () => {
-    openaiCreate.mockResolvedValue(modelResponse(twoFeatures));
-    await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    const res = await api().get(`/api/projects/${project.id}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.pricingAnalysis.totalAmount).toBe(3_000_000);
   });
 });
