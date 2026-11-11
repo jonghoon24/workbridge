@@ -74,10 +74,10 @@ async function retryOnceOnPaymentConflict<T>(attempt: () => Promise<T>): Promise
 
 type PaymentOrder = { orderId: string; amount: number; paymentId: string };
 
-/** The fields of TossPayments' confirm response this file reads; the rest is ignored. */
+/** The fields of TossPayments' confirm response this file reads, unchecked — hence `Number()` below. */
 interface TossConfirmResponse {
-  totalAmount: number;
-  status: string;
+  totalAmount: unknown;
+  status: unknown;
 }
 
 /**
