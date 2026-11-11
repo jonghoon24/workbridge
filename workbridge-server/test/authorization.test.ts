@@ -56,37 +56,6 @@ vi.mock('axios', () => ({
   },
 }));
 
-vi.mock('../src/lib/openai', () => ({
-  default: {
-    chat: {
-      completions: {
-        create: vi.fn(async () => ({
-          choices: [
-            {
-              message: {
-                content: JSON.stringify({
-                  features: [
-                    {
-                      name: '기능',
-                      description: '설명',
-                      estimatedCost: 1_000_000,
-                      rationale: '근거',
-                      duration: '1주',
-                    },
-                  ],
-                  totalAmount: 1_000_000,
-                  summary: '요약',
-                  marketReference: '참고',
-                }),
-              },
-            },
-          ],
-        })),
-      },
-    },
-  },
-}));
-
 type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 /** Path/body parameters a route needs, so the table can be reused with real or missing ids. */
@@ -339,12 +308,6 @@ const PROTECTED_ROUTES: RouteSpec[] = [
     method: 'patch',
     path: (ids) => `/api/projects/${ids.projectId}/status`,
     body: () => ({ status: 'CLOSED' }),
-    role: 'CLIENT',
-  },
-  {
-    label: 'POST /api/projects/:id/analyze',
-    method: 'post',
-    path: (ids) => `/api/projects/${ids.projectId}/analyze`,
     role: 'CLIENT',
   },
 
@@ -782,8 +745,8 @@ describe('the route table itself', () => {
     expect(mounted.length).toBeGreaterThan(70);
   });
 
-  it('records a role gate for exactly the 35 role-gated routes', () => {
-    expect(ROLE_GATED_ROUTES).toHaveLength(35);
+  it('records a role gate for exactly the 34 role-gated routes', () => {
+    expect(ROLE_GATED_ROUTES).toHaveLength(34);
   });
 });
 
@@ -973,8 +936,8 @@ describe('authorization — role gating', () => {
   const clientOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'CLIENT');
   const freelancerOnly = ROLE_GATED_ROUTES.filter((r) => r.role === 'FREELANCER');
 
-  it('splits the role-gated routes into 12 CLIENT-only and 23 FREELANCER-only', () => {
-    expect(clientOnly).toHaveLength(12);
+  it('splits the role-gated routes into 11 CLIENT-only and 23 FREELANCER-only', () => {
+    expect(clientOnly).toHaveLength(11);
     expect(freelancerOnly).toHaveLength(23);
   });
 

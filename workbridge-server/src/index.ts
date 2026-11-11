@@ -1,5 +1,5 @@
 // `dotenv/config` must stay the first import. It compiles to a `require()` that runs
-// before the ones below it, and `lib/openai.ts` / `middlewares/upload.ts` read
+// before the ones below it, and `middlewares/upload.ts` reads
 // `process.env` at module-evaluation time — so moving it breaks boot.
 import 'dotenv/config';
 // Second, right after the env is loaded. Without `SENTRY_DSN` this loads nothing more.

@@ -79,8 +79,6 @@ const MESSAGES = {
   'Deadline can only be set when reopening recruitment': '마감일은 다시 모집할 때만 바꿀 수 있습니다.',
   'Cannot reopen recruitment while the project has a contract':
     '서명 대기 중인 계약이 있어 다시 모집할 수 없습니다. 계약을 철회한 뒤 다시 시도해 주세요.',
-  'AI analysis did not return a response': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
-  'AI analysis did not return valid feature pricing': 'AI 분석 결과를 받지 못했습니다. 잠시 후 다시 시도해 주세요.',
 
   // 지원
   'You have already applied to this project': '이미 지원한 프로젝트입니다. 내 지원 현황에서 확인할 수 있습니다.',

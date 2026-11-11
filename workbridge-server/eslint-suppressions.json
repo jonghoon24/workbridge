@@ -10,9 +10,6 @@
     },
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 16
-    },
-    "@typescript-eslint/no-unsafe-member-access": {
-      "count": 6
     }
   },
   "src/lib/skills.ts": {

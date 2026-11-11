@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import BrandMark from '@/components/ui/BrandMark';
-import { ShieldCheckIcon, SparklesIcon, StarIcon } from '@/components/ui/Icons';
+import { MessageIcon, ShieldCheckIcon, StarIcon } from '@/components/ui/Icons';
 
 const PROMISES = [
   { icon: ShieldCheckIcon, text: '단계별 안전결제' },
-  { icon: SparklesIcon, text: 'AI 단가 분석' },
+  { icon: MessageIcon, text: '계약별 대화방' },
   { icon: StarIcon, text: '상호 리뷰' },
 ];
 

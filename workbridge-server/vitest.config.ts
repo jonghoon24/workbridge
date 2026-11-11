@@ -28,14 +28,13 @@ export default defineConfig({
       DATABASE_URL: testDatabaseUrl,
       DIRECT_URL: testDatabaseUrl,
 
-      // `lib/openai.ts` and `middlewares/upload.ts` construct clients at module-evaluation
-      // time and throw when these are absent, so importing the app requires them. Dummy
+      // `middlewares/upload.ts` constructs a client at module-evaluation time and throws when
+      // these are absent, so importing the app requires them. Dummy
       // values are fine — no test may call a real external service.
       JWT_ACCESS_SECRET: 'test_access_secret',
       JWT_REFRESH_SECRET: 'test_refresh_secret',
       JWT_ACCESS_EXPIRES_IN: '15m',
       JWT_REFRESH_EXPIRES_IN: '7d',
-      OPENAI_API_KEY: 'test_openai_key',
       SUPABASE_URL: 'https://test.supabase.co',
       SUPABASE_SECRET_KEY: 'test_supabase_key',
       GOOGLE_CLIENT_ID: 'test_google_client_id',

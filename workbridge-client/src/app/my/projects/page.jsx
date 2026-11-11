@@ -96,9 +96,6 @@ export default function MyProjectsPage() {
                   <Link href={`/projects/${project.id}/applications`}>
                     <Button variant="secondary" size="sm">지원자</Button>
                   </Link>
-                  <Link href={`/projects/${project.id}/analysis`}>
-                    <Button variant="secondary" size="sm">AI 분석</Button>
-                  </Link>
                   <Link href={`/projects/${project.id}/edit`}>
                     <Button variant="secondary" size="sm">수정</Button>
                   </Link>

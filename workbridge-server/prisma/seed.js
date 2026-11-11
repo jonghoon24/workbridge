@@ -1733,57 +1733,6 @@ async function main() {
 
   console.log('Email deliveries created');
 
-  // ─── AI 분석 결과 (project1) ─────────────────────────
-  await prisma.pricingAnalysis.create({
-    data: {
-      projectId: project1.id,
-      features: [
-        {
-          name: 'GPT API 연동 챗봇 엔진',
-          description: 'OpenAI API 기반 대화 처리 엔진 개발',
-          estimatedCost: 2500000,
-          rationale: 'GPT API 연동 및 프롬프트 엔지니어링, 컨텍스트 관리 포함',
-          duration: '2주',
-        },
-        {
-          name: '주문 조회/반품 접수 기능',
-          description: '기존 쇼핑몰 DB와 연동하여 주문 조회, 반품 접수 처리',
-          estimatedCost: 1500000,
-          rationale: '외부 시스템 API 연동 및 비즈니스 로직 구현',
-          duration: '1주',
-        },
-        {
-          name: '고객 채팅 UI',
-          description: '실시간 채팅 인터페이스 (웹 위젯 형태)',
-          estimatedCost: 1200000,
-          rationale: 'WebSocket 기반 실시간 통신 및 반응형 UI 구현',
-          duration: '1주',
-        },
-        {
-          name: '관리자 대시보드',
-          description: '대화 이력 조회, 통계, 챗봇 학습 데이터 관리',
-          estimatedCost: 2000000,
-          rationale: '데이터 시각화 및 관리 기능 포함 어드민 페이지',
-          duration: '1.5주',
-        },
-        {
-          name: '배포 및 인프라 설정',
-          description: 'AWS/GCP 배포, CI/CD 파이프라인 구성',
-          estimatedCost: 800000,
-          rationale: '컨테이너화 및 자동 배포 환경 구성',
-          duration: '0.5주',
-        },
-      ],
-      totalAmount: 8000000,
-      summary:
-        '전체 프로젝트는 약 6주 소요 예상이며, GPT API 연동 챗봇 엔진이 가장 핵심적인 작업입니다. 예산 800만원은 시장 평균 대비 적정한 수준입니다.',
-      marketReference:
-        '유사 AI 챗봇 프로젝트의 시장 평균 단가는 700만원~1,200만원 범위입니다. 관리자 대시보드 포함 시 상위 범위에 해당합니다.',
-      createdAt: ago(5 * DAY + 2 * HOUR),
-    },
-  });
-
-  console.log('Pricing analysis created');
   console.log('Seed completed successfully!');
 }
 
