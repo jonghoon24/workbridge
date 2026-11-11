@@ -163,6 +163,19 @@ DB를 통째로 읽은 사람(백업, SQL 접근)도 키 없이는 계좌번호�
 - 시드(`prisma/seed.js`)는 `prisma/payoutAccountCrypto.js`(같은 형식의 CommonJS 사본)로 암호화해 넣는다. 두 구현이 같은지는
   `test/payout-account-crypto.test.ts`가 시드 쪽 출력을 서버 코드로 복호화해 확인한다.
 
+### 행 단위 보안
+
+Supabase는 `public` 스키마를 Data API(PostgREST)로 공개한다. 그래서 RLS가 꺼진 테이블은 프로젝트 URL과 anon(publishable) 키만
+있으면 누구나 읽고 쓸 수 있다. 앱은 Data API를 쓰지 않는다. 서버는 Prisma로 테이블 소유자 역할로 접속하고(소유자는 RLS를 우회한다),
+Storage는 secret 키로만 다룬다. 그래서 **모든 테이블에 RLS를 켜고 정책은 두지 않는다**. anon·authenticated 역할은 아무 행도 보지
+못하고, 앱 동작은 바뀌지 않는다(`20261111024733_enable_row_level_security`, `_prisma_migrations` 포함). 이 마이그레이션은
+마이그레이션 역할이 소유하지 않은 테이블(확장이 만든 테이블 등)을 건너뛰고 `NOTICE`만 남긴다. 그런 테이블은 대시보드에서 따로 확인한다.
+
+- 새 테이블은 그 테이블을 만드는 마이그레이션에서 RLS를 켠다. `--create-only`로 만든 SQL 끝에
+  `ALTER TABLE "<Model>" ENABLE ROW LEVEL SECURITY;`를 붙인다(`db-migration` 스킬). 빠뜨리면 `test/db-constraints.test.ts`의
+  "row level security"가 실패하고, Supabase Security Advisor에 "RLS Disabled in Public"이 뜬다.
+- 정책을 만들지 않으므로 `FORCE ROW LEVEL SECURITY`는 쓰지 않는다. 쓰면 소유자인 앱도 막힌다.
+
 ## 인덱스
 
 인덱스는 실제로 도는 쿼리에 맞춰 단다. 유니크 제약(`@unique`, `@@unique`)은 자체 인덱스가 있으므로 따로 달지 않는다. 확장 도메인 모델의 인덱스는 위 모델 표에 적었고, 기존 도메인의 목록 쿼리와 외래 키 쪽 인덱스는 다음과 같다(`20261108143952_add_list_and_foreign_key_indexes`).
@@ -259,6 +272,7 @@ DB를 통째로 읽은 사람(백업, SQL 접근)도 키 없이는 계좌번호�
 | `20261110082927_add_payment_confirm_started_at` | `Payment.confirmStartedAt`(nullable) 추가. 기존 행은 null(선점 없음). 데이터 변경 없음 |
 | `20261110084919_normalize_user_email` | 데이터만: 모든 `User.email`(탈퇴 포함)을 앞뒤 공백 제거 + 소문자로 바꾼다. 정규화하면 같아지는 주소가 둘 이상이면 아무것도 바꾸지 않고 이유를 밝히며 실패한다(어느 계정을 남길지는 사람이 정한다). 스키마 변경 없음 |
 | `20261110090000_private_attachment_storage` | 첨부를 비공개 버킷으로: `MessageAttachment`·`MilestoneAttachment`에 `storageKey`(unique), `url`을 nullable로, 둘 중 하나는 있어야 하는 CHECK. `AttachmentUpload`와 `AttachmentUploadScope`. 데이터 변경 없음(예전 행은 공개 URL 그대로, 이전은 `scripts/migrate-legacy-attachments.ts`) |
+| `20261111024733_enable_row_level_security` | 스키마의 모든 테이블(`_prisma_migrations` 포함)에 RLS를 켠다. 정책은 없다("행 단위 보안"). 스키마·데이터 변경 없음 |
 
 - **기본 마일스톤 백필**: 확장 전에 있던 계약마다 마일스톤 1개(`전체 작업`, 금액 `ROUND(amount::numeric)`, 기한 = 계약 `endDate`)를 만들었다. 완료 계약이면 `APPROVED`(`MANUAL`), 결제가 완료됐으면 `FUNDED`, 나머지는 `PENDING`. float를 그대로 반올림하면 1원 어긋나므로 numeric으로 바꿔 반올림한다(위 "금액이 `Float`인 부채"). 기존 결제는 그 마일스톤에 연결했고, 미완료 결제의 금액은 마일스톤 금액으로 맞췄다. 완료 계약의 `completedAt`은 알 수 없어 `createdAt`으로 채웠다.
 - **정산 원장은 확장 이후 승인분부터다.** 확장 전에 완료된 계약의 마일스톤에는 `SettlementItem`이 없다(화면의 예상 정산액은 현재 요율로 계산해 보여준다).

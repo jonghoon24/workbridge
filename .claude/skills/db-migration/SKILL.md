@@ -41,6 +41,11 @@ npx prisma migrate dev --name <short_snake_case_name>
 클라이언트를 다시 생성한다. 생성된 SQL을 읽는다: 지워지는 컬럼/테이블(데이터 손실), enum 변경,
 기본값 없는 `NOT NULL`을 확인한다.
 
+**새 테이블이면 RLS를 켠다.** `npx prisma migrate dev --create-only --name <name>`으로 SQL만 만들고, 끝에
+`ALTER TABLE "<Model>" ENABLE ROW LEVEL SECURITY;`를 테이블마다 붙인 뒤 `npx prisma migrate dev`로 적용한다.
+정책은 만들지 않는다. 앱은 테이블 소유자로 접속해 RLS를 우회하고, Supabase Data API(anon 키)는 막힌다
+(`docs/DATABASE.md` "행 단위 보안"). 빠뜨리면 `test/db-constraints.test.ts`가 실패한다.
+
 ## 3. 백필 (필요하면)
 
 백필은 같은 새 마이그레이션에 넣는다: `npx prisma migrate dev --create-only --name <name>`이 적용하지

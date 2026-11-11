@@ -23,5 +23,7 @@ paths:
 - 불변식: `Project.contract` 1:1, `Payment.milestoneId`와 `SettlementItem.milestoneId` 유니크,
   `Application`은 `(projectId, freelancerId)`마다 하나, `Review`는 `(contractId, reviewerId)`마다 하나.
   유니크 충돌 → 409(P2002는 트랜잭션 밖에서 catch).
+- 새 테이블은 만드는 마이그레이션에서 `ENABLE ROW LEVEL SECURITY`를 켠다(정책 없이, `FORCE`도 없이).
+  Supabase가 `public`을 Data API로 공개하기 때문이다(`docs/DATABASE.md` "행 단위 보안").
 - 금액 컬럼은 `Float`(의도된 부채 — 마이그레이션하지 않는다)이고, 계산은 `lib/money.ts`로 원 단위 정수로 한다.
 - 모델이나 컬럼이 바뀔 때마다 `docs/DATABASE.md`를 고친다.
