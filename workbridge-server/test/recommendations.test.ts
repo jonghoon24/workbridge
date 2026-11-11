@@ -14,7 +14,7 @@ import {
 } from './helpers/factories';
 
 /**
- * Skill-based recommendations (scoring tables under 추천 in `docs/domain/projects-contracts.md`). The
+ * Skill-based recommendations (scoring tables in the JSDoc of `src/lib/recommendations.ts`). The
  * role matrix and the 404/403 rows live in `authorization.test.ts`; the pure scoring functions are
  * pinned in `lib.test.ts`.
  */
