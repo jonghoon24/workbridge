@@ -380,7 +380,8 @@ export async function changeProjectStatus(projectId: string, clientId: string, i
 
     // Read the pending applicants before they are rejected: only they hear that recruitment
     // closed. Applicants already decided (or rejected in an earlier round) were told already.
-    const pending = status === 'CLOSED'
+    const endsRecruiting = status === 'CLOSED' || status === 'CANCELLED';
+    const pending = endsRecruiting
       ? await tx.application.findMany({
         where: { projectId: project.id, status: 'PENDING' },
         select: { freelancer: { select: { id: true, deletedAt: true } } },
@@ -392,14 +393,18 @@ export async function changeProjectStatus(projectId: string, clientId: string, i
       data: { status },
     });
 
-    if (status === 'CLOSED') {
-      await rejectPendingApplicationsForClosedProjects({ projectId }, tx);
+    if (endsRecruiting) {
+      // A cancelled project rejects its pending applications like a closed one.
+      await rejectPendingApplicationsForClosedProjects({ projectId }, tx, status);
       // Inline wording (not in the template table), routed through `notifyRecipients()` for
       // preferences and email, and to skip a deleted applicant.
+      const cancelled = status === 'CANCELLED';
       await notifyRecipients(tx, pending.map((application) => application.freelancer), {
         type: 'PROJECT_STATUS_CHANGED',
-        title: '프로젝트 모집이 마감되었습니다',
-        message: `'${project.title}' 프로젝트 모집이 마감되었습니다.`,
+        title: cancelled ? '프로젝트가 취소되었습니다' : '프로젝트 모집이 마감되었습니다',
+        message: cancelled
+          ? `'${project.title}' 프로젝트가 취소되었습니다.`
+          : `'${project.title}' 프로젝트 모집이 마감되었습니다.`,
         href: '/my/applications',
       }, now);
     }

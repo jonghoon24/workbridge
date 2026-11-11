@@ -94,6 +94,7 @@ export const ERROR_CODES = {
   PROJECT_STATUS_TRANSITION_INVALID: { status: 400, description: '지금 상태에서 허용되지 않는 상태 변경' },
   REOPEN_BLOCKED_BY_CONTRACT: { status: 409, description: '취소되지 않은 계약이 있어 다시 모집할 수 없음' },
   PROJECT_NOT_ACCEPTING_APPLICATIONS: { status: 400, description: '모집 중이 아닌 프로젝트' },
+  PROJECT_NOT_RECRUITING: { status: 409, description: '모집 중(OPEN, 마감 전)이 아니라 지원을 수락할 수 없는 프로젝트' },
   APPLICATION_NOT_FOUND: { status: 404, description: '없거나 이 프로젝트의 것이 아닌 지원' },
   APPLICATION_ALREADY_EXISTS: { status: 409, description: '이미 지원한 프로젝트(철회된 계약의 당사자 포함)' },
   APPLICATION_ALREADY_PROCESSED: { status: 409, description: '이미 수락·거절된 지원' },
