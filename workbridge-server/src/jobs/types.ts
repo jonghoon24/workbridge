@@ -25,6 +25,9 @@ export interface JobPayloads {
   'notification.email': { deliveryId: string };
   // Attachments. Keys in the private attachment bucket; a key already gone is not an error.
   'attachment.deleteObjects': { keys: string[] };
+  // Withdrawal. Paths in the public bucket (profile and portfolio images); the handler adds every
+  // profile image of the user and does nothing unless the user is soft-deleted.
+  'account.deletePublicFiles': { userId: string; paths: string[] };
 }
 
 export type JobType = keyof JobPayloads;

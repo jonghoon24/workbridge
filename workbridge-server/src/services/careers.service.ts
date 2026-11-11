@@ -3,7 +3,7 @@ import type { Career, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { kstMonthIndex, kstMonthOrNull, kstMonthString, kstMonthToDate } from '../lib/time';
-import { lockUserRow } from '../lib/locks';
+import { lockActiveUserRow } from '../lib/locks';
 import { CAREER_LIMITS, monthRangeIssue } from '../schemas/profile';
 import type { CareerCreateInput, CareerPatchInput } from '../schemas/profile';
 
@@ -93,7 +93,7 @@ export async function getPublicCareers(userId: string, now: Date = new Date()) {
 /** The count is checked under the user-row lock, so concurrent creates cannot pass the limit. */
 export async function createCareer(userId: string, input: CareerCreateInput) {
   const career = await prisma.$transaction(async (tx) => {
-    await lockUserRow(tx, userId);
+    await lockActiveUserRow(tx, userId);
     if (await tx.career.count({ where: { userId } }) >= CAREER_LIMITS.entries) {
       throw new AppError(LIMIT_REACHED, 409);
     }

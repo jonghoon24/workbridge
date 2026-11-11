@@ -166,3 +166,44 @@ export async function copyFromLegacyBucket(key: string): Promise<void> {
   if (e.status === 409 || String(e.statusCode) === '409' || /already exists|duplicate/i.test(error.message)) return;
   throw new Error(`legacy attachment copy failed for ${key}: ${error.message}`);
 }
+
+// ---------------------------------------------------------------------------
+// The public bucket: profile and portfolio images
+// ---------------------------------------------------------------------------
+
+/** The folder of profile images; `PATCH /api/users/me` names them `<userId>-<uuid>.<ext>`. */
+const PROFILE_IMAGE_FOLDER = 'profiles';
+
+/**
+ * The object path of a URL that `uploadToSupabase` returned for the public bucket, or `null` for
+ * any other URL (a Google profile picture, a seed placeholder) — those are not ours to delete.
+ */
+export function publicObjectPath(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const prefix = `${env.SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/public/${LEGACY_PUBLIC_BUCKET}/`;
+  if (!url.startsWith(prefix)) return null;
+  const path = decodeURIComponent(url.slice(prefix.length).split('?')[0]);
+  return path && !path.includes('..') ? path : null;
+}
+
+/** Every profile image the user ever uploaded, including replaced ones (their names start with the user id). */
+export async function listPublicProfileImages(userId: string): Promise<string[]> {
+  const paths: string[] = [];
+  const pageSize = 100;
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await storageClient()
+      .storage.from(LEGACY_PUBLIC_BUCKET)
+      .list(PROFILE_IMAGE_FOLDER, { search: `${userId}-`, limit: pageSize, offset });
+    if (error) throw new Error(`profile image list failed: ${error.message}`);
+    const names = (data ?? []).map((entry) => entry.name).filter((name) => name.startsWith(`${userId}-`));
+    paths.push(...names.map((name) => `${PROFILE_IMAGE_FOLDER}/${name}`));
+    if (!data || data.length < pageSize) return paths;
+  }
+}
+
+/** Deletes objects from the public bucket; one already gone is not an error. Throws on a storage failure (jobs retry). */
+export async function removePublicObjects(paths: readonly string[]): Promise<void> {
+  if (paths.length === 0) return;
+  const { error } = await storageClient().storage.from(LEGACY_PUBLIC_BUCKET).remove([...paths]);
+  if (error) throw new Error(`public object remove failed: ${error.message}`);
+}

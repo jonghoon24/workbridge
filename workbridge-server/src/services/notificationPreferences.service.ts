@@ -1,7 +1,7 @@
 import type { Role } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { lockUserRow } from '../lib/locks';
+import { lockActiveUserRow } from '../lib/locks';
 import { effectiveChannels, normalizeStored, typesForRole } from '../lib/notifications/policy';
 import type { NotificationCategory } from '../lib/notifications/policy';
 import type { NotificationType } from '../lib/notifications/types';
@@ -65,7 +65,7 @@ export function getNotificationPreferences(userId: string) {
  */
 export async function putNotificationPreferences(userId: string, entries: readonly PreferenceEntry[]) {
   return prisma.$transaction(async (tx) => {
-    await lockUserRow(tx, userId);
+    await lockActiveUserRow(tx, userId);
 
     const rows = await tx.notificationPreference.findMany({
       where: { userId, type: { in: entries.map((entry) => entry.type) } },

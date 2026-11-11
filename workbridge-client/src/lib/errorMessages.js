@@ -59,6 +59,8 @@ const MESSAGES = {
   'New password must be different from the current password': '새 비밀번호는 현재 비밀번호와 달라야 합니다.',
   'Account has no password': 'Google 계정으로 가입한 회원은 비밀번호를 변경할 수 없습니다.',
   'Password has already been changed': '비밀번호가 이미 변경되었습니다. 새로고침한 뒤 다시 시도해 주세요.',
+  'Cannot withdraw while contracts or settlements are unfinished':
+    '진행 중인 계약이나 받지 않은 정산이 있어 탈퇴할 수 없습니다.',
 
   // 프로젝트
   'Project not found': '프로젝트를 찾을 수 없습니다. 삭제되었을 수 있습니다.',

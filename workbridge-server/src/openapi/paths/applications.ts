@@ -82,7 +82,7 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
         {
           404: [
             '`Project not found` — 없거나 삭제된 프로젝트',
-            '`Application not found` — 이 프로젝트의 지원이 아님',
+            '`Application not found` — 이 프로젝트의 지원이 아님, 지원자가 탈퇴했거나 삭제됨(수락 도중 포함)',
           ],
           409: [
             '`This application has already been processed` — 대기 중이 아님',

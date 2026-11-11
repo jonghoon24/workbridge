@@ -26,7 +26,8 @@
 
 6. **지급 계좌·포트폴리오/경력·알림 설정을 쓰는 트랜잭션과 주간 정산 배치(`settleFreelancer`)는 `lockUserRow(tx, userId)`를 첫 문장으로 둔다.**
    - 왜: 사용자 행 잠금 하나로 이 쓰기들과 지급 결정을 직렬화한다(`docs/DATABASE.md` "동시성: 잠금과 조건부 쓰기"). 앞에 다른 쿼리가 오면 그 읽기와 잠금 사이에 경합 창이 다시 열린다(동시 생성이 개수 한도를 넘는 식이다. 경합 테스트가 잡는다). 정산 배치는 지급 결정과 같은 `User` → `Settlement` 순서여야 한다 — 한 트랜잭션에서 같은 행을 두 번 쓰면 FK 부모 행(사용자)도 잠겨, 정산 행부터 잡으면 지급 결정과 교착한다(#79).
-   - 확인: 해당 서비스의 `$transaction` 콜백에서 첫 `await`가 `lockUserRow`인지 본다.
+   - 예외: 회원 탈퇴(`account.service.ts` `withdrawInTransaction`)는 지원 수락과 같은 `Project` → `Application` → `User` 순서로 잠그고, 교착(40P01·P2034)이면 트랜잭션을 한 번 다시 돌린다(`docs/DATABASE.md` "회원 탈퇴의 잠금"). 사용자 요청 경로는 `lockActiveUserRow`로 잡아 기다리는 사이에 탈퇴한 사용자의 쓰기를 401로 막는다.
+   - 확인: 해당 서비스의 `$transaction` 콜백에서 첫 `await`가 `lockUserRow`(사용자 요청이면 `lockActiveUserRow`)인지 본다.
 
 7. **알림은 `notify()`/`notifyMany()`로, 작업은 `enqueueJob()`으로, 원인이 된 상태 변경의 트랜잭션 안에서 만든다.**
    - 왜: `notify()`가 채널 정책과 수신자 설정을 적용하고 인앱 행·`EmailDelivery`·`notification.email` 작업을 한 번에 쓴다. 롤백된 변경이 알림이나 작업을 남기면 안 된다(트랜잭션 아웃박스, `docs/domain/README.md` "원자성").

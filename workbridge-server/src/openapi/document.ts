@@ -6,6 +6,7 @@ import { buildRegistry } from './registry';
 const TAGS = [
   { name: 'Auth', description: '가입, 로그인, 토큰 갱신, 구글 OAuth' },
   { name: 'Users', description: '내 프로필과 공개 프로필, 내 지원·북마크·프로젝트' },
+  { name: 'Account', description: '회원 탈퇴(비밀번호 변경은 Auth)' },
   { name: 'Portfolio & careers', description: '프리랜서의 포트폴리오와 경력' },
   { name: 'Payout account', description: '프리랜서의 정산 지급 계좌' },
   { name: 'Projects', description: '프로젝트 등록·탐색·북마크와 AI 단가 분석' },

@@ -3,7 +3,9 @@ import type { PortfolioItem, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { kstMonthOrNull, kstMonthToDate } from '../lib/time';
-import { lockUserRow } from '../lib/locks';
+import { ACCOUNT_INACTIVE, lockActiveUserRow } from '../lib/locks';
+import { publicObjectPath } from '../lib/attachmentStorage';
+import { enqueueJob } from '../jobs/queue';
 import { storeUploadedFile } from '../middlewares/attachmentUpload';
 import { monthRangeIssue, PORTFOLIO_LIMITS } from '../schemas/profile';
 import type { PortfolioCreateInput, PortfolioPatchInput } from '../schemas/profile';
@@ -13,6 +15,17 @@ import type { PortfolioCreateInput, PortfolioPatchInput } from '../schemas/profi
 const NOT_FOUND = 'Portfolio item not found';
 const LIMIT_REACHED = `Portfolio is limited to ${PORTFOLIO_LIMITS.items} items`;
 const BAD_ORDER = 'ids: Must list each of your portfolio items exactly once';
+
+/**
+ * An image stored for a request whose user withdrew meanwhile: no item refers to it, and its key
+ * has no user id, so the withdrawal's file cleanup cannot find it. Hand it to that cleanup job,
+ * which deletes it only because the user is withdrawn (for a live user it does nothing).
+ */
+async function discardImageOfWithdrawnUser(userId: string, imageUrl: string | null): Promise<void> {
+  const path = publicObjectPath(imageUrl);
+  if (!path) return;
+  await enqueueJob(prisma, { type: 'account.deletePublicFiles', payload: { userId, paths: [path] } });
+}
 
 /** `sortOrder` ascending, then newest first, then `id`. */
 export const PORTFOLIO_ORDER: Prisma.PortfolioItemOrderByWithRelationInput[] = [
@@ -75,7 +88,7 @@ export async function createPortfolioItem(
   const imageUrl = image ? (await storeUploadedFile(image, 'portfolio')).url : null;
 
   const item = await prisma.$transaction(async (tx) => {
-    await lockUserRow(tx, userId);
+    await lockActiveUserRow(tx, userId);
 
     // …and again under the user-row lock: two creates at 19 items end at 20 and one 409.
     const [count, last] = await Promise.all([
@@ -98,6 +111,10 @@ export async function createPortfolioItem(
         sortOrder: last ? last.sortOrder + 1 : 0,
       },
     });
+  }).catch(async (err: unknown) => {
+    // Withdrew while the image was uploading: the lock check refused the write (401).
+    if (err instanceof AppError && err.message === ACCOUNT_INACTIVE) await discardImageOfWithdrawnUser(userId, imageUrl);
+    throw err;
   });
 
   return { item: serializePortfolioItem(item) };
@@ -137,7 +154,8 @@ export async function updatePortfolioItem(
   if (input.endedAt !== undefined) data.endedAt = toMonth(input.endedAt);
   if (input.removeImage) data.imageUrl = null;
   // The replaced or removed file stays in storage.
-  if (image) data.imageUrl = (await storeUploadedFile(image, 'portfolio')).url;
+  const storedImageUrl = image ? (await storeUploadedFile(image, 'portfolio')).url : null;
+  if (storedImageUrl) data.imageUrl = storedImageUrl;
 
   // No lock: an update changes neither the count nor the order. An item deleted since the
   // read above is a 404.
@@ -146,7 +164,11 @@ export async function updatePortfolioItem(
     ? await prisma.portfolioItem.updateMany({ where: { id: itemId, userId }, data })
     : { count: 1 };
   const item = count === 1 ? await prisma.portfolioItem.findUnique({ where: { id: itemId } }) : null;
-  if (!item) throw new AppError(NOT_FOUND, 404);
+  if (!item) {
+    // The item is gone; if a withdrawal deleted it, the image just stored belongs to no one.
+    await discardImageOfWithdrawnUser(userId, storedImageUrl);
+    throw new AppError(NOT_FOUND, 404);
+  }
 
   return { item: serializePortfolioItem(item) };
 }
@@ -154,7 +176,7 @@ export async function updatePortfolioItem(
 /** Hard delete under the user-row lock, so it serializes with a reorder. Other items keep their `sortOrder`. */
 export async function deletePortfolioItem(userId: string, itemId: string) {
   return prisma.$transaction(async (tx) => {
-    await lockUserRow(tx, userId);
+    await lockActiveUserRow(tx, userId);
     // Read after the lock: an item deleted by a concurrent request while waiting is a 404.
     assertOwnItem(await tx.portfolioItem.findUnique({ where: { id: itemId }, select: { userId: true } }), userId);
     await tx.portfolioItem.delete({ where: { id: itemId } });
@@ -165,7 +187,7 @@ export async function deletePortfolioItem(userId: string, itemId: string) {
 /** `ids` must list each of the caller's items exactly once; checked under the user-row lock. */
 export async function reorderPortfolio(userId: string, ids: string[]) {
   return prisma.$transaction(async (tx) => {
-    await lockUserRow(tx, userId);
+    await lockActiveUserRow(tx, userId);
 
     const owned = await tx.portfolioItem.findMany({ where: { userId }, select: { id: true } });
     const ownedIds = new Set(owned.map((item) => item.id));
