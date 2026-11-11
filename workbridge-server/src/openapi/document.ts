@@ -9,7 +9,7 @@ const TAGS = [
   { name: 'Account', description: '회원 탈퇴(비밀번호 변경은 Auth)' },
   { name: 'Portfolio & careers', description: '프리랜서의 포트폴리오와 경력' },
   { name: 'Payout account', description: '프리랜서의 정산 지급 계좌' },
-  { name: 'Projects', description: '프로젝트 등록·탐색·북마크와 AI 단가 분석' },
+  { name: 'Projects', description: '프로젝트 등록·탐색·북마크' },
   { name: 'Applications', description: '지원과 수락·거절(수락하면 계약이 생긴다)' },
   { name: 'Recommendations', description: '기술 기반 추천' },
   { name: 'Contracts', description: '계약 조회와 서명' },

@@ -33,7 +33,7 @@ jobs:
       DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_e2e
       DIRECT_URL: postgresql://ci:ci@localhost:5432/workbridge_e2e
       # scripts/e2e.sh가 이 값들로 서버·클라이언트 변수를 모두 만든다(포트 4002/3002, 더미
-      # SUPABASE_URL/SUPABASE_SECRET_KEY/OPENAI_API_KEY, 결제 우회 켬, 작업 워커와 요청 제한 끔).
+      # SUPABASE_URL/SUPABASE_SECRET_KEY, 결제 우회 켬, 작업 워커와 요청 제한 끔).
       # CI=true면 `next dev` 대신 `next build && next start`로 돈다.
       E2E_DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_e2e
       E2E_CLIENT_MODE: prod

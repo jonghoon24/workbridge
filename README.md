@@ -1,12 +1,12 @@
 # WorkBridge - 프리랜서 매칭 플랫폼
 
-의뢰인과 프리랜서를 연결하는 중개 플랫폼입니다. 프로젝트 탐색과 지원, AI 단가 분석, 계약 체결부터 마일스톤 단위의 결제·산출물 제출·검수(반려와 7일 뒤 자동 승인), 수수료를 뗀 주간 정산과 지급 계좌, 계약별 대화방(첨부, 읽음 표시), 포트폴리오·경력과 스킬 기반 추천, 알림 종류별 인앱·이메일 설정까지 외주 프로세스 전체를 다룹니다. 자동 승인·정산·이메일은 Postgres 기반 작업 큐가 처리하고, 이메일은 아직 로그로만 남깁니다.
+의뢰인과 프리랜서를 연결하는 중개 플랫폼입니다. 프로젝트 탐색과 지원, 계약 체결부터 마일스톤 단위의 결제·산출물 제출·검수(반려와 7일 뒤 자동 승인), 수수료를 뗀 주간 정산과 지급 계좌, 계약별 대화방(첨부, 읽음 표시), 포트폴리오·경력과 스킬 기반 추천, 알림 종류별 인앱·이메일 설정까지 외주 프로세스 전체를 다룹니다. 자동 승인·정산·이메일은 Postgres 기반 작업 큐가 처리하고, 이메일은 아직 로그로만 남깁니다.
 
 ## 구성
 
 | 패키지 | 스택 |
 | --- | --- |
-| `workbridge-server` | Node 22, Express, TypeScript, Prisma, PostgreSQL(Supabase), Supabase Storage, OpenAI, 토스페이먼츠, Sentry(선택, `SENTRY_DSN`) |
+| `workbridge-server` | Node 22, Express, TypeScript, Prisma, PostgreSQL(Supabase), Supabase Storage, 토스페이먼츠, Sentry(선택, `SENTRY_DSN`) |
 | `workbridge-client` | Next.js 14 App Router(JSX), Tailwind CSS, Zustand, Axios |
 
 두 패키지는 따로 설치하고 따로 배포합니다(Vercel). 브라우저는 같은 출처의 `/api/*`를 부르고 Next 라우트 핸들러가 백엔드로 전달합니다.

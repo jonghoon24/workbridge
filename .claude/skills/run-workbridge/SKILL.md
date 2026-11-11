@@ -23,7 +23,7 @@ description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 
 - Node 22.x(`package.json`의 `engines`), npm. **localhost**의 PostgreSQL(`brew services start postgresql@14`, 슈퍼유저 =
   macOS 사용자, 비밀번호 없음).
 - 2와 3에는 Playwright Chromium: `(cd workbridge-client && npx playwright install chromium)`.
-- 외부 서비스(Google OAuth, OpenAI, 토스페이먼츠, Supabase Storage)는 더미 값을 쓴다:
+- 외부 서비스(Google OAuth, 토스페이먼츠, Supabase Storage)는 더미 값을 쓴다:
   그 기능은 실패하지만, 핵심 흐름은 모두 로컬 DB로 동작한다.
 
 ## 설정 (한 번만)
@@ -45,7 +45,6 @@ JWT_REFRESH_EXPIRES_IN=7d
 GOOGLE_CLIENT_ID=dummy
 GOOGLE_CLIENT_SECRET=dummy
 GOOGLE_CALLBACK_URL=http://localhost:3000/api/auth/google/callback
-OPENAI_API_KEY=dummy
 TOSS_SECRET_KEY=test_sk_dummy
 ALLOW_PAYMENT_BYPASS=true
 CLIENT_URL=http://localhost:3000

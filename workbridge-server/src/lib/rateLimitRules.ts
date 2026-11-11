@@ -2,13 +2,13 @@ import type { Request } from 'express';
 
 import { clientIp } from './clientIp';
 import { normalizeEmail } from './email';
-import { DAY_MS, HOUR_MS, MINUTE_MS } from './time';
+import { MINUTE_MS } from './time';
 import { hit, isRateLimitEnabled, reset } from './rateLimit';
 import type { JwtUserPayload, RateLimitRule } from '../types/index';
 
 /**
- * The rate-limit rules: login and password confirmation (docs/domain/accounts.md) and AI rate analysis
- * (docs/domain/projects-contracts.md). The client IP comes from `clientIp()` (`lib/clientIp.ts`).
+ * The rate-limit rules: login and password confirmation (docs/domain/accounts.md). The client IP
+ * comes from `clientIp()` (`lib/clientIp.ts`).
  */
 
 function normalizedEmail(req: Request): string | null {
@@ -50,25 +50,6 @@ export const PASSWORD_CONFIRM_FAILURE_RULE: RateLimitRule = {
   windowMs: 15 * MINUTE_MS,
   limit: 5,
   key: (req) => (req as { user?: JwtUserPayload }).user?.id ?? null,
-};
-
-// The analyze rules run after `authenticate`, so `req.user` is set.
-const analyzeKey = (req: Request) => (req as { user?: JwtUserPayload }).user?.id ?? null;
-
-/** AI pricing analysis, per user per hour. Every call counts — the provider bills per request. */
-export const ANALYZE_HOURLY_RULE: RateLimitRule = {
-  name: 'analyze.hour',
-  windowMs: HOUR_MS,
-  limit: 5,
-  key: analyzeKey,
-};
-
-/** AI pricing analysis, per user per KST day. */
-export const ANALYZE_DAILY_RULE: RateLimitRule = {
-  name: 'analyze.day',
-  windowMs: DAY_MS,
-  limit: 20,
-  key: analyzeKey,
 };
 
 export function ruleKey(rule: RateLimitRule, req: Request): string | null {

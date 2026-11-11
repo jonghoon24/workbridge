@@ -116,7 +116,6 @@ SERVER_ENV=(
   GOOGLE_CLIENT_ID=dummy
   GOOGLE_CLIENT_SECRET=dummy
   GOOGLE_CALLBACK_URL="$CLIENT_URL_LOCAL/api/auth/google/callback"
-  OPENAI_API_KEY=dummy
   TOSS_SECRET_KEY=test_sk_dummy
   SUPABASE_URL=https://dummy.supabase.co
   SUPABASE_SECRET_KEY=sb_secret_dummy

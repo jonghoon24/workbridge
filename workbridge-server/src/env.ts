@@ -53,9 +53,6 @@ export const env = {
   get SUPABASE_SECRET_KEY(): string {
     return required('SUPABASE_SECRET_KEY');
   },
-  get OPENAI_API_KEY(): string {
-    return required('OPENAI_API_KEY');
-  },
   /**
    * AES-256 key (32 bytes, base64) for payout account numbers at rest (`lib/payoutAccountCrypto.ts`).
    * Read at every encrypt/decrypt, so only the payout-account and payout paths fail without it.

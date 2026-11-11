@@ -343,6 +343,7 @@ export default function ProjectDetailPage() {
   const wasCancelledParty = myApplication?.contract?.status === 'CANCELLED';
   const loginHref = `/login?redirect=${encodeURIComponent(`/projects/${id}`)}`;
   const canClose = isOwner && project.status === 'OPEN';
+  const ownerActionCount = 2 + (canClose ? 1 : 0) + (canReopen ? 1 : 0) + (canDelete ? 1 : 0);
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -394,16 +395,13 @@ export default function ProjectDetailPage() {
             </>
           )}
           {isOwner && (
-            // 모바일에서는 3열 격자로 둬서 버튼 하나만 다음 줄로 떨어지지 않게 한다.
-            <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end">
+            // 모바일에서는 버튼 수에 맞춘 격자(3개면 3열, 그 밖에는 2열)로 둬서 버튼 하나만 다음 줄로 떨어지지 않게 한다.
+            <div className={`grid w-full ${ownerActionCount === 3 ? 'grid-cols-3' : 'grid-cols-2'} gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end`}>
               <Link href={`/projects/${id}/edit`} className="contents sm:block">
                 <Button variant="secondary" size="sm" className="w-full">수정</Button>
               </Link>
               <Link href={`/projects/${id}/applications`} className="contents sm:block">
                 <Button variant="secondary" size="sm" className="w-full">지원자 관리</Button>
-              </Link>
-              <Link href={`/projects/${id}/analysis`} className="contents sm:block">
-                <Button variant="secondary" size="sm" className="w-full">AI 분석</Button>
               </Link>
               {canClose && (
                 <Button variant="secondary" size="sm" onClick={handleCloseProject}>모집 마감</Button>

@@ -1,42 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-const { openaiCreate } = vi.hoisted(() => ({ openaiCreate: vi.fn() }));
-
-vi.mock('../src/lib/openai', () => ({
-  default: { chat: { completions: { create: openaiCreate } } },
-}));
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import express from 'express';
 import request from 'supertest';
 
-import { api, authed } from './helpers/api';
+import { api } from './helpers/api';
 import { prisma } from './helpers/db';
-import { makeClient, makeFreelancer, makeProject, makeUser, TEST_PASSWORD } from './helpers/factories';
+import { makeUser, TEST_PASSWORD } from './helpers/factories';
 import { hit, peek, reset } from '../src/lib/rateLimit';
 import { LOGIN_IP_RULE } from '../src/lib/rateLimitRules';
 import { clientIp } from '../src/lib/clientIp';
-import { startOfKstDay } from '../src/lib/time';
 import { errorHandler } from '../src/middlewares/errorHandler';
 import { rateLimit } from '../src/middlewares/rateLimit';
 
 /**
- * Rate limiting — the limiter itself, `POST /api/auth/login` and `POST /api/projects/:id/analyze`.
+ * Rate limiting — the limiter itself and `POST /api/auth/login`.
  * Counters live in a table that is truncated before every test, so each test starts at zero.
  */
 
 const TOO_MANY = { error: { message: 'Too many requests. Try again later.' } };
-
-const VALID_ANALYSIS = JSON.stringify({
-  features: [{ name: '기능 A', description: 'd', estimatedCost: 1_000_000, rationale: 'r', duration: '1주' }],
-  totalAmount: 1_000_000,
-  summary: 's',
-  marketReference: 'm',
-});
-
-beforeEach(() => {
-  openaiCreate.mockReset();
-  openaiCreate.mockResolvedValue({ choices: [{ message: { content: VALID_ANALYSIS } }] });
-});
 
 afterEach(() => {
   process.env.RATE_LIMIT_ENABLED = 'true';
@@ -345,90 +326,5 @@ describe('client IP from the Next.js proxy and the Vercel edge', () => {
     const res = await api().post('/api/auth/login').set('X-Client-IP', '203.0.113.99').send({});
 
     expectTooMany(res, 15 * 60);
-  });
-});
-
-// ---------------------------------------------------------------------------------------------
-// POST /api/projects/:id/analyze
-// ---------------------------------------------------------------------------------------------
-
-describe('POST /api/projects/:id/analyze rate limits', () => {
-  beforeEach(() => awayFromWindowEdge());
-
-  it('the 6th call in an hour is a 429 and never reaches OpenAI', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    for (let i = 0; i < 5; i += 1) {
-      expect((await authed(client).post(`/api/projects/${project.id}/analyze`)).status).toBe(200);
-    }
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expectTooMany(res, 3600);
-    expect(openaiCreate).toHaveBeenCalledTimes(5);
-  });
-
-  it('404, ownership 403 and 502 outcomes all count', async () => {
-    const client = await makeClient();
-    const someoneElse = await makeClient();
-    const theirs = await makeProject(someoneElse.id);
-    const mine = await makeProject(client.id);
-
-    expect((await authed(client).post('/api/projects/missing-project-id/analyze')).status).toBe(404);
-    expect((await authed(client).post('/api/projects/missing-project-id/analyze')).status).toBe(404);
-    expect((await authed(client).post(`/api/projects/${theirs.id}/analyze`)).status).toBe(403);
-    openaiCreate.mockResolvedValueOnce({ choices: [{ message: { content: '' } }] });
-    expect((await authed(client).post(`/api/projects/${mine.id}/analyze`)).status).toBe(502);
-    expect((await authed(client).post(`/api/projects/${mine.id}/analyze`)).status).toBe(200);
-
-    expectTooMany(await authed(client).post(`/api/projects/${mine.id}/analyze`), 3600);
-  });
-
-  it('is per user', async () => {
-    const client = await makeClient();
-    const other = await makeClient();
-    const project = await makeProject(client.id);
-    const otherProject = await makeProject(other.id);
-    for (let i = 0; i < 6; i += 1) await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expect((await authed(other).post(`/api/projects/${otherProject.id}/analyze`)).status).toBe(200);
-  });
-
-  it('requests rejected by authentication or the role check do not count', async () => {
-    const client = await makeClient();
-    const freelancer = await makeFreelancer();
-    const project = await makeProject(client.id);
-    for (let i = 0; i < 6; i += 1) {
-      expect((await api().post(`/api/projects/${project.id}/analyze`)).status).toBe(401);
-      expect((await authed(freelancer).post(`/api/projects/${project.id}/analyze`)).status).toBe(403);
-    }
-
-    expect(await prisma.rateLimitCounter.count()).toBe(0);
-    expect((await authed(client).post(`/api/projects/${project.id}/analyze`)).status).toBe(200);
-  });
-
-  it('the daily limit of 20 is a 429 until 00:00 KST', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    const now = new Date();
-    const windowStart = startOfKstDay(now);
-    const expiresAt = new Date(windowStart.getTime() + 86_400_000);
-    await prisma.rateLimitCounter.create({
-      data: { key: `analyze.day:${client.id}`, windowStart, count: 20, expiresAt },
-    });
-
-    const res = await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    expectTooMany(res, Math.ceil((expiresAt.getTime() - now.getTime()) / 1000));
-    expect(openaiCreate).not.toHaveBeenCalled();
-  });
-
-  it('a call refused by the hourly limit does not count toward the daily one', async () => {
-    const client = await makeClient();
-    const project = await makeProject(client.id);
-    for (let i = 0; i < 8; i += 1) await authed(client).post(`/api/projects/${project.id}/analyze`);
-
-    const daily = await prisma.rateLimitCounter.findFirstOrThrow({ where: { key: `analyze.day:${client.id}` } });
-    expect(daily.count).toBe(5);
   });
 });

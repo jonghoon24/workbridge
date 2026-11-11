@@ -2,7 +2,7 @@
 
 WorkBridge(프리랜서 매칭 플랫폼)는 의뢰인(`CLIENT`)과 프리랜서(`FREELANCER`)를 잇는다. 프로젝트 탐색
 → 지원 → 계약 → 마일스톤 결제(토스페이먼츠) → 정산 → 상호 리뷰가 기본 흐름이고, 메시지, 포트폴리오,
-AI 단가 분석(OpenAI)이 붙어 있다.
+프로젝트 추천이 붙어 있다.
 
 npm 패키지 두 개가 따로 있다(워크스페이스 툴 없음 — 커맨드는 각 패키지 안에서 실행한다).
 - `workbridge-server/` — Express + Prisma + PostgreSQL API, **TypeScript**, Vercel 배포.

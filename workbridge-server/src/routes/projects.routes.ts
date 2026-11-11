@@ -9,14 +9,11 @@ import {
   updateProject,
   deleteProject,
   updateProjectStatus,
-  analyzeProject,
 } from '../controllers/projects.controller';
 import { authenticate, requireRole } from '../middlewares/auth';
 import { requireActiveUser } from '../middlewares/activeUser';
 import { requireCompleteProfile } from '../middlewares/profile';
-import { rateLimit } from '../middlewares/rateLimit';
 import { validate } from '../middlewares/validate';
-import { ANALYZE_DAILY_RULE, ANALYZE_HOURLY_RULE } from '../lib/rateLimitRules';
 import { projectCreateBody, projectListQuery, projectStatusBody, projectUpdateBody } from '../schemas/projects';
 
 const router = Router();
@@ -54,17 +51,6 @@ router.patch(
   requireRole('CLIENT'),
   validate({ body: projectStatusBody }),
   updateProjectStatus,
-);
-// Limited before the project lookup: the OpenAI cost is per request, so 404/403/502 count too.
-// The route takes no body or query, so there is nothing to validate.
-router.post(
-  '/:id/analyze',
-  authenticate,
-  requireActiveUser,
-  requireRole('CLIENT'),
-  rateLimit(ANALYZE_HOURLY_RULE),
-  rateLimit(ANALYZE_DAILY_RULE),
-  analyzeProject,
 );
 
 export default router;
