@@ -102,6 +102,12 @@
 `ready_for_review` 이벤트로 AI 리뷰가 시작된다. 위임은 하되 리뷰 시작과 머지는 사람이 정한다. 그 뒤 `@claude`가 같은 PR에
 커밋을 푸시하면 actor가 `claude[bot]`이라서, 리뷰 워크플로는 `allowed_bots: claude`로 이 앱 하나만 허용한다.
 
+**PR이 바꾼 하네스는 머지된 뒤에 적용된다.** PR에서 액션은 Claude를 시작하기 전에 `.claude/`, `CLAUDE.md` 등을
+base 브랜치의 내용으로 되돌린다(PR이 CI의 Claude에게 줄 지시를 바꾸지 못하게 하는 장치다). 루트의 `REVIEW.md`는 그
+목록에 없어서, 리뷰 프롬프트가 `git show origin/<base>:REVIEW.md`로 직접 base의 것을 읽는다. 그래서 리뷰 기준을 더하는
+PR은 그 PR 안에서 새 기준으로 리뷰받지 않는다 — 머지한 뒤 다음 PR부터 적용된다. 워크플로 파일 자체는 PR의 것이
+돌므로 이것은 보안 경계가 아니라 일관성 규칙이다(쓰기 권한이 있는 사람만 PR을 올린다).
+
 **한계.** CI 리뷰어도 `REVIEW.md`와 rules가 다루는 것만 일관되게 본다. 리뷰 코멘트는 머지를 막지 않는다.
 
 ## 8. MCP — `.mcp.json`
