@@ -5,7 +5,7 @@ import { authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeFreelancer, makePayoutAccount } from './helpers/factories';
 import type { FieldErrorCode } from '../src/lib/errorCodes';
-import { invalidBodyFor } from './helpers/errors';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 import { decryptAccountNumber } from '../src/lib/payoutAccountCrypto';
 import { nextKstWeekday } from '../src/lib/time';
 
@@ -132,7 +132,7 @@ describe('PUT /api/users/me/payout-account', () => {
     const res = await put(freelancer, { bankCode: '004', accountNumber: '1234567890', holderName: '박지원' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { code: 'ACCOUNT_HOLDER_MISMATCH', message: 'Account holder must match your name' } });
+    expect(res.body).toEqual(invalidBody('holderName', 'CONFLICT', 'Account holder must match your name'));
   });
 
   it('409s while a payout is PROCESSING, and changes nothing', async () => {

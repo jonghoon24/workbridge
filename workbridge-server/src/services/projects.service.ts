@@ -23,9 +23,17 @@ import type { ProjectStatusTransitions } from '../types/index';
  * first, so those reads **write rows**. Bookmarks are `bookmarks.service.ts`.
  */
 
-function validateRecruitmentSchedule(recruitmentStartDate: Date, deadline: Date) {
+/**
+ * `field` is the request field the conflict is reported on: the one the caller sent. An edit that
+ * sends only `recruitmentStartDate` is blamed on it, not on the stored `deadline` it was not sent with.
+ */
+function validateRecruitmentSchedule(
+  recruitmentStartDate: Date,
+  deadline: Date,
+  field: 'deadline' | 'recruitmentStartDate' = 'deadline',
+) {
   if (recruitmentStartDate > deadline) {
-    throw invalidField('deadline', 'CONFLICT', 'recruitmentStartDate cannot be after deadline');
+    throw invalidField(field, 'CONFLICT', 'recruitmentStartDate cannot be after deadline');
   }
 }
 
@@ -208,7 +216,11 @@ export async function editProject(projectId: string, clientId: string, input: Pr
       const parsedDeadline: Date = deadline ?? current.deadline;
       const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? current.recruitmentStartDate ?? now;
 
-      validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
+      validateRecruitmentSchedule(
+        parsedRecruitmentStartDate,
+        parsedDeadline,
+        deadline === undefined ? 'recruitmentStartDate' : 'deadline',
+      );
 
       if (deadline !== undefined) updateData.deadline = parsedDeadline;
       if (recruitmentStartDate !== undefined) {

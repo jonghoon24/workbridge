@@ -251,7 +251,11 @@ describe('PUT /api/contracts/:id/milestones — refusals', () => {
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
-      error: { code: 'MILESTONE_AMOUNT_MISMATCH', message: 'Milestone amounts must add up to the contract amount (2500001)' },
+      error: {
+        code: 'VALIDATION_FAILED',
+        message: 'Milestone amounts must add up to the contract amount (2500001)',
+        fields: [{ path: 'milestones', code: 'CONFLICT' }],
+      },
     });
   });
 

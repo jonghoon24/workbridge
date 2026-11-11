@@ -83,7 +83,6 @@ export const ERROR_CODES = {
   CAREER_NOT_FOUND: { status: 404, description: '없거나 남의 경력' },
   CAREER_LIMIT_REACHED: { status: 409, description: '경력 개수 한도' },
   PAYOUT_ACCOUNT_LOCKED: { status: 409, description: '지급이 처리되는 중이라 계좌를 바꾸거나 지울 수 없음' },
-  ACCOUNT_HOLDER_MISMATCH: { status: 400, description: '예금주가 회원 이름과 다름' },
 
   // -------------------------------------------------------------------------------------------
   // Projects and applications
@@ -113,7 +112,6 @@ export const ERROR_CODES = {
   MILESTONE_NOT_FOUND: { status: 404, description: '없거나 프로젝트가 삭제된 마일스톤' },
   MILESTONE_PLAN_INVALID: { status: 400, description: '유효한 마일스톤 계획(금액 합계 = 계약 금액)이 없어 서명할 수 없음' },
   MILESTONE_PLAN_LOCKED: { status: 409, description: '계약이 시작되어 마일스톤 계획을 바꿀 수 없음' },
-  MILESTONE_AMOUNT_MISMATCH: { status: 400, description: '마일스톤 금액 합계가 계약 금액과 다름' },
   MILESTONE_NOT_AWAITING_SUBMISSION: { status: 409, description: '결과물을 제출할 수 있는 상태가 아닌 마일스톤' },
   MILESTONE_NOT_AWAITING_REVIEW: { status: 409, description: '검수 대기 중이 아닌 마일스톤' },
 

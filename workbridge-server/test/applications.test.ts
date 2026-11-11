@@ -80,21 +80,21 @@ describe('POST /api/projects/:id/applications', () => {
   });
 
   it.each([
-    ['non-numeric', 'abc'],
-    ['negative', -5000],
-    ['negative string', '-5000'],
-    ['minus one', -1],
-    ['the numeric string "0"', '0'],
-    ['whitespace', '   '],
+    ['non-numeric', 'abc', 'INVALID'],
+    ['negative', -5000, 'TOO_SMALL'],
+    ['negative string', '-5000', 'TOO_SMALL'],
+    ['minus one', -1, 'TOO_SMALL'],
+    ['the numeric string "0"', '0', 'TOO_SMALL'],
+    ['whitespace', '   ', 'INVALID'],
     // Strict number parsing: `parseFloat` used to read these as 2500000 and 1.
-    ['trailing-garbage', '2500000abc'],
-    ['exponent', '1e6'],
-    ['boolean', true],
-    ['null', null],
+    ['trailing-garbage', '2500000abc', 'INVALID'],
+    ['exponent', '1e6', 'INVALID'],
+    ['boolean', true, 'INVALID'],
+    ['null', null, 'INVALID'],
     // Money-time rule: amounts are whole won.
-    ['fractional', 2_500_000.5],
-    ['fractional string', '1000.5'],
-  ])('400s on a %s expectedRate, from the positivity check', async (_label, expectedRate) => {
+    ['fractional', 2_500_000.5, 'INVALID'],
+    ['fractional string', '1000.5', 'INVALID'],
+  ] as const)('400s on a %s expectedRate, from the positivity check', async (_label, expectedRate, code) => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -105,7 +105,7 @@ describe('POST /api/projects/:id/applications', () => {
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual(
-      invalidBody('expectedRate', 'INVALID', 'expectedRate: Expected rate must be a positive whole number of won'),
+      invalidBody('expectedRate', code, 'expectedRate: Expected rate must be a positive whole number of won'),
     );
     expect(await prisma.application.count()).toBe(0);
   });

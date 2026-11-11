@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { ApprovalType, Milestone, MilestoneStatus } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { CONTRACT_CANCELLED } from '../lib/contractMessages';
 import { env } from '../env';
 import { DAY_MS, HOUR_MS, kstDateString, kstDateToEndOfDay } from '../lib/time';
@@ -286,7 +286,7 @@ export async function replacePlan(contractId: string, actorId: string, items: re
   const expected = wholeWon(contract.amount);
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   if (total !== expected) {
-    throw new AppError('MILESTONE_AMOUNT_MISMATCH', `Milestone amounts must add up to the contract amount (${expected})`);
+    throw invalidField('milestones', 'CONFLICT', `Milestone amounts must add up to the contract amount (${expected})`);
   }
 
   const dueDates = items.map((item) => kstDateToEndOfDay(item.dueDate));

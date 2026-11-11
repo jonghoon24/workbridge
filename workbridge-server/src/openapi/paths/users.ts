@@ -173,8 +173,7 @@ export function registerUserPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(payoutAccountPutBody),
       ...errors(
-        invalid(),
-        cause('ACCOUNT_HOLDER_MISMATCH', '예금주가 회원 이름과 다름'),
+        invalid('`holderName` `CONFLICT` — 예금주가 회원 이름과 다름'),
         ACTIVE_USER,
         role('FREELANCER'),
         PAYOUT_LOCKED,

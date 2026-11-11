@@ -2,7 +2,7 @@ import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { contractListQuery } from '../../schemas/contracts';
 import { milestonePlanBody } from '../../schemas/milestones';
-import { ACTIVE_USER, AUTHENTICATED, bearer, cause, errors, invalid, jsonBody, notFound, ok, pathParams, role } from '../common';
+import { ACTIVE_USER, AUTHENTICATED, bearer, cause, errors, invalid, jsonBody, ok, pathParams, role } from '../common';
 import {
   contractConversation,
   contractDetail,
@@ -15,7 +15,7 @@ const tags = ['Contracts'];
 
 const contractId = pathParams({ id: '계약 ID' });
 const NOT_PARTY = cause('FORBIDDEN_RESOURCE', '계약 당사자가 아님');
-const CONTRACT_OR_PROJECT_NOT_FOUND = notFound('CONTRACT_NOT_FOUND', '없는 계약, 또는 프로젝트가 삭제됨');
+const CONTRACT_OR_PROJECT_NOT_FOUND = cause('CONTRACT_NOT_FOUND', '없는 계약, 또는 프로젝트가 삭제됨');
 
 export function registerContractPaths(registry: OpenAPIRegistry): void {
   registry.registerPath({
@@ -58,8 +58,7 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(replacedPlan),
       ...errors(
-        invalid(),
-        cause('MILESTONE_AMOUNT_MISMATCH', '금액 합이 계약 금액과 다름'),
+        invalid('`milestones` `CONFLICT` — 금액 합이 계약 금액과 다름'),
         ACTIVE_USER,
         role('CLIENT'),
         cause('FORBIDDEN_RESOURCE', '계약의 의뢰인이 아님'),

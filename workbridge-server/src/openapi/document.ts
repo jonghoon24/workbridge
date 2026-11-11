@@ -29,7 +29,8 @@ const DESCRIPTION = [
   '',
   '- 오류는 언제나 `{ "error": { "code": "…", "message": "…" } }`다. **분기는 `code`로 한다** — `message`는 개발자용 영어 문장이라 바뀔 수 있다. '
     + '코드의 뜻은 `ErrorCode` 스키마, 경로마다 내는 코드는 그 경로의 응답에 있다.',
-  '- 요청 검증 실패는 400 `VALIDATION_FAILED`이고 `fields`(`[{ path, code }]`)에 원인 필드를 준다. 지금은 첫 번째 오류 하나이고, `message`는 `<필드>: <메시지>`다.',
+  '- 요청 값이 틀리면 400 `VALIDATION_FAILED`이고 `fields`(`[{ path, code }]`)에 원인 필드를 준다. 지금은 첫 번째 오류 하나다. '
+    + '요청 스키마 검사에서 난 것은 `message`가 `<필드>: <메시지>`다.',
   '- `Content-Type: application/json` 본문이 JSON으로 읽히지 않으면 경로와 상관없이 인증·검증보다 먼저 400 `MALFORMED_BODY`다. '
     + '본문이 너무 크면 413 `PAYLOAD_TOO_LARGE`, 일치하는 경로가 없으면 404 `ROUTE_NOT_FOUND`다.',
   '- 금액은 원 단위 정수, 시각은 ISO 8601(UTC)이다. 날짜 계산은 KST(UTC+9)로 한다.',

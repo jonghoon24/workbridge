@@ -578,27 +578,27 @@ describe('POST /api/payments/confirm', () => {
     const res = await authed(client).post('/api/payments/confirm').send(body(payment.orderId, 0));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual(invalidBody('amount', 'INVALID', 'amount: Amount must be a positive whole number of won'));
+    expect(res.body).toEqual(invalidBody('amount', 'TOO_SMALL', 'amount: Amount must be a positive whole number of won'));
     expect(tossPost).not.toHaveBeenCalled();
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });
     expect(after.status).toBe('PENDING');
   });
 
   it.each([
-    ['a non-numeric string', 'abc'],
-    ['a negative number', -100],
-    ['-1', -1],
-    ["the string '0'", '0'],
-    ["the string '-0.0'", '-0.0'],
-    ['a non-finite value', 'Infinity'],
+    ['a non-numeric string', 'abc', 'INVALID'],
+    ['a negative number', -100, 'TOO_SMALL'],
+    ['-1', -1, 'TOO_SMALL'],
+    ["the string '0'", '0', 'TOO_SMALL'],
+    ["the string '-0.0'", '-0.0', 'INVALID'],
+    ['a non-finite value', 'Infinity', 'INVALID'],
     // Strict body validation: `Number()` used to read these as 0 or a number.
-    ['a whitespace-only string', '   '],
-    ['a trailing-garbage string', '4000000abc'],
-    ['a boolean', true],
+    ['a whitespace-only string', '   ', 'INVALID'],
+    ['a trailing-garbage string', '4000000abc', 'INVALID'],
+    ['a boolean', true, 'INVALID'],
     // Money-time rule: amounts are whole won.
-    ['a fraction', 4_000_000.5],
-    ['a fractional string', '1000.5'],
-  ])('rejects %s amount with 400', async (_label, amount) => {
+    ['a fraction', 4_000_000.5, 'INVALID'],
+    ['a fractional string', '1000.5', 'INVALID'],
+  ] as const)('rejects %s amount with 400', async (_label, amount, code) => {
     const { client, payment } = await pendingPayment();
 
     const res = await authed(client)
@@ -606,7 +606,7 @@ describe('POST /api/payments/confirm', () => {
       .send(body(payment.orderId, amount as number | string));
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual(invalidBody('amount', 'INVALID', 'amount: Amount must be a positive whole number of won'));
+    expect(res.body).toEqual(invalidBody('amount', code, 'amount: Amount must be a positive whole number of won'));
     expect(tossPost).not.toHaveBeenCalled();
 
     const after = await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } });

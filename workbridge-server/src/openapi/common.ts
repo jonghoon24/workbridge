@@ -203,11 +203,6 @@ export const IMAGE_UPLOAD: ErrorSpec = [
   cause('UPLOAD_FAILED', '저장소(Supabase Storage) 업로드 실패'),
 ];
 
-/** A 404 of a resource lookup. */
-export function notFound(code: ErrorCode, when: string): ErrorCause {
-  return cause(code, when);
-}
-
 export const NOT_OWNER = cause('FORBIDDEN_RESOURCE', '호출자의 리소스가 아님');
 
 // ---------------------------------------------------------------------------------------------

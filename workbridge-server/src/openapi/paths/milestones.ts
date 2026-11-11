@@ -11,7 +11,6 @@ import {
   errors,
   invalid,
   jsonBody,
-  notFound,
   ok,
   pathParams,
   role,
@@ -31,7 +30,7 @@ import {
 const tags = ['Milestones'];
 
 const milestoneId = pathParams({ id: '마일스톤 ID' });
-const MILESTONE_NOT_FOUND = notFound('MILESTONE_NOT_FOUND', '없는 마일스톤, 또는 프로젝트가 삭제됨');
+const MILESTONE_NOT_FOUND = cause('MILESTONE_NOT_FOUND', '없는 마일스톤, 또는 프로젝트가 삭제됨');
 const NOT_AWAITING_REVIEW = cause('MILESTONE_NOT_AWAITING_REVIEW', '제출(`SUBMITTED`) 상태가 아님');
 
 export function registerMilestonePaths(registry: OpenAPIRegistry): void {

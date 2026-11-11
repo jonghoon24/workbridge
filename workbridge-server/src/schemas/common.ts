@@ -139,8 +139,8 @@ const WHOLE_WON = /^-?\d+$/;
  * integer string (`'2500000'` — form inputs and the TossPayments redirect deliver strings).
  * Anything else — a fraction (`1000.5`), `'3abc'`, `'1e6'`, `'Infinity'`, whitespace, a boolean,
  * `null`, an unsafe integer, or a value below `min` — is one message:
- * `<Label> must be a positive whole number of won` (`non-negative` when `min` is 0). Absent →
- * `<Label> is required`.
+ * `<Label> must be a positive whole number of won` (`non-negative` when `min` is 0); its field code
+ * is `TOO_SMALL` for an integer below `min`, `INVALID` otherwise. Absent → `<Label> is required`.
  */
 export function bodyWholeWon(label: string, { min }: { min: 0 | 1 }) {
   const message = `${label} must be a ${min === 0 ? 'non-negative' : 'positive'} whole number of won`;
@@ -151,8 +151,10 @@ export function bodyWholeWon(label: string, { min }: { min: 0 | 1 }) {
     // `+ 0` turns `'-0'` into 0.
     .transform((value) => Number(value) + 0)
     .superRefine((value, ctx) => {
-      if (!Number.isSafeInteger(value) || value < min) {
+      if (!Number.isSafeInteger(value)) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      } else if (value < min) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message, params: fieldCode('TOO_SMALL') });
       }
     })
     .openapi({

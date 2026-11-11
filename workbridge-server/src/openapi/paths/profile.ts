@@ -21,7 +21,6 @@ import {
   invalid,
   jsonBody,
   NOT_OWNER,
-  notFound,
   ok,
   pathParams,
   publicRoute,
@@ -41,9 +40,9 @@ import {
 const tags = ['Portfolio & careers'];
 
 const FREELANCER: ErrorSpec = [...ACTIVE_USER, role('FREELANCER')];
-const USER_NOT_FOUND = notFound('USER_NOT_FOUND', '없거나 탈퇴한 사용자');
-const ITEM_NOT_FOUND = notFound('PORTFOLIO_ITEM_NOT_FOUND', '없는 포트폴리오 항목');
-const CAREER_NOT_FOUND = notFound('CAREER_NOT_FOUND', '없는 경력');
+const USER_NOT_FOUND = cause('USER_NOT_FOUND', '없거나 탈퇴한 사용자');
+const ITEM_NOT_FOUND = cause('PORTFOLIO_ITEM_NOT_FOUND', '없는 포트폴리오 항목');
+const CAREER_NOT_FOUND = cause('CAREER_NOT_FOUND', '없는 경력');
 
 /** JSON, or multipart with the optional `image` file. */
 function withImage(schema: z.ZodTypeAny) {

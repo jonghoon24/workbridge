@@ -170,7 +170,7 @@ describe('POST /api/projects', () => {
     const res = await authed(client).post('/api/projects').send({ ...validBody(), budget: 0 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual(invalidBody('budget', 'INVALID', 'budget: Budget must be a positive whole number of won'));
+    expect(res.body).toEqual(invalidBody('budget', 'TOO_SMALL', 'budget: Budget must be a positive whole number of won'));
     expect(await prisma.project.count()).toBe(0);
   });
 
@@ -671,7 +671,7 @@ describe('PATCH /api/projects/:id', () => {
     const res = await authed(intruder).patch(`/api/projects/${project.id}`).send({ budget: -1 });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual(invalidBody('budget', 'INVALID', 'budget: Budget must be a positive whole number of won'));
+    expect(res.body).toEqual(invalidBody('budget', 'TOO_SMALL', 'budget: Budget must be a positive whole number of won'));
   });
 
   it('leaves omitted fields untouched', async () => {
@@ -865,7 +865,8 @@ describe('PATCH /api/projects/:id', () => {
         .send({ recruitmentStartDate: daysFromNow(60).toISOString() });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe('recruitmentStartDate cannot be after deadline');
+      // Blamed on the field that was sent, not on the stored deadline.
+      expect(res.body).toEqual(invalidBody('recruitmentStartDate', 'CONFLICT', 'recruitmentStartDate cannot be after deadline'));
     });
 
     it('rejects an unparseable deadline with 400', async () => {
@@ -907,7 +908,7 @@ describe('PATCH /api/projects/:id', () => {
       const res = await authed(client).patch(`/api/projects/${project.id}`).send({ budget: 0 });
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual(invalidBody('budget', 'INVALID', 'budget: Budget must be a positive whole number of won'));
+      expect(res.body).toEqual(invalidBody('budget', 'TOO_SMALL', 'budget: Budget must be a positive whole number of won'));
 
       const stored = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
       expect(stored.budget).toBe(project.budget);

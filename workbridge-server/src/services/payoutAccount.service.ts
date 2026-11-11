@@ -1,7 +1,7 @@
 import type { PayoutAccount } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { bankName, maskAccountNumber } from '../lib/banks';
 import { lockActiveUserRow, lockUserRow } from '../lib/locks';
 import { logger } from '../lib/logger';
@@ -65,7 +65,7 @@ export interface PayoutAccountInput {
 export async function putPayoutAccount(userId: string, input: PayoutAccountInput, now: Date = new Date()) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true } });
   if (!holderMatches(input.holderName, user.name)) {
-    throw new AppError('ACCOUNT_HOLDER_MISMATCH', 'Account holder must match your name');
+    throw invalidField('holderName', 'CONFLICT', 'Account holder must match your name');
   }
 
   return prisma.$transaction(async (tx) => {

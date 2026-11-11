@@ -82,7 +82,7 @@ router.post('/things', ...guard, validate({ body: thingBody }), postThing);
   필드를 빠짐없이 적는다 — 테스트가 응답을 strict하게 검사하므로 빠진 필드는 실패다.
 - 경로: `src/openapi/paths/<domain>.ts`에 `registry.registerPath({...})`. `request`에는 2단계의 스키마를 그대로
   넣고, `responses`에는 성공 응답(`ok`/`created`)과 1단계의 오류를 원인마다 적는다(`errors(invalid(…),
-  ACTIVE_USER, role(…), notFound('<RESOURCE>_NOT_FOUND', '<언제>'), NOT_OWNER, cause('<CODE>', '<언제>'))`). 상태 코드는
+  ACTIVE_USER, role(…), cause('<RESOURCE>_NOT_FOUND', '<언제>'), NOT_OWNER, cause('<CODE>', '<언제>'))`). 상태 코드는
   코드가 정하고, 경로마다 적은 코드만 응답 스키마에 들어가므로 빠진 원인은 그 응답을 받는 테스트가 실패한다. 500은 적지 않는다.
 - 새 도메인 파일이면 `src/openapi/registry.ts`의 `buildRegistry()`에 등록 함수를 추가한다.
 - 다시 만든 `openapi.json`을 함께 커밋한다(CI가 최신인지 검사한다). 로컬 서버의 `GET /api/docs`에서 화면으로

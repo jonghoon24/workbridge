@@ -13,7 +13,6 @@ import {
   invalid,
   jsonBody,
   NOT_OWNER,
-  notFound,
   ok,
   pathParams,
   publicRoute,
@@ -29,9 +28,9 @@ import {
 
 const tags = ['Projects'];
 
-const PROJECT_NOT_FOUND = notFound('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트');
+const PROJECT_NOT_FOUND = cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트');
 /** Public reads also hide a project whose client is soft-deleted. */
-const PUBLIC_PROJECT_NOT_FOUND = notFound('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트');
+const PUBLIC_PROJECT_NOT_FOUND = cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트');
 const projectId = pathParams({ id: '프로젝트 ID' });
 const SCHEDULE = '`deadline` `CONFLICT` — 모집 시작일이 마감일보다 늦음';
 
@@ -137,7 +136,10 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(project, '수정된 프로젝트'),
       ...errors(
-        invalid(SCHEDULE),
+        invalid(
+          '`deadline` `CONFLICT` — 모집 시작일이 마감일보다 늦음(`deadline`을 보냈으면)',
+          '`recruitmentStartDate` `CONFLICT` — `recruitmentStartDate`만 보냈는데 저장된 마감일보다 늦음',
+        ),
         cause('PROJECT_TERMS_LOCKED', '지원이 있는데 예산·일정을 보냄'),
         ACTIVE_USER,
         role('CLIENT'),
