@@ -38,7 +38,7 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 | 필요할 때 | 문서 |
 |---|---|
 | 레이어, 요청 흐름, 작업 큐, 클라이언트 구조, 환경 | `docs/ARCHITECTURE.md` |
-| 엔드포인트, 요청·응답, 상태 코드와 오류 메시지 | `GET /api/docs`(로컬 서버) / `workbridge-server/openapi.json` |
+| 엔드포인트, 요청·응답, 상태 코드와 오류 코드 | `GET /api/docs`(로컬 서버) / `workbridge-server/openapi.json` |
 | 제품 결정과 그 이유, 용어, 상태 전이 / DB 불변식, 잠금, FK 삭제 동작 | `docs/domain/` / `docs/DATABASE.md` |
 | 환경변수 목록과 뜻 / 값을 넣는 곳과 외부 서비스 설정 | 각 패키지의 `.env.example` / `docs/ENV.md` |
 | 배포와 운영 환경의 한계 | `docs/DEPLOYMENT.md` |

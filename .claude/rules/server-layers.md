@@ -20,7 +20,7 @@ paths:
   비즈니스 로직, 트랜잭션, `AppError`는 `src/services/<domain>.service.ts`에 둔다.
 - 환경변수는 `src/env.ts`의 getter로만 읽는다(`process.env` 직접 읽기 금지).
 - 파일 첨부는 multipart로 받지 않는다. 서명 업로드 URL과 `uploadIds`(`services/attachments.service.ts`)를 쓴다.
-- OpenAPI에 등록한다: 경로와 상태 코드별 응답·오류 메시지는 `src/openapi/paths/<domain>.ts`, 응답 모양은
+- OpenAPI에 등록한다: 경로와 상태 코드별 응답·오류 코드(`cause(code, '<언제>')`)는 `src/openapi/paths/<domain>.ts`, 응답 모양은
   `src/openapi/responses/<domain>.ts`. 테스트가 모든 응답을 이 문서와 strict하게 대조하므로 문서에 없는 상태 코드나
   필드는 테스트 실패다. 다시 만든 `openapi.json`을 함께 커밋한다.
 - 새 라우트는 `test/authorization.test.ts`에 등록한다. `authenticate`가 붙은 라우트는 읽기·쓰기 모두 `PROTECTED_ROUTES`에,
@@ -37,7 +37,11 @@ paths:
 
 ## 에러
 
-- `throw new AppError(message, statusCode)`(`lib/errors.ts`)로 던지고 `next(err)`로 넘긴다.
+- `throw new AppError(code, message)`(`lib/errors.ts`)로 던지고 `next(err)`로 넘긴다. 코드는 `lib/errorCodes.ts`의 표에서
+  고르고, 상태 코드는 그 표가 정한다. 클라이언트가 같은 안내를 하는 원인이면 기존 코드를 쓰고, 다르게 안내해야 하면 표와
+  `test/error-codes.test.ts`의 `PUBLISHED` 끝에 새 코드를 더하고, 클라이언트 `src/lib/errorMessages.js`의 `CODE_MESSAGES`에
+  화면 문구를 넣는다(CI의 `check:error-codes`가 대조한다). 기존 코드의 이름·상태를 바꾸거나 지우지 않는다.
+- 요청 필드가 틀린 것은 서비스에서도 `invalidField(path, fieldCode, message)`(`VALIDATION_FAILED`)로 던진다.
   컨트롤러에서 `res.status(4xx).json(...)`을 직접 쓰지 않는다.
 - 상태 코드: 잘못된 입력은 400, 유니크 충돌은 409, 외부 서비스 실패는 502 또는 400이다. 이런 경우를 500으로
   보내지 않는다. 500은 버그라서 OpenAPI 문서에 넣지 않는다.

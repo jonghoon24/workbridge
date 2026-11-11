@@ -1,7 +1,7 @@
 import type { PayoutAccount } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { bankName, maskAccountNumber } from '../lib/banks';
 import { lockActiveUserRow, lockUserRow } from '../lib/locks';
 import { logger } from '../lib/logger';
@@ -46,7 +46,7 @@ export function holderMatches(holderName: string, userName: string): boolean {
 async function lockAndAssertNotProcessing(tx: PrismaTransactionClient, userId: string): Promise<void> {
   await lockActiveUserRow(tx, userId);
   const processing = await tx.settlement.count({ where: { freelancerId: userId, status: 'PROCESSING' } });
-  if (processing > 0) throw new AppError(LOCKED, 409);
+  if (processing > 0) throw new AppError('PAYOUT_ACCOUNT_LOCKED', LOCKED);
 }
 
 export async function getPayoutAccount(userId: string) {
@@ -65,7 +65,7 @@ export interface PayoutAccountInput {
 export async function putPayoutAccount(userId: string, input: PayoutAccountInput, now: Date = new Date()) {
   const user = await prisma.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true } });
   if (!holderMatches(input.holderName, user.name)) {
-    throw new AppError('Account holder must match your name', 400);
+    throw invalidField('holderName', 'CONFLICT', 'Account holder must match your name');
   }
 
   return prisma.$transaction(async (tx) => {

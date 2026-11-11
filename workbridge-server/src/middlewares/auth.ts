@@ -9,7 +9,7 @@ import type { JwtUserPayload } from '../types/index';
 export function authenticate(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next(new AppError('Authentication required', 401));
+    return next(new AppError('AUTH_REQUIRED', 'Authentication required'));
   }
 
   const token = authHeader.split(' ')[1];
@@ -23,17 +23,17 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     if (context) context.userId = decoded.id;
     next();
   } catch {
-    return next(new AppError('Invalid or expired token', 401));
+    return next(new AppError('TOKEN_INVALID', 'Invalid or expired token'));
   }
 }
 
 export function requireRole(...roles: Role[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return next(new AppError('Authentication required', 401));
+      return next(new AppError('AUTH_REQUIRED', 'Authentication required'));
     }
     if (!roles.includes(req.user.role)) {
-      return next(new AppError('Insufficient permissions', 403));
+      return next(new AppError('FORBIDDEN_ROLE', 'Insufficient permissions'));
     }
     next();
   };

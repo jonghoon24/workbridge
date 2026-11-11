@@ -1,4 +1,5 @@
 import { z } from '../lib/zod';
+import { fieldCode } from './common';
 
 import { ATTACHMENT_MAX_FILES } from '../lib/attachmentStorage';
 
@@ -49,6 +50,6 @@ export const uploadIdsField = z
     invalid_type_error: 'Upload ids must be a list',
   })
   .max(ATTACHMENT_MAX_FILES, TOO_MANY)
-  .refine((ids) => new Set(ids).size === ids.length, 'Upload ids must be unique')
+  .refine((ids) => new Set(ids).size === ids.length, { message: 'Upload ids must be unique', params: fieldCode('NOT_UNIQUE') })
   .default([])
   .openapi({ description: `업로드 URL을 받을 때 돌려받은 ID, 최대 ${ATTACHMENT_MAX_FILES}개. 한 번만 붙일 수 있다.` });

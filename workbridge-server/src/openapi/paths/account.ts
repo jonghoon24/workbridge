@@ -1,7 +1,7 @@
 import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { withdrawalBody } from '../../schemas/account';
-import { ACTIVE_USER, bearer, errors, invalid, jsonBody, ok } from '../common';
+import { ACTIVE_USER, bearer, cause, errors, invalid, jsonBody, ok } from '../common';
 import { withdrawalStatus } from '../responses/account';
 import { messageBody } from '../responses/common';
 
@@ -41,17 +41,13 @@ export function registerAccountPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(messageBody, '`Account withdrawn`'),
       ...errors(
-        invalid(
-          '`Current password is required` — 비밀번호가 있는 계정인데 `currentPassword`가 없음',
-          '`Current password is incorrect` — 현재 비밀번호가 틀림(실패로 센다)',
-          '`Google re-authentication is required` — Google 전용 계정인데 `reauthToken`이 없음',
-          '`Google re-authentication is invalid or expired` — 증명이 만료됐거나, 이 계정·탈퇴용·연결된 구글 계정의 것이 아님',
-        ),
+        invalid('`currentPassword` `REQUIRED` — 비밀번호가 있는 계정인데 `currentPassword`가 없음'),
+        cause('CURRENT_PASSWORD_INCORRECT', '현재 비밀번호가 틀림(실패로 센다)'),
+        cause('REAUTH_REQUIRED', 'Google 전용 계정인데 `reauthToken`이 없음'),
+        cause('REAUTH_INVALID', '증명이 만료됐거나, 이 계정·탈퇴용·연결된 구글 계정의 것이 아님'),
         ACTIVE_USER,
-        {
-          409: ['`Cannot withdraw while contracts or settlements are unfinished` — 진행 중이거나 서명 전인 계약, 미정산·미지급·보류 정산이 있음'],
-          429: ['`Too many requests. Try again later.` — 현재 비밀번호를 너무 많이 틀림'],
-        },
+        cause('WITHDRAWAL_BLOCKED', '진행 중이거나 서명 전인 계약, 미정산·미지급·보류 정산이 있음'),
+        cause('RATE_LIMITED', '현재 비밀번호를 너무 많이 틀림'),
       ),
     },
   });

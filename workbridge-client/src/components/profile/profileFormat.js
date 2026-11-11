@@ -40,16 +40,15 @@ export function employmentTypeLabel(value) {
   return EMPLOYMENT_TYPES.find((type) => type.value === value)?.label || value;
 }
 
-// 포트폴리오·경력 화면에서만 다르게 안내할 서버 오류. 나머지(업로드 포함)는 공용 변환표가 맡는다.
-const SERVER_ERROR_MESSAGES = {
-  'File too large (max 5MB)': '이미지는 5MB 이하만 올릴 수 있습니다.',
-  'File upload failed': '이미지 업로드에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-  'Insufficient permissions': '프리랜서 회원만 이용할 수 있습니다.',
+// 포트폴리오·경력 화면에서만 다르게 안내할 서버 오류 코드. 나머지는 공용 변환표가 맡는다.
+const SERVER_ERROR_CODES = {
+  FILE_TOO_LARGE: '이미지는 5MB 이하만 올릴 수 있습니다.',
+  UPLOAD_FAILED: '이미지 업로드에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+  FORBIDDEN_ROLE: '프리랜서 회원만 이용할 수 있습니다.',
+  FILE_TYPE_UNSUPPORTED: '이미지 파일만 올릴 수 있습니다.',
+  MALFORMED_BODY: '파일을 읽지 못했습니다. 다시 첨부해 주세요.',
 };
 
 export function describeProfileError(err, fallback) {
-  return toUserMessage(err, fallback, {
-    messages: SERVER_ERROR_MESSAGES,
-    patterns: [[/^Unsupported file type/, '이미지 파일만 올릴 수 있습니다.']],
-  });
+  return toUserMessage(err, fallback, { codes: SERVER_ERROR_CODES });
 }

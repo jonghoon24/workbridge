@@ -10,6 +10,7 @@ import {
   makeFreelancer,
   makeProject,
 } from './helpers/factories';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * `GET /api/projects` — the listing endpoint, including soft delete and the lazy lifecycle
@@ -145,7 +146,7 @@ describe('GET /api/projects', () => {
 
       expect(res.status).toBe(400);
       expect(res.body).toEqual({
-        error: { message: 'status: must be one of ALL, UPCOMING, OPEN, CLOSED, IN_PROGRESS' },
+        error: { code: 'VALIDATION_FAILED', message: 'status: must be one of ALL, UPCOMING, OPEN, CLOSED, IN_PROGRESS', fields: [{ path: 'status', code: 'INVALID' }] },
       });
     });
 
@@ -240,7 +241,7 @@ describe('GET /api/projects', () => {
       const res = await api().get('/api/projects?sort=cheapest');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'sort: must be one of latest, deadline, budget' } });
+      expect(res.body).toEqual(invalidBody('sort', 'INVALID', 'sort: must be one of latest, deadline, budget'));
     });
 
     it('rejects a lowercase-only alias like createdAt with 400', async () => {
@@ -365,24 +366,24 @@ describe('GET /api/projects', () => {
     });
 
     it.each([
-      ['page=0', '?page=0', 'page: must be at least 1'],
-      ['page=-1', '?page=-1', 'page: must be at least 1'],
-      ['page=abc', '?page=abc', 'page: must be an integer'],
-      ['limit=0', '?limit=0', 'limit: must be at least 1'],
-      ['limit=-5', '?limit=-5', 'limit: must be at least 1'],
-      ['limit=abc', '?limit=abc', 'limit: must be an integer'],
+      ['page=0', '?page=0', 'page: must be at least 1', 'TOO_SMALL'],
+      ['page=-1', '?page=-1', 'page: must be at least 1', 'TOO_SMALL'],
+      ['page=abc', '?page=abc', 'page: must be an integer', 'INVALID'],
+      ['limit=0', '?limit=0', 'limit: must be at least 1', 'TOO_SMALL'],
+      ['limit=-5', '?limit=-5', 'limit: must be at least 1', 'TOO_SMALL'],
+      ['limit=abc', '?limit=abc', 'limit: must be an integer', 'INVALID'],
       // A fractional value or trailing garbage is not an integer (`parseInt` used to
       // truncate them, #37).
-      ['a fractional page', '?page=1.5', 'page: must be an integer'],
-      ['a fractional limit', '?limit=2.7', 'limit: must be an integer'],
-      ['a trailing-garbage page like 3abc', '?page=3abc', 'page: must be an integer'],
+      ['a fractional page', '?page=1.5', 'page: must be an integer', 'INVALID'],
+      ['a fractional limit', '?limit=2.7', 'limit: must be an integer', 'INVALID'],
+      ['a trailing-garbage page like 3abc', '?page=3abc', 'page: must be an integer', 'INVALID'],
       // Bounded like the contract list, so `skip` cannot overflow into a Prisma 500.
-      ['a page above 1,000,000', '?page=1000001', 'page: must be at most 1000000'],
-    ])('rejects %s with 400', async (_label, query, message) => {
+      ['a page above 1,000,000', '?page=1000001', 'page: must be at most 1000000', 'TOO_LARGE'],
+    ] as const)('rejects %s with 400', async (_label, query, message, code) => {
       const res = await api().get(`/api/projects${query}`);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message } });
+      expect(res.body).toEqual(invalidBodyFor(code, message));
     });
 
     // An empty query value is treated as absent.
@@ -593,7 +594,7 @@ describe('GET /api/projects', () => {
       const res = await api().get('/api/projects?minBudget=9000000&maxBudget=1000000');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'minBudget: must not be greater than maxBudget' } });
+      expect(res.body).toEqual(invalidBody('minBudget', 'CONFLICT', 'minBudget: must not be greater than maxBudget'));
     });
 
     it('allows minBudget equal to maxBudget', async () => {
@@ -604,18 +605,18 @@ describe('GET /api/projects', () => {
     });
 
     it.each([
-      ['non-numeric minBudget', '?minBudget=abc', 'minBudget: must be a number'],
-      ['non-numeric maxBudget', '?maxBudget=abc', 'maxBudget: must be a number'],
-      ['negative minBudget', '?minBudget=-1', 'minBudget: must be at least 0'],
-      ['negative maxBudget', '?maxBudget=-1', 'maxBudget: must be at least 0'],
+      ['non-numeric minBudget', '?minBudget=abc', 'minBudget: must be a number', 'INVALID'],
+      ['non-numeric maxBudget', '?maxBudget=abc', 'maxBudget: must be a number', 'INVALID'],
+      ['negative minBudget', '?minBudget=-1', 'minBudget: must be at least 0', 'TOO_SMALL'],
+      ['negative maxBudget', '?maxBudget=-1', 'maxBudget: must be at least 0', 'TOO_SMALL'],
       // Trailing garbage is not a number (`parseFloat` used to truncate it).
-      ['trailing-garbage minBudget', '?minBudget=3abc', 'minBudget: must be a number'],
-      ['an exponent maxBudget', '?maxBudget=1e6', 'maxBudget: must be a number'],
-    ])('rejects %s with 400', async (_label, query, message) => {
+      ['trailing-garbage minBudget', '?minBudget=3abc', 'minBudget: must be a number', 'INVALID'],
+      ['an exponent maxBudget', '?maxBudget=1e6', 'maxBudget: must be a number', 'INVALID'],
+    ] as const)('rejects %s with 400', async (_label, query, message, code) => {
       const res = await api().get(`/api/projects${query}`);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message } });
+      expect(res.body).toEqual(invalidBodyFor(code, message));
     });
 
     it('ignores empty budget values instead of rejecting them', async () => {
@@ -704,7 +705,7 @@ describe('GET /api/projects', () => {
       const res = await api().get('/api/projects?skills[a]=React');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'skills: must be a string or a list of strings' } });
+      expect(res.body).toEqual(invalidBody('skills', 'INVALID', 'skills: must be a string or a list of strings'));
     });
 
     // `skills[0][0]=React` parses to `[['React']]`. It used to reach `.trim()` in
@@ -715,7 +716,7 @@ describe('GET /api/projects', () => {
       const res = await api().get('/api/projects?skills[0][0]=React');
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'skills: must be a string or a list of strings' } });
+      expect(res.body).toEqual(invalidBody('skills', 'INVALID', 'skills: must be a string or a list of strings'));
     });
 
     it('reads a repeated skills parameter as a list, like a comma-separated one', async () => {
@@ -784,7 +785,7 @@ describe('GET /api/projects', () => {
       const res = await api().get(`/api/projects/${project.id}`);
 
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'Project not found' } });
+      expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
       // The project row itself is untouched — only hidden.
       expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).deletedAt).toBeNull();
     });
@@ -888,7 +889,7 @@ describe('GET /api/projects', () => {
       const res = await api().get(`/api/projects${query}`);
 
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: `${field}: must be a single value` } });
+      expect(res.body).toEqual(invalidBody(field, 'INVALID', `${field}: must be a single value`));
     });
   });
 

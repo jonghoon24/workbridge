@@ -24,7 +24,7 @@ export default function MyProjectsPage() {
       .then(({ data }) => setProjects(data))
       .catch((err) => {
         setError(toUserMessage(err, '내 프로젝트를 불러오지 못했습니다.', {
-          messages: { 'Insufficient permissions': '의뢰인 회원만 볼 수 있는 화면입니다.' },
+          codes: { FORBIDDEN_ROLE: '의뢰인 회원만 볼 수 있는 화면입니다.' },
         }));
       })
       .finally(() => setLoading(false));

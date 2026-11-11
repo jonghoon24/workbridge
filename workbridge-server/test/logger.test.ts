@@ -29,8 +29,13 @@ describe('serializeError', () => {
     expect(serializeError(err)).toEqual({ name: 'TypeError', message: 'boom', stack: err.stack });
   });
 
-  it('keeps an AppError\'s statusCode', () => {
-    expect(serializeError(new AppError('nope', 409))).toMatchObject({ name: 'AppError', message: 'nope', statusCode: 409 });
+  it('keeps an AppError\'s code and statusCode', () => {
+    expect(serializeError(new AppError('CONTRACT_CANCELLED', 'nope'))).toMatchObject({
+      name: 'AppError',
+      message: 'nope',
+      code: 'CONTRACT_CANCELLED',
+      statusCode: 409,
+    });
   });
 
   it('keeps a Prisma error\'s code and meta', () => {

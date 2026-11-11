@@ -5,6 +5,8 @@ import { api, authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makeCareer } from './helpers/factories';
 import { kstMonthString, kstMonthToDate } from '../src/lib/time';
+import type { FieldErrorCode } from '../src/lib/errorCodes';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * Career entries. Role and
@@ -75,42 +77,42 @@ describe('POST /api/users/me/careers', () => {
     expect(await prisma.career.count({ where: { userId: freelancer.id, endDate: null } })).toBe(2);
   });
 
-  const VALIDATION: { name: string; body: Record<string, unknown>; message: string }[] = [
-    { name: 'missing company', body: { ...VALID, company: undefined }, message: 'company: Company is required' },
-    { name: 'blank company', body: { ...VALID, company: '  ' }, message: 'company: Company is required' },
-    { name: 'company of 101', body: { ...VALID, company: 'x'.repeat(101) }, message: 'company: Company must be at most 100 characters' },
-    { name: 'missing position', body: { ...VALID, position: undefined }, message: 'position: Position is required' },
-    { name: 'position of 101', body: { ...VALID, position: 'x'.repeat(101) }, message: 'position: Position must be at most 100 characters' },
-    { name: 'startDate month 00', body: { ...VALID, startDate: '2021-00' }, message: 'startDate: Month must be a YYYY-MM month' },
-    { name: 'a future startDate', body: { ...VALID, startDate: monthFromNow(1) }, message: 'startDate: Month cannot be in the future' },
-    { name: 'a future endDate', body: { ...VALID, endDate: monthFromNow(2) }, message: 'endDate: Month cannot be in the future' },
-    { name: 'an endDate before the start', body: { ...VALID, endDate: '2021-02' }, message: 'endDate: End month must not be before start month' },
-    { name: 'description of 2001', body: { ...VALID, description: 'x'.repeat(2001) }, message: 'description: Description must be at most 2000 characters' },
+  const VALIDATION: { name: string; body: Record<string, unknown>; message: string; code: FieldErrorCode }[] = [
+    { name: 'missing company', body: { ...VALID, company: undefined }, message: 'company: Company is required', code: 'REQUIRED' },
+    { name: 'blank company', body: { ...VALID, company: '  ' }, message: 'company: Company is required', code: 'REQUIRED' },
+    { name: 'company of 101', body: { ...VALID, company: 'x'.repeat(101) }, message: 'company: Company must be at most 100 characters', code: 'TOO_LARGE' },
+    { name: 'missing position', body: { ...VALID, position: undefined }, message: 'position: Position is required', code: 'REQUIRED' },
+    { name: 'position of 101', body: { ...VALID, position: 'x'.repeat(101) }, message: 'position: Position must be at most 100 characters', code: 'TOO_LARGE' },
+    { name: 'startDate month 00', body: { ...VALID, startDate: '2021-00' }, message: 'startDate: Month must be a YYYY-MM month', code: 'INVALID' },
+    { name: 'a future startDate', body: { ...VALID, startDate: monthFromNow(1) }, message: 'startDate: Month cannot be in the future', code: 'TOO_LARGE' },
+    { name: 'a future endDate', body: { ...VALID, endDate: monthFromNow(2) }, message: 'endDate: Month cannot be in the future', code: 'TOO_LARGE' },
+    { name: 'an endDate before the start', body: { ...VALID, endDate: '2021-02' }, message: 'endDate: End month must not be before start month', code: 'CONFLICT' },
+    { name: 'description of 2001', body: { ...VALID, description: 'x'.repeat(2001) }, message: 'description: Description must be at most 2000 characters', code: 'TOO_LARGE' },
   ];
 
-  it.each(VALIDATION)('400 for $name, with the exact message', async ({ body, message }) => {
+  it.each(VALIDATION)('400 for $name, with the exact message', async ({ body, message, code }) => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect(await prisma.career.count()).toBe(0);
   });
 
   it.each([
-    ['an unknown employmentType', { ...VALID, employmentType: 'PART_TIME' }],
-    ['a missing employmentType', { ...VALID, employmentType: undefined }],
-    ['a non-string employmentType', { ...VALID, employmentType: 3 }],
-  ])('400 for %s with one sentence naming the allowed values', async (_name, body) => {
+    ['an unknown employmentType', { ...VALID, employmentType: 'PART_TIME' }, 'INVALID'],
+    ['a missing employmentType', { ...VALID, employmentType: undefined }, 'REQUIRED'],
+    ['a non-string employmentType', { ...VALID, employmentType: 3 }, 'INVALID'],
+  ] as const)('400 for %s with one sentence naming the allowed values', async (_name, body, code) => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({
-      error: { message: 'employmentType: Employment type must be one of FULL_TIME, CONTRACT, FREELANCE, INTERN' },
-    });
+    expect(res.body).toEqual(
+      invalidBody('employmentType', code, 'employmentType: Employment type must be one of FULL_TIME, CONTRACT, FREELANCE, INTERN'),
+    );
     expect(await prisma.career.count()).toBe(0);
   });
 
@@ -144,7 +146,7 @@ describe('POST /api/users/me/careers', () => {
     const res = await post(freelancer, VALID);
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Careers are limited to 30 entries' } });
+    expect(res.body).toEqual({ error: { code: 'CAREER_LIMIT_REACHED', message: 'Careers are limited to 30 entries' } });
   });
 
   it('serializes concurrent creates on the user row: two at 29 end at 30 and one 409', async () => {
@@ -188,7 +190,7 @@ describe('PATCH /api/users/me/careers/:careerId', () => {
     const res = await patch(freelancer, entry.id, { company: '' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'company: Company is required' } });
+    expect(res.body).toEqual(invalidBody('company', 'REQUIRED', 'company: Company is required'));
   });
 
   it('checks the month order on the merged row, after existence and ownership', async () => {
@@ -204,12 +206,12 @@ describe('PATCH /api/users/me/careers/:careerId', () => {
 
     for (const res of [before, startAfterEnd]) {
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'endDate: End month must not be before start month' } });
+      expect(res.body).toEqual(invalidBody('endDate', 'CONFLICT', 'endDate: End month must not be before start month'));
     }
     expect(onForeign.status).toBe(403);
     expect(invalidOnMissing.status).toBe(400);
     expect(validOnMissing.status).toBe(404);
-    expect(validOnMissing.body).toEqual({ error: { message: 'Career not found' } });
+    expect(validOnMissing.body).toEqual({ error: { code: 'CAREER_NOT_FOUND', message: 'Career not found' } });
   });
 });
 
@@ -224,7 +226,7 @@ describe('DELETE /api/users/me/careers/:careerId', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: entry.id, deleted: true });
     expect(again.status).toBe(404);
-    expect(again.body).toEqual({ error: { message: 'Career not found' } });
+    expect(again.body).toEqual({ error: { code: 'CAREER_NOT_FOUND', message: 'Career not found' } });
     expect(await prisma.career.count()).toBe(0);
   });
 });
@@ -281,7 +283,7 @@ describe('GET /api/users/:id/careers', () => {
     expect(empty.body).toEqual({ careers: [], careerSummary: { totalMonths: 0, years: 0, months: 0 } });
     for (const res of [unknown, me, deleted]) {
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'User not found' } });
+      expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
     }
     expect(await prisma.career.count({ where: { userId: gone.id } })).toBe(1);
   });

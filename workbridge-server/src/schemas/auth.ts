@@ -1,6 +1,7 @@
 import { normalizeEmail } from '../lib/email';
 import { REAUTH_PURPOSES } from '../lib/reauth';
 import { z } from '../lib/zod';
+import { fieldCode } from './common';
 
 /**
  * Request bodies and queries of `/api/auth`. A failure is a 400
@@ -78,7 +79,7 @@ export const changePasswordBody = z
   })
   .superRefine((body, ctx) => {
     if (body.newPassword === body.currentPassword) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['newPassword'], message: SAME_PASSWORD_MESSAGE });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['newPassword'], message: SAME_PASSWORD_MESSAGE, params: fieldCode('CONFLICT') });
     }
   });
 

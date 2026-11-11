@@ -1,7 +1,7 @@
 import type { Prisma, ProjectStatus } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { notifyRecipients } from '../lib/notifications/notify';
 import {
   closeExpiredOpenProjects,
@@ -23,10 +23,29 @@ import type { ProjectStatusTransitions } from '../types/index';
  * first, so those reads **write rows**. Bookmarks are `bookmarks.service.ts`.
  */
 
-function validateRecruitmentSchedule(recruitmentStartDate: Date, deadline: Date) {
+/**
+ * `field` is the request field the conflict is reported on: the one the caller sent. An edit that
+ * sends only `recruitmentStartDate` is blamed on it, not on the stored `deadline` it was not sent with.
+ */
+function validateRecruitmentSchedule(
+  recruitmentStartDate: Date,
+  deadline: Date,
+  field: 'deadline' | 'recruitmentStartDate' = 'deadline',
+) {
   if (recruitmentStartDate > deadline) {
-    throw new AppError('recruitmentStartDate cannot be after deadline', 400);
+    throw invalidField(field, 'CONFLICT', 'recruitmentStartDate cannot be after deadline');
   }
+}
+
+const DEADLINE_PAST = 'Deadline must not be in the past';
+
+/**
+ * A deadline the caller sends must not be in the past: the lifecycle sweep would close the project
+ * at once (the same `deadline < now` rule). A KST date lasts until that day ends, so today passes.
+ * Creating, editing and reopening share it (#140).
+ */
+function assertDeadlineNotPast(deadline: Date, now: Date) {
+  if (deadline < now) throw invalidField('deadline', 'TOO_SMALL', DEADLINE_PAST);
 }
 
 /** `GET /api/projects`. **Writes rows**: the lifecycle sweep runs first. */
@@ -120,6 +139,7 @@ export async function listProjects(query: ProjectListQuery) {
 export async function registerProject(clientId: string, input: ProjectCreateInput, now: Date) {
   const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = input;
   const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? now;
+  assertDeadlineNotPast(deadline, now);
   validateRecruitmentSchedule(parsedRecruitmentStartDate, deadline);
 
   return prisma.project.create({
@@ -152,7 +172,7 @@ export async function getProjectDetail(projectId: string) {
   });
 
   if (!project) {
-    throw new AppError('Project not found', 404);
+    throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   return project;
@@ -166,11 +186,11 @@ export async function editProject(projectId: string, clientId: string, input: Pr
   });
 
   if (!project) {
-    throw new AppError('Project not found', 404);
+    throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   if (project.clientId !== clientId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   const { title, description, category, budget, recruitmentStartDate, deadline, requiredSkills } = input;
@@ -183,7 +203,7 @@ export async function editProject(projectId: string, clientId: string, input: Pr
     const [locked] = await tx.$queryRaw<{ id: string }[]>`
       SELECT "id" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR UPDATE`;
     if (!locked) {
-      throw new AppError('Project not found', 404);
+      throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
     }
     const current = await tx.project.findFirstOrThrow({
       where: { id: projectId, deletedAt: null },
@@ -200,7 +220,7 @@ export async function editProject(projectId: string, clientId: string, input: Pr
     // Restrict pricing and recruitment schedule changes if applications exist.
     if (current._count.applications > 0) {
       if (budget !== undefined || recruitmentStartDate !== undefined || deadline !== undefined) {
-        throw new AppError('Cannot change budget or recruitment dates after applications have been submitted', 400);
+        throw new AppError('PROJECT_TERMS_LOCKED', 'Cannot change budget or recruitment dates after applications have been submitted');
       }
     } else {
       if (budget !== undefined) updateData.budget = budget;
@@ -208,7 +228,12 @@ export async function editProject(projectId: string, clientId: string, input: Pr
       const parsedDeadline: Date = deadline ?? current.deadline;
       const parsedRecruitmentStartDate: Date = recruitmentStartDate ?? current.recruitmentStartDate ?? now;
 
-      validateRecruitmentSchedule(parsedRecruitmentStartDate, parsedDeadline);
+      if (deadline !== undefined) assertDeadlineNotPast(deadline, now);
+      validateRecruitmentSchedule(
+        parsedRecruitmentStartDate,
+        parsedDeadline,
+        deadline === undefined ? 'recruitmentStartDate' : 'deadline',
+      );
 
       if (deadline !== undefined) updateData.deadline = parsedDeadline;
       if (recruitmentStartDate !== undefined) {
@@ -236,11 +261,11 @@ export async function softDeleteProject(projectId: string, clientId: string, now
   });
 
   if (!project) {
-    throw new AppError('Project not found', 404);
+    throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   if (project.clientId !== clientId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   await prisma.$transaction(async (tx) => {
@@ -250,7 +275,7 @@ export async function softDeleteProject(projectId: string, clientId: string, now
     const locked = await tx.$queryRaw<{ id: string }[]>`
       SELECT "id" FROM "Project" WHERE "id" = ${project.id} AND "deletedAt" IS NULL FOR UPDATE`;
     if (locked.length === 0) {
-      throw new AppError('Project not found', 404);
+      throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
     }
 
     // A contract belongs to the freelancer too: deleting the project would hide it from them
@@ -262,10 +287,10 @@ export async function softDeleteProject(projectId: string, clientId: string, now
       select: { status: true },
     });
     if (contracts.some((c) => c.status === 'PENDING' || c.status === 'ACTIVE')) {
-      throw new AppError('Cannot delete a project with an unfinished contract', 409);
+      throw new AppError('PROJECT_HAS_ACTIVE_CONTRACT', 'Cannot delete a project with an unfinished contract');
     }
     if (contracts.length > 0) {
-      throw new AppError('Cannot delete a project with a contract record', 409);
+      throw new AppError('PROJECT_HAS_CONTRACT_RECORD', 'Cannot delete a project with a contract record');
     }
 
     await tx.project.update({
@@ -291,7 +316,6 @@ const validTransitions: ProjectStatusTransitions = {
 };
 
 const REOPEN_DEADLINE_REQUIRED = 'Deadline is required to reopen recruitment';
-const REOPEN_DEADLINE_PAST = 'Deadline must not be in the past';
 const DEADLINE_ONLY_ON_REOPEN = 'Deadline can only be set when reopening recruitment';
 const REOPEN_WITH_CONTRACT = 'Cannot reopen recruitment while the project has a contract';
 
@@ -307,25 +331,24 @@ export async function changeProjectStatus(projectId: string, clientId: string, i
   });
 
   if (!project) {
-    throw new AppError('Project not found', 404);
+    throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   if (project.clientId !== clientId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 
   if (!validTransitions[project.status]?.includes(status)) {
-    throw new AppError(`Cannot transition from ${project.status} to ${status}`, 400);
+    throw new AppError('PROJECT_STATUS_TRANSITION_INVALID', `Cannot transition from ${project.status} to ${status}`);
   }
 
   const reopening = project.status === 'CLOSED' && status === 'OPEN';
   if (!reopening && deadline !== undefined) {
-    throw new AppError(DEADLINE_ONLY_ON_REOPEN, 400);
+    throw invalidField('deadline', 'NOT_ALLOWED', DEADLINE_ONLY_ON_REOPEN);
   }
   if (reopening) {
-    if (deadline === undefined) throw new AppError(REOPEN_DEADLINE_REQUIRED, 400);
-    // The lifecycle sweep would close it again at once (the same `deadline < now` rule).
-    if (deadline < now) throw new AppError(REOPEN_DEADLINE_PAST, 400);
+    if (deadline === undefined) throw invalidField('deadline', 'REQUIRED', REOPEN_DEADLINE_REQUIRED);
+    assertDeadlineNotPast(deadline, now);
     // The schedule every other deadline write keeps: a project closed while still UPCOMING may
     // start recruiting later than the new deadline.
     if (project.recruitmentStartDate) validateRecruitmentSchedule(project.recruitmentStartDate, deadline);
@@ -338,13 +361,13 @@ export async function changeProjectStatus(projectId: string, clientId: string, i
       // keeps recruitment closed: cancelling it first is the way out.
       const [locked] = await tx.$queryRaw<{ status: ProjectStatus }[]>`
         SELECT "status" FROM "Project" WHERE "id" = ${project.id} AND "deletedAt" IS NULL FOR UPDATE`;
-      if (!locked) throw new AppError('Project not found', 404);
-      if (locked.status !== 'CLOSED') throw new AppError(`Cannot transition from ${locked.status} to ${status}`, 400);
+      if (!locked) throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
+      if (locked.status !== 'CLOSED') throw new AppError('PROJECT_STATUS_TRANSITION_INVALID', `Cannot transition from ${locked.status} to ${status}`);
       const live = await tx.contract.findFirst({
         where: { projectId: project.id, status: { not: 'CANCELLED' } },
         select: { id: true },
       });
-      if (live) throw new AppError(REOPEN_WITH_CONTRACT, 409);
+      if (live) throw new AppError('REOPEN_BLOCKED_BY_CONTRACT', REOPEN_WITH_CONTRACT);
 
       // Nobody is notified: the earlier applicants were already told of their result, and the
       // ones who may apply again see it in their applications.

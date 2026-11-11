@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { api, authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, TEST_PASSWORD } from './helpers/factories';
+import { invalidBodyFor } from './helpers/errors';
 import type { RefreshTokenPayload } from '../src/types/index';
 
 /**
@@ -16,7 +17,7 @@ import type { RefreshTokenPayload } from '../src/types/index';
 
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET as string;
 const NEW_PASSWORD = 'brand-new-password';
-const TOO_MANY = { error: { message: 'Too many requests. Try again later.' } };
+const TOO_MANY = { error: { code: 'RATE_LIMITED', message: 'Too many requests. Try again later.' } };
 
 afterEach(() => {
   process.env.RATE_LIMIT_ENABLED = 'true';
@@ -82,7 +83,7 @@ describe('POST /api/auth/change-password', () => {
     const oldLogin = await api().post('/api/auth/login').send({ email: user.email, password: TEST_PASSWORD });
     const newLogin = await api().post('/api/auth/login').send({ email: user.email, password: NEW_PASSWORD });
     expect(oldLogin.status).toBe(401);
-    expect(oldLogin.body).toEqual({ error: { message: 'Invalid credentials' } });
+    expect(oldLogin.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } });
     expect(newLogin.status).toBe(200);
   });
 
@@ -96,7 +97,7 @@ describe('POST /api/auth/change-password', () => {
 
     const refused = await refresh(otherDevice);
     expect(refused.status).toBe(401);
-    expect(refused.body).toEqual({ error: { message: 'Invalid or expired refresh token' } });
+    expect(refused.body).toEqual({ error: { code: 'REFRESH_TOKEN_INVALID', message: 'Invalid or expired refresh token' } });
   });
 
   it('keeps this device signed in: the returned tokens work', async () => {
@@ -132,22 +133,23 @@ describe('POST /api/auth/change-password', () => {
   });
 
   it.each([
-    [{}, 'currentPassword: Current password is required'],
-    [{ currentPassword: TEST_PASSWORD }, 'newPassword: New password is required'],
-    [{ currentPassword: TEST_PASSWORD, newPassword: 'short' }, 'newPassword: Password must be at least 8 characters'],
-    [{ currentPassword: TEST_PASSWORD, newPassword: 12345678 }, 'newPassword: New password must be a string'],
+    [{}, 'currentPassword: Current password is required', 'REQUIRED'],
+    [{ currentPassword: TEST_PASSWORD }, 'newPassword: New password is required', 'REQUIRED'],
+    [{ currentPassword: TEST_PASSWORD, newPassword: 'short' }, 'newPassword: Password must be at least 8 characters', 'TOO_SMALL'],
+    [{ currentPassword: TEST_PASSWORD, newPassword: 12345678 }, 'newPassword: New password must be a string', 'INVALID'],
     [
       { currentPassword: TEST_PASSWORD, newPassword: TEST_PASSWORD },
       'newPassword: New password must be different from the current password',
+      'CONFLICT',
     ],
-  ])('rejects %j with 400 and changes nothing', async (body, message) => {
+  ] as const)('rejects %j with 400 and changes nothing', async (body, message, code) => {
     const user = await makeClient();
     const before = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
 
     const res = await change(user, body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(stored.password).toBe(before.password);
     expect(stored.passwordChangedAt).toBeNull();
@@ -160,7 +162,7 @@ describe('POST /api/auth/change-password', () => {
     const res = await change(user, { currentPassword: 'not-my-password', newPassword: NEW_PASSWORD });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Current password is incorrect' } });
+    expect(res.body).toEqual({ error: { code: 'CURRENT_PASSWORD_INCORRECT', message: 'Current password is incorrect' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(await bcrypt.compare(TEST_PASSWORD, stored.password as string)).toBe(true);
     expect(stored.passwordChangedAt).toBeNull();
@@ -173,7 +175,7 @@ describe('POST /api/auth/change-password', () => {
     const res = await change(user, { currentPassword: 'anything-at-all', newPassword: NEW_PASSWORD });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Account has no password' } });
+    expect(res.body).toEqual({ error: { code: 'PASSWORD_NOT_SET', message: 'Account has no password' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(stored.password).toBeNull();
     expect(stored.passwordChangedAt).toBeNull();
@@ -193,8 +195,8 @@ describe('POST /api/auth/change-password', () => {
     const loser = results.find((r) => r.status !== 200);
     // The loser either lost the conditional write or already read the winner's hash.
     expect([
-      { status: 409, body: { error: { message: 'Password has already been changed' } } },
-      { status: 400, body: { error: { message: 'Current password is incorrect' } } },
+      { status: 409, body: { error: { code: 'PASSWORD_ALREADY_CHANGED', message: 'Password has already been changed' } } },
+      { status: 400, body: { error: { code: 'CURRENT_PASSWORD_INCORRECT', message: 'Current password is incorrect' } } },
     ]).toContainEqual({ status: loser?.status, body: loser?.body });
 
     const winnerPassword = results[0].status === 200 ? 'first-new-password' : 'second-new-password';

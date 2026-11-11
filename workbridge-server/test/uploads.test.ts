@@ -97,7 +97,7 @@ describe('storeUploadedFile', () => {
     const res = await request(app).post('/image').attach('file', ...png());
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Unexpected file field: file' } });
+    expect(res.body).toEqual({ error: { code: 'MALFORMED_BODY', message: 'Unexpected file field: file' } });
   });
 
   it('rejects a malformed multipart body with 400', async () => {
@@ -107,7 +107,7 @@ describe('storeUploadedFile', () => {
       .send('------nope\r\nContent-Disposition: form-data; name="image"; filename="a.png"\r\n');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Malformed multipart body' } });
+    expect(res.body).toEqual({ error: { code: 'MALFORMED_BODY', message: 'Malformed multipart body' } });
   });
 
   it('turns a storage failure into a 502, never a raw 500', async () => {
@@ -116,7 +116,7 @@ describe('storeUploadedFile', () => {
     const res = await request(app).post('/stored-image').attach('image', ...png());
 
     expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: { message: 'File upload failed' } });
+    expect(res.body).toEqual({ error: { code: 'UPLOAD_FAILED', message: 'File upload failed' } });
   });
 });
 
@@ -167,14 +167,14 @@ describe('imageUpload', () => {
     const res = await request(app).post('/image').attach('image', ...pdf());
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Unsupported file type: application/pdf' } });
+    expect(res.body).toEqual({ error: { code: 'FILE_TYPE_UNSUPPORTED', message: 'Unsupported file type: application/pdf' } });
   });
 
   it('rejects an image over 5 MB with 413', async () => {
     const res = await request(app).post('/image').attach('image', ...png('big.png', 5 * MB + 1));
 
     expect(res.status).toBe(413);
-    expect(res.body).toEqual({ error: { message: 'File too large (max 5MB)' } });
+    expect(res.body).toEqual({ error: { code: 'FILE_TOO_LARGE', message: 'File too large (max 5MB)' } });
   });
 
   it('rejects a second image with 400', async () => {

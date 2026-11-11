@@ -5,6 +5,8 @@ import { api, authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import { makeClient, makeFreelancer, makePortfolioItem } from './helpers/factories';
 import { kstMonthString } from '../src/lib/time';
+import type { FieldErrorCode } from '../src/lib/errorCodes';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * Portfolio items. The 401/403 role matrix and the
@@ -136,44 +138,44 @@ describe('POST /api/users/me/portfolio', () => {
   });
 
   const longSkill = 'x'.repeat(51);
-  const VALIDATION: { name: string; body: Record<string, unknown>; message: string }[] = [
-    { name: 'missing title', body: {}, message: 'title: Title is required' },
-    { name: 'blank title', body: { title: '   ' }, message: 'title: Title is required' },
-    { name: 'title of 101', body: { title: 'x'.repeat(101) }, message: 'title: Title must be at most 100 characters' },
-    { name: 'description of 2001', body: { title: 't', description: 'x'.repeat(2001) }, message: 'description: Description must be at most 2000 characters' },
-    { name: 'ftp url', body: { title: 't', url: 'ftp://example.com' }, message: 'url: URL must be an http or https URL' },
-    { name: 'relative url', body: { title: 't', url: 'example.com' }, message: 'url: URL must be an http or https URL' },
-    { name: 'url over 2000', body: { title: 't', url: `https://e.com/${'x'.repeat(2000)}` }, message: 'url: URL must be an http or https URL' },
-    { name: 'role of 101', body: { title: 't', role: 'x'.repeat(101) }, message: 'role: Role must be at most 100 characters' },
+  const VALIDATION: { name: string; body: Record<string, unknown>; message: string; code: FieldErrorCode }[] = [
+    { name: 'missing title', body: {}, message: 'title: Title is required', code: 'REQUIRED' },
+    { name: 'blank title', body: { title: '   ' }, message: 'title: Title is required', code: 'REQUIRED' },
+    { name: 'title of 101', body: { title: 'x'.repeat(101) }, message: 'title: Title must be at most 100 characters', code: 'TOO_LARGE' },
+    { name: 'description of 2001', body: { title: 't', description: 'x'.repeat(2001) }, message: 'description: Description must be at most 2000 characters', code: 'TOO_LARGE' },
+    { name: 'ftp url', body: { title: 't', url: 'ftp://example.com' }, message: 'url: URL must be an http or https URL', code: 'INVALID' },
+    { name: 'relative url', body: { title: 't', url: 'example.com' }, message: 'url: URL must be an http or https URL', code: 'INVALID' },
+    { name: 'url over 2000', body: { title: 't', url: `https://e.com/${'x'.repeat(2000)}` }, message: 'url: URL must be an http or https URL', code: 'INVALID' },
+    { name: 'role of 101', body: { title: 't', role: 'x'.repeat(101) }, message: 'role: Role must be at most 100 characters', code: 'TOO_LARGE' },
     {
       name: '11 skills after normalization',
       body: { title: 't', skills: Array.from({ length: 11 }, (_, i) => `Skill${i}`) },
-      message: 'skills: At most 10 skills are allowed',
+      message: 'skills: At most 10 skills are allowed', code: 'TOO_LARGE',
     },
-    { name: 'a 51-character skill', body: { title: 't', skills: [longSkill] }, message: 'skills: Each skill must be at most 50 characters' },
-    { name: 'month 13', body: { title: 't', startedAt: '2025-13' }, message: 'startedAt: Month must be a YYYY-MM month' },
-    { name: 'a full date', body: { title: 't', startedAt: '2025-03-01' }, message: 'startedAt: Month must be a YYYY-MM month' },
-    { name: 'a future start', body: { title: 't', startedAt: monthFromNow(1) }, message: 'startedAt: Month cannot be in the future' },
+    { name: 'a 51-character skill', body: { title: 't', skills: [longSkill] }, message: 'skills: Each skill must be at most 50 characters', code: 'TOO_LARGE' },
+    { name: 'month 13', body: { title: 't', startedAt: '2025-13' }, message: 'startedAt: Month must be a YYYY-MM month', code: 'INVALID' },
+    { name: 'a full date', body: { title: 't', startedAt: '2025-03-01' }, message: 'startedAt: Month must be a YYYY-MM month', code: 'INVALID' },
+    { name: 'a future start', body: { title: 't', startedAt: monthFromNow(1) }, message: 'startedAt: Month cannot be in the future', code: 'TOO_LARGE' },
     {
       name: 'a future end',
       body: { title: 't', startedAt: '2025-01', endedAt: monthFromNow(1) },
-      message: 'endedAt: Month cannot be in the future',
+      message: 'endedAt: Month cannot be in the future', code: 'TOO_LARGE',
     },
     {
       name: 'an end before the start',
       body: { title: 't', startedAt: '2025-05', endedAt: '2025-04' },
-      message: 'endedAt: End month must not be before start month',
+      message: 'endedAt: End month must not be before start month', code: 'CONFLICT',
     },
-    { name: 'an end without a start', body: { title: 't', endedAt: '2025-04' }, message: 'endedAt: Start month is required with an end month' },
+    { name: 'an end without a start', body: { title: 't', endedAt: '2025-04' }, message: 'endedAt: Start month is required with an end month', code: 'CONFLICT' },
   ];
 
-  it.each(VALIDATION)('400 for $name, with the exact message', async ({ body, message }) => {
+  it.each(VALIDATION)('400 for $name, with the exact message', async ({ body, message, code }) => {
     const freelancer = await makeFreelancer();
 
     const res = await post(freelancer, body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect(await prisma.portfolioItem.count()).toBe(0);
   });
 
@@ -188,10 +190,10 @@ describe('POST /api/users/me/portfolio', () => {
       .send({ company: 'C', position: 'P', employmentType: 'FULL_TIME', startDate: '0000-01' });
     const earliest = await post(freelancer, { title: 't', startedAt: '1900-01' });
 
-    expect(created.body).toEqual({ error: { message: 'startedAt: Month must be a YYYY-MM month' } });
+    expect(created.body).toEqual(invalidBody('startedAt', 'INVALID', 'startedAt: Month must be a YYYY-MM month'));
     expect(old.status).toBe(400);
-    expect(patched.body).toEqual({ error: { message: 'startedAt: Month must be a YYYY-MM month' } });
-    expect(career.body).toEqual({ error: { message: 'startDate: Month must be a YYYY-MM month' } });
+    expect(patched.body).toEqual(invalidBody('startedAt', 'INVALID', 'startedAt: Month must be a YYYY-MM month'));
+    expect(career.body).toEqual(invalidBody('startDate', 'INVALID', 'startDate: Month must be a YYYY-MM month'));
     expect(earliest.status).toBe(201);
   });
 
@@ -248,7 +250,7 @@ describe('POST /api/users/me/portfolio', () => {
       .attach('image', PNG, { filename: 'a.png', contentType: 'image/png' });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Portfolio is limited to 20 items' } });
+    expect(res.body).toEqual({ error: { code: 'PORTFOLIO_LIMIT_REACHED', message: 'Portfolio is limited to 20 items' } });
     expect(supabaseUpload).not.toHaveBeenCalled();
     expect(await prisma.portfolioItem.count({ where: { userId: freelancer.id } })).toBe(20);
   });
@@ -304,7 +306,7 @@ describe('POST /api/users/me/portfolio', () => {
       .attach('image', Buffer.from('%PDF-1.4'), { filename: 'doc.pdf', contentType: 'application/pdf' });
 
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
+    expect(res.body).toEqual({ error: { code: 'FORBIDDEN_ROLE', message: 'Insufficient permissions' } });
   });
 
   it('checks the upload policy before validation', async () => {
@@ -349,7 +351,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     const res = await patch(freelancer, item.id, { title: '' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'title: Title is required' } });
+    expect(res.body).toEqual(invalidBody('title', 'REQUIRED', 'title: Title is required'));
   });
 
   it('replaces the image, keeping the old file in storage', async () => {
@@ -386,7 +388,7 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
       .attach('image', PNG, { filename: 'a.png', contentType: 'image/png' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'removeImage: Cannot upload and remove an image at once' } });
+    expect(res.body).toEqual(invalidBody('removeImage', 'CONFLICT', 'removeImage: Cannot upload and remove an image at once'));
     expect(supabaseUpload).not.toHaveBeenCalled();
   });
 
@@ -410,9 +412,9 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
     const fine = await patch(freelancer, item.id, { startedAt: '2024-09' });
 
     expect(before.status).toBe(400);
-    expect(before.body).toEqual({ error: { message: 'endedAt: End month must not be before start month' } });
+    expect(before.body).toEqual(invalidBody('endedAt', 'CONFLICT', 'endedAt: End month must not be before start month'));
     expect(noStart.status).toBe(400);
-    expect(noStart.body).toEqual({ error: { message: 'endedAt: Start month is required with an end month' } });
+    expect(noStart.body).toEqual(invalidBody('endedAt', 'CONFLICT', 'endedAt: Start month is required with an end month'));
     expect(fine.status).toBe(200);
     expect(fine.body.item).toMatchObject({ startedAt: '2024-09', endedAt: '2024-09' });
   });
@@ -428,9 +430,9 @@ describe('PATCH /api/users/me/portfolio/:itemId', () => {
 
     expect(invalidOnMissing.status).toBe(400);
     expect(validOnMissing.status).toBe(404);
-    expect(validOnMissing.body).toEqual({ error: { message: 'Portfolio item not found' } });
+    expect(validOnMissing.body).toEqual({ error: { code: 'PORTFOLIO_ITEM_NOT_FOUND', message: 'Portfolio item not found' } });
     expect(badOrderOnForeign.status).toBe(403);
-    expect(badOrderOnForeign.body).toEqual({ error: { message: 'Not authorized' } });
+    expect(badOrderOnForeign.body).toEqual({ error: { code: 'FORBIDDEN_RESOURCE', message: 'Not authorized' } });
   });
 });
 
@@ -449,7 +451,7 @@ describe('DELETE /api/users/me/portfolio/:itemId', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ id: b.id, deleted: true });
     expect(again.status).toBe(404);
-    expect(again.body).toEqual({ error: { message: 'Portfolio item not found' } });
+    expect(again.body).toEqual({ error: { code: 'PORTFOLIO_ITEM_NOT_FOUND', message: 'Portfolio item not found' } });
     const left = await prisma.portfolioItem.findMany({ where: { userId: freelancer.id }, orderBy: { sortOrder: 'asc' } });
     expect(left.map((item) => [item.id, item.sortOrder])).toEqual([[a.id, a.sortOrder], [c.id, c.sortOrder]]);
   });
@@ -494,7 +496,7 @@ describe('PUT /api/users/me/portfolio/order', () => {
     for (const ids of cases) {
       const res = await reorder(freelancer, ids);
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'ids: Must list each of your portfolio items exactly once' } });
+      expect(res.body).toEqual({ error: { code: 'PORTFOLIO_ORDER_MISMATCH', message: 'ids: Must list each of your portfolio items exactly once' } });
     }
     const stored = await prisma.portfolioItem.findMany({ where: { userId: freelancer.id }, orderBy: { sortOrder: 'asc' } });
     expect(stored.map((item) => item.id)).toEqual([a.id, b.id]);
@@ -569,7 +571,7 @@ describe('GET /api/users/:id/portfolio', () => {
     expect(clientList.body).toEqual({ items: [] });
     for (const res of [unknown, me, deleted]) {
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'User not found' } });
+      expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
     }
     // Kept, only invisible.
     expect(await prisma.portfolioItem.count({ where: { userId: gone.id } })).toBe(1);

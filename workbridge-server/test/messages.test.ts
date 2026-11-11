@@ -13,6 +13,8 @@ import { prisma } from './helpers/db';
 import { makeContractScenario, makeMessage } from './helpers/factories';
 import { postSystemMessage } from '../src/services/messaging.service';
 import { DAY_MS, MINUTE_MS } from '../src/lib/time';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
+import type { FieldErrorCode } from '../src/lib/errorCodes';
 
 /**
  * Messages — listing, sending, deleting, who may post, and ordering. Unread counts, the read watermark and
@@ -185,18 +187,18 @@ describe('GET /api/conversations/:id/messages', () => {
   });
 
   it.each([
-    ['before=a&after=b', 'before: Use either before or after, not both'],
-    ['limit=0', 'limit: must be at least 1'],
-    ['limit=2.5', 'limit: must be an integer'],
-    ['limit=1&limit=2', 'limit: must be a single value'],
-    ['before=a&before=b', 'before: must be a single value'],
-  ])('400s for %s, before looking the conversation up', async (query, message) => {
+    ['before=a&after=b', 'before: Use either before or after, not both', 'CONFLICT'],
+    ['limit=0', 'limit: must be at least 1', 'TOO_SMALL'],
+    ['limit=2.5', 'limit: must be an integer', 'INVALID'],
+    ['limit=1&limit=2', 'limit: must be a single value', 'INVALID'],
+    ['before=a&before=b', 'before: must be a single value', 'INVALID'],
+  ] as const)('400s for %s, before looking the conversation up', async (query, message, code) => {
     const { client } = await makeContractScenario();
 
     const res = await list(client, 'missing-conversation-id', query);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
   });
 
   it('400s for a cursor that is not a message of this conversation, after 404/403', async () => {
@@ -209,8 +211,8 @@ describe('GET /api/conversations/:id/messages', () => {
     const notMine = await list(scenario.client, other.conversation.id, 'after=missing-message-id');
 
     expect(before.status).toBe(400);
-    expect(before.body).toEqual({ error: { message: 'before: Message not found in this conversation' } });
-    expect(after.body).toEqual({ error: { message: 'after: Message not found in this conversation' } });
+    expect(before.body).toEqual(invalidBody('before', 'INVALID', 'before: Message not found in this conversation'));
+    expect(after.body).toEqual(invalidBody('after', 'INVALID', 'after: Message not found in this conversation'));
     expect(notMine.status).toBe(403);
   });
 
@@ -314,19 +316,19 @@ describe('POST /api/conversations/:id/messages', () => {
     expect(res.body.message.body).toHaveLength(5000);
   });
 
-  it.each<[string, Record<string, unknown>, string]>([
-    ['5001 characters', { body: 'a'.repeat(5001) }, 'body: Message must be at most 5000 characters'],
-    ['an empty body', { body: '' }, 'body: Message or attachment is required'],
-    ['only whitespace', { body: ' \n\t ' }, 'body: Message or attachment is required'],
-    ['no body at all', {}, 'body: Message or attachment is required'],
-    ['a non-string body', { body: 42 }, 'body: Expected string, received number'],
-  ])('400s for %s, before looking the conversation up', async (_label, payload, message) => {
+  it.each<[string, Record<string, unknown>, string, FieldErrorCode]>([
+    ['5001 characters', { body: 'a'.repeat(5001) }, 'body: Message must be at most 5000 characters', 'TOO_LARGE'],
+    ['an empty body', { body: '' }, 'body: Message or attachment is required', 'REQUIRED'],
+    ['only whitespace', { body: ' \n\t ' }, 'body: Message or attachment is required', 'REQUIRED'],
+    ['no body at all', {}, 'body: Message or attachment is required', 'REQUIRED'],
+    ['a non-string body', { body: 42 }, 'body: Expected string, received number', 'INVALID'],
+  ])('400s for %s, before looking the conversation up', async (_label, payload, message, code) => {
     const { client } = await makeContractScenario();
 
     const res = await send(client, 'missing-conversation-id').send(payload);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect(await prisma.message.count()).toBe(0);
   });
 
@@ -338,7 +340,7 @@ describe('POST /api/conversations/:id/messages', () => {
     const res = await send(client, conversation.id).send({ body: 'x', uploadIds: ids });
 
     expect(res.status).toBe(502);
-    expect(res.body).toEqual({ error: { message: 'File storage is unavailable' } });
+    expect(res.body).toEqual({ error: { code: 'STORAGE_UNAVAILABLE', message: 'File storage is unavailable' } });
     expect(await prisma.message.count()).toBe(0);
     expect(await prisma.job.count()).toBe(0);
     expect(await prisma.attachmentUpload.count()).toBe(1);
@@ -389,7 +391,7 @@ describe('POST /api/conversations/:id/messages', () => {
       expect((await send(open.freelancer, open.conversation.id).send({ body: '철회 사유를 여쭤봐도 될까요?' })).status).toBe(201);
       const late = await send(closed.client, closed.conversation.id).send({ body: 'x' });
       expect(late.status).toBe(409);
-      expect(late.body).toEqual({ error: { message: 'This conversation is closed' } });
+      expect(late.body).toEqual({ error: { code: 'CONVERSATION_CLOSED', message: 'This conversation is closed' } });
     });
 
     it('409s once the post-completion window has closed, for either party', async () => {
@@ -404,7 +406,7 @@ describe('POST /api/conversations/:id/messages', () => {
 
       for (const res of [asClient, asFreelancer]) {
         expect(res.status).toBe(409);
-        expect(res.body).toEqual({ error: { message: 'This conversation is closed' } });
+        expect(res.body).toEqual({ error: { code: 'CONVERSATION_CLOSED', message: 'This conversation is closed' } });
       }
       expect(await prisma.message.count()).toBe(0);
       expect(files().createSignedUploadUrl).not.toHaveBeenCalled();
@@ -417,7 +419,7 @@ describe('POST /api/conversations/:id/messages', () => {
       const res = await send(client, conversation.id).send({ body: 'hello?' });
 
       expect(res.status).toBe(409);
-      expect(res.body).toEqual({ error: { message: 'The other participant is no longer active' } });
+      expect(res.body).toEqual({ error: { code: 'COUNTERPART_INACTIVE', message: 'The other participant is no longer active' } });
       expect(await prisma.job.count()).toBe(0);
     });
 
@@ -429,7 +431,7 @@ describe('POST /api/conversations/:id/messages', () => {
 
       const res = await send(client, conversation.id).send({ body: 'x' });
 
-      expect(res.body).toEqual({ error: { message: 'This conversation is closed' } });
+      expect(res.body).toEqual({ error: { code: 'CONVERSATION_CLOSED', message: 'This conversation is closed' } });
     });
 
     it('a closed conversation still reads, marks read and deletes own messages within the window', async () => {
@@ -533,7 +535,7 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
     const res = await remove(client, conversation.id, old.id);
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Messages can only be deleted within 5 minutes' } });
+    expect(res.body).toEqual({ error: { code: 'MESSAGE_DELETE_WINDOW_EXPIRED', message: 'Messages can only be deleted within 5 minutes' } });
     expect((await prisma.message.findUniqueOrThrow({ where: { id: old.id } })).deletedAt).toBeNull();
   });
 
@@ -556,7 +558,7 @@ describe('DELETE /api/conversations/:id/messages/:messageId', () => {
     const res = await remove(client, conversation.id, system.id);
 
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Not authorized' } });
+    expect(res.body).toEqual({ error: { code: 'FORBIDDEN_RESOURCE', message: 'Not authorized' } });
   });
 
   it('two concurrent deletes both answer 200 with one deletion', async () => {

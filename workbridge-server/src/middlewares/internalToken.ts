@@ -20,7 +20,7 @@ export function requireInternalToken(req: Request, res: Response, next: NextFunc
 
   const provided = req.get('x-internal-token') ?? '';
   if (!safeEqual(provided, expected)) {
-    return next(new AppError('Invalid internal token', 403));
+    return next(new AppError('INTERNAL_TOKEN_INVALID', 'Invalid internal token'));
   }
 
   next();

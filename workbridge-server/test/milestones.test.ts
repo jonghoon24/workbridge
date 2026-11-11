@@ -12,6 +12,8 @@ import { ATTACHMENT_BUCKET, pdf, png, uploadFiles } from './helpers/attachments'
 import { prisma } from './helpers/db';
 import { makeContractScenario, makeMilestone, makePayment, makeSubmission } from './helpers/factories';
 import { DAY_MS, HOUR_MS } from '../src/lib/time';
+import type { FieldErrorCode } from '../src/lib/errorCodes';
+import { invalidBodyFor } from './helpers/errors';
 
 /**
  * Milestone detail, submission, approval and rejection, and the payout preview. The
@@ -243,27 +245,27 @@ describe('POST /api/milestones/:id/submissions', () => {
     const res = await submit(freelancer, milestone.id).send({ message: 'x', uploadIds: ids });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Milestone is not awaiting a submission' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_NOT_AWAITING_SUBMISSION', message: 'Milestone is not awaiting a submission' } });
     expect(await prisma.milestoneSubmission.count()).toBe(0);
     expect(storage.bucket(ATTACHMENT_BUCKET).info).not.toHaveBeenCalled();
     expect(await prisma.attachmentUpload.count()).toBe(1);
   });
 
-  it.each<[string, Record<string, unknown>, string]>([
-    ['a missing message', {}, 'message: Message is required'],
-    ['a blank message', { message: '   ' }, 'message: Message is required'],
-    ['a 5001-character message', { message: 'x'.repeat(5001) }, 'message: Message must be at most 5000 characters'],
-    ['six links', { message: 'x', links: Array.from({ length: 6 }, (_, i) => `https://e.com/${i}`) }, 'links: At most 5 links are allowed'],
-    ['a non-http link', { message: 'x', links: ['ftp://e.com/file'] }, 'links.0: Links must be http or https URLs'],
-    ['a relative link', { message: 'x', links: ['/just/a/path'] }, 'links.0: Links must be http or https URLs'],
-    ['a 2001-character link', { message: 'x', links: [`https://e.com/${'a'.repeat(1990)}`] }, 'links.0: Links must be http or https URLs'],
-  ])('400s on %s with an exact message', async (_label, body, message) => {
+  it.each<[string, Record<string, unknown>, string, FieldErrorCode]>([
+    ['a missing message', {}, 'message: Message is required', 'REQUIRED'],
+    ['a blank message', { message: '   ' }, 'message: Message is required', 'REQUIRED'],
+    ['a 5001-character message', { message: 'x'.repeat(5001) }, 'message: Message must be at most 5000 characters', 'TOO_LARGE'],
+    ['six links', { message: 'x', links: Array.from({ length: 6 }, (_, i) => `https://e.com/${i}`) }, 'links: At most 5 links are allowed', 'TOO_LARGE'],
+    ['a non-http link', { message: 'x', links: ['ftp://e.com/file'] }, 'links.0: Links must be http or https URLs', 'INVALID'],
+    ['a relative link', { message: 'x', links: ['/just/a/path'] }, 'links.0: Links must be http or https URLs', 'INVALID'],
+    ['a 2001-character link', { message: 'x', links: [`https://e.com/${'a'.repeat(1990)}`] }, 'links.0: Links must be http or https URLs', 'INVALID'],
+  ])('400s on %s with an exact message', async (_label, body, message, code) => {
     const { freelancer, milestone } = await funded();
 
     const res = await submit(freelancer, milestone.id).send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
   });
 
   it('accepts exactly 5000 characters and exactly 5 links, and a single link as a string', async () => {
@@ -401,7 +403,7 @@ describe('POST /api/milestones/:id/approve', () => {
     const res = await authed(client).post(`/api/milestones/${milestone.id}/approve`);
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Milestone is not awaiting review' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_NOT_AWAITING_REVIEW', message: 'Milestone is not awaiting review' } });
     expect(await prisma.settlementItem.count()).toBe(0);
   });
 
@@ -500,18 +502,18 @@ describe('POST /api/milestones/:id/reject', () => {
     expect(notifications.map((n) => [n.type, n.userId])).toEqual([['MILESTONE_REVISION_REQUESTED', freelancer.id]]);
   });
 
-  it.each<[string, Record<string, unknown>, string]>([
-    ['a missing reason', {}, 'reason: Reason must be at least 10 characters'],
-    ['a 9-character reason', { reason: '123456789' }, 'reason: Reason must be at least 10 characters'],
-    ['a reason that is short once trimmed', { reason: '   12345678   ' }, 'reason: Reason must be at least 10 characters'],
-    ['a 2001-character reason', { reason: 'x'.repeat(2001) }, 'reason: Reason must be at most 2000 characters'],
-  ])('400s on %s', async (_label, body, message) => {
+  it.each<[string, Record<string, unknown>, string, FieldErrorCode]>([
+    ['a missing reason', {}, 'reason: Reason must be at least 10 characters', 'REQUIRED'],
+    ['a 9-character reason', { reason: '123456789' }, 'reason: Reason must be at least 10 characters', 'TOO_SMALL'],
+    ['a reason that is short once trimmed', { reason: '   12345678   ' }, 'reason: Reason must be at least 10 characters', 'TOO_SMALL'],
+    ['a 2001-character reason', { reason: 'x'.repeat(2001) }, 'reason: Reason must be at most 2000 characters', 'TOO_LARGE'],
+  ])('400s on %s', async (_label, body, message, code) => {
     const { client, milestone } = await submitted();
 
     const res = await authed(client).post(`/api/milestones/${milestone.id}/reject`).send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('SUBMITTED');
   });
 
@@ -528,7 +530,7 @@ describe('POST /api/milestones/:id/reject', () => {
     const res = await authed(client).post(`/api/milestones/${milestone.id}/reject`).send({ reason: REASON });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'Milestone is not awaiting review' } });
+    expect(res.body).toEqual({ error: { code: 'MILESTONE_NOT_AWAITING_REVIEW', message: 'Milestone is not awaiting review' } });
   });
 
   it('has no cap on revisions: reject, resubmit, reject again, then approve', async () => {

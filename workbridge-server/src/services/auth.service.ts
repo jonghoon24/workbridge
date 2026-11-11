@@ -6,6 +6,7 @@ import type { User } from '@prisma/client';
 
 import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
+import { ACCOUNT_INACTIVE } from '../lib/locks';
 import { normalizeEmail } from '../lib/email';
 import { env } from '../env';
 import { exchangeGoogleCode, GOOGLE_AUTH_URL } from '../lib/googleOAuth';
@@ -28,7 +29,7 @@ export async function registerWithPassword(input: SignupInput): Promise<User> {
   // report it as available and then fail with P2002 on create.
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    throw new AppError('Email already in use', 409);
+    throw new AppError('EMAIL_ALREADY_IN_USE', 'Email already in use');
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -57,13 +58,13 @@ export async function verifyPasswordLogin(input: LoginInput, failures: LoginFail
   // emails included, so the limiter cannot be used to tell accounts apart.
   if (!user || !user.password) {
     await failures.record();
-    throw new AppError('Invalid credentials', 401);
+    throw new AppError('INVALID_CREDENTIALS', 'Invalid credentials');
   }
 
   const isValid = await bcrypt.compare(password, user.password);
   if (!isValid) {
     await failures.record();
-    throw new AppError('Invalid credentials', 401);
+    throw new AppError('INVALID_CREDENTIALS', 'Invalid credentials');
   }
 
   await failures.clear();
@@ -74,7 +75,7 @@ export async function verifyPasswordLogin(input: LoginInput, failures: LoginFail
 /** `POST /api/auth/refresh`: the active user a refresh cookie's token belongs to. */
 export async function userForRefreshToken(token: unknown): Promise<User> {
   if (!token) {
-    throw new AppError('Refresh token not found', 401);
+    throw new AppError('REFRESH_TOKEN_INVALID', 'Refresh token not found');
   }
 
   // `jwt.verify` is typed `string | JwtPayload`; we only ever sign `RefreshTokenPayload` claims.
@@ -84,13 +85,13 @@ export async function userForRefreshToken(token: unknown): Promise<User> {
     if (typeof token !== 'string') throw new Error('refresh token is not a string');
     decoded = jwt.verify(token, env.JWT_REFRESH_SECRET) as RefreshTokenPayload;
   } catch {
-    throw new AppError('Invalid or expired refresh token', 401);
+    throw new AppError('REFRESH_TOKEN_INVALID', 'Invalid or expired refresh token');
   }
 
   // A still-valid refresh token must stop working once the user is soft-deleted.
   const user = await prisma.user.findFirst({ where: { id: decoded.id, deletedAt: null } });
   if (!user) {
-    throw new AppError('User not found', 401);
+    throw new AppError('REFRESH_TOKEN_INVALID', 'User not found');
   }
 
   // Minted before the password last changed: that session ended with the change (other devices
@@ -98,7 +99,7 @@ export async function userForRefreshToken(token: unknown): Promise<User> {
   // `iat < passwordChangedAt` — `iat` has whole seconds and cannot tell a token minted in the
   // same second apart. A token from before this claim existed reads as `null` (never changed).
   if ((decoded.pwdChangedAt ?? null) !== (user.passwordChangedAt?.getTime() ?? null)) {
-    throw new AppError('Invalid or expired refresh token', 401);
+    throw new AppError('REFRESH_TOKEN_INVALID', 'Invalid or expired refresh token');
   }
 
   return user;
@@ -222,15 +223,17 @@ export async function chooseRole(userId: string, role: SelectRoleInput['role']):
 
   if (count === 0) {
     const user = await prisma.user.findFirst({ where: active, select: { id: true } });
+    // Withdrawn (or gone) before or while choosing: the caller's own account, so 401 like every
+    // route behind `requireActiveUser`, not the 404 of someone else's missing profile.
     if (!user) {
-      throw new AppError('User not found', 404);
+      throw new AppError('ACCOUNT_INACTIVE', ACCOUNT_INACTIVE);
     }
-    throw new AppError('Role has already been selected', 400);
+    throw new AppError('ROLE_ALREADY_SELECTED', 'Role has already been selected');
   }
 
   const updated = await prisma.user.findFirst({ where: active });
   if (!updated) {
-    throw new AppError('User not found', 404);
+    throw new AppError('ACCOUNT_INACTIVE', ACCOUNT_INACTIVE);
   }
   return updated;
 }

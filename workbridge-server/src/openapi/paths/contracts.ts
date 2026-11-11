@@ -2,18 +2,7 @@ import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
 
 import { contractListQuery } from '../../schemas/contracts';
 import { milestonePlanBody } from '../../schemas/milestones';
-import {
-  ACTIVE_USER,
-  AUTHENTICATED,
-  bearer,
-  errors,
-  invalid,
-  jsonBody,
-  notFound,
-  ok,
-  pathParams,
-  role,
-} from '../common';
+import { ACTIVE_USER, AUTHENTICATED, bearer, cause, errors, invalid, jsonBody, ok, pathParams, role } from '../common';
 import {
   contractConversation,
   contractDetail,
@@ -25,8 +14,8 @@ import {
 const tags = ['Contracts'];
 
 const contractId = pathParams({ id: '계약 ID' });
-const NOT_PARTY = { 403: ['`Not authorized` — 계약 당사자가 아님'] };
-const CONTRACT_OR_PROJECT_NOT_FOUND = notFound('Contract not found', '없는 계약, 또는 프로젝트가 삭제됨');
+const NOT_PARTY = cause('FORBIDDEN_RESOURCE', '계약 당사자가 아님');
+const CONTRACT_OR_PROJECT_NOT_FOUND = cause('CONTRACT_NOT_FOUND', '없는 계약, 또는 프로젝트가 삭제됨');
 
 export function registerContractPaths(registry: OpenAPIRegistry): void {
   registry.registerPath({
@@ -69,17 +58,13 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(replacedPlan),
       ...errors(
-        invalid('`Milestone amounts must add up to the contract amount (<금액>)` — 금액 합이 계약 금액과 다름'),
+        invalid('`milestones` `CONFLICT` — 금액 합이 계약 금액과 다름'),
         ACTIVE_USER,
         role('CLIENT'),
-        { 403: ['`Not authorized` — 계약의 의뢰인이 아님'] },
+        cause('FORBIDDEN_RESOURCE', '계약의 의뢰인이 아님'),
         CONTRACT_OR_PROJECT_NOT_FOUND,
-        {
-          409: [
-            '`Milestone plan is locked once the contract is active` — 계약이 이미 시작됨',
-            '`This contract has been cancelled` — 철회된 계약',
-          ],
-        },
+        cause('MILESTONE_PLAN_LOCKED', '계약이 이미 시작됨'),
+        cause('CONTRACT_CANCELLED', '철회된 계약'),
       ),
     },
   });
@@ -94,12 +79,10 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
     request: { params: contractId },
     responses: {
       200: ok(contractConversation, '대화방 ID와 내 안 읽은 메시지 수'),
-      ...errors(ACTIVE_USER, NOT_PARTY, {
-        404: [
-          '`Contract not found` — 없는 계약, 또는 프로젝트가 삭제됨',
-          '`Conversation not found` — 계약에 대화방이 없음',
-        ],
-      }),
+      ...errors(ACTIVE_USER, NOT_PARTY, [
+        cause('CONTRACT_NOT_FOUND', '없는 계약, 또는 프로젝트가 삭제됨'),
+        cause('CONVERSATION_NOT_FOUND', '계약에 대화방이 없음'),
+      ]),
     },
   });
 
@@ -126,9 +109,7 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
     security: bearer,
     request: { params: contractId },
     responses: {
-      ...errors(AUTHENTICATED, {
-        410: ['`Contracts are completed automatically when every milestone is approved` — 언제나'],
-      }),
+      ...errors(AUTHENTICATED, cause('MANUAL_COMPLETION_REMOVED', '언제나')),
     },
   });
 
@@ -144,16 +125,12 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
     responses: {
       200: ok(contractDetail, '서명이 반영된 계약'),
       ...errors(
-        {
-          400: [
-            '`A completed contract cannot be signed again` — 이미 완료된 계약',
-            '`Cannot sign a contract without a valid milestone plan` — 계획이 없거나 금액 합이 맞지 않음',
-          ],
-        },
+        cause('CONTRACT_ALREADY_COMPLETED', '이미 완료된 계약'),
+        cause('MILESTONE_PLAN_INVALID', '계획이 없거나 금액 합이 맞지 않음'),
         ACTIVE_USER,
         NOT_PARTY,
         CONTRACT_OR_PROJECT_NOT_FOUND,
-        { 409: ['`This contract has been cancelled` — 철회된 계약'] },
+        cause('CONTRACT_CANCELLED', '철회된 계약'),
       ),
     },
   });
@@ -176,12 +153,8 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
         ACTIVE_USER,
         NOT_PARTY,
         CONTRACT_OR_PROJECT_NOT_FOUND,
-        {
-          409: [
-            '`This contract has been cancelled` — 이미 철회된 계약',
-            '`Only a contract awaiting signatures can be cancelled` — 양측 서명으로 시작됐거나 완료된 계약',
-          ],
-        },
+        cause('CONTRACT_CANCELLED', '이미 철회된 계약'),
+        cause('CONTRACT_NOT_CANCELLABLE', '양측 서명으로 시작됐거나 완료된 계약'),
       ),
     },
   });

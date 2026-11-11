@@ -1,6 +1,8 @@
 import { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
+import type { ResponseConfig, RouteConfig } from '@asteasolutions/zod-to-openapi';
 
-import { SECURITY_SCHEMES } from './common';
+import { requestLevelCauses, SECURITY_SCHEMES, withCauses } from './common';
+import { errorBody, errorCodeEnum, fieldErrorCodeEnum } from './responses/common';
 import { registerAccountPaths } from './paths/account';
 import { registerApplicationPaths } from './paths/applications';
 import { registerAuthPaths } from './paths/auth';
@@ -17,6 +19,20 @@ import { registerSystemPaths } from './paths/system';
 import { registerUserPaths } from './paths/users';
 
 /**
+ * A registry that documents the request-level causes (`requestLevelCauses` — a malformed or oversized
+ * JSON body, a malformed path) on every route it registers: they happen before any route runs, so
+ * every operation can answer them.
+ */
+class ApiRegistry extends OpenAPIRegistry {
+  registerPath(route: RouteConfig): void {
+    super.registerPath({
+      ...route,
+      responses: withCauses(route.responses as Record<string, ResponseConfig>, requestLevelCauses(route.path)),
+    });
+  }
+}
+
+/**
  * Every documented route, with the shared components. A new route is registered in
  * `paths/<domain>.ts`; `test/openapi.test.ts` fails until the app's routes and this registry match
  * both ways, and every test's responses are checked against the schemas registered here.
@@ -24,7 +40,7 @@ import { registerUserPaths } from './paths/users';
  * Built fresh on each call (registration is cheap and keeps no module state).
  */
 export function buildRegistry(): OpenAPIRegistry {
-  const registry = new OpenAPIRegistry();
+  const registry = new ApiRegistry();
 
   registry.registerComponent('securitySchemes', SECURITY_SCHEMES.bearer, {
     type: 'http',
@@ -44,6 +60,12 @@ export function buildRegistry(): OpenAPIRegistry {
     name: 'X-Internal-Token',
     description: '서버의 `INTERNAL_JOB_TOKEN`과 같은 값(상수 시간 비교).',
   });
+
+  // The error schemas, so the code table is in the document even though each route documents
+  // its own subset of codes inline.
+  registry.register('ErrorCode', errorCodeEnum);
+  registry.register('FieldErrorCode', fieldErrorCodeEnum);
+  registry.register('Error', errorBody);
 
   registerSystemPaths(registry);
   registerAuthPaths(registry);

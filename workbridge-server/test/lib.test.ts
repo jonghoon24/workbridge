@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { AppError } from '../src/lib/errors';
+import { AppError, invalidField } from '../src/lib/errors';
+import { ALL_ERROR_CODES, ERROR_CODES } from '../src/lib/errorCodes';
 import { clientUrl, corsOrigins, readClientUrl } from '../src/lib/clientUrl';
 import { getProfileCompletion, isProfileComplete } from '../src/lib/profileCompletion';
 import { getProjectStatusForRecruitmentStart } from '../src/lib/projectLifecycle';
@@ -474,54 +475,70 @@ describe('getProjectStatusForRecruitmentStart', () => {
 // ---------------------------------------------------------------------------
 
 describe('AppError', () => {
-  it('carries the message and statusCode it was constructed with', () => {
-    const err = new AppError('프로필을 먼저 완성해주세요', 403);
+  it('carries its code and message, and takes the status from the code', () => {
+    const err = new AppError('PROFILE_INCOMPLETE', '프로필을 먼저 완성해주세요');
 
+    expect(err.code).toBe('PROFILE_INCOMPLETE');
     expect(err.message).toBe('프로필을 먼저 완성해주세요');
     expect(err.statusCode).toBe(403);
+    expect(err.fields).toBeUndefined();
   });
 
   it('names itself AppError so errorHandler can tell it apart', () => {
-    expect(new AppError('nope', 400).name).toBe('AppError');
+    expect(new AppError('MALFORMED_BODY', 'nope').name).toBe('AppError');
   });
 
   it('is an instanceof Error and of AppError', () => {
-    const err = new AppError('nope', 400);
+    const err = new AppError('MALFORMED_BODY', 'nope');
 
     expect(err).toBeInstanceOf(Error);
     expect(err).toBeInstanceOf(AppError);
   });
 
   it('has a stack trace pointing at the construction site', () => {
-    const err = new AppError('nope', 500);
+    const err = new AppError('UPLOAD_FAILED', 'nope');
 
     expect(typeof err.stack).toBe('string');
     expect(err.stack?.length).toBeGreaterThan(0);
     expect(err.stack).toContain('lib.test.ts');
   });
 
-  it('preserves any status code, including 5xx', () => {
-    expect(new AppError('upstream died', 502).statusCode).toBe(502);
-    expect(new AppError('boom', 500).statusCode).toBe(500);
-    expect(new AppError('conflict', 409).statusCode).toBe(409);
+  it('gives every code the status of its catalog entry', () => {
+    expect(new AppError('UPLOAD_FAILED', 'upstream died').statusCode).toBe(502);
+    expect(new AppError('CONTRACT_CANCELLED', 'conflict').statusCode).toBe(409);
+    expect(new AppError('MANUAL_COMPLETION_REMOVED', 'gone').statusCode).toBe(410);
+    for (const code of ALL_ERROR_CODES) {
+      if (code === 'INTERNAL_ERROR') continue;
+      expect(new AppError(code, 'x').statusCode).toBe(ERROR_CODES[code].status);
+    }
   });
 
   it('is throwable and catchable as an AppError', () => {
     expect(() => {
-      throw new AppError('Not authorized', 403);
+      throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
     }).toThrow(AppError);
 
     try {
-      throw new AppError('Not authorized', 403);
+      throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
     } catch (err) {
       expect(err).toBeInstanceOf(AppError);
       expect((err as AppError).statusCode).toBe(403);
+      expect((err as AppError).code).toBe('FORBIDDEN_RESOURCE');
       expect((err as AppError).message).toBe('Not authorized');
     }
   });
 
   it('keeps an empty message empty rather than substituting a default', () => {
-    expect(new AppError('', 400).message).toBe('');
+    expect(new AppError('MALFORMED_BODY', '').message).toBe('');
+  });
+
+  it('invalidField makes a VALIDATION_FAILED 400 about one field, keeping the message as given', () => {
+    const err = invalidField('endDate', 'CONFLICT', 'endDate: End month must not be before start month');
+
+    expect(err.code).toBe('VALIDATION_FAILED');
+    expect(err.statusCode).toBe(400);
+    expect(err.message).toBe('endDate: End month must not be before start month');
+    expect(err.fields).toEqual([{ path: 'endDate', code: 'CONFLICT' }]);
   });
 });
 

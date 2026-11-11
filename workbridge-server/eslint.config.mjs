@@ -90,6 +90,19 @@ export default tseslint.config(
     },
   },
 
+  // Controllers stay thin: errors belong to the services (REVIEW #2), so a controller never decides
+  // an error response itself.
+  {
+    files: ['src/controllers/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        { selector: "NewExpression[callee.name='AppError']", message: 'Throw AppError in the service, not the controller (REVIEW #2).' },
+        { selector: "CallExpression[callee.name='invalidField']", message: 'Throw invalidField in the service, not the controller (REVIEW #2).' },
+      ],
+    },
+  },
+
   // Supertest types `res.body` as `any`, and vitest mocks are unbound functions and loose casts.
   {
     files: ['test/**/*.ts'],

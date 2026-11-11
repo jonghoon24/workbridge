@@ -11,6 +11,8 @@ import {
   makeFreelancer,
   makeProject,
 } from './helpers/factories';
+import type { ErrorCode } from '../src/lib/errorCodes';
+import { invalidBody } from './helpers/errors';
 
 /**
  * Applications — the endpoints nested under `/api/projects`.
@@ -18,9 +20,9 @@ import {
 
 const MISSING_ID = '00000000-0000-0000-0000-000000000000';
 
-/** Every error body must be exactly `{ error: { message } }`. */
-function expectErrorEnvelope(body: unknown) {
-  expect(body).toEqual({ error: { message: expect.any(String) } });
+/** Every error body must be exactly `{ error: { code, message } }`, with the expected code. */
+function expectErrorEnvelope(body: unknown, code: ErrorCode) {
+  expect(body).toEqual({ error: { code, message: expect.any(String) } });
 }
 
 const validApplyBody = {
@@ -53,7 +55,7 @@ describe('POST /api/projects/:id/applications', () => {
         .send(body);
 
       expect(res.status).toBe(400);
-      expect(res.body.error.message).toBe(`${field}: ${message}`);
+      expect(res.body).toEqual(invalidBody(field, 'REQUIRED', `${field}: ${message}`));
       expect(await prisma.application.count()).toBe(0);
       expect(await prisma.notification.count()).toBe(0);
     });
@@ -78,21 +80,21 @@ describe('POST /api/projects/:id/applications', () => {
   });
 
   it.each([
-    ['non-numeric', 'abc'],
-    ['negative', -5000],
-    ['negative string', '-5000'],
-    ['minus one', -1],
-    ['the numeric string "0"', '0'],
-    ['whitespace', '   '],
+    ['non-numeric', 'abc', 'INVALID'],
+    ['negative', -5000, 'TOO_SMALL'],
+    ['negative string', '-5000', 'TOO_SMALL'],
+    ['minus one', -1, 'TOO_SMALL'],
+    ['the numeric string "0"', '0', 'TOO_SMALL'],
+    ['whitespace', '   ', 'INVALID'],
     // Strict number parsing: `parseFloat` used to read these as 2500000 and 1.
-    ['trailing-garbage', '2500000abc'],
-    ['exponent', '1e6'],
-    ['boolean', true],
-    ['null', null],
+    ['trailing-garbage', '2500000abc', 'INVALID'],
+    ['exponent', '1e6', 'INVALID'],
+    ['boolean', true, 'INVALID'],
+    ['null', null, 'INVALID'],
     // Money-time rule: amounts are whole won.
-    ['fractional', 2_500_000.5],
-    ['fractional string', '1000.5'],
-  ])('400s on a %s expectedRate, from the positivity check', async (_label, expectedRate) => {
+    ['fractional', 2_500_000.5, 'INVALID'],
+    ['fractional string', '1000.5', 'INVALID'],
+  ] as const)('400s on a %s expectedRate, from the positivity check', async (_label, expectedRate, code) => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -102,8 +104,9 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ ...validApplyBody, expectedRate });
 
     expect(res.status).toBe(400);
-    expectErrorEnvelope(res.body);
-    expect(res.body.error.message).toBe('expectedRate: Expected rate must be a positive whole number of won');
+    expect(res.body).toEqual(
+      invalidBody('expectedRate', code, 'expectedRate: Expected rate must be a positive whole number of won'),
+    );
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -120,7 +123,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ ...validApplyBody, expectedRate });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'expectedRate: Expected rate must be a positive whole number of won' } });
+    expect(res.body).toEqual(invalidBody('expectedRate', 'INVALID', 'expectedRate: Expected rate must be a positive whole number of won'));
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -161,7 +164,7 @@ describe('POST /api/projects/:id/applications', () => {
     const res = await applyWithNonStringDuration();
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'expectedDuration: Expected duration must be a string' } });
+    expect(res.body).toEqual(invalidBody('expectedDuration', 'INVALID', 'expectedDuration: Expected duration must be a string'));
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -177,10 +180,10 @@ describe('POST /api/projects/:id/applications', () => {
   });
 
   it.each([
-    ['coverLetter', { coverLetter: 42 }, 'coverLetter: Cover letter must be a string'],
-    ['coverLetter', { coverLetter: '   ' }, 'coverLetter: Cover letter is required'],
-    ['expectedDuration', { expectedDuration: '' }, 'expectedDuration: Expected duration is required'],
-  ])('400s on a malformed %s (%j)', async (_field, override, message) => {
+    ['coverLetter', { coverLetter: 42 }, 'coverLetter: Cover letter must be a string', 'INVALID'],
+    ['coverLetter', { coverLetter: '   ' }, 'coverLetter: Cover letter is required', 'REQUIRED'],
+    ['expectedDuration', { expectedDuration: '' }, 'expectedDuration: Expected duration is required', 'REQUIRED'],
+  ] as const)('400s on a malformed %s (%j)', async (field, override, message, code) => {
     const client = await makeClient();
     const project = await makeProject(client.id);
     const freelancer = await makeFreelancer();
@@ -190,7 +193,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send({ ...validApplyBody, ...override });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBody(field, code, message));
     expect(await prisma.application.count()).toBe(0);
   });
 
@@ -252,7 +255,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send(validApplyBody);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'Project not found' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
     expect(await prisma.application.count()).toBe(0);
     expect(await prisma.notification.count()).toBe(0);
   });
@@ -317,7 +320,7 @@ describe('POST /api/projects/:id/applications', () => {
       .send(validApplyBody);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'Project is not accepting applications' } });
+    expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_ACCEPTING_APPLICATIONS', message: 'Project is not accepting applications' } });
 
     // The lazy sweep (`closeExpiredOpenProjects()`, `apply`'s first step) closed the project and
     // rejected the sibling application before the status check saw it.
@@ -723,7 +726,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({});
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'status: Status is required' } });
+    expect(res.body).toEqual(invalidBody('status', 'REQUIRED', 'status: Status is required'));
   });
 
   // Validation runs before the existence check.
@@ -791,7 +794,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' });
 
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'Application not found' } });
+      expect(res.body).toEqual({ error: { code: 'APPLICATION_NOT_FOUND', message: 'Application not found' } });
       expect(await prisma.contract.count()).toBe(0);
       const stored = await prisma.application.findMany({ where: { projectId: s.project.id } });
       expect(stored.every((a) => a.status === 'PENDING')).toBe(true);
@@ -1032,7 +1035,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
 
       expect(first.status).toBe(200);
       expect(second.status).toBe(409);
-      expectErrorEnvelope(second.body);
+      expectErrorEnvelope(second.body, 'APPLICATION_ALREADY_PROCESSED');
       expect(await prisma.contract.count()).toBe(1);
       expect(await prisma.notification.count()).toBe(3);
     });
@@ -1072,7 +1075,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
 
         expect(accepted?.status).toBe(200);
         expect(res.status).toBe(409);
-        expect(res.body).toEqual({ error: { message: 'This application has already been processed' } });
+        expect(res.body).toEqual({ error: { code: 'APPLICATION_ALREADY_PROCESSED', message: 'This application has already been processed' } });
       } finally {
         spy.mockRestore();
       }
@@ -1098,7 +1101,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
 
       expect(sibling.status).toBe(409);
       expect(sibling.status).not.toBe(500);
-      expectErrorEnvelope(sibling.body);
+      expectErrorEnvelope(sibling.body, 'APPLICATION_ALREADY_PROCESSED');
 
       // the project must never end up with two contracts
       const contracts = await prisma.contract.findMany();
@@ -1258,7 +1261,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       const [a, b] = await Promise.all([first!, second!]);
       expect([a.status, b.status].sort()).toEqual([200, 409]);
       const loser = a.status === 409 ? a : b;
-      expect(loser.body).toEqual({ error: { message: 'A contract already exists for this project' } });
+      expect(loser.body).toEqual({ error: { code: 'CONTRACT_ALREADY_EXISTS', message: 'A contract already exists for this project' } });
       expect(await prisma.contract.count()).toBe(1);
       expect(
         await prisma.application.count({ where: { projectId: s.project.id, status: 'ACCEPTED' } }),
@@ -1284,7 +1287,7 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
 
       const res = await pending!;
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'Project not found' } });
+      expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' } });
       expect(await prisma.contract.count()).toBe(0);
       const chosen = await prisma.application.findUniqueOrThrow({ where: { id: s.chosen.id } });
       expect(chosen.status).toBe('PENDING');
@@ -1368,7 +1371,7 @@ describe('a project that recruits again after a cancelled contract', () => {
     const res = await apply(accepted, project.id);
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'You have already applied to this project' } });
+    expect(res.body).toEqual({ error: { code: 'APPLICATION_ALREADY_EXISTS', message: 'You have already applied to this project' } });
     expect((await prisma.application.findUniqueOrThrow({ where: { id: acceptedApplication.id } })).status).toBe('ACCEPTED');
   });
 
@@ -1383,7 +1386,7 @@ describe('a project that recruits again after a cancelled contract', () => {
     const res = await apply(rejectedEarlier, project.id);
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: { message: 'You have already applied to this project' } });
+    expect(res.body).toEqual({ error: { code: 'APPLICATION_ALREADY_EXISTS', message: 'You have already applied to this project' } });
   });
 
   it('refuses an applicant whose application is still pending with 409', async () => {
@@ -1484,7 +1487,7 @@ describe('a project that recruits again after a cancelled contract', () => {
 
       const res = await pending!;
       expect(res.status).toBe(400);
-      expect(res.body).toEqual({ error: { message: 'Project is not accepting applications' } });
+      expect(res.body).toEqual({ error: { code: 'PROJECT_NOT_ACCEPTING_APPLICATIONS', message: 'Project is not accepting applications' } });
       expect((await prisma.application.findUniqueOrThrow({ where: { id: rejectedApplication.id } })).status).toBe('REJECTED');
     }, 20_000);
   });

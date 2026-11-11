@@ -61,7 +61,7 @@ test.describe('로그인과 로그아웃', () => {
   test('비밀번호가 틀리면 오류를 보여주고 로그인 페이지에 머문다', async ({ page }) => {
     await loginThroughForm(page, ACCOUNTS.client.email, 'wrong-password');
 
-    // 서버 문구(Invalid credentials)는 화면에서 한국어로 바뀐다(lib/errorMessages.js)
+    // 서버의 오류 코드(INVALID_CREDENTIALS)로 화면 문구를 고른다(lib/errorMessages.js)
     await expect(page.getByText('이메일 또는 비밀번호가 올바르지 않습니다.')).toBeVisible();
     await expect(page).toHaveURL(/\/login/);
     await expect(header(page).getByRole('link', { name: '로그인' })).toBeVisible();

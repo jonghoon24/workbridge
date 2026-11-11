@@ -418,8 +418,8 @@ export async function getSettlement(settlementId: string, freelancerId: string) 
       },
     },
   });
-  if (!settlement) throw new AppError('Settlement not found', 404);
-  if (settlement.freelancerId !== freelancerId) throw new AppError('Not authorized', 403);
+  if (!settlement) throw new AppError('SETTLEMENT_NOT_FOUND', 'Settlement not found');
+  if (settlement.freelancerId !== freelancerId) throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
 
   const { items, ...row } = settlement;
   return {

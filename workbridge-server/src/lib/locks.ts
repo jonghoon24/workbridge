@@ -27,5 +27,5 @@ export const ACCOUNT_INACTIVE = 'Account is no longer active';
  */
 export async function lockActiveUserRow(tx: PrismaTransactionClient, userId: string): Promise<void> {
   const row = await lockUserRow(tx, userId);
-  if (!row || row.deletedAt) throw new AppError(ACCOUNT_INACTIVE, 401);
+  if (!row || row.deletedAt) throw new AppError('ACCOUNT_INACTIVE', ACCOUNT_INACTIVE);
 }

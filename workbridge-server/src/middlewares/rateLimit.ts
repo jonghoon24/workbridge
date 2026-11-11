@@ -28,7 +28,7 @@ export function rateLimit(rule: RateLimitRule, options: RateLimitOptions = {}) {
       const result = await check(key, rule.windowMs, rule.limit, new Date());
       if (!result.allowed) {
         res.set('Retry-After', String(result.retryAfterSec));
-        throw new AppError('Too many requests. Try again later.', 429);
+        throw new AppError('RATE_LIMITED', 'Too many requests. Try again later.');
       }
 
       next();

@@ -32,23 +32,20 @@ function toHttpError(err: unknown, policy: UploadPolicy): AppError {
   if (err instanceof multer.MulterError) {
     switch (err.code) {
       case 'LIMIT_FILE_SIZE':
-        return new AppError(`File too large (max ${policy.maxBytes / MB}MB)`, 413);
+        return new AppError('FILE_TOO_LARGE', `File too large (max ${policy.maxBytes / MB}MB)`);
       case 'LIMIT_FILE_COUNT':
-        return new AppError(`Too many files (max ${policy.maxFiles})`, 400);
+        return new AppError('TOO_MANY_FILES', `Too many files (max ${policy.maxFiles})`);
       case 'LIMIT_UNEXPECTED_FILE':
-        return new AppError(
-          err.field === policy.fieldName
-            ? `Too many files (max ${policy.maxFiles})`
-            : `Unexpected file field: ${err.field}`,
-          400,
-        );
+        return err.field === policy.fieldName
+          ? new AppError('TOO_MANY_FILES', `Too many files (max ${policy.maxFiles})`)
+          : new AppError('MALFORMED_BODY', `Unexpected file field: ${err.field}`);
       default:
-        return new AppError(err.message, 400);
+        return new AppError('MALFORMED_BODY', err.message);
     }
   }
 
   // Busboy parse failures ("Unexpected end of form", malformed headers) are client errors.
-  return new AppError('Malformed multipart body', 400);
+  return new AppError('MALFORMED_BODY', 'Malformed multipart body');
 }
 
 export function createUpload(policy: UploadPolicy): RequestHandler {
@@ -61,7 +58,7 @@ export function createUpload(policy: UploadPolicy): RequestHandler {
       if (policy.allow(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new AppError(`Unsupported file type: ${file.mimetype}`, 400));
+        cb(new AppError('FILE_TYPE_UNSUPPORTED', `Unsupported file type: ${file.mimetype}`));
       }
     },
   });
@@ -115,7 +112,7 @@ export async function storeUploadedFile(file: Express.Multer.File, folder: strin
     url = await uploadToSupabase(file.buffer, file.mimetype, key.slice(slash + 1), key.slice(0, slash));
   } catch (err) {
     logger.warn('file upload failed', { key, err });
-    throw new AppError('File upload failed', 502);
+    throw new AppError('UPLOAD_FAILED', 'File upload failed');
   }
 
   return {

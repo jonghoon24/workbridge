@@ -15,6 +15,7 @@ import {
   makePortfolioItem,
   makeProject,
 } from './helpers/factories';
+import { invalidBody, invalidBodyFor } from './helpers/errors';
 
 /**
  * The Supabase boundary is mocked at the SDK, not at `src/middlewares/upload`, because that
@@ -117,15 +118,15 @@ describe('GET /api/users/me', () => {
     expect(JSON.stringify(first.body)).not.toContain(stored.password);
   });
 
-  it('404s when the record behind a still-valid token is gone', async () => {
+  it('401s ACCOUNT_INACTIVE when the record behind a still-valid token is gone — the caller\'s own account', async () => {
     const user = await makeFreelancer();
     const token = tokenFor(user);
     await prisma.user.delete({ where: { id: user.id } });
 
     const res = await api().get('/api/users/me').set('Authorization', `Bearer ${token}`);
 
-    expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'ACCOUNT_INACTIVE', message: 'Account is no longer active' } });
   });
 });
 
@@ -142,7 +143,7 @@ describe('PATCH /api/users/me', () => {
       .send({ name: 'New Name', hourlyRate: 'not a number' });
 
     expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { message: 'Insufficient permissions' } });
+    expect(res.body).toEqual({ error: { code: 'FORBIDDEN_ROLE', message: 'Insufficient permissions' } });
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
     expect(stored.name).toBe('Old Name');
   });
@@ -320,9 +321,9 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(freelancer).patch('/api/users/me').send({ experienceYears: 'abc' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({
-      error: { message: 'experienceYears: Experience years must be a non-negative integer' },
-    });
+    expect(res.body).toEqual(
+      invalidBody('experienceYears', 'INVALID', 'experienceYears: Experience years must be a non-negative integer'),
+    );
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.experienceYears).toBe(3);
   });
@@ -334,7 +335,7 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate: 'abc' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a positive whole number of won' } });
+    expect(res.body).toEqual(invalidBody('hourlyRate', 'INVALID', 'hourlyRate: Hourly rate must be a positive whole number of won'));
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.hourlyRate).toBe(50_000);
   });
@@ -368,23 +369,23 @@ describe('PATCH /api/users/me', () => {
   // `experienceYears` is a non-negative integer — the range `requireCompleteProfile` accepts.
   // An empty multipart field is a present, non-numeric value, not "absent": 400, not a wipe.
   it.each([
-    ['a fractional number', 1.5],
-    ['a fractional string', '1.5'],
-    ['a negative number', -1],
-    ['a negative string', '-1'],
-    ['trailing garbage', '3abc'],
-    ['an empty string', ''],
-    ['null', null],
-    ['a value beyond the Int column', 2_147_483_648],
-  ])('rejects %s as experienceYears with 400, row unchanged', async (_label, experienceYears) => {
+    ['a fractional number', 1.5, 'INVALID'],
+    ['a fractional string', '1.5', 'INVALID'],
+    ['a negative number', -1, 'TOO_SMALL'],
+    ['a negative string', '-1', 'INVALID'],
+    ['trailing garbage', '3abc', 'INVALID'],
+    ['an empty string', '', 'INVALID'],
+    ['null', null, 'INVALID'],
+    ['a value beyond the Int column', 2_147_483_648, 'TOO_LARGE'],
+  ] as const)('rejects %s as experienceYears with 400, row unchanged', async (_label, experienceYears, code) => {
     const freelancer = await makeFreelancer({ experienceYears: 3 });
 
     const res = await authed(freelancer).patch('/api/users/me').send({ experienceYears });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({
-      error: { message: 'experienceYears: Experience years must be a non-negative integer' },
-    });
+    expect(res.body).toEqual(
+      invalidBody('experienceYears', code, 'experienceYears: Experience years must be a non-negative integer'),
+    );
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.experienceYears).toBe(3);
   });
@@ -408,25 +409,25 @@ describe('PATCH /api/users/me', () => {
   });
 
   it.each([
-    ['null', null],
-    ['an empty string', ''],
-    ['an object', { amount: 1 }],
-    ['a value that overflows to Infinity', '1e400'],
+    ['null', null, 'INVALID'],
+    ['an empty string', '', 'INVALID'],
+    ['an object', { amount: 1 }, 'INVALID'],
+    ['a value that overflows to Infinity', '1e400', 'INVALID'],
     // Money rule: amounts are whole won.
-    ['a fractional number', 45_000.5],
-    ['a fractional string', '45000.5'],
-    ['a negative number', -1],
-    ['a negative string', '-1'],
+    ['a fractional number', 45_000.5, 'INVALID'],
+    ['a fractional string', '45000.5', 'INVALID'],
+    ['a negative number', -1, 'TOO_SMALL'],
+    ['a negative string', '-1', 'INVALID'],
     // A rate is at least 1 won.
-    ['zero', 0],
-    ['a zero string', '0'],
-  ])('rejects %s as hourlyRate with 400, row unchanged', async (_label, hourlyRate) => {
+    ['zero', 0, 'TOO_SMALL'],
+    ['a zero string', '0', 'TOO_SMALL'],
+  ] as const)('rejects %s as hourlyRate with 400, row unchanged', async (_label, hourlyRate, code) => {
     const freelancer = await makeFreelancer({ hourlyRate: 50_000 });
 
     const res = await authed(freelancer).patch('/api/users/me').send({ hourlyRate });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be a positive whole number of won' } });
+    expect(res.body).toEqual(invalidBody('hourlyRate', code, 'hourlyRate: Hourly rate must be a positive whole number of won'));
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.hourlyRate).toBe(50_000);
   });
@@ -459,23 +460,23 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(freelancer).patch('/api/users/me').field('hourlyRate', '100000001');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'hourlyRate: Hourly rate must be at most 100,000,000 won' } });
+    expect(res.body).toEqual(invalidBody('hourlyRate', 'TOO_LARGE', 'hourlyRate: Hourly rate must be at most 100,000,000 won'));
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: freelancer.id } });
     expect(stored.hourlyRate).toBe(50_000);
   });
 
   it.each([
-    ['an empty name', { name: '' }, 'name: Name is required'],
-    ['a blank name', { name: '   ' }, 'name: Name is required'],
-    ['a numeric name', { name: 7 }, 'name: Name must be a string'],
-    ['an object bio', { bio: { text: 'x' } }, 'bio: Bio must be a string'],
-  ])('rejects %s with 400 rather than 500 and writes nothing', async (_label, body, message) => {
+    ['an empty name', { name: '' }, 'name: Name is required', 'REQUIRED'],
+    ['a blank name', { name: '   ' }, 'name: Name is required', 'REQUIRED'],
+    ['a numeric name', { name: 7 }, 'name: Name must be a string', 'INVALID'],
+    ['an object bio', { bio: { text: 'x' } }, 'bio: Bio must be a string', 'INVALID'],
+  ] as const)('rejects %s with 400 rather than 500 and writes nothing', async (_label, body, message, code) => {
     const client = await makeClient({ name: 'Unchanged', bio: 'kept' });
 
     const res = await authed(client).patch('/api/users/me').send(body);
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message } });
+    expect(res.body).toEqual(invalidBodyFor(code, message));
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
     expect(stored).toMatchObject({ name: 'Unchanged', bio: 'kept' });
   });
@@ -486,7 +487,7 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(freelancer).patch('/api/users/me').field('name', 'a').field('name', 'b');
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'name: Name must be a string' } });
+    expect(res.body).toEqual(invalidBody('name', 'INVALID', 'name: Name must be a string'));
   });
 
   it('stores the name trimmed and lets JSON null clear an optional text field', async () => {
@@ -506,7 +507,7 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(client).patch('/api/users/me').send({ companyName: 42, experienceYears: 'abc' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'companyName: Company name must be a string' } });
+    expect(res.body).toEqual(invalidBody('companyName', 'INVALID', 'companyName: Company name must be a string'));
     const stored = await prisma.user.findUniqueOrThrow({ where: { id: client.id } });
     expect(stored.companyName).toBe('코드잇');
   });
@@ -532,7 +533,7 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(freelancer).patch('/api/users/me').send({ skills: [1, 2] });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'skills: Skills must be strings' } });
+    expect(res.body).toEqual(invalidBody('skills', 'INVALID', 'skills: Skills must be strings'));
   });
 
   it.each([
@@ -545,7 +546,7 @@ describe('PATCH /api/users/me', () => {
     const res = await authed(freelancer).patch('/api/users/me').send({ skills });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { message: 'skills: Skills must be strings' } });
+    expect(res.body).toEqual(invalidBody('skills', 'INVALID', 'skills: Skills must be strings'));
   });
 
   it('clears skills with JSON null', async () => {
@@ -566,8 +567,8 @@ describe('PATCH /api/users/me', () => {
       .patch('/api/users/me')
       .send({ name: 'Should not stick', skills: [1, 2], activityCategory: '기획' });
 
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(res.body).toEqual({ error: { message: expect.any(String) } });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual(invalidBody('skills', 'INVALID', 'skills: Skills must be strings'));
     // No error body, whatever its status, leaks a source path.
     expect(res.body.error.message).not.toMatch(/workbridge-server|\.ts:/);
 
@@ -929,7 +930,7 @@ describe('GET /api/users/:id', () => {
     const res = await api().get('/api/users/00000000-0000-0000-0000-000000000000');
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
   });
 
   it('adds portfolioItems, careers and careerSummary exactly as the public routes return them', async () => {
@@ -980,7 +981,7 @@ describe('GET /api/users/:id', () => {
     const res = await api().get(`/api/users/${freelancer.id}`);
 
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ error: { message: 'User not found' } });
+    expect(res.body).toEqual({ error: { code: 'USER_NOT_FOUND', message: 'User not found' } });
   });
 });
 

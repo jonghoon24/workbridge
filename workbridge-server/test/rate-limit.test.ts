@@ -17,7 +17,7 @@ import { rateLimit } from '../src/middlewares/rateLimit';
  * Counters live in a table that is truncated before every test, so each test starts at zero.
  */
 
-const TOO_MANY = { error: { message: 'Too many requests. Try again later.' } };
+const TOO_MANY = { error: { code: 'RATE_LIMITED', message: 'Too many requests. Try again later.' } };
 
 afterEach(() => {
   process.env.RATE_LIMIT_ENABLED = 'true';
@@ -156,7 +156,7 @@ describe('POST /api/auth/login rate limits', () => {
     for (let i = 0; i < 5; i += 1) {
       const res = await login({ email: user.email, password: 'wrong-password' });
       expect(res.status).toBe(401);
-      expect(res.body).toEqual({ error: { message: 'Invalid credentials' } });
+      expect(res.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid credentials' } });
     }
 
     expectTooMany(await login({ email: user.email, password: TEST_PASSWORD }), 15 * 60);

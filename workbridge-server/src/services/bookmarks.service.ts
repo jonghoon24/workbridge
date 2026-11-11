@@ -17,7 +17,7 @@ async function findBookmarkableProject(projectId: string) {
   });
 
   if (!project) {
-    throw new AppError('Project not found', 404);
+    throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   return project;

@@ -14,11 +14,17 @@ import Input from '@/components/ui/Input';
 import ProjectCardGrid from '@/components/projects/ProjectCardGrid';
 import ProjectBookmarkButton from '@/components/projects/ProjectBookmarkButton';
 import { getProfileCompletionMessage, isProfileComplete } from '@/lib/profileCompletion';
-import { toUserMessage } from '@/lib/errorMessages';
+import { errorCode, toUserMessage } from '@/lib/errorMessages';
 import { formatDate, kstToday, toKstDateInput } from '@/lib/format';
 import { BookmarkIcon } from '@/components/ui/Icons';
 
 const RECOMMENDATION_LIMIT = 3;
+
+// 다시 모집하기(상태 변경)의 검증 오류 — `deadline`이 이 화면에서는 새 마감일이다.
+const REOPEN_FIELDS = {
+  deadline: { REQUIRED: '새 마감일을 선택해 주세요.' },
+  status: '바꿀 프로젝트 상태가 올바르지 않습니다.',
+};
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
@@ -208,7 +214,7 @@ export default function ProjectDetailPage() {
       setProject((prev) => ({ ...prev, status: data.status, deadline: data.deadline }));
       setReopenModal(false);
     } catch (err) {
-      setReopenError(toUserMessage(err, '다시 모집하지 못했습니다.'));
+      setReopenError(toUserMessage(err, '다시 모집하지 못했습니다.', { fields: REOPEN_FIELDS }));
     } finally {
       setReopening(false);
     }
@@ -238,14 +244,13 @@ export default function ProjectDetailPage() {
       setApplyModal(false);
       router.push('/my/applications');
     } catch (err) {
-      const message = toUserMessage(err, '지원에 실패했습니다.');
-      if (err.response?.status === 403 && message.includes('프로필')) {
+      if (errorCode(err) === 'PROFILE_INCOMPLETE') {
         alert(getProfileCompletionMessage('FREELANCER'));
         setApplyModal(false);
         router.push('/profile');
         return;
       }
-      setApplyError(message);
+      setApplyError(toUserMessage(err, '지원에 실패했습니다.'));
     } finally {
       setApplyLoading(false);
     }

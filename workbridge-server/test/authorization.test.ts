@@ -29,6 +29,7 @@ import {
   makeProject,
 } from './helpers/factories';
 import { generateRefreshToken } from '../src/lib/jwt';
+import type { ErrorCode } from '../src/lib/errorCodes';
 
 /**
  * The cross-cutting authentication/authorization matrix.
@@ -707,16 +708,16 @@ function call(route: RouteSpec, ids: Ids, headers: Record<string, string> = {}) 
 }
 
 /**
- * Every error body is exactly `{ error: { message: string } }` — *exactly*, so
- * this asserts the whole shape rather than probing for the message. No `stack`, no `statusCode`,
- * no `success: false` alongside it, nothing nested under `error` but the one non-empty string,
- * and the response is JSON rather than Express's default HTML error page.
+ * Every error body is exactly `{ error: { code, message } }` — *exactly*, so this asserts the
+ * whole shape and the code the cause must have rather than probing for the message. No `stack`,
+ * no `statusCode`, no `success: false` alongside it, nothing under `error` but the code and one
+ * non-empty string, and the response is JSON rather than Express's default HTML error page.
  */
-function expectErrorEnvelope(res: ApiResponse, status: number) {
+function expectErrorEnvelope(res: ApiResponse, status: number, code: ErrorCode) {
   expect(res.status).toBe(status);
-  expect(res.body).toEqual({ error: { message: expect.any(String) } });
+  expect(res.body).toEqual({ error: { code, message: expect.any(String) } });
   expect(Object.keys(res.body)).toEqual(['error']);
-  expect(Object.keys(res.body.error)).toEqual(['message']);
+  expect(Object.keys(res.body.error)).toEqual(['code', 'message']);
   expect(res.body.error.message.length).toBeGreaterThan(0);
   if (res.headers) {
     expect(res.headers['content-type']).toMatch(/application\/json/);
@@ -752,27 +753,27 @@ describe('authentication — no Authorization header', () => {
   it.each(PROTECTED_ROUTES)('$label → 401 Authentication required', async (route) => {
     const res = await call(route, MISSING);
 
-    expectErrorEnvelope(res, 401);
+    expectErrorEnvelope(res, 401, 'AUTH_REQUIRED');
     expect(res.body.error.message).toBe('Authentication required');
   });
 });
 
 const MALFORMED_HEADERS = [
   // `'Bearer'` does not start with `'Bearer '`, so it never reaches token verification.
-  { variant: 'Bearer with no token', header: 'Bearer', message: 'Authentication required' },
-  { variant: 'a non-Bearer scheme', header: 'Token abc.def.ghi', message: 'Authentication required' },
-  { variant: 'a bare token with no scheme', header: tokenFor(GHOST), message: 'Authentication required' },
-  { variant: 'Bearer with a garbage token', header: 'Bearer not-a-jwt', message: 'Invalid or expired token' },
-];
+  { variant: 'Bearer with no token', header: 'Bearer', code: 'AUTH_REQUIRED', message: 'Authentication required' },
+  { variant: 'a non-Bearer scheme', header: 'Token abc.def.ghi', code: 'AUTH_REQUIRED', message: 'Authentication required' },
+  { variant: 'a bare token with no scheme', header: tokenFor(GHOST), code: 'AUTH_REQUIRED', message: 'Authentication required' },
+  { variant: 'Bearer with a garbage token', header: 'Bearer not-a-jwt', code: 'TOKEN_INVALID', message: 'Invalid or expired token' },
+] as const;
 
 describe('authentication — malformed Authorization header', () => {
   const cases = PROTECTED_ROUTES.flatMap((route) =>
     MALFORMED_HEADERS.map((h) => ({ label: route.label, route, ...h })));
 
-  it.each(cases)('$label → 401 given $variant', async ({ route, header, message }) => {
+  it.each(cases)('$label → 401 given $variant', async ({ route, header, code, message }) => {
     const res = await call(route, MISSING, { Authorization: header });
 
-    expectErrorEnvelope(res, 401);
+    expectErrorEnvelope(res, 401, code);
     expect(res.body.error.message).toBe(message);
   });
 
@@ -781,7 +782,7 @@ describe('authentication — malformed Authorization header', () => {
 
     const res = await api().get('/api/users/me').set('Authorization', `bearer ${tokenFor(client)}`);
 
-    expectErrorEnvelope(res, 401);
+    expectErrorEnvelope(res, 401, 'AUTH_REQUIRED');
     expect(res.body.error.message).toBe('Authentication required');
   });
 
@@ -796,7 +797,7 @@ describe('authentication — malformed Authorization header', () => {
         contentType: 'image/png',
       });
 
-    expectErrorEnvelope(res, 401);
+    expectErrorEnvelope(res, 401, 'AUTH_REQUIRED');
     expect(res.body.error.message).toBe('Authentication required');
   });
 });
@@ -813,7 +814,7 @@ describe('authentication — unverifiable tokens', () => {
   it.each(cases)('$label → 401 given $variant', async ({ route, token }) => {
     const res = await call(route, MISSING, { Authorization: `Bearer ${token}` });
 
-    expectErrorEnvelope(res, 401);
+    expectErrorEnvelope(res, 401, 'TOKEN_INVALID');
     expect(res.body.error.message).toBe('Invalid or expired token');
   });
 
@@ -823,7 +824,7 @@ describe('authentication — unverifiable tokens', () => {
       .get('/api/users/me')
       .set('Authorization', `Bearer ${expiredToken(client)}`);
 
-    expectErrorEnvelope(res, 401);
+    expectErrorEnvelope(res, 401, 'TOKEN_INVALID');
     expect(res.body.error.message).toBe('Invalid or expired token');
   });
 
@@ -938,14 +939,14 @@ describe('authorization — role gating', () => {
   it.each(clientOnly)('$label → 403 for a FREELANCER', async (route) => {
     const res = await call(route, ids, { Authorization: `Bearer ${tokenFor(freelancer)}` });
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_ROLE');
     expect(res.body.error.message).toBe('Insufficient permissions');
   });
 
   it.each(freelancerOnly)('$label → 403 for a CLIENT', async (route) => {
     const res = await call(route, ids, { Authorization: `Bearer ${tokenFor(client)}` });
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_ROLE');
     expect(res.body.error.message).toBe('Insufficient permissions');
   });
 
@@ -969,7 +970,7 @@ describe('authorization — role gating', () => {
       .set('Authorization', `Bearer ${tokenFor(incomplete)}`)
       .send({ title: 't', description: 'd', category: '웹 개발', budget: 1, deadline: daysFromNow(5) });
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_ROLE');
     expect(res.body.error.message).toBe('Insufficient permissions');
   });
 
@@ -979,7 +980,7 @@ describe('authorization — role gating', () => {
       .set('Authorization', `Bearer ${tokenFor(freelancer)}`)
       .send({ role: 'CLIENT', clientId: client.id, title: 't' });
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_ROLE');
     expect(res.body.error.message).toBe('Insufficient permissions');
     expect(await prisma.project.count({ where: { title: 't' } })).toBe(0);
   });
@@ -1048,7 +1049,7 @@ describe('authorization — profile completeness', () => {
       .set('Authorization', `Bearer ${tokenFor(client)}`)
       .send(validProject());
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'PROFILE_INCOMPLETE');
     expect(res.body.error.message).toBe(INCOMPLETE);
     expect(await prisma.project.count({ where: { clientId: client.id } })).toBe(0);
   });
@@ -1087,7 +1088,7 @@ describe('authorization — profile completeness', () => {
         .set('Authorization', `Bearer ${tokenFor(freelancer)}`)
         .send(validApplication());
 
-      expectErrorEnvelope(res, 403);
+      expectErrorEnvelope(res, 403, 'PROFILE_INCOMPLETE');
       expect(res.body.error.message).toBe(INCOMPLETE);
       expect(await prisma.application.count({ where: { freelancerId: freelancer.id } })).toBe(0);
     },
@@ -1127,7 +1128,7 @@ describe('authorization — profile completeness', () => {
       .set('Authorization', `Bearer ${tokenFor(freelancer)}`)
       .send({});
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'PROFILE_INCOMPLETE');
     expect(res.body.error.message).toBe(INCOMPLETE);
     expect(await prisma.application.count()).toBe(0);
     expect(await prisma.notification.count()).toBe(0);
@@ -1218,7 +1219,7 @@ describe('the public surface', () => {
     const res = await api().post('/api/auth/refresh');
 
     // Still public: it is the missing *cookie* being reported, not a missing Bearer token.
-    expectErrorEnvelope(res, 401);
+    expectErrorEnvelope(res, 401, 'REFRESH_TOKEN_INVALID');
     expect(res.body.error.message).toBe('Refresh token not found');
   });
 
@@ -1232,13 +1233,13 @@ describe('the public surface', () => {
   it('GET /api/projects/:id for an unknown id is 404, not 401', async () => {
     const res = await api().get('/api/projects/missing-project-id');
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'PROJECT_NOT_FOUND');
   });
 
   it('GET /api/users/:id for an unknown id is 404, not 401', async () => {
     const res = await api().get('/api/users/missing-user-id');
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'USER_NOT_FOUND');
   });
 
   it('both mountings of the public review list behave identically', async () => {
@@ -1263,7 +1264,7 @@ describe('ownership is checked after existence', () => {
       .patch('/api/projects/missing-project-id')
       .send({ title: 'Edited' });
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'PROJECT_NOT_FOUND');
     expect(res.body.error.message).not.toMatch(/authoriz/i);
   });
 
@@ -1274,7 +1275,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(intruder).patch(`/api/projects/${project.id}`).send({ title: 'Hijacked' });
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     expect(res.body.error.message).toBe('Not authorized');
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).title)
       .toBe('Untouched');
@@ -1285,7 +1286,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(client).delete('/api/projects/missing-project-id');
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'PROJECT_NOT_FOUND');
   });
 
   it('DELETE /api/projects/:id → 403 for another client, and does not soft-delete it', async () => {
@@ -1295,7 +1296,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(intruder).delete(`/api/projects/${project.id}`);
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).deletedAt)
       .toBeNull();
   });
@@ -1305,7 +1306,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(user).get('/api/contracts/missing-contract-id');
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'CONTRACT_NOT_FOUND');
     expect(res.body.error.message).not.toMatch(/authoriz/i);
   });
 
@@ -1315,7 +1316,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(outsider).get(`/api/contracts/${contract.id}`);
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     expect(res.body.error.message).toBe('Not authorized');
   });
 
@@ -1334,7 +1335,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(user).post('/api/contracts/missing-contract-id/cancel');
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'CONTRACT_NOT_FOUND');
   });
 
   it('POST /api/contracts/:id/cancel → 403 for an outsider, and the contract stays PENDING', async () => {
@@ -1343,7 +1344,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(outsider).post(`/api/contracts/${contract.id}/cancel`);
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after.status).toBe('PENDING');
     expect(await prisma.notification.count()).toBe(0);
@@ -1354,7 +1355,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(user).post('/api/contracts/missing-contract-id/sign');
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'CONTRACT_NOT_FOUND');
   });
 
   it('POST /api/contracts/:id/sign → 403 for an outsider, and records no signature', async () => {
@@ -1363,7 +1364,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(outsider).post(`/api/contracts/${contract.id}/sign`);
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after.clientSigned).toBe(false);
     expect(after.freelancerSigned).toBe(false);
@@ -1375,7 +1376,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(client).post('/api/payments').send({ milestoneId: 'missing-milestone-id' });
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'MILESTONE_NOT_FOUND');
     expect(res.body.error.message).not.toMatch(/authoriz/i);
   });
 
@@ -1385,7 +1386,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(intruder).post('/api/payments').send({ milestoneId: milestone.id });
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     expect(res.body.error.message).toBe('Not authorized');
     expect(await prisma.payment.count()).toBe(0);
   });
@@ -1399,7 +1400,7 @@ describe('ownership is checked after existence', () => {
       amount: 4_000_000,
     });
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'PAYMENT_NOT_FOUND');
     expect(res.body.error.message).not.toMatch(/authoriz/i);
   });
 
@@ -1414,7 +1415,7 @@ describe('ownership is checked after existence', () => {
       amount: 4_000_000,
     });
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     expect(res.body.error.message).toBe('Not authorized');
     // Still PENDING: the ownership check fires before the payment can be marked FAILED.
     expect((await prisma.payment.findUniqueOrThrow({ where: { id: payment.id } })).status)
@@ -1430,7 +1431,7 @@ describe('ownership is checked after existence', () => {
 
     // The bypass guard answers before the milestone lookup, so it reveals nothing about which
     // milestones exist. `ALLOW_PAYMENT_BYPASS` is `'false'` in `vitest.config.ts`.
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'PAYMENT_BYPASS_DISABLED');
     expect(res.body.error.message).toBe('Payment bypass is disabled');
   });
 
@@ -1444,7 +1445,7 @@ describe('ownership is checked after existence', () => {
       content: 'Great work',
     });
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'CONTRACT_NOT_FOUND');
     expect(res.body.error.message).not.toMatch(/authoriz/i);
   });
 
@@ -1459,7 +1460,7 @@ describe('ownership is checked after existence', () => {
       content: 'Never worked with them',
     });
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     expect(res.body.error.message).toBe('Not authorized');
     expect(await prisma.review.count()).toBe(0);
 
@@ -1491,9 +1492,9 @@ describe('ownership is checked after existence', () => {
     const missing = await authed(outsider)[method](path('missing-contract-id')).send(body);
     const foreign = await authed(outsider)[method](path(contract.id)).send(body);
 
-    expectErrorEnvelope(missing, 404);
+    expectErrorEnvelope(missing, 404, 'CONTRACT_NOT_FOUND');
     expect(missing.body.error.message).toBe('Contract not found');
-    expectErrorEnvelope(foreign, 403);
+    expectErrorEnvelope(foreign, 403, 'FORBIDDEN_RESOURCE');
     expect(foreign.body.error.message).toBe('Not authorized');
   });
 
@@ -1516,9 +1517,9 @@ describe('ownership is checked after existence', () => {
     const missing = await authed(outsider)[method](`/api/milestones/missing-milestone-id${suffix}`).send(body);
     const foreign = await authed(outsider)[method](`/api/milestones/${milestone.id}${suffix}`).send(body);
 
-    expectErrorEnvelope(missing, 404);
+    expectErrorEnvelope(missing, 404, 'MILESTONE_NOT_FOUND');
     expect(missing.body.error.message).toBe('Milestone not found');
-    expectErrorEnvelope(foreign, 403);
+    expectErrorEnvelope(foreign, 403, 'FORBIDDEN_RESOURCE');
     expect(foreign.body.error.message).toBe('Not authorized');
   });
 
@@ -1529,7 +1530,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(intruder).post(`/api/milestones/${milestone.id}/approve`);
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('SUBMITTED');
   });
 
@@ -1553,18 +1554,18 @@ describe('ownership is checked after existence', () => {
     const missing = await authed(other).get('/api/settlements/missing-settlement-id');
     const foreign = await authed(other).get(`/api/settlements/${settlement.id}`);
 
-    expectErrorEnvelope(missing, 404);
+    expectErrorEnvelope(missing, 404, 'SETTLEMENT_NOT_FOUND');
     expect(missing.body.error.message).toBe('Settlement not found');
-    expectErrorEnvelope(foreign, 403);
+    expectErrorEnvelope(foreign, 403, 'FORBIDDEN_RESOURCE');
     expect(foreign.body.error.message).toBe('Not authorized');
   });
 
   it.each([
-    ['PATCH', 'patch', 'portfolio', 'Portfolio item not found'],
-    ['DELETE', 'delete', 'portfolio', 'Portfolio item not found'],
-    ['PATCH', 'patch', 'careers', 'Career not found'],
-    ['DELETE', 'delete', 'careers', 'Career not found'],
-  ] as const)('%s /api/users/me/%s/:id → 404 for a missing row, 403 for another freelancer\'s', async (_label, method, resource, notFound) => {
+    ['PATCH', 'patch', 'portfolio', 'PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found'],
+    ['DELETE', 'delete', 'portfolio', 'PORTFOLIO_ITEM_NOT_FOUND', 'Portfolio item not found'],
+    ['PATCH', 'patch', 'careers', 'CAREER_NOT_FOUND', 'Career not found'],
+    ['DELETE', 'delete', 'careers', 'CAREER_NOT_FOUND', 'Career not found'],
+  ] as const)('%s /api/users/me/%s/:id → 404 for a missing row, 403 for another freelancer\'s', async (_label, method, resource, notFoundCode, notFound) => {
     const owner = await makeFreelancer();
     const intruder = await makeFreelancer();
     const row = resource === 'portfolio'
@@ -1575,9 +1576,9 @@ describe('ownership is checked after existence', () => {
     const missing = await authed(intruder)[method](`/api/users/me/${resource}/missing-row-id`).send(body);
     const foreign = await authed(intruder)[method](`/api/users/me/${resource}/${row.id}`).send(body);
 
-    expectErrorEnvelope(missing, 404);
+    expectErrorEnvelope(missing, 404, notFoundCode);
     expect(missing.body.error.message).toBe(notFound);
-    expectErrorEnvelope(foreign, 403);
+    expectErrorEnvelope(foreign, 403, 'FORBIDDEN_RESOURCE');
     expect(foreign.body.error.message).toBe('Not authorized');
     const stillThere = resource === 'portfolio'
       ? await prisma.portfolioItem.findUnique({ where: { id: row.id } })
@@ -1591,7 +1592,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(client).get('/api/projects/missing-project-id/applications');
 
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'PROJECT_NOT_FOUND');
   });
 
   it('GET /api/projects/:id/applications → 403 for another client', async () => {
@@ -1601,7 +1602,7 @@ describe('ownership is checked after existence', () => {
 
     const res = await authed(intruder).get(`/api/projects/${project.id}/applications`);
 
-    expectErrorEnvelope(res, 403);
+    expectErrorEnvelope(res, 403, 'FORBIDDEN_RESOURCE');
     expect(res.body.error.message).toBe('Not authorized');
   });
 
@@ -1615,7 +1616,7 @@ describe('ownership is checked after existence', () => {
     const res = await authed(other).patch(`/api/notifications/${notification.id}/read`);
 
     // Indistinguishable from a missing id, so it cannot be used to probe for others' ids.
-    expectErrorEnvelope(res, 404);
+    expectErrorEnvelope(res, 404, 'NOTIFICATION_NOT_FOUND');
     const missing = await authed(other).patch('/api/notifications/missing-notification-id/read');
     expect(missing.status).toBe(404);
     expect(missing.body.error.message).toBe(res.body.error.message);
@@ -1672,9 +1673,9 @@ describe('ownership is checked after existence', () => {
     const missing = await authed(outsider)[method](path('missing-conversation-id')).send(body);
     const foreign = await authed(outsider)[method](path(conversation.id)).send(body);
 
-    expectErrorEnvelope(missing, 404);
+    expectErrorEnvelope(missing, 404, 'CONVERSATION_NOT_FOUND');
     expect(missing.body.error.message).toBe('Conversation not found');
-    expectErrorEnvelope(foreign, 403);
+    expectErrorEnvelope(foreign, 403, 'FORBIDDEN_RESOURCE');
     expect(foreign.body.error.message).toBe('Not authorized');
     expect(await prisma.message.count()).toBe(1);
     expect((await prisma.message.findUniqueOrThrow({ where: { id: message.id } })).deletedAt).toBeNull();
@@ -1692,11 +1693,11 @@ describe('ownership is checked after existence', () => {
     const foreign = await authed(client).delete(url(elsewhere.id));
     const notMine = await authed(client).delete(url(theirs.id));
 
-    expectErrorEnvelope(missing, 404);
+    expectErrorEnvelope(missing, 404, 'MESSAGE_NOT_FOUND');
     expect(missing.body.error.message).toBe('Message not found');
-    expectErrorEnvelope(foreign, 404);
+    expectErrorEnvelope(foreign, 404, 'MESSAGE_NOT_FOUND');
     expect(foreign.body.error.message).toBe('Message not found');
-    expectErrorEnvelope(notMine, 403);
+    expectErrorEnvelope(notMine, 403, 'FORBIDDEN_RESOURCE');
     expect(notMine.body.error.message).toBe('Not authorized');
     expect(await prisma.message.count({ where: { deletedAt: { not: null } } })).toBe(0);
   });
@@ -1709,9 +1710,9 @@ describe('ownership is checked after existence', () => {
     const missing = await authed(outsider).get('/api/contracts/missing-contract-id/conversation');
     const foreign = await authed(outsider).get(`/api/contracts/${contract.id}/conversation`);
 
-    expectErrorEnvelope(missing, 404);
+    expectErrorEnvelope(missing, 404, 'CONTRACT_NOT_FOUND');
     expect(missing.body.error.message).toBe('Contract not found');
-    expectErrorEnvelope(foreign, 403);
+    expectErrorEnvelope(foreign, 403, 'FORBIDDEN_RESOURCE');
     expect(foreign.body.error.message).toBe('Not authorized');
   });
 
@@ -1765,38 +1766,41 @@ describe('error envelope', () => {
    * extra keys; these pin the exact message too, so a controller cannot satisfy the envelope by
    * answering with a different error than the one the status implies.
    */
-  function expectExactEnvelope(res: ApiResponse, status: number, message: string) {
-    expectErrorEnvelope(res, status);
-    expect(res.body).toEqual({ error: { message } });
+  function expectExactEnvelope(res: ApiResponse, status: number, code: ErrorCode, message: string) {
+    expectErrorEnvelope(res, status, code);
+    expect(res.body).toEqual({ error: { code, message } });
   }
 
-  it('is exactly { error: { message } } on 401', async () => {
+  it('is exactly { error: { code, message } } on 401', async () => {
     const res = await api().get('/api/users/me');
 
-    expectExactEnvelope(res, 401, 'Authentication required');
+    expectExactEnvelope(res, 401, 'AUTH_REQUIRED', 'Authentication required');
   });
 
-  it('is exactly { error: { message } } on 403', async () => {
+  it('is exactly { error: { code, message } } on 403', async () => {
     const freelancer = await makeFreelancer();
 
     const res = await authed(freelancer).get('/api/users/me/projects');
 
-    expectExactEnvelope(res, 403, 'Insufficient permissions');
+    expectExactEnvelope(res, 403, 'FORBIDDEN_ROLE', 'Insufficient permissions');
   });
 
-  it('is exactly { error: { message } } on 404', async () => {
+  it('is exactly { error: { code, message } } on 404', async () => {
     const res = await api().get('/api/users/missing-user-id');
 
-    expectExactEnvelope(res, 404, 'User not found');
+    expectExactEnvelope(res, 404, 'USER_NOT_FOUND', 'User not found');
   });
 
-  it('is exactly { error: { message } } on 400', async () => {
+  it('is exactly { error: { code, message, fields } } on a 400 validation failure, naming the field', async () => {
     const res = await api().post('/api/auth/login').send({ email: 'nobody@test.local' });
 
-    expectExactEnvelope(res, 400, 'password: Password is required');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: { code: 'VALIDATION_FAILED', message: 'password: Password is required', fields: [{ path: 'password', code: 'REQUIRED' }] },
+    });
   });
 
-  it('is exactly { error: { message } } on 409', async () => {
+  it('is exactly { error: { code, message } } on 409', async () => {
     const existing = await makeClient();
 
     const res = await api().post('/api/auth/signup').send({
@@ -1806,7 +1810,7 @@ describe('error envelope', () => {
       role: 'CLIENT',
     });
 
-    expectExactEnvelope(res, 409, 'Email already in use');
+    expectExactEnvelope(res, 409, 'EMAIL_ALREADY_IN_USE', 'Email already in use');
   });
 
   // body-parser's own message quotes the JSON parser (`Expected property name or '}' in JSON at
@@ -1817,25 +1821,26 @@ describe('error envelope', () => {
   ])('answers a malformed JSON body (%s) with a fixed 400 message', async (_label, raw) => {
     const res = await api().post('/api/auth/login').set('Content-Type', 'application/json').send(raw);
 
-    expectExactEnvelope(res, 400, 'Request body must be valid JSON');
+    expectExactEnvelope(res, 400, 'MALFORMED_BODY', 'Request body must be valid JSON');
   });
 
   it('rejects a malformed JSON body before authentication', async () => {
     const res = await api().post('/api/projects').set('Content-Type', 'application/json').send('{"title":');
 
-    expectExactEnvelope(res, 400, 'Request body must be valid JSON');
+    expectExactEnvelope(res, 400, 'MALFORMED_BODY', 'Request body must be valid JSON');
   });
 
-  it('never includes a stack trace or extra keys alongside the message', async () => {
+  it('never includes a stack trace or extra keys alongside the code and message', async () => {
     const res = await api().post('/api/auth/select-role').send({ role: 'CLIENT' });
 
-    expect(res.body).toEqual({ error: { message: 'Authentication required' } });
-    // `errorHandler` renders `{ error: { message } }` and nothing else, so none of the
+    expect(res.body).toEqual({ error: { code: 'AUTH_REQUIRED', message: 'Authentication required' } });
+    // `errorHandler` renders `{ error: { code, message } }` and nothing else, so none of the
     // Error-shaped properties may survive serialization.
-    for (const leak of ['stack', 'statusCode', 'status', 'name', 'success', 'code']) {
+    for (const leak of ['stack', 'statusCode', 'status', 'name', 'success']) {
       expect(res.body).not.toHaveProperty(leak);
       expect(res.body.error).not.toHaveProperty(leak);
     }
+    expect(res.body).not.toHaveProperty('code');
   });
 });
 
@@ -1869,8 +1874,8 @@ describe('unmatched paths and methods answer the JSON 404 envelope', () => {
   it.each(UNMATCHED)('$label → 404 Not found in the error envelope', async (route) => {
     const res = await api()[route.method](route.path).send();
 
-    expectErrorEnvelope(res, 404);
-    expect(res.body).toEqual({ error: { message: 'Not found' } });
+    expectErrorEnvelope(res, 404, 'ROUTE_NOT_FOUND');
+    expect(res.body).toEqual({ error: { code: 'ROUTE_NOT_FOUND', message: 'Not found' } });
   });
 
   it('is not logged at error level', async () => {
@@ -1907,7 +1912,7 @@ describe('unmatched paths and methods answer the JSON 404 envelope', () => {
 
     for (const res of [anonymous, garbage, valid]) {
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: { message: 'Not found' } });
+      expect(res.body).toEqual({ error: { code: 'ROUTE_NOT_FOUND', message: 'Not found' } });
     }
   });
 });

@@ -62,7 +62,9 @@ export default function SettlementsPage() {
       .catch((err) => {
         if (ignored) return;
         if (err.response?.status === 403) setForbidden(true);
-        else setError(toUserMessage(err, '정산 내역을 불러오지 못했습니다.'));
+        else setError(toUserMessage(err, '정산 내역을 불러오지 못했습니다.', {
+          fields: { status: '정산 상태 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.' },
+        }));
       })
       .finally(() => {
         if (!ignored) setLoading(false);

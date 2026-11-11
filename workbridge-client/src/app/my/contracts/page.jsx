@@ -14,7 +14,7 @@ import UnreadBadge from '@/components/messages/UnreadBadge';
 import EmptyState from '@/components/ui/EmptyState';
 import { FileTextIcon } from '@/components/ui/Icons';
 import PageLoader from '@/components/ui/PageLoader';
-import { toUserMessage } from '@/lib/errorMessages';
+import { errorCode, toUserMessage } from '@/lib/errorMessages';
 
 const TABS = [
   { value: '', label: '전체' },
@@ -55,7 +55,7 @@ export default function MyContractsPage() {
         setMeta(data.meta || { total: 0, page, limit: PAGE_SIZE, totalPages: 0 });
       })
       .catch((err) => {
-        if (!ignored) setError(toUserMessage(err, '계약 목록을 불러오지 못했습니다.'));
+        if (!ignored) setError(toUserMessage(err, '계약 목록을 불러오지 못했습니다.', { fields: { status: '계약 상태 조건이 올바르지 않습니다. 필터를 다시 선택해 주세요.' } }));
       })
       .finally(() => {
         if (!ignored) setLoading(false);
@@ -73,7 +73,7 @@ export default function MyContractsPage() {
       const { data } = await api.get(`/api/contracts/${contractId}/conversation`);
       router.push(`/messages/${data.id}`);
     } catch (err) {
-      setError(err.response?.data?.error?.message === 'Conversation not found'
+      setError(errorCode(err) === 'CONVERSATION_NOT_FOUND'
         ? '이 계약에는 대화방이 없습니다.'
         : '대화방을 열지 못했습니다.');
       setOpeningChat('');

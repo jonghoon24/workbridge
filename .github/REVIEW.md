@@ -78,3 +78,10 @@
     - 근거: [`.claude/rules/client.md`](../.claude/rules/client.md).
     - `axios`·`fetch`·`XMLHttpRequest`를 직접 쓰는 것은 클라이언트 ESLint(`.eslintrc.json`)가 검사한다. 허용하는 파일은 그 설정에 있다.
     - 확인: 바뀐 JSX 문구가 `workbridge-client/e2e/`에서 쓰이는지 grep한다. E2E는 화면의 한국어 텍스트로 요소를 찾는다. 새 로그인 필요 페이지는 `src/middleware.js`의 `protectedRoutes`에 추가됐는지 본다.
+
+15. **새 `AppError`의 오류 코드는 그 원인에 맞는 것이다.**
+    - 근거: [`.claude/rules/server-layers.md`](../.claude/rules/server-layers.md) "에러", [`docs/domain/README.md`](../docs/domain/README.md) "오류 응답".
+    - 왜: 클라이언트는 메시지가 아니라 코드로 분기해 안내를 고른다. 타입과 테스트는 코드가 있고 그 경로의 문서에 적혀 있는지만 본다. 뜻이 다른 원인을 기존 코드에 넣으면 화면이 엉뚱한 안내를 보여 주고, 같은 안내로 충분한 원인에 새 코드를 만들면 클라이언트 표만 늘어난다.
+    - 확인:
+      - `git diff origin/main...HEAD -- workbridge-server/src`의 새 `new AppError('<CODE>'`와 `invalidField(`마다 `src/lib/errorCodes.ts`의 그 코드 설명이 원인과 맞는지 본다. 요청 필드가 틀린 것은 어디서 검사하든 `VALIDATION_FAILED`(`invalidField`)다.
+      - 표에 새 코드가 생겼으면 클라이언트가 실제로 다르게 안내하거나 동작해야 하는 원인인지 본다.

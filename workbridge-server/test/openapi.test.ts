@@ -120,7 +120,7 @@ describe('GET /api/openapi.json and GET /api/docs', () => {
 
     expect(res.status).toBe(404);
     expect(res.headers['content-type']).toMatch(/application\/json/);
-    expect(res.body).toEqual({ error: { message: 'Not found' } });
+    expect(res.body).toEqual({ error: { code: 'ROUTE_NOT_FOUND', message: 'Not found' } });
   });
 
   it.each(['/api/openapi.json', '/api/docs'])(
@@ -133,7 +133,7 @@ describe('GET /api/openapi.json and GET /api/docs', () => {
 
       expect(res.status).toBe(404);
       expect(res.headers['content-type']).toMatch(/application\/json/);
-      expect(res.body).toEqual({ error: { message: 'Not found' } });
+      expect(res.body).toEqual({ error: { code: 'ROUTE_NOT_FOUND', message: 'Not found' } });
     },
   );
 
@@ -184,7 +184,7 @@ describe('the response check', () => {
     expect(conformanceError(fakeResponse('GET', '/health', 200, { status: 'ok', uptime: 1 }))).toMatch(/uptime/);
 
     const error = conformanceError(fakeResponse('GET', '/api/notifications/unread-count', 401, {
-      error: { message: 'Authentication required', stack: '…' },
+      error: { code: 'AUTH_REQUIRED', message: 'Authentication required', stack: '…' },
     }));
     expect(error).toMatch(/stack/);
   });
@@ -195,7 +195,7 @@ describe('the response check', () => {
   });
 
   it('fails a status the route does not document', () => {
-    expect(conformanceError(fakeResponse('GET', '/health', 404, { error: { message: 'x' } })))
+    expect(conformanceError(fakeResponse('GET', '/health', 404, { error: { code: 'ROUTE_NOT_FOUND', message: 'x' } })))
       .toMatch(/status 404 is not documented for GET \/health/);
   });
 
@@ -203,13 +203,43 @@ describe('the response check', () => {
     expect(conformanceError(fakeResponse('GET', '/health', 200, '<p>ok</p>', 'text/html'))).toMatch(/content type/);
   });
 
-  it('checks a 500 only for the error envelope', () => {
-    expect(conformanceError(fakeResponse('GET', '/health', 500, { error: { message: 'boom' } }))).toBeNull();
-    expect(conformanceError(fakeResponse('GET', '/health', 500, { message: 'boom' }))).toMatch(/error envelope/);
+  it('checks a 500 only for being exactly the INTERNAL_ERROR envelope', () => {
+    const internal = { error: { code: 'INTERNAL_ERROR', message: 'Internal Server Error' } };
+    expect(conformanceError(fakeResponse('GET', '/health', 500, internal))).toBeNull();
+    expect(conformanceError(fakeResponse('GET', '/health', 500, { message: 'boom' }))).toMatch(/INTERNAL_ERROR envelope/);
+    expect(conformanceError(fakeResponse('GET', '/health', 500, { error: { code: 'INTERNAL_ERROR', message: 'boom' } })))
+      .toMatch(/INTERNAL_ERROR envelope/);
+    expect(conformanceError(fakeResponse('GET', '/health', 500, { error: { ...internal.error, detail: 'P2002' } })))
+      .toMatch(/detail/);
+  });
+
+  it('fails an error code the route does not document for that status', () => {
+    const path = '/api/notifications/unread-count';
+    expect(conformanceError(fakeResponse('GET', path, 401, { error: { code: 'AUTH_REQUIRED', message: 'x' } }))).toBeNull();
+    expect(conformanceError(fakeResponse('GET', path, 401, { error: { code: 'INVALID_CREDENTIALS', message: 'x' } })))
+      .toMatch(/code/);
+  });
+
+  it('allows fields only on a VALIDATION_FAILED, and requires them there', () => {
+    const path = '/api/projects';
+    const fields = [{ path: 'title', code: 'REQUIRED' }];
+    expect(conformanceError(fakeResponse('POST', path, 400, { error: { code: 'VALIDATION_FAILED', message: 'title: x', fields } }))).toBeNull();
+    expect(conformanceError(fakeResponse('POST', path, 400, { error: { code: 'VALIDATION_FAILED', message: 'title: x' } }))).not.toBeNull();
+    expect(conformanceError(fakeResponse('POST', path, 400, { error: { code: 'MALFORMED_BODY', message: 'x', fields } }))).not.toBeNull();
+  });
+
+  it('documents the request-level causes on every route, so a malformed body conforms anywhere', () => {
+    for (const op of documentedOperations()) {
+      for (const [status, code] of [['400', 'MALFORMED_BODY'], ['413', 'PAYLOAD_TOO_LARGE'], ['415', 'UNSUPPORTED_MEDIA_TYPE']] as const) {
+        const body = { error: { code, message: 'x' } };
+        expect(conformanceError(fakeResponse(op.method.toUpperCase(), op.path.replace(/\{[^}]+\}/g, 'x'), Number(status), body)), `${op.method} ${op.path}`)
+          .toBeNull();
+      }
+    }
   });
 
   it('skips a path no route documents — the 404 of an unknown path', () => {
-    expect(conformanceError(fakeResponse('GET', '/api/nope', 404, { error: { message: 'Not found' } }))).toBeNull();
+    expect(conformanceError(fakeResponse('GET', '/api/nope', 404, { error: { code: 'ROUTE_NOT_FOUND', message: 'Not found' } }))).toBeNull();
   });
 
   it('matches the most literal route, as the routers do', () => {

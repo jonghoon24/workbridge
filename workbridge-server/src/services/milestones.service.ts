@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import type { ApprovalType, Milestone, MilestoneStatus } from '@prisma/client';
 
 import prisma from '../lib/prisma';
-import { AppError } from '../lib/errors';
+import { AppError, invalidField } from '../lib/errors';
 import { CONTRACT_CANCELLED } from '../lib/contractMessages';
 import { env } from '../env';
 import { DAY_MS, HOUR_MS, kstDateString, kstDateToEndOfDay } from '../lib/time';
@@ -186,14 +186,14 @@ async function findMilestoneForRoute(milestoneId: string): Promise<MilestoneWith
     where: { id: milestoneId, contract: { project: { deletedAt: null } } },
     include: milestoneContextInclude,
   });
-  if (!milestone) throw new AppError('Milestone not found', 404);
+  if (!milestone) throw new AppError('MILESTONE_NOT_FOUND', 'Milestone not found');
   return milestone;
 }
 
 function assertParty(milestone: MilestoneWithContext, userId: string): void {
   const { contract } = milestone;
   if (contract.clientId !== userId && contract.freelancerId !== userId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
 }
 
@@ -206,7 +206,7 @@ async function findContractForRoute(contractId: string) {
       freelancer: partySelect,
     },
   });
-  if (!contract) throw new AppError('Contract not found', 404);
+  if (!contract) throw new AppError('CONTRACT_NOT_FOUND', 'Contract not found');
   return contract;
 }
 
@@ -255,7 +255,7 @@ export function createDefaultMilestone(
 export async function listContractMilestones(contractId: string, userId: string) {
   const contract = await findContractForRoute(contractId);
   if (contract.clientId !== userId && contract.freelancerId !== userId) {
-    throw new AppError('Not authorized', 403);
+    throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
   }
   const milestones = await prisma.milestone.findMany({
     where: { contractId },
@@ -279,14 +279,14 @@ export interface PlanItem {
 /** Replaces the whole plan of a PENDING contract. */
 export async function replacePlan(contractId: string, actorId: string, items: readonly PlanItem[], now: Date = new Date()) {
   const contract = await findContractForRoute(contractId);
-  if (contract.clientId !== actorId) throw new AppError('Not authorized', 403);
-  if (contract.status === 'CANCELLED') throw new AppError(CONTRACT_CANCELLED, 409);
-  if (contract.status !== 'PENDING') throw new AppError(PLAN_LOCKED, 409);
+  if (contract.clientId !== actorId) throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
+  if (contract.status === 'CANCELLED') throw new AppError('CONTRACT_CANCELLED', CONTRACT_CANCELLED);
+  if (contract.status !== 'PENDING') throw new AppError('MILESTONE_PLAN_LOCKED', PLAN_LOCKED);
 
   const expected = wholeWon(contract.amount);
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   if (total !== expected) {
-    throw new AppError(`Milestone amounts must add up to the contract amount (${expected})`, 400);
+    throw invalidField('milestones', 'CONFLICT', `Milestone amounts must add up to the contract amount (${expected})`);
   }
 
   const dueDates = items.map((item) => kstDateToEndOfDay(item.dueDate));
@@ -297,8 +297,8 @@ export async function replacePlan(contractId: string, actorId: string, items: re
     // on this lock, and "was a signature present" comes from the locked row, not a stale read.
     const [locked] = await tx.$queryRaw<{ status: string; clientSigned: boolean; freelancerSigned: boolean }[]>`
       SELECT "status", "clientSigned", "freelancerSigned" FROM "Contract" WHERE "id" = ${contractId} FOR UPDATE`;
-    if (locked?.status === 'CANCELLED') throw new AppError(CONTRACT_CANCELLED, 409);
-    if (!locked || locked.status !== 'PENDING') throw new AppError(PLAN_LOCKED, 409);
+    if (locked?.status === 'CANCELLED') throw new AppError('CONTRACT_CANCELLED', CONTRACT_CANCELLED);
+    if (!locked || locked.status !== 'PENDING') throw new AppError('MILESTONE_PLAN_LOCKED', PLAN_LOCKED);
 
     const updated = await tx.contract.update({
       where: { id: contractId },
@@ -446,8 +446,8 @@ export interface SubmissionInput {
 /** The submitting freelancer of a submittable milestone: 404, 403, then 409. */
 async function findSubmittableMilestone(milestoneId: string, actorId: string): Promise<MilestoneWithContext> {
   const milestone = await findMilestoneForRoute(milestoneId);
-  if (milestone.contract.freelancerId !== actorId) throw new AppError('Not authorized', 403);
-  if (!SUBMITTABLE.includes(milestone.status)) throw new AppError(NOT_AWAITING_SUBMISSION, 409);
+  if (milestone.contract.freelancerId !== actorId) throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
+  if (!SUBMITTABLE.includes(milestone.status)) throw new AppError('MILESTONE_NOT_AWAITING_SUBMISSION', NOT_AWAITING_SUBMISSION);
   return milestone;
 }
 
@@ -486,7 +486,7 @@ export async function submitMilestone(
       where: { id: milestoneId, status: { in: SUBMITTABLE } },
       data: { status: 'SUBMITTED', submittedAt: now, autoApproveAt },
     });
-    if (count === 0) throw new AppError(NOT_AWAITING_SUBMISSION, 409);
+    if (count === 0) throw new AppError('MILESTONE_NOT_AWAITING_SUBMISSION', NOT_AWAITING_SUBMISSION);
     await consumeUploads(tx, actorId, uploads);
 
     const last = await tx.milestoneSubmission.findFirst({
@@ -549,7 +549,7 @@ export async function getSubmissionAttachmentDownload(
     where: { id: attachmentId, submission: { milestoneId } },
     select: { storageKey: true, url: true, fileName: true },
   });
-  if (!attachment) throw new AppError('Attachment not found', 404);
+  if (!attachment) throw new AppError('ATTACHMENT_NOT_FOUND', 'Attachment not found');
   return downloadUrlFor(attachment, now);
 }
 
@@ -584,8 +584,8 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
   if (kind === 'MANUAL') {
     if (!actorId) throw new Error('approveMilestone: MANUAL approval needs an actorId');
     const milestone = await findMilestoneForRoute(milestoneId);
-    if (milestone.contract.clientId !== actorId) throw new AppError('Not authorized', 403);
-    if (milestone.status !== 'SUBMITTED') throw new AppError(NOT_AWAITING_REVIEW, 409);
+    if (milestone.contract.clientId !== actorId) throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
+    if (milestone.status !== 'SUBMITTED') throw new AppError('MILESTONE_NOT_AWAITING_REVIEW', NOT_AWAITING_REVIEW);
     contractId = milestone.contractId;
   } else {
     const milestone = await prisma.milestone.findUnique({ where: { id: milestoneId }, select: { contractId: true } });
@@ -608,7 +608,7 @@ export async function approveMilestone(milestoneId: string, opts: ApproveOptions
       data: { status: 'APPROVED', approvedAt: now, approvalType: kind, autoApproveAt: null },
     });
     if (count === 0) {
-      if (kind === 'MANUAL') throw new AppError(NOT_AWAITING_REVIEW, 409);
+      if (kind === 'MANUAL') throw new AppError('MILESTONE_NOT_AWAITING_REVIEW', NOT_AWAITING_REVIEW);
       return null;
     }
 
@@ -702,8 +702,8 @@ export async function rejectMilestone(
 ) {
   const { actorId, reason, now } = opts;
   const milestone = await findMilestoneForRoute(milestoneId);
-  if (milestone.contract.clientId !== actorId) throw new AppError('Not authorized', 403);
-  if (milestone.status !== 'SUBMITTED') throw new AppError(NOT_AWAITING_REVIEW, 409);
+  if (milestone.contract.clientId !== actorId) throw new AppError('FORBIDDEN_RESOURCE', 'Not authorized');
+  if (milestone.status !== 'SUBMITTED') throw new AppError('MILESTONE_NOT_AWAITING_REVIEW', NOT_AWAITING_REVIEW);
 
   const result = await prisma.$transaction(async (tx) => {
     // The conditional write first; the latest submission is read after it.
@@ -711,7 +711,7 @@ export async function rejectMilestone(
       where: { id: milestoneId, status: 'SUBMITTED' },
       data: { status: 'REVISION_REQUESTED', revisionCount: { increment: 1 }, autoApproveAt: null },
     });
-    if (count === 0) throw new AppError(NOT_AWAITING_REVIEW, 409);
+    if (count === 0) throw new AppError('MILESTONE_NOT_AWAITING_REVIEW', NOT_AWAITING_REVIEW);
 
     const latest = await tx.milestoneSubmission.findFirst({
       where: { milestoneId },

@@ -2,7 +2,7 @@ import { z } from '../lib/zod';
 
 import { normalizeSkillList } from '../lib/skills';
 import { isKstMonth, kstMonthString } from '../lib/time';
-import { queryInt } from './common';
+import { fieldCode, queryInt } from './common';
 
 /**
  * Request bodies and queries of the portfolio, career and recommendation routes. Messages are
@@ -98,7 +98,7 @@ const optionalMonth = z
     if (!isKstMonth(value)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: MONTH_MESSAGES.format });
     } else if (value > kstMonthString(new Date())) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: MONTH_MESSAGES.future });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: MONTH_MESSAGES.future, params: fieldCode('TOO_LARGE') });
     }
   })
   .openapi({ description: '`YYYY-MM`(KST 월). 이번 달 이후는 안 된다. `null`이나 빈 문자열은 지운다.', example: '2025-03' });
@@ -110,7 +110,7 @@ const requiredMonth = z
     if (!isKstMonth(value)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: MONTH_MESSAGES.format });
     } else if (value > kstMonthString(new Date())) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: MONTH_MESSAGES.future });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: MONTH_MESSAGES.future, params: fieldCode('TOO_LARGE') });
     }
   })
   .openapi({ description: '`YYYY-MM`(KST 월). 이번 달 이후는 안 된다.', example: '2023-01' });
@@ -125,9 +125,9 @@ const skillList = z
   .transform((value) => normalizeSkillList(value ?? []))
   .superRefine((skills, ctx) => {
     if (skills.length > PORTFOLIO_LIMITS.skills) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `At most ${PORTFOLIO_LIMITS.skills} skills are allowed` });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `At most ${PORTFOLIO_LIMITS.skills} skills are allowed`, params: fieldCode('TOO_LARGE') });
     } else if (skills.some((skill) => skill.length > PORTFOLIO_LIMITS.skill)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Each skill must be at most ${PORTFOLIO_LIMITS.skill} characters` });
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Each skill must be at most ${PORTFOLIO_LIMITS.skill} characters`, params: fieldCode('TOO_LARGE') });
     }
   })
   .openapi({
@@ -179,7 +179,7 @@ export const portfolioCreateBody = z
   })
   .superRefine((body, ctx) => {
     const issue = monthRangeIssue({ start: body.startedAt, end: body.endedAt });
-    if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endedAt'], message: issue });
+    if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endedAt'], message: issue, params: fieldCode('CONFLICT') });
   });
 
 /**
@@ -232,7 +232,7 @@ export const careerCreateBody = z
   })
   .superRefine((body, ctx) => {
     const issue = monthRangeIssue({ start: body.startDate, end: body.endDate });
-    if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: issue });
+    if (issue) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['endDate'], message: issue, params: fieldCode('CONFLICT') });
   });
 
 /** Every field optional. The month order is checked on the merged row after existence and ownership. */
