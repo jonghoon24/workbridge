@@ -15,7 +15,8 @@ const api = axios.create({
   timeout: 30000,
 });
 
-// Request interceptor: attach access token
+// Request interceptor: attach access token. localStorage is the only place the token lives
+// (authStore keeps just the user), so a refreshed token is picked up by every later request.
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const accessToken = localStorage.getItem('accessToken');
@@ -69,7 +70,7 @@ api.interceptors.response.use(
           localStorage.setItem('accessToken', accessToken);
         }
 
-        api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
+        // No api.defaults Authorization: it would outlive logout (clearAuth only clears localStorage).
         processQueue(null, accessToken);
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
