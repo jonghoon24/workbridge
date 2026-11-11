@@ -490,7 +490,7 @@ describe('PATCH /api/notifications/read-all', () => {
 });
 
 describe('contract, milestone and settlement notification types', () => {
-  it('renders all 15 new types with their contract, milestone or settlement links', () => {
+  it('renders all 16 templated types with their contract, milestone or settlement links', () => {
     const v = { projectTitle: 'P', contractId: 'c1', milestoneId: 'm1', milestoneTitle: 'M', settlementId: 's1', amount: 1_000, reason: 'r' };
     const milestone = '/contracts/c1/milestones/m1';
     const expected: Record<string, string> = {
@@ -505,12 +505,13 @@ describe('contract, milestone and settlement notification types', () => {
       MILESTONE_DUE_SOON: milestone,
       MILESTONE_OVERDUE: milestone,
       CONTRACT_COMPLETED: '/contracts/c1#review',
+      CONTRACT_CANCELLED: '/contracts/c1',
       SETTLEMENT_SCHEDULED: '/settlements/s1',
       SETTLEMENT_PAID: '/settlements/s1',
       SETTLEMENT_ON_HOLD: '/settlements/account',
       SETTLEMENT_FAILED: '/settlements/s1',
     };
-    expect(Object.keys(expected)).toHaveLength(15);
+    expect(Object.keys(expected)).toHaveLength(16);
     // No particle is glued to a quoted title: "'M' 마일스톤이", never "마일스톤 'M'이".
     for (const type of ['MILESTONE_APPROVED', 'MILESTONE_AUTO_APPROVED', 'MILESTONE_AUTO_APPROVE_REMINDER'] as const) {
       expect(renderTemplate(type, v).message, type).toContain("'M' 마일스톤이");
@@ -521,5 +522,12 @@ describe('contract, milestone and settlement notification types', () => {
       expect(rendered.title.length, type).toBeGreaterThan(0);
       expect(rendered.message.length, type).toBeGreaterThan(0);
     }
+  });
+
+  it('names who cancelled, with the particle that fits each role', () => {
+    expect(renderTemplate('CONTRACT_CANCELLED', { projectTitle: 'P', contractId: 'c1', cancelledBy: 'CLIENT' }).message)
+      .toBe("의뢰인이 'P' 계약을 서명 전에 철회했습니다.");
+    expect(renderTemplate('CONTRACT_CANCELLED', { projectTitle: 'P', contractId: 'c1', cancelledBy: 'FREELANCER' }).message)
+      .toBe("프리랜서가 'P' 계약을 서명 전에 철회했습니다.");
   });
 });

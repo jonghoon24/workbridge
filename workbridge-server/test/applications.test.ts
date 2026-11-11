@@ -1275,3 +1275,150 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
     });
   });
 });
+
+describe('a project that recruits again after a cancelled contract', () => {
+  /**
+   * A project whose round ended with a cancelled contract, then reopened by the client: the
+   * accepted applicant (party to the cancelled contract), one applicant rejected at that accept,
+   * and the project OPEN again.
+   */
+  async function reopenedAfterCancel() {
+    const client = await makeClient();
+    const project = await makeProject(client.id, { status: 'OPEN' });
+    const accepted = await makeFreelancer();
+    const rejectedEarlier = await makeFreelancer();
+    const acceptedApplication = await makeApplication(project.id, accepted.id);
+    const rejectedApplication = await makeApplication(project.id, rejectedEarlier.id);
+
+    const accept = await authed(client)
+      .patch(`/api/projects/${project.id}/applications/${acceptedApplication.id}`)
+      .send({ status: 'ACCEPTED' });
+    expect(accept.status).toBe(200);
+    const contractId: string = accept.body.contract.id;
+    expect((await authed(accepted).post(`/api/contracts/${contractId}/cancel`)).status).toBe(200);
+    const reopen = await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: kstDateString(new Date(Date.now() + 10 * DAY_MS)) });
+    expect(reopen.status).toBe(200);
+
+    return { client, project, accepted, rejectedEarlier, acceptedApplication, rejectedApplication, contractId };
+  }
+
+  const apply = (user: Parameters<typeof authed>[0], projectId: string, body = validApplyBody) =>
+    authed(user).post(`/api/projects/${projectId}/applications`).send(body);
+
+  it('lets an applicant rejected in the ended round apply again, on the same row, as a new pending application', async () => {
+    const { client, project, rejectedEarlier, rejectedApplication } = await reopenedAfterCancel();
+    const before = Date.now();
+
+    const res = await apply(rejectedEarlier, project.id, { coverLetter: '다시 지원합니다.', expectedRate: 2_800_000, expectedDuration: '5주' });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      id: rejectedApplication.id,
+      status: 'PENDING',
+      coverLetter: '다시 지원합니다.',
+      expectedRate: 2_800_000,
+      expectedDuration: '5주',
+    });
+    expect(new Date(res.body.createdAt).getTime()).toBeGreaterThanOrEqual(before - 1000);
+    expect(await prisma.application.count({ where: { projectId: project.id, freelancerId: rejectedEarlier.id } })).toBe(1);
+    const notice = await prisma.notification.findFirst({ where: { userId: client.id, type: 'APPLICATION_CREATED' }, orderBy: { createdAt: 'desc' } });
+    expect(notice?.message).toContain(project.title);
+  });
+
+  it('refuses the freelancer of the cancelled contract with 409', async () => {
+    const { project, accepted, acceptedApplication } = await reopenedAfterCancel();
+
+    const res = await apply(accepted, project.id);
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'You have already applied to this project' } });
+    expect((await prisma.application.findUniqueOrThrow({ where: { id: acceptedApplication.id } })).status).toBe('ACCEPTED');
+  });
+
+  it('refuses an applicant rejected in the current round with 409', async () => {
+    const { client, project, rejectedEarlier, rejectedApplication } = await reopenedAfterCancel();
+    expect((await apply(rejectedEarlier, project.id)).status).toBe(201);
+    const reject = await authed(client)
+      .patch(`/api/projects/${project.id}/applications/${rejectedApplication.id}`)
+      .send({ status: 'REJECTED' });
+    expect(reject.status).toBe(200);
+
+    const res = await apply(rejectedEarlier, project.id);
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { message: 'You have already applied to this project' } });
+  });
+
+  it('refuses an applicant whose application is still pending with 409', async () => {
+    const { project, rejectedEarlier } = await reopenedAfterCancel();
+    expect((await apply(rejectedEarlier, project.id)).status).toBe(201);
+
+    const res = await apply(rejectedEarlier, project.id);
+
+    expect(res.status).toBe(409);
+  });
+
+  it('does not let anyone apply again to a project that was reopened without a cancelled contract', async () => {
+    const client = await makeClient();
+    const project = await makeProject(client.id, { status: 'OPEN' });
+    const freelancer = await makeFreelancer();
+    await makeApplication(project.id, freelancer.id);
+    expect((await authed(client).patch(`/api/projects/${project.id}/status`).send({ status: 'CLOSED' })).status).toBe(200);
+    expect((await authed(client)
+      .patch(`/api/projects/${project.id}/status`)
+      .send({ status: 'OPEN', deadline: kstDateString(new Date(Date.now() + 10 * DAY_MS)) })).status).toBe(200);
+
+    const res = await apply(freelancer, project.id);
+
+    expect(res.status).toBe(409);
+  });
+
+  it('shows canReapply in the applicant\'s own list only while it applies', async () => {
+    const { project, accepted, rejectedEarlier } = await reopenedAfterCancel();
+    const flag = async (user: Parameters<typeof authed>[0]) => {
+      const res = await authed(user).get('/api/users/me/applications');
+      expect(res.status).toBe(200);
+      return res.body.find((a: { projectId: string }) => a.projectId === project.id).canReapply as boolean;
+    };
+
+    expect(await flag(rejectedEarlier)).toBe(true);
+    expect(await flag(accepted)).toBe(false);
+    expect((await apply(rejectedEarlier, project.id)).status).toBe(201);
+    expect(await flag(rejectedEarlier)).toBe(false);
+  });
+
+  it('lets the client accept a new applicant: a second contract next to the cancelled one', async () => {
+    const { client, project, contractId } = await reopenedAfterCancel();
+    const newcomer = await makeFreelancer();
+    const applied = await apply(newcomer, project.id);
+    expect(applied.status).toBe(201);
+
+    const res = await authed(client)
+      .patch(`/api/projects/${project.id}/applications/${applied.body.id}`)
+      .send({ status: 'ACCEPTED' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.contract).toMatchObject({ status: 'PENDING', projectId: project.id });
+    const contracts = await prisma.contract.findMany({ where: { projectId: project.id }, orderBy: { createdAt: 'asc' } });
+    expect(contracts.map((c) => [c.id === contractId, c.status])).toEqual([[true, 'CANCELLED'], [false, 'PENDING']]);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
+  });
+
+  it('still lets only one of two concurrent accepts make the live contract', async () => {
+    for (let iteration = 0; iteration < 5; iteration += 1) {
+      const { client, project } = await reopenedAfterCancel();
+      const [a, b] = [await makeFreelancer(), await makeFreelancer()];
+      const appA = await apply(a, project.id);
+      const appB = await apply(b, project.id);
+
+      const results = await Promise.all([appA, appB].map((application) => authed(client)
+        .patch(`/api/projects/${project.id}/applications/${application.body.id}`)
+        .send({ status: 'ACCEPTED' })));
+
+      expect(results.map((r) => r.status).sort(), `iteration ${iteration}`).toEqual([200, 409]);
+      expect(await prisma.contract.count({ where: { projectId: project.id, status: { not: 'CANCELLED' } } })).toBe(1);
+    }
+  });
+});

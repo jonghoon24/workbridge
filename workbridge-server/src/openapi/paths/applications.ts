@@ -27,7 +27,10 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
     operationId: 'apply',
     tags,
     summary: '프로젝트에 지원(프리랜서)',
-    description: '모집 중(`OPEN`)인 프로젝트에만. 의뢰인에게 알린다. 응답 전에 프로젝트 수명주기 스윕을 돌린다(행을 쓴다).',
+    description:
+      '모집 중(`OPEN`)인 프로젝트에만. 의뢰인에게 알린다. 응답 전에 프로젝트 수명주기 스윕을 돌린다(행을 쓴다). '
+      + '프로젝트마다 한 번 지원한다. 예외로, 철회된 계약으로 끝난 이전 모집 회차에서 거절된 지원자는 다시 열린 모집에 '
+      + '다시 지원할 수 있고, 그 지원 행이 새 내용의 대기 지원으로 바뀐다(같은 `id`, `createdAt`은 다시 지원한 시각).',
     security: bearer,
     request: { params: pathParams({ id: '프로젝트 ID' }), body: jsonBody(applicationCreateBody) },
     responses: {
@@ -38,7 +41,7 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
         role('FREELANCER'),
         COMPLETE_PROFILE,
         { 404: ['`Project not found` — 없거나 삭제된 프로젝트, 또는 의뢰인이 삭제된 프로젝트'] },
-        { 409: ['`You have already applied to this project` — 이미 지원함'] },
+        { 409: ['`You have already applied to this project` — 이미 지원함(다시 지원할 수 있는 경우가 아님)'] },
       ),
     },
   });

@@ -116,6 +116,14 @@ describe('GET /api/users/me/withdrawal', () => {
     }
   });
 
+  it('does not count a cancelled contract: cancelling it is how an unsigned contract stops blocking', async () => {
+    const { client, freelancer, contract } = await contractIn('PENDING');
+    expect((await authed(freelancer).post(`/api/contracts/${contract.id}/cancel`)).status).toBe(200);
+
+    expect((await status(client)).body).toEqual({ canWithdraw: true, hasPassword: true, blockers: NONE });
+    expect((await status(freelancer)).body.canWithdraw).toBe(true);
+  });
+
   it('does not count a completed contract', async () => {
     const { client, freelancer } = await contractIn('COMPLETED');
 
@@ -353,6 +361,26 @@ describe('POST /api/users/me/withdrawal', () => {
         message: "'모집 중 프로젝트' 프로젝트 모집이 마감되었습니다.",
         href: '/my/applications',
       }]);
+    });
+
+    it('deletes a project whose only contract was cancelled, like a project without one', async () => {
+      const { client, freelancer, project, contract, application } = await makeContractScenario({ contract: { status: 'CANCELLED' } });
+      // Recruiting again after the cancel: a new applicant waits.
+      await prisma.project.update({ where: { id: project.id }, data: { status: 'OPEN' } });
+      const newcomer = await makeFreelancer();
+      const pendingApp = await makeApplication(project.id, newcomer.id);
+
+      const res = await withdraw(client);
+
+      expect(res.status).toBe(200);
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).deletedAt).not.toBeNull();
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: pendingApp.id } })).status).toBe('REJECTED');
+      const notices = await prisma.notification.findMany({ where: { type: 'PROJECT_STATUS_CHANGED' } });
+      expect(notices.map((n) => n.userId)).toEqual([newcomer.id]);
+      // The contract row stays (the record), and so does the freelancer's accepted application.
+      expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('CANCELLED');
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: application.id } })).status).toBe('ACCEPTED');
+      expect(freelancer.deletedAt).toBeNull();
     });
 
     it('scrubs the profile and soft-deletes the account', async () => {

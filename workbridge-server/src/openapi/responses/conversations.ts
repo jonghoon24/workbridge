@@ -28,6 +28,7 @@ export const message = z
         'MILESTONE_APPROVED',
         'MILESTONE_AUTO_APPROVED',
         'CONTRACT_COMPLETED',
+        'CONTRACT_CANCELLED',
       ])
       .nullable()
       .openapi({ description: '`SYSTEM` 메시지의 계약 이벤트. `TEXT`면 `null`' }),
@@ -58,7 +59,7 @@ const conversationFields = {
   counterpartLastReadAt: dateTime.nullable(),
   canSend: z.boolean(),
   closedReason: z.enum(['CONTRACT_CLOSED', 'COUNTERPART_INACTIVE']).nullable(),
-  closesAt: dateTime.nullable().openapi({ description: '완료된 계약에서 메시지를 더 보낼 수 없게 되는 시각(완료 + 30일)' }),
+  closesAt: dateTime.nullable().openapi({ description: '끝난 계약에서 메시지를 더 보낼 수 없게 되는 시각(완료 또는 철회 + 30일)' }),
 };
 
 export const conversation = z.object(conversationFields).openapi('Conversation');

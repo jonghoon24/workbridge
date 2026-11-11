@@ -156,8 +156,14 @@ const PROJECT_STATUSES = [
 
 /**
  * Any `ProjectStatus`; whether the transition is allowed is the controller's check, after the
- * ownership check, with its own `Cannot transition from X to Y`.
+ * ownership check, with its own `Cannot transition from X to Y`. `deadline` belongs to reopening a
+ * `CLOSED` project (`OPEN`), where it is required; the controller refuses it anywhere else.
  */
 export const projectStatusBody = z.object({
   status: bodyEnum('Project status', PROJECT_STATUSES),
+  deadline: projectDate('Deadline', 'endOfDay')
+    .optional()
+    .openapi({ description: '다시 모집할 때(`CLOSED`→`OPEN`)의 새 마감일. 그때만 받고, 그때는 필수. `YYYY-MM-DD`(KST 날짜) 또는 ISO 8601 시각.' }),
 });
+
+export type ProjectStatusInput = z.infer<typeof projectStatusBody>;

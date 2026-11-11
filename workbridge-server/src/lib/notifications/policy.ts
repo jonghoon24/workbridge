@@ -55,6 +55,7 @@ export const NOTIFICATION_POLICY: readonly TypePolicy[] = [
   { type: 'MILESTONE_DUE_SOON', category: 'MILESTONE', recipient: 'FREELANCER', inApp: ON, email: ON },
   { type: 'MILESTONE_OVERDUE', category: 'MILESTONE', recipient: 'BOTH', inApp: ON, email: ON },
   { type: 'CONTRACT_COMPLETED', category: 'CONTRACT', recipient: 'BOTH', inApp: LOCKED_ON, email: ON },
+  { type: 'CONTRACT_CANCELLED', category: 'CONTRACT', recipient: 'BOTH', inApp: LOCKED_ON, email: ON },
   { type: 'SETTLEMENT_SCHEDULED', category: 'SETTLEMENT', recipient: 'FREELANCER', inApp: ON, email: OFF },
   { type: 'SETTLEMENT_PAID', category: 'SETTLEMENT', recipient: 'FREELANCER', inApp: LOCKED_ON, email: ON },
   { type: 'SETTLEMENT_ON_HOLD', category: 'SETTLEMENT', recipient: 'FREELANCER', inApp: LOCKED_ON, email: LOCKED_ON },
@@ -64,7 +65,7 @@ export const NOTIFICATION_POLICY: readonly TypePolicy[] = [
 
 const BY_TYPE = new Map<string, TypePolicy>(NOTIFICATION_POLICY.map((policy) => [policy.type, policy]));
 
-/** The 20 notification types, in policy order. */
+/** The 21 notification types, in policy order. */
 export const NOTIFICATION_TYPES: readonly NotificationType[] = NOTIFICATION_POLICY.map((policy) => policy.type);
 
 export function isNotificationType(value: unknown): value is NotificationType {
@@ -77,7 +78,7 @@ export function policyFor(type: NotificationType): TypePolicy {
   return policy;
 }
 
-/** The types a role receives — its own plus the "BOTH" ones (CLIENT 8, FREELANCER 17). */
+/** The types a role receives — its own plus the "BOTH" ones (CLIENT 9, FREELANCER 18). */
 export function typesForRole(role: Role): TypePolicy[] {
   return NOTIFICATION_POLICY.filter((policy) => policy.recipient === 'BOTH' || policy.recipient === role);
 }

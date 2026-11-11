@@ -255,7 +255,7 @@ export default function MessageThread({ conversationId }) {
 
       {conversation.canSend && conversation.closesAt && (
         <div className="border-b border-yellow-100 bg-yellow-50 px-4 py-2 text-xs text-yellow-800">
-          계약이 완료되어 {formatDateTime(conversation.closesAt)}까지만 메시지를 보낼 수 있습니다.
+          계약이 {contractStatus === 'CANCELLED' ? '철회되어' : '완료되어'} {formatDateTime(conversation.closesAt)}까지만 메시지를 보낼 수 있습니다.
         </div>
       )}
 
@@ -312,6 +312,7 @@ export default function MessageThread({ conversationId }) {
       <MessageComposer
         canSend={conversation.canSend}
         closedReason={conversation.closedReason}
+        contractStatus={contractStatus}
         onSend={handleSend}
       />
     </div>

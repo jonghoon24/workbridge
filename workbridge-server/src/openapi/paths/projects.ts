@@ -177,19 +177,26 @@ export function registerProjectPaths(registry: OpenAPIRegistry): void {
     tags,
     summary: '프로젝트 상태 변경(소유 의뢰인)',
     description:
-      '허용 전이: `UPCOMING`→`OPEN`·`CANCELLED`·`CLOSED`, `OPEN`→`CANCELLED`·`CLOSED`. '
+      '허용 전이: `UPCOMING`→`OPEN`·`CANCELLED`·`CLOSED`, `OPEN`→`CANCELLED`·`CLOSED`, `CLOSED`→`OPEN`(다시 모집하기). '
       + '`IN_PROGRESS`(계약 서명으로 시작)와 `COMPLETED`(마지막 마일스톤 승인)는 시스템만 바꾼다. '
-      + '`CLOSED`로 바꾸면 대기 중인 지원을 거절하고 지원자에게 알린다.',
+      + '`CLOSED`로 바꾸면 대기 중인 지원을 거절하고 그 지원자에게만 알린다. '
+      + '다시 모집할 때는 새 마감일(`deadline`)이 필요하고, 철회되지 않은 계약이 있으면 할 수 없다. 아무에게도 알리지 않는다.',
     security: bearer,
     request: { params: projectId, body: jsonBody(projectStatusBody) },
     responses: {
       200: ok(project, '바뀐 프로젝트'),
       ...errors(
-        invalid('`Cannot transition from <현재> to <요청>` — 허용되지 않는 전이'),
+        invalid(
+          '`Cannot transition from <현재> to <요청>` — 허용되지 않는 전이',
+          '`Deadline is required to reopen recruitment` — 다시 모집하는데 마감일이 없음',
+          '`Deadline must not be in the past` — 다시 모집할 마감일이 이미 지남',
+          '`Deadline can only be set when reopening recruitment` — 다시 모집하기가 아닌 전이에 마감일을 보냄',
+        ),
         ACTIVE_USER,
         role('CLIENT'),
         NOT_OWNER,
         PROJECT_NOT_FOUND,
+        { 409: ['`Cannot reopen recruitment while the project has a contract` — 철회되지 않은 계약(서명 대기 등)이 있음'] },
       ),
     },
   });

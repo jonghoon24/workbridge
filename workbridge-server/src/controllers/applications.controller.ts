@@ -12,12 +12,16 @@ import { createDefaultMilestone, defaultMilestoneDueDate } from '../services/mil
 import { openContractConversation } from '../services/messaging.service';
 import { notify, notifyRecipients } from '../lib/notifications/notify';
 import { lockActiveUserRow } from '../lib/locks';
+import { isFromEndedRound, latestCancelledContractAt } from '../lib/reapplication';
+import type { ApplicationCreateInput } from '../schemas/applications';
 import type { AuthedRequest } from '../types/index';
+
+const ALREADY_APPLIED = 'You have already applied to this project';
 
 export async function apply(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
     // Parsed by `applicationCreateBody`: `expectedRate` is a whole number of won >= 1; it becomes the contract amount.
-    const { coverLetter, expectedRate, expectedDuration } = req.body;
+    const { coverLetter, expectedRate, expectedDuration } = req.body as ApplicationCreateInput;
     const projectId = req.params.id;
 
     // The sweep closes every project whose deadline has passed (and rejects its pending
@@ -53,16 +57,36 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
         // (it deleted this freelancer's undecided applications): 401 like the guard.
         await lockActiveUserRow(tx, req.user.id);
 
-        const created = await tx.application.create({
-          data: {
-            projectId,
-            freelancerId: req.user.id,
-            coverLetter,
-            expectedRate,
-            expectedDuration,
-            status: 'PENDING',
-          },
+        // One row per applicant and project. An applicant rejected in a round that ended with a
+        // cancelled contract applies again on the same row (`lib/reapplication.ts`); anyone else
+        // who already applied is a 409. Concurrent applies of this freelancer are serialized by the
+        // user row lock above; a concurrent first apply loses on the unique constraint (P2002 below).
+        const existing = await tx.application.findUnique({
+          where: { projectId_freelancerId: { projectId, freelancerId: req.user.id } },
+          select: { id: true, status: true, createdAt: true },
         });
+        let created;
+        if (existing) {
+          const cutoffs = await latestCancelledContractAt([projectId], tx);
+          if (!isFromEndedRound(existing, cutoffs.get(projectId))) {
+            throw new AppError(ALREADY_APPLIED, 409);
+          }
+          created = await tx.application.update({
+            where: { id: existing.id },
+            data: { coverLetter, expectedRate, expectedDuration, status: 'PENDING', createdAt: new Date() },
+          });
+        } else {
+          created = await tx.application.create({
+            data: {
+              projectId,
+              freelancerId: req.user.id,
+              coverLetter,
+              expectedRate,
+              expectedDuration,
+              status: 'PENDING',
+            },
+          });
+        }
 
         // The wording stays inline here (not in the template table); `notify()` applies the channel
         // policy and preferences. The client is live: a deleted client's project 404s above.
@@ -78,7 +102,7 @@ export async function apply(req: AuthedRequest, res: Response, next: NextFunctio
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new AppError('You have already applied to this project', 409);
+        throw new AppError(ALREADY_APPLIED, 409);
       }
       throw err;
     }
@@ -164,8 +188,8 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
     }
 
     // Only a pending application can be decided. Without this, accepting an already-decided
-    // application would proceed and attempt a second Contract on the project — and
-    // `Contract.projectId` is unique, so that surfaced as a 500 rather than a conflict.
+    // application would proceed and attempt a second live Contract on the project — and there is
+    // at most one per project (a partial unique index), so that surfaced as a 500 rather than a conflict.
     if (application.status !== 'PENDING') {
       throw new AppError('This application has already been processed', 409);
     }
@@ -203,7 +227,8 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
             if (!current) throw new AppError('Application not found', 404);
             // Lost to a concurrent accept of another application on this project (it rejected this
             // one before this accept got the project row): the same conflict as the unique contract.
-            if (await tx.contract.findUnique({ where: { projectId }, select: { id: true } })) {
+            // A cancelled contract does not count — the project may have recruited again since.
+            if (await tx.contract.findFirst({ where: { projectId, status: { not: 'CANCELLED' } }, select: { id: true } })) {
               throw new AppError('A contract already exists for this project', 409);
             }
             throw new AppError('This application has already been processed', 409);
@@ -264,7 +289,8 @@ export async function updateApplication(req: AuthedRequest, res: Response, next:
           return { application: updatedApp, contract };
         });
       } catch (err) {
-        // `Contract.projectId` is unique. The PENDING guard above stops the common case, but
+        // One contract per project that is not CANCELLED (the partial unique index
+        // "Contract_projectId_live_key"). The PENDING guard above stops the common case, but
         // two concurrent accepts of *different* pending applications on the same project can
         // both pass it — the constraint is the real backstop, so surface it as a conflict
         // rather than letting P2002 become a 500.

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, authed } from './helpers/api';
 import { prisma } from './helpers/db';
 import {
+  TEST_PASSWORD,
   makeClient,
   makeContractScenario,
   makeMessage,
@@ -10,6 +11,7 @@ import {
   makePayment,
   makeSubmission,
 } from './helpers/factories';
+import { jobsOf } from './helpers/jobs';
 
 /**
  * Contracts — `/api/contracts`, plus the error envelope, authentication, authorization and
@@ -869,7 +871,7 @@ describe('GET /api/contracts (list)', () => {
   });
 
   it.each([
-    ['an unknown status', '?status=CANCELLED'],
+    ['an unknown status', '?status=REFUNDED'],
     ['a zero page', '?page=0'],
     ['a negative limit', '?limit=-1'],
     ['a fractional limit', '?limit=1.5'],
@@ -942,5 +944,285 @@ describe('GET /api/contracts (list)', () => {
     const res = await authed(client).get('/api/contracts');
 
     expect(res.body.contracts[0].counterpart).toMatchObject({ id: freelancer.id, name: freelancer.name });
+  });
+});
+
+describe('POST /api/contracts/:id/cancel', () => {
+  const cancel = (user: Parameters<typeof authed>[0], contractId: string) =>
+    authed(user).post(`/api/contracts/${contractId}/cancel`);
+
+  it('lets the client cancel an unsigned contract and keeps the record as it was', async () => {
+    const { client, project, contract, milestone } = await makeContractScenario();
+
+    const before = Date.now();
+    const res = await cancel(client, contract.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      id: contract.id,
+      status: 'CANCELLED',
+      cancelledBy: 'CLIENT',
+      clientSigned: false,
+      freelancerSigned: false,
+      amount: contract.amount,
+      project: { id: project.id, status: 'CLOSED' },
+    });
+    expect(new Date(res.body.cancelledAt).getTime()).toBeGreaterThanOrEqual(before - 1000);
+    // The plan stays as the record of the terms on the table; nothing moves it any more.
+    expect(res.body.milestones.map((m: { id: string; status: string }) => [m.id, m.status])).toEqual([[milestone.id, 'PENDING']]);
+
+    const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(stored).toMatchObject({ status: 'CANCELLED', cancelledBy: 'CLIENT', completedAt: null });
+    // The project stays closed: whether to recruit again is the client's call.
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status).toBe('CLOSED');
+    expect((await prisma.application.findUniqueOrThrow({ where: { id: contract.applicationId } })).status).toBe('ACCEPTED');
+  });
+
+  it('lets the freelancer cancel after the client has signed, keeping the signature on record', async () => {
+    const { client, freelancer, contract } = await makeContractScenario();
+    expect((await authed(client).post(`/api/contracts/${contract.id}/sign`)).status).toBe(200);
+
+    const res = await cancel(freelancer, contract.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'CANCELLED', cancelledBy: 'FREELANCER', clientSigned: true, freelancerSigned: false });
+  });
+
+  it.each(['ACTIVE', 'COMPLETED'] as const)('refuses a %s contract with 409 and writes nothing', async (status) => {
+    const { client, contract, conversation } = await makeContractScenario({
+      contract: { status, clientSigned: true, freelancerSigned: true },
+    });
+    const before = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+
+    const res = await cancel(client, contract.id);
+
+    expect(res.status).toBe(409);
+    expectErrorEnvelope(res.body, 'Only a contract awaiting signatures can be cancelled');
+    expect(await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).toEqual(before);
+    expect(await prisma.notification.count()).toBe(0);
+    expect(await systemEvents(conversation.id)).toEqual([]);
+  });
+
+  it('refuses a contract that is already cancelled with 409', async () => {
+    const { client, freelancer, contract } = await makeContractScenario();
+    expect((await cancel(client, contract.id)).status).toBe(200);
+
+    const again = await cancel(client, contract.id);
+    const other = await cancel(freelancer, contract.id);
+
+    for (const res of [again, other]) {
+      expect(res.status).toBe(409);
+      expectErrorEnvelope(res.body, 'This contract has been cancelled');
+    }
+    expect(await prisma.notification.count()).toBe(1);
+  });
+
+  it('is 404 for a contract that does not exist', async () => {
+    const client = await makeClient();
+
+    const res = await cancel(client, '00000000-0000-0000-0000-000000000000');
+
+    expect(res.status).toBe(404);
+    expectErrorEnvelope(res.body, 'Contract not found');
+  });
+
+  it('notifies the counterpart once, in-app and by email (the policy default), and not the one who cancelled', async () => {
+    const { client, freelancer, project, contract } = await makeContractScenario();
+
+    const res = await cancel(freelancer, contract.id);
+
+    expect(res.status).toBe(200);
+    const notifications = await prisma.notification.findMany();
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      userId: client.id,
+      type: 'CONTRACT_CANCELLED',
+      title: '계약이 철회되었습니다',
+      message: `프리랜서가 '${project.title}' 계약을 서명 전에 철회했습니다.`,
+      href: `/contracts/${contract.id}`,
+    });
+    const deliveries = await prisma.emailDelivery.findMany();
+    expect(deliveries.map((d) => [d.userId, d.type])).toEqual([[client.id, 'CONTRACT_CANCELLED']]);
+    expect(await jobsOf('notification.email')).toHaveLength(1);
+  });
+
+  it('still cancels when the counterpart is soft-deleted, notifying nobody', async () => {
+    const { client, freelancer, contract } = await makeContractScenario();
+    await prisma.user.update({ where: { id: freelancer.id }, data: { deletedAt: new Date() } });
+
+    const res = await cancel(client, contract.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('CANCELLED');
+    expect(await prisma.notification.count()).toBe(0);
+  });
+
+  it('records CONTRACT_CANCELLED in the conversation as its latest message, naming who cancelled', async () => {
+    const { client, contract, conversation } = await makeContractScenario();
+    await makeMessage(conversation.id, client.id, { body: 'hello' });
+
+    expect((await cancel(client, contract.id)).status).toBe(200);
+
+    const latest = await prisma.message.findFirstOrThrow({
+      where: { conversationId: conversation.id },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+    expect(latest).toMatchObject({ kind: 'SYSTEM', systemEvent: 'CONTRACT_CANCELLED', body: '의뢰인이 서명 전에 계약을 철회했습니다.' });
+    expect(await systemEvents(conversation.id)).toEqual(['CONTRACT_CANCELLED']);
+  });
+
+  it('rolls everything back when a late step fails', async () => {
+    const { client, contract, conversation } = await makeContractScenario();
+    const injection = failTransactionStep({
+      model: 'contract',
+      method: 'findUniqueOrThrow',
+      observe: (tx) => tx.contract.findUnique({ where: { id: contract.id } }),
+    });
+
+    const res = await cancel(client, contract.id);
+
+    expect(res.status).toBe(500);
+    expect(injection.steps).toEqual(['contract.updateMany', 'contract.findUniqueOrThrow']);
+    // The cancellation (and the notice and message after it) really ran inside the transaction…
+    expect(injection.observed()).toMatchObject({ status: 'CANCELLED' });
+    // …and none of it survived.
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('PENDING');
+    expect(await prisma.notification.count()).toBe(0);
+    expect(await prisma.emailDelivery.count()).toBe(0);
+    expect(await systemEvents(conversation.id)).toEqual([]);
+
+    vi.restoreAllMocks();
+    expect((await cancel(client, contract.id)).status).toBe(200);
+  });
+
+  // Each race is repeated so a single lucky interleaving cannot make it pass.
+  describe('races', () => {
+    it('both parties cancelling at once: exactly one wins, one notice, one system message', async () => {
+      for (let iteration = 0; iteration < 10; iteration += 1) {
+        const { client, freelancer, contract, conversation } = await makeContractScenario();
+
+        const results = await Promise.all([cancel(client, contract.id), cancel(freelancer, contract.id)]);
+
+        expect(results.map((r) => r.status).sort(), `iteration ${iteration}`).toEqual([200, 409]);
+        const loser = results.find((r) => r.status === 409)!;
+        expectErrorEnvelope(loser.body, 'This contract has been cancelled');
+        expect(await prisma.notification.count({ where: { userId: { in: [client.id, freelancer.id] } } })).toBe(1);
+        expect(await systemEvents(conversation.id)).toEqual(['CONTRACT_CANCELLED']);
+      }
+    });
+
+    it('cancelling against the activating signature: exactly one of them takes effect', async () => {
+      for (let iteration = 0; iteration < 10; iteration += 1) {
+        const { client, freelancer, project, contract, conversation } = await makeContractScenario();
+        expect((await authed(client).post(`/api/contracts/${contract.id}/sign`)).status).toBe(200);
+
+        const [cancelled, signed] = await Promise.all([
+          cancel(client, contract.id),
+          authed(freelancer).post(`/api/contracts/${contract.id}/sign`),
+        ]);
+
+        const stored = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+        const storedProject = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+        if (cancelled.status === 200) {
+          expect(signed.status, `iteration ${iteration}`).toBe(409);
+          expectErrorEnvelope(signed.body, 'This contract has been cancelled');
+          expect(stored).toMatchObject({ status: 'CANCELLED', freelancerSigned: false });
+          expect(storedProject.status).toBe('CLOSED');
+          expect(await prisma.notification.count({ where: { type: 'CONTRACT_ACTIVATED' } })).toBe(0);
+          expect(await systemEvents(conversation.id)).toEqual(['CONTRACT_CANCELLED']);
+        } else {
+          expect(cancelled.status, `iteration ${iteration}`).toBe(409);
+          expectErrorEnvelope(cancelled.body, 'Only a contract awaiting signatures can be cancelled');
+          expect(signed.status).toBe(200);
+          expect(stored.status).toBe('ACTIVE');
+          expect(storedProject.status).toBe('IN_PROGRESS');
+          expect(await prisma.notification.count({ where: { type: 'CONTRACT_CANCELLED' } })).toBe(0);
+          expect(await systemEvents(conversation.id)).toEqual(['CONTRACT_ACTIVATED']);
+        }
+        await prisma.notification.deleteMany();
+      }
+    });
+
+    it('cancelling against a plan replacement: no 500, and a refused replacement changes nothing', async () => {
+      for (let iteration = 0; iteration < 10; iteration += 1) {
+        const { client, freelancer, contract, milestone } = await makeContractScenario();
+
+        const [cancelled, replaced] = await Promise.all([
+          cancel(freelancer, contract.id),
+          authed(client).put(`/api/contracts/${contract.id}/milestones`).send({
+            milestones: [
+              { title: 'A', amount: 2_000_000, dueDate: '2099-01-01' },
+              { title: 'B', amount: 2_000_000, dueDate: '2099-02-01' },
+            ],
+          }),
+        ]);
+
+        expect(cancelled.status, `iteration ${iteration}`).toBe(200);
+        expect([200, 409], `iteration ${iteration}`).toContain(replaced.status);
+        expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('CANCELLED');
+        const milestones = await prisma.milestone.findMany({ where: { contractId: contract.id } });
+        if (replaced.status === 409) {
+          expectErrorEnvelope(replaced.body, 'This contract has been cancelled');
+          expect(milestones.map((m) => m.id)).toEqual([milestone.id]);
+        } else {
+          expect(milestones).toHaveLength(2);
+        }
+      }
+    });
+
+    it.each(['counterpart', 'canceller'] as const)(
+      'cancelling against the %s withdrawing their account: no deadlock, and a withdrawal only after the cancel',
+      async (who) => {
+        for (let iteration = 0; iteration < 5; iteration += 1) {
+          const { client, freelancer, contract } = await makeContractScenario();
+          const withdrawing = who === 'counterpart' ? freelancer : client;
+
+          const [cancelled, withdrawn] = await Promise.all([
+            cancel(client, contract.id),
+            authed(withdrawing).post('/api/users/me/withdrawal').send({ currentPassword: TEST_PASSWORD }),
+          ]);
+
+          expect(cancelled.status, `iteration ${iteration}`).toBe(200);
+          expect([200, 409], `iteration ${iteration}`).toContain(withdrawn.status);
+          expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('CANCELLED');
+          const user = await prisma.user.findUniqueOrThrow({ where: { id: withdrawing.id } });
+          expect(user.deletedAt !== null).toBe(withdrawn.status === 200);
+        }
+      },
+    );
+  });
+});
+
+describe('POST /api/contracts/:id/sign — a cancelled contract', () => {
+  it('refuses with 409 and records no signature', async () => {
+    const { client, freelancer, contract } = await makeContractScenario();
+    expect((await authed(client).post(`/api/contracts/${contract.id}/cancel`)).status).toBe(200);
+
+    const res = await authed(freelancer).post(`/api/contracts/${contract.id}/sign`);
+
+    expect(res.status).toBe(409);
+    expectErrorEnvelope(res.body, 'This contract has been cancelled');
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).freelancerSigned).toBe(false);
+  });
+});
+
+describe('GET /api/contracts — cancelled contracts', () => {
+  it('lists them by default and under status=CANCELLED, with who cancelled and when', async () => {
+    const pending = await makeContractScenario();
+    const cancelled = await makeContractScenario();
+    await prisma.contract.update({ where: { id: cancelled.contract.id }, data: { clientId: pending.client.id } });
+    expect((await authed(pending.client).post(`/api/contracts/${cancelled.contract.id}/cancel`)).status).toBe(200);
+
+    const all = await authed(pending.client).get('/api/contracts');
+    const onlyCancelled = await authed(pending.client).get('/api/contracts?status=CANCELLED');
+
+    expect(all.body.contracts.map((c: { id: string }) => c.id).sort()).toEqual([pending.contract.id, cancelled.contract.id].sort());
+    expect(onlyCancelled.body.contracts).toHaveLength(1);
+    expect(onlyCancelled.body.contracts[0]).toMatchObject({
+      id: cancelled.contract.id,
+      status: 'CANCELLED',
+      cancelledBy: 'CLIENT',
+      cancelledAt: expect.any(String),
+    });
   });
 });

@@ -35,7 +35,7 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
     operationId: 'getMyContracts',
     tags,
     summary: '내 계약 목록',
-    description: '의뢰인·프리랜서 어느 쪽이든 내가 당사자인 계약, 최신순. 삭제된 프로젝트의 계약은 빠진다.',
+    description: '의뢰인·프리랜서 어느 쪽이든 내가 당사자인 계약, 최신순. 철회된 계약도 들어 있다. 삭제된 프로젝트의 계약은 빠진다.',
     security: bearer,
     request: { query: contractListQuery },
     responses: { 200: ok(contractList), ...errors(invalid(), ACTIVE_USER) },
@@ -74,7 +74,12 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
         role('CLIENT'),
         { 403: ['`Not authorized` — 계약의 의뢰인이 아님'] },
         CONTRACT_OR_PROJECT_NOT_FOUND,
-        { 409: ['`Milestone plan is locked once the contract is active` — 계약이 이미 시작됨'] },
+        {
+          409: [
+            '`Milestone plan is locked once the contract is active` — 계약이 이미 시작됨',
+            '`This contract has been cancelled` — 철회된 계약',
+          ],
+        },
       ),
     },
   });
@@ -148,6 +153,35 @@ export function registerContractPaths(registry: OpenAPIRegistry): void {
         ACTIVE_USER,
         NOT_PARTY,
         CONTRACT_OR_PROJECT_NOT_FOUND,
+        { 409: ['`This contract has been cancelled` — 철회된 계약'] },
+      ),
+    },
+  });
+
+  registry.registerPath({
+    method: 'post',
+    path: '/api/contracts/{id}/cancel',
+    operationId: 'cancelContract',
+    tags,
+    summary: '서명 전 계약 철회',
+    description:
+      '서명 대기(`PENDING`) 계약을 의뢰인이나 프리랜서가 철회한다. 한쪽이 이미 서명했어도 된다. '
+      + '계약은 `CANCELLED`로 남고(마일스톤·서명·대화방은 그대로), 상대방에게 알린다. 프로젝트는 모집 마감(`CLOSED`)으로 남는다 — '
+      + '다시 모집할지는 의뢰인이 정한다(`PATCH /api/projects/{id}/status`).',
+    security: bearer,
+    request: { params: contractId },
+    responses: {
+      200: ok(contractDetail, '철회된 계약'),
+      ...errors(
+        ACTIVE_USER,
+        NOT_PARTY,
+        CONTRACT_OR_PROJECT_NOT_FOUND,
+        {
+          409: [
+            '`This contract has been cancelled` — 이미 철회된 계약',
+            '`Only a contract awaiting signatures can be cancelled` — 양측 서명으로 시작됐거나 완료된 계약',
+          ],
+        },
       ),
     },
   });

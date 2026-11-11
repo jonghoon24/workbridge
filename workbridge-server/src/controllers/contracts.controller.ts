@@ -5,7 +5,8 @@ import prisma from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { notifyRecipients } from '../lib/notifications/notify';
 import { renderTemplate } from '../lib/notifications/templates';
-import { contractInclude, serializeContract } from '../services/contracts.service';
+import { CONTRACT_CANCELLED } from '../lib/contractMessages';
+import { cancelContract, contractInclude, serializeContract } from '../services/contracts.service';
 import { isValidPlan } from '../services/milestones.service';
 import { postSystemMessage } from '../services/messaging.service';
 import type { AuthedRequest } from '../types/index';
@@ -51,6 +52,10 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
       throw new AppError('A completed contract cannot be signed again', 400);
     }
 
+    if (contract.status === 'CANCELLED') {
+      throw new AppError(CONTRACT_CANCELLED, 409);
+    }
+
     // A PENDING contract needs a valid plan, or the signature is not recorded at all. The API
     // cannot create an invalid plan; this guards rows edited directly in the database.
     if (contract.status === 'PENDING' && !isValidPlan(contract.milestones, contract.amount)) {
@@ -76,6 +81,12 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
           freelancer: { select: { id: true, deletedAt: true } },
         },
       });
+
+      // A cancel that committed while this waited for the row lock: the UPDATE above saw the
+      // cancelled row. Refuse, which rolls the signature back.
+      if (signed.status === 'CANCELLED') {
+        throw new AppError(CONTRACT_CANCELLED, 409);
+      }
 
       // Guarded on PENDING so activation can never overwrite a later status.
       if (signed.clientSigned && signed.freelancerSigned && signed.status === 'PENDING') {
@@ -115,4 +126,13 @@ export async function signContract(req: AuthedRequest, res: Response, next: Next
 /** Completion happens automatically when the last milestone is approved; the route stays so callers get the envelope. */
 export async function completeContract(_req: AuthedRequest, _res: Response, next: NextFunction) {
   next(new AppError('Contracts are completed automatically when every milestone is approved', 410));
+}
+
+/** `POST /api/contracts/:id/cancel` — either party withdraws a contract before both have signed. */
+export async function postCancelContract(req: AuthedRequest, res: Response, next: NextFunction) {
+  try {
+    res.json(await cancelContract(req.params.id, req.user.id, new Date()));
+  } catch (err) {
+    next(err);
+  }
 }

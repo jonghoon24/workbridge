@@ -10,7 +10,7 @@ export interface PreferenceEntry {
   email?: boolean;
 }
 
-const MAX_ENTRIES = NOTIFICATION_TYPES.length; // 1–20 entries, one per notification type
+const MAX_ENTRIES = NOTIFICATION_TYPES.length; // 1–21 entries, one per notification type
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

@@ -157,3 +157,70 @@ describe('row level security', () => {
     expect(forced.map((t) => t.name)).toEqual([]);
   });
 });
+
+/**
+ * A cancelled contract stays as the record, so a project can have several contracts — but at most
+ * one that is not CANCELLED. Prisma's schema cannot express that partial unique index (and its
+ * migrate diff ignores it, so nothing else would notice it going missing); these tests are the
+ * guard (docs/DATABASE.md "관계와 불변식").
+ */
+describe('contracts of a project', () => {
+  /** A second accepted application on the scenario's project, for another contract row. */
+  async function secondContractData(scenario: Awaited<ReturnType<typeof makeContractScenario>>) {
+    const freelancer = await makeFreelancer();
+    const application = await prisma.application.create({
+      data: {
+        projectId: scenario.project.id,
+        freelancerId: freelancer.id,
+        coverLetter: 'second',
+        expectedRate: 1_000_000,
+        expectedDuration: '1주',
+        status: 'ACCEPTED',
+      },
+    });
+    return {
+      projectId: scenario.project.id,
+      applicationId: application.id,
+      clientId: scenario.client.id,
+      freelancerId: freelancer.id,
+      amount: 1_000_000,
+      startDate: new Date(),
+      endDate: new Date(),
+    };
+  }
+
+  it('defines the one-live-contract index as a partial unique index on projectId', async () => {
+    const [index] = await prisma.$queryRaw<Array<{ indexdef: string }>>`
+      SELECT indexdef FROM pg_indexes
+      WHERE schemaname = current_schema() AND tablename = 'Contract' AND indexname = 'Contract_projectId_live_key'`;
+
+    expect(index?.indexdef).toBe(
+      'CREATE UNIQUE INDEX "Contract_projectId_live_key" ON public."Contract" USING btree ("projectId") '
+        + 'WHERE (status <> \'CANCELLED\'::"ContractStatus")',
+    );
+  });
+
+  it('refuses a second contract that is not cancelled (P2002)', async () => {
+    const scenario = await makeContractScenario();
+
+    await expect(prisma.contract.create({ data: await secondContractData(scenario) })).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('allows a new contract next to a cancelled one', async () => {
+    const scenario = await makeContractScenario({ contract: { status: 'CANCELLED' } });
+
+    await expect(prisma.contract.create({ data: await secondContractData(scenario) })).resolves.toMatchObject({ status: 'PENDING' });
+    expect(await prisma.contract.count({ where: { projectId: scenario.project.id } })).toBe(2);
+  });
+
+  it.each([
+    ['CANCELLED without cancelledAt', { status: 'CANCELLED', cancelledAt: null, cancelledBy: 'CLIENT' }, 'Contract_cancelledAt_check'],
+    ['PENDING with cancelledAt', { status: 'PENDING', cancelledAt: new Date(), cancelledBy: 'CLIENT' }, 'Contract_cancelledAt_check'],
+    ['cancelledAt without cancelledBy', { status: 'CANCELLED', cancelledAt: new Date(), cancelledBy: null }, 'Contract_cancelledBy_check'],
+  ] as const)('refuses a contract that is %s', async (_label, data, constraint) => {
+    const { contract } = await makeContractScenario();
+
+    await expect(prisma.contract.update({ where: { id: contract.id }, data })).rejects.toThrow(constraint);
+    expect((await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } })).status).toBe('PENDING');
+  });
+});

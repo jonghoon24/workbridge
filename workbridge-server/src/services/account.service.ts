@@ -146,9 +146,9 @@ function isDeadlock(err: unknown): boolean {
  *    concurrent accept either finishes first (and this sees its contract: 409) or finds its
  *    application gone (404). Never a contract with a withdrawn user.
  * 2. Refuses with 409 while a contract is unfinished or money is still owed (`countBlockers`).
- * 3. Closes what is not a transaction yet: the client's contract-less projects are deleted and
- *    their pending applications rejected (applicants are told, like a manual close); the
- *    freelancer's undecided applications are withdrawn.
+ * 3. Closes what is not a transaction yet: the client's projects without a contract (or with only
+ *    cancelled ones) are deleted and their pending applications rejected (applicants are told, like
+ *    a manual close); the freelancer's undecided applications are withdrawn.
  * 4. Deletes the personal data (portfolio, careers, payout account, bookmarks, inbox, notification
  *    settings), blanks the email records, scrubs the user row and soft-deletes it, and enqueues
  *    the deletion of the public images. Transaction records stay.
@@ -194,11 +194,12 @@ async function withdrawInTransaction(tx: PrismaTransactionClient, userId: string
   // 2. Nothing may be left in progress or owed.
   if (isBlocked(await countBlockers(tx, userId))) throw new AppError(WITHDRAWAL_BLOCKED, 409);
 
-  // 3a. The client's projects that never reached a contract: deleted; their pending applicants are
-  // told the recruitment closed (the manual close's wording) and their applications rejected.
-  // Projects with a (completed) contract stay: they are the counterpart's contract record.
+  // 3a. The client's projects that never reached a contract — none, or only cancelled ones: deleted;
+  // their pending applicants are told the recruitment closed (the manual close's wording) and their
+  // applications rejected. Projects with a (completed) contract stay: they are the counterpart's
+  // contract record. A cancelled contract goes with its project, as when the client deletes it.
   const openProjects = await tx.project.findMany({
-    where: { id: { in: projectIds }, contract: { is: null } },
+    where: { id: { in: projectIds }, contracts: { none: { status: { not: 'CANCELLED' } } } },
     select: { id: true, title: true },
   });
   const openProjectIds = openProjects.map((p) => p.id);

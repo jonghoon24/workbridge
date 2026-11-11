@@ -27,6 +27,7 @@ export default function ContractPage() {
   // 처음 불러오기 실패: { kind: 'notFound' | 'forbidden' | 'error', message }. 이동하지 않고 화면에 보여 준다.
   const [loadError, setLoadError] = useState(null);
   const [signing, setSigning] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [editingPlan, setEditingPlan] = useState(false);
   const [planNotice, setPlanNotice] = useState('');
   const [actionError, setActionError] = useState('');
@@ -96,6 +97,27 @@ export default function ContractPage() {
       setActionError(toUserMessage(err, '서명하지 못했습니다.'));
     } finally {
       setSigning(false);
+    }
+  }
+
+  // 서명 전(PENDING) 계약의 철회. 되돌릴 수 없으므로 다른 파괴적 동작처럼 확인을 받는다.
+  async function handleCancel() {
+    const asClient = useAuthStore.getState().user?.id === contract.clientId;
+    const message = asClient
+      ? '서명 전 계약을 철회하시겠습니까?\n철회하면 되돌릴 수 없고 프리랜서에게 알림이 갑니다. 프로젝트는 모집 마감 상태로 남고, 원하면 프로젝트 화면에서 다시 모집할 수 있습니다.'
+      : '서명 전 계약을 철회하시겠습니까?\n철회하면 되돌릴 수 없고 의뢰인에게 알림이 갑니다. 이 프로젝트에는 다시 지원할 수 없습니다.';
+    if (!confirm(message)) return;
+    setCancelling(true);
+    setActionError('');
+    try {
+      const { data } = await api.post(`/api/contracts/${id}/cancel`);
+      setContract(data);
+    } catch (err) {
+      setActionError(toUserMessage(err, '계약을 철회하지 못했습니다.'));
+      // 상대가 먼저 서명했거나 철회했으면 지금 상태를 다시 보여 준다.
+      if (err.response?.status === 409) await loadContract().catch(() => {});
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -206,6 +228,9 @@ export default function ContractPage() {
   const hasSigned = isClient ? contract.clientSigned : contract.freelancerSigned;
   const canSign = (isClient || isFreelancer) && contract.status === 'PENDING' && !hasSigned;
   const canEditPlan = isClient && contract.status === 'PENDING';
+  const canCancel = (isClient || isFreelancer) && contract.status === 'PENDING';
+  const isCancelled = contract.status === 'CANCELLED';
+  const cancelledByLabel = contract.cancelledBy === 'CLIENT' ? '의뢰인' : '프리랜서';
   const milestones = contract.milestones || [];
   const summary = contract.milestoneSummary || {};
   const contractAmount = summary.contractAmount ?? Math.round(contract.amount || 0);
@@ -250,6 +275,24 @@ export default function ContractPage() {
           </div>
         )}
 
+        {isCancelled && (
+          <div data-testid="contract-cancelled-notice" className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
+            <p className="font-medium text-gray-900">
+              {cancelledByLabel}{contract.cancelledBy === 'CLIENT' ? '이' : '가'} {formatDate(contract.cancelledAt)}에 서명 전 계약을 철회했습니다.
+            </p>
+            <p className="mt-1">
+              철회된 계약은 다시 진행할 수 없습니다. 계약 내용과 대화는 기록으로 남습니다.
+            </p>
+            {isClient && contract.project?.status === 'CLOSED' && (
+              <p className="mt-2">
+                <Link href={`/projects/${contract.projectId}`} className="font-medium text-primary-600 hover:text-primary-700">
+                  프로젝트에서 다시 모집하기 →
+                </Link>
+              </p>
+            )}
+          </div>
+        )}
+
         <Card className="p-6">
           <h2 className="font-semibold text-gray-900 mb-4">계약 정보</h2>
           <dl className="grid grid-cols-2 gap-4 text-sm">
@@ -287,6 +330,12 @@ export default function ContractPage() {
                 <dd className="font-medium mt-1">{formatDate(contract.completedAt)}</dd>
               </div>
             )}
+            {contract.cancelledAt && (
+              <div>
+                <dt className="text-gray-500">철회일</dt>
+                <dd className="font-medium mt-1">{formatDate(contract.cancelledAt)} · {cancelledByLabel}</dd>
+              </div>
+            )}
           </dl>
         </Card>
 
@@ -303,15 +352,31 @@ export default function ContractPage() {
                 <span className="text-sm font-medium">프리랜서 서명 {contract.freelancerSigned ? '완료' : '대기'}</span>
               </div>
             </div>
-            {canSign && (
-              <Button onClick={handleSign} loading={signing}>
-                계약서 서명하기
-              </Button>
+            {(canSign || canCancel) && (
+              <div className="flex flex-wrap gap-2">
+                {canCancel && (
+                  <Button
+                    variant="secondary"
+                    className="!text-red-600 hover:!bg-red-50 hover:!border-red-200"
+                    onClick={handleCancel}
+                    loading={cancelling}
+                    disabled={signing}
+                  >
+                    계약 철회
+                  </Button>
+                )}
+                {canSign && (
+                  <Button onClick={handleSign} loading={signing} disabled={cancelling}>
+                    계약서 서명하기
+                  </Button>
+                )}
+              </div>
             )}
           </div>
           {contract.status === 'PENDING' && (
             <p className="mt-4 text-xs text-gray-500">
               서명은 아래 마일스톤 계획에 대한 동의입니다. 의뢰인이 계획을 바꾸면 양측 서명이 초기화됩니다.
+              양측이 서명하기 전에는 어느 쪽이든 계약을 철회할 수 있습니다.
             </p>
           )}
         </Card>
@@ -344,6 +409,9 @@ export default function ContractPage() {
             />
           ) : (
             <>
+              {isCancelled ? (
+                <p className="mb-4 text-sm text-gray-500">철회 시점의 마일스톤 계획입니다. 결제와 작업은 진행되지 않습니다.</p>
+              ) : (
               <div className="mb-5">
                 <div className="flex flex-wrap justify-between gap-2 text-sm text-gray-600 mb-2">
                   <span>
@@ -356,6 +424,7 @@ export default function ContractPage() {
                   <div className="absolute inset-y-0 left-0 bg-primary-600" style={{ width: `${approvedPercent}%` }} />
                 </div>
               </div>
+              )}
 
               {milestones.length === 0 ? (
                 <p className="text-sm text-gray-500">마일스톤이 없습니다.</p>
@@ -369,6 +438,7 @@ export default function ContractPage() {
                       isClient={isClient}
                       isFreelancer={isFreelancer}
                       canFund={nextFundable?.id === milestone.id}
+                      inactive={isCancelled}
                       busy={busyMilestoneId === milestone.id}
                       onApprove={handleApprove}
                       onReject={setRejectTarget}

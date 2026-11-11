@@ -10,7 +10,7 @@ OpenAPI가 원본이라 여기서는 상수 이름만 가리킨다. 코드 구�
 | 문서 | 다루는 것 |
 | --- | --- |
 | [accounts.md](accounts.md) | 가입·로그인·토큰, 비밀번호 변경, Google 재인증, 회원 탈퇴, Google 로그인과 역할 선택, 프로필과 프로필 완성, 포트폴리오, 경력, 공개 프로필 |
-| [projects-contracts.md](projects-contracts.md) | 프로젝트 수명주기와 지연 스윕, 북마크, AI 단가 분석, 지원, 지원 수락과 계약 체결·서명, 리뷰, 추천 |
+| [projects-contracts.md](projects-contracts.md) | 프로젝트 수명주기와 지연 스윕, 다시 모집하기, 북마크, AI 단가 분석, 지원, 지원 수락과 계약 체결·서명·서명 전 철회, 리뷰, 추천 |
 | [milestones-payments.md](milestones-payments.md) | 돈 계산 규칙, 마일스톤 계획과 상태, 안전결제, 제출·검수·자동 승인, 주간 정산과 지급, 지급 계좌 |
 | [messaging-notifications.md](messaging-notifications.md) | 계약 대화방, 시스템 메시지, 읽음, 인앱 알림, 알림 설정과 이메일, 미확인 메시지 다이제스트 |
 | [jobs.md](jobs.md) | 비동기 작업이 무엇을 언제 하는지, 재시도와 플래그로 꺼 둔 작업 |
@@ -25,7 +25,7 @@ OpenAPI가 원본이라 여기서는 상수 이름만 가리킨다. 코드 구�
 | 프리랜서 | `FREELANCER` (`Role`) | 프로젝트에 지원하고 계약 후 작업을 제출해 정산을 받는 사람 |
 | 프로젝트, 모집 예정·모집 중·모집 마감·진행 중 | `Project`, `UPCOMING`·`OPEN`·`CLOSED`·`IN_PROGRESS` | 의뢰인이 올린 외주 건과 그 모집·진행 상태. 진행 중은 계약이 서명돼 작업이 시작된 상태 |
 | 지원 | `Application` | 프리랜서의 지원서. 희망 금액(`expectedRate`)이 계약 금액이 된다 |
-| 계약, 서명 대기·계약 진행 중 | `Contract`, `PENDING`·`ACTIVE` | 지원을 수락하면 생기는 계약. 양측 서명으로 시작된다 |
+| 계약, 서명 대기·계약 진행 중·완료·철회됨 | `Contract`, `PENDING`·`ACTIVE`·`COMPLETED`·`CANCELLED` | 지원을 수락하면 생기는 계약. 양측 서명으로 시작된다. 서명 전에는 당사자가 철회할 수 있다 |
 | 마일스톤 | `Milestone` | 계약 금액을 나눈 작업 단위. 결제·제출·승인·정산이 모두 마일스톤 단위다 |
 | 안전결제 | `Payment` + 마일스톤 `FUNDED` | 의뢰인이 마일스톤 대금을 먼저 결제하고, 플랫폼이 보관하다가 승인되면 프리랜서에게 정산한다 |
 | 결제 대기·작업 중·검수 대기·수정 요청·승인 완료 | 마일스톤 `PENDING`·`FUNDED`·`SUBMITTED`·`REVISION_REQUESTED`·`APPROVED` | 마일스톤 상태 |

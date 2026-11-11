@@ -5,7 +5,7 @@ import Link from 'next/link';
 import api from '@/lib/api';
 import useAuthStore from '@/store/authStore';
 import Card from '@/components/ui/Card';
-import Badge from '@/components/ui/Badge';
+import Badge, { StatusPill } from '@/components/ui/Badge';
 import PageLoader from '@/components/ui/PageLoader';
 import EmptyState from '@/components/ui/EmptyState';
 import { BriefcaseIcon } from '@/components/ui/Icons';
@@ -56,6 +56,7 @@ export default function MyApplicationsPage() {
                       {app.project?.title}
                     </Link>
                     <Badge variant={app.status}>{app.status}</Badge>
+                    {app.contract?.status === 'CANCELLED' && <StatusPill tone="gray">계약 철회</StatusPill>}
                   </div>
                   <p className="text-sm text-gray-500">
                     {app.project?.category} · {app.project?.client?.companyName || app.project?.client?.name}
@@ -65,6 +66,14 @@ export default function MyApplicationsPage() {
                     <Link href={`/contracts/${app.contract.id}`} className="inline-block mt-3 text-sm text-primary-600 hover:text-primary-700 font-medium">
                       계약서 보기 →
                     </Link>
+                  )}
+                  {app.canReapply && (
+                    <p className="mt-3 text-sm text-gray-600">
+                      의뢰인이 다시 모집하고 있습니다.{' '}
+                      <Link href={`/projects/${app.project?.id}`} className="text-primary-600 hover:text-primary-700 font-medium">
+                        다시 지원하기 →
+                      </Link>
+                    </p>
                   )}
                 </div>
                 <div className="text-right ml-4">

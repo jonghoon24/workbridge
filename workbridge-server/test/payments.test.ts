@@ -272,6 +272,17 @@ describe('POST /api/payments', () => {
     expect(await prisma.payment.count()).toBe(0);
   });
 
+  it('returns 400 for a CANCELLED contract: its milestones are never paid', async () => {
+    const { client, milestone } = await makeContractScenario({ contract: { status: 'CANCELLED' } });
+
+    const res = await authed(client).post('/api/payments').send({ milestoneId: milestone.id });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toBe('Contract must be active to proceed with payment');
+    expect(await prisma.payment.count()).toBe(0);
+    expect((await prisma.milestone.findUniqueOrThrow({ where: { id: milestone.id } })).status).toBe('PENDING');
+  });
+
   it('returns 400 for a COMPLETED contract', async () => {
     const { client, milestone } = await activeScenario({ status: 'COMPLETED' });
 

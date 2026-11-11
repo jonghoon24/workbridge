@@ -127,6 +127,7 @@ export default function PaymentPage() {
   const payable = isClient && contract.status === 'ACTIVE' && milestone.status === 'PENDING';
   let blockedReason = '';
   if (!isClient) blockedReason = '계약의 의뢰인만 결제할 수 있습니다.';
+  else if (contract.status === 'CANCELLED') blockedReason = '서명 전에 철회된 계약이라 결제할 수 없습니다.';
   else if (contract.status !== 'ACTIVE') blockedReason = '양측 서명으로 계약이 체결된 뒤에 결제할 수 있습니다.';
   else if (milestone.status !== 'PENDING') blockedReason = '이미 결제된 마일스톤입니다.';
 

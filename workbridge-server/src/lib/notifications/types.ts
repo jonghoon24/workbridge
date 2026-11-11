@@ -1,6 +1,6 @@
 /**
  * `Notification.type` (and `NotificationPreference.type`, `EmailDelivery.type`) is a bare
- * `String` in the schema. These are the values ever written: 19 in-app types plus the email-only
+ * `String` in the schema. These are the values ever written: 20 in-app types plus the email-only
  * digest, with their channel policy in `policy.ts` (docs/domain/messaging-notifications.md).
  */
 export type NotificationType =
@@ -21,6 +21,7 @@ export type NotificationType =
   | 'MILESTONE_DUE_SOON'
   | 'MILESTONE_OVERDUE'
   | 'CONTRACT_COMPLETED'
+  | 'CONTRACT_CANCELLED'
   | 'SETTLEMENT_SCHEDULED'
   | 'SETTLEMENT_PAID'
   | 'SETTLEMENT_ON_HOLD'
