@@ -1,14 +1,20 @@
-name: Claude Code
-
+# Claude Code가 이슈와 PR의 @claude 멘션에 응답한다. 트리거한 사람에게 쓰기 권한이 있어야 돈다(액션이 검사한다).
+# 이슈에서 작업을 맡으면 새 브랜치에 커밋·푸시하고, PR 템플릿을 채운 **드래프트** PR을 직접 연다.
+#   - 액션의 기본 동작은 PR을 열지 않고 "Create PR" 링크만 남기는 것이다. 아래 --append-system-prompt가
+#     그 지시를 이 리포지토리의 규칙으로 덮는다.
+#   - 드래프트라서 claude-code-review.yml이 건너뛴다(`if: draft == false`). 사람이 diff를 보고
+#     "Ready for review"를 누르면 그 사람의 이벤트로 AI 리뷰가 돈다. 머지 판단은 사람이 한다.
+#   - 이미 열린 PR에서 불리면 새 PR을 열지 않고 그 PR 브랜치에 푸시한다.
+name: claude
 on:
   issue_comment:
     types: [created]
   pull_request_review_comment:
     types: [created]
-  issues:
-    types: [opened, assigned]
   pull_request_review:
     types: [submitted]
+  issues:
+    types: [opened, assigned]
 
 jobs:
   claude:
@@ -18,41 +24,90 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    # 한도 둘: 시간은 GitHub Actions가(의존성 설치 약 1분 포함), 턴 수는 아래 --max-turns가 막는다.
+    # 한도에 걸리면 마지막 커밋 이후 작업이 사라지고 PR도 열리지 않으므로 큰 이슈도 끝까지 가게 둔다.
+    timeout-minutes: 45
     permissions:
       contents: write
       pull-requests: write
       issues: write
       id-token: write
-      actions: read # Required for Claude to read CI results on PRs
+      actions: read
+    # Claude가 서버 테스트를 직접 돌릴 수 있게 ci.yml 서버 잡과 같은 Postgres를 띄운다. 버그를 고칠 때 회귀 테스트가
+    # 고치기 전 코드에서 실패하는지를 Claude가 스스로 확인하려면 실제 DB가 있어야 한다(CLAUDE.md "테스트").
+    # 테스트는 모든 테이블을 TRUNCATE하지만, 이 컨테이너는 잡과 함께 사라지고 이 잡에는 원격 DB 접속 문자열이 없다.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: workbridge_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # 셋 다 위 서비스 컨테이너를 가리킨다. DB 이름의 "test"는 지우지 않는다 — `test/helpers/db.ts`는
+      # 이름에 "test"가 없는 DB에서 돌지 않는다. TEST_DATABASE_URL이 없으면 vitest.config.ts가
+      # `postgresql://$USER@localhost/workbridge_test`로 대신하는데, 이 컨테이너의 계정과 맞지 않는다.
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_test
+      DIRECT_URL: postgresql://ci:ci@localhost:5432/workbridge_test
+      TEST_DATABASE_URL: postgresql://ci:ci@localhost:5432/workbridge_test
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Run Claude Code
-        id: claude
-        uses: anthropics/claude-code-action@v1
+      # Claude가 고친 코드를 스스로 typecheck·lint·테스트할 수 있게 의존성을 미리 설치한다(실행당 약 1분).
+      # 기본 브랜치의 lockfile로 설치한다. PR이 의존성을 바꿨다면 그 차이는 ci.yml이 잡는다.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            workbridge-server/package-lock.json
+            workbridge-client/package-lock.json
+
+      - name: 서버 의존성 설치 (postinstall이 Prisma 클라이언트를 생성한다)
+        working-directory: workbridge-server
+        run: npm ci
+
+      - name: Prisma 클라이언트 생성 확인
+        working-directory: workbridge-server
+        run: npx prisma generate
+
+      # vitest는 마이그레이션을 적용하지 않는다. Claude가 새 마이그레이션을 만들면 migrate dev가 직접 적용한다.
+      - name: 테스트 DB에 마이그레이션 적용
+        working-directory: workbridge-server
+        run: npx prisma migrate deploy
+
+      - name: 클라이언트 의존성 설치
+        working-directory: workbridge-client
+        run: npm ci
+
+      - uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          # Optional: Customize the trigger phrase (default: @claude)
-          # trigger_phrase: "/claude"
-
-          # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
-
-          # Optional: Configure Claude's behavior with CLI arguments
-          # claude_args: |
-          #   --model claude-opus-4-1-20250805
-          #   --max-turns 10
-          #   --allowedTools "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
-          #   --system-prompt "Follow our coding standards. Ensure all new code has tests. Use TypeScript for new files."
-
-          # Optional: Advanced settings configuration
-          # settings: |
-          #   {
-          #     "env": {
-          #       "NODE_ENV": "test"
-          #     }
-          #   }
+          # 저장소의 CLAUDE.md, .claude/rules, 스킬을 그대로 읽는다.
+          # 허용 커맨드: 정적 검사(서버 typecheck·lint, 클라이언트 lint), 서버 테스트(vitest — 위 Postgres 컨테이너),
+          # 마이그레이션 생성·적용(migrate dev·deploy — 같은 컨테이너), OpenAPI 생성(openapi — DB·환경변수 없이 openapi.json만 쓴다),
+          # 읽기 전용 git, PR 보기·드래프트 PR 열기, 이슈 보기. 커밋·푸시(git add/commit/push)는 액션이 따로 허용한다.
+          claude_args: |
+            --max-turns 100
+            --allowedTools "Bash(npm --prefix workbridge-server run typecheck),Bash(npm --prefix workbridge-server run lint),Bash(npm --prefix workbridge-server run openapi),Bash(npm --prefix workbridge-server test:*),Bash(npm --prefix workbridge-client run lint:*),Bash(npm run typecheck),Bash(npm run openapi),Bash(npm run lint:*),Bash(npm test:*),Bash(npx vitest run:*),Bash(npx prisma migrate dev:*),Bash(npx prisma migrate deploy),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr create:*),Bash(gh issue view:*)"
+            --append-system-prompt "이 리포지토리의 규칙이다. 위의 기본 지시와 충돌하면 이 규칙을 따른다.
+            - 정적 검사: 서버를 고쳤으면 npm --prefix workbridge-server run typecheck 와 npm --prefix workbridge-server run lint(시간·로그 규칙도 ESLint가 검사한다), 클라이언트를 고쳤으면 npm --prefix workbridge-client run lint 를 돌리고 통과시킨 뒤 커밋한다.
+            - 서버 테스트: 이 잡에는 마이그레이션을 적용한 테스트용 Postgres가 있다. 서버를 고쳤으면 관련 테스트 파일을 npm --prefix workbridge-server test -- test/<file>.test.ts 로 돌리고, 커밋 전에 npm --prefix workbridge-server test 로 전체를 돌려 통과시킨다. 스키마를 바꿨으면 workbridge-server 안에서 npx prisma migrate dev --name <name> 으로 마이그레이션을 만든다.
+            - 회귀 테스트: 버그를 고칠 때는 고치기 전에 회귀 테스트를 먼저 쓰고 돌려서 실패하는 것을 확인한 뒤 코드를 고치고, 같은 테스트가 통과하는 것을 확인한다. PR 본문의 '확인한 것'에 두 실행 결과(실패한 단언, 통과)를 한 줄씩 적는다. 자동 테스트로 재현할 수 없으면 그 이유와 수동 재현 절차를 적는다.
+            - OpenAPI: 서버 파일을 고치면 훅이 workbridge-server/openapi.json 을 다시 만든다. 커밋 전에 git status 로 확인하고 바뀌었으면 같은 커밋에 넣는다. 훅이 돌지 않았으면 npm --prefix workbridge-server run openapi 를 직접 돌린다. 빠지면 PR의 CI가 실패한다.
+            - 이슈에서 작업을 맡아 새 브랜치에 커밋·푸시했다면 'Create a PR' 링크를 만들지 않는다. 대신 직접 드래프트 PR을 연다:
+              1) .github/PULL_REQUEST_TEMPLATE.md 를 읽고, 모든 절과 체크박스를 그대로 둔 채 채워서 작업 트리 루트의 .pr-body.md 에 쓴다(.gitignore에 있다. 커밋하지 않는다). 관련 이슈는 'Closes #<이슈 번호>', 체크박스는 실제로 돌린 검사만 체크한다. 사람이 판단해야 할 것은 '리뷰어가 볼 곳'에 적는다.
+              2) gh pr create --draft --base main --head <지금 브랜치> --title '<type(scope): 한국어 제목>' --body-file .pr-body.md
+              3) 진행 코멘트의 마지막에는 링크 대신 만든 PR의 URL을 적고, '드래프트 PR입니다. diff를 확인한 뒤 Ready for review를 누르면 AI 리뷰가 시작됩니다.'라고 한 줄 적는다.
+            - 이미 열린 PR에서 불렸으면 새 PR을 열지 않고 그 PR 브랜치에 푸시만 한다.
+            - PR을 Ready로 바꾸거나 머지·닫기·승인하지 않는다.
+            - 코멘트와 PR 본문은 한국어 합니다체로 쓴다."
