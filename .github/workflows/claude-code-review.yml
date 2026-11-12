@@ -1,0 +1,79 @@
+# PR마다 Claude가 .github/REVIEW.md의 기준으로 코드 리뷰를 하고 인라인 코멘트를 남긴다.
+# 기준(.github/REVIEW.md, CLAUDE.md, .claude/)은 PR이 아니라 base 브랜치의 것을 쓴다. 기준을 바꾸는 PR도 바뀌기 전
+# 기준으로 리뷰받고, 새 기준은 머지된 뒤의 PR부터 적용된다. 액션이 base로 되돌리는 경로(.claude/, CLAUDE.md 등)에
+# .github/REVIEW.md는 없으므로, 프롬프트가 `git show`로 base의 것을 직접 읽는다.
+# 리뷰는 PR을 승인하거나 막지 않는다 — 머지 결정은 사람이 한다.
+# - 드래프트 PR은 건너뛴다. @claude가 연 드래프트 PR(claude.yml)은 사람이 "Ready for review"를 누를 때
+#   그 사람의 ready_for_review 이벤트로 리뷰가 시작된다.
+# - 푸시(synchronize)마다 다시 돌지만, 이미 단 자신의 지적은 다시 달지 않고 새 지적만 단다.
+#   매 실행 끝에 요약 코멘트 하나를 남긴다.
+name: claude-code-review
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # 포크에서 온 PR에는 시크릿이 전달되지 않아 액션이 실패하므로 같은 리포지토리의 브랜치만 리뷰한다.
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    # 한도 둘: 시간은 GitHub Actions가(명령이 멈춰 턴이 넘어가지 않을 때), 턴 수는 아래 --max-turns가 막는다.
+    # 지금까지 가장 큰 PR(#83, 파일 64개)의 리뷰가 20턴 근처를 썼다. 한도에 걸리면 요약 없이 실패하므로 여유를 둔다.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # @claude가 PR 브랜치에 커밋을 푸시하면 synchronize의 actor가 claude[bot]이 된다. 액션은 사람이
+          # 아닌 actor를 기본으로 거부하므로(실패로 표시된다) Claude 앱 하나만 허용해 그 커밋도 리뷰한다.
+          allowed_bots: claude
+          prompt: |
+            이 PR을 코드 리뷰합니다: ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+            (이번 실행의 head 커밋: ${{ github.event.pull_request.head.sha }})
+
+            말투: 인라인 코멘트와 요약 코멘트는 모두 한국어 합니다체로 씁니다. 문장은 "~합니다", "~입니다"로
+            끝내고 "~다", "~세요"로 끝내지 않습니다. 예: "`console.log`는 쓰지 않습니다. `lib/logger.ts`의
+            `logger.debug`로 바꾸거나 이 줄을 삭제해야 합니다."
+
+            1. 리뷰 기준은 `git show origin/${{ github.event.pull_request.base.ref }}:.github/REVIEW.md`로 base 브랜치의
+               것을 읽습니다. `.github/REVIEW.md`의 번호 항목이 이 저장소의 리뷰 기준입니다. 작업 트리의 `.github/REVIEW.md`는
+               이 PR이 바꿨을 수 있으므로 기준으로 쓰지 않습니다. `CLAUDE.md`와 변경한 파일 경로에 해당하는
+               `.claude/rules/*.md`도 읽습니다(이 둘은 액션이 이미 base 브랜치의 내용으로 되돌려 둡니다).
+            2. `gh pr view ${{ github.event.pull_request.number }}`로 PR 본문과 연결된 이슈를 읽고,
+               `gh pr diff ${{ github.event.pull_request.number }}`로 변경 사항을 읽고, 필요한 만큼 주변 코드를 봅니다.
+            3. 이전 리뷰를 읽습니다. 이 PR에 `claude[bot]`이 이미 단 인라인 코멘트와 요약 코멘트입니다.
+               `gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments --paginate --jq '.[] | select(.user.login == "claude[bot]") | {path, line, original_line, body}'`
+               `gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments --paginate --jq '.[] | select(.user.login == "claude[bot]") | .body'`
+               (출력은 `--jq`로 거릅니다. 별도의 `jq`나 파이프는 쓰지 않습니다.)
+            4. 지적은 **실제로 틀렸거나 기준을 어긴 것**만 합니다. 스타일, 취향, 결과에 영향이 없는 개선은 쓰지 않습니다.
+               `.github/REVIEW.md` 항목 위반은 반드시 짚고 `REVIEW #n`을 붙입니다. 일반 버그는 재현 조건을 적습니다.
+            5. 3에서 읽은 지적과 **같은 파일의 같은 문제**는 다시 달지 않습니다(줄 번호가 밀렸어도 같은 문제면 같은
+               지적입니다). 새 지적만 `mcp__github_inline_comment__create_inline_comment`로 해당 줄에 답니다.
+               `confirmed: true`를 넘기고, 한 지적에 한 코멘트, 고칠 방향을 한 줄로 씁니다.
+            6. 마지막에 요약 코멘트를 **하나만** 남깁니다:
+               `gh pr comment ${{ github.event.pull_request.number }} --body '<본문>'`. 본문은 작은따옴표로 감싸고
+               본문 안에는 작은따옴표를 쓰지 않습니다(큰따옴표 안의 백틱은 셸이 실행합니다). 본문 형식:
+               ```
+               ### AI 리뷰 요약 (<head 커밋 앞 7자리>)
+               - 새 지적 N건: REVIEW #4 1건, REVIEW #10 1건, 일반 버그 0건
+               - 이전 지적: 해결 A건, 남음 B건 (남은 지적은 다시 달지 않았습니다)
+               - 남은 이전 지적: `파일:줄` REVIEW #n 한 줄 요약 (없으면 이 줄을 뺍니다)
+               ```
+               새 지적도 남은 지적도 없으면 "새 지적이 없습니다."라고 적습니다. 이전 리뷰가 없으면 "이전 지적" 줄을 뺍니다.
+            PR을 승인하거나 요청 변경을 걸지 않습니다. 코드를 고치거나 push하지 않습니다.
+          claude_args: |
+            --max-turns 40
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments:*),Bash(gh api repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"

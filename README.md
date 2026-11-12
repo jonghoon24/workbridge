@@ -68,6 +68,7 @@ npm run lint && npm run build
 - 알려진 버그는 GitHub 이슈로 추적하고, 고치는 PR에 회귀 테스트를 넣습니다.
 - E2E는 로그인, 프로젝트 등록, 지원, 수락·서명, 마일스톤 결제·제출·승인을 브라우저로 확인합니다([workbridge-client/e2e/README.md](workbridge-client/e2e/README.md)).
 - CI: PR과 `main` 푸시마다 [`ci.yml`](.github/workflows/ci.yml)(서버·클라이언트 검사)과 [`e2e.yml`](.github/workflows/e2e.yml)(Playwright)이 Postgres 서비스 컨테이너로 돕니다. 무엇을 검사하는지는 두 워크플로 파일이 원본입니다.
+- AI 리뷰: PR마다 Claude가 [`.github/REVIEW.md`](.github/REVIEW.md) 기준으로 리뷰를 남깁니다(`claude-code-review.yml`). 이슈·PR에서 `@claude`를 멘션해 작업을 맡길 수도 있습니다(`claude.yml`).
 
 ## 배포
 
