@@ -5,7 +5,7 @@
 # 없이 1초 안에 끝난다. 바뀐 openapi.json은 작업 트리에 남아 다음 커밋에 함께 들어간다(ci.yml이 최신인지 검사한다).
 # 편집 도중이라 코드가 아직 컴파일되지 않으면 생성이 실패한다. 그때는 조용히 넘어간다 — 다음 편집이나
 # typecheck(Stop 훅), CI가 잡는다.
-# Stop 훅으로 미루지 않는 이유: 에이전트는 턴 도중에 커밋한다(pre-pr-review 스킬). 미루면 낡은
+# Stop 훅으로 미루지 않는 이유: 에이전트는 턴 도중에 커밋한다(pre-pr-review 스킬, claude.yml). 미루면 낡은
 # openapi.json이 그 커밋에 들어간다.
 # 입력 모양(Claude Code의 `file_path`, Codex apply_patch의 패치 헤더)은 protect-migrations.sh 머리 주석과 같다.
 # Codex 패치 하나가 서버 파일 여럿을 바꿔도 한 번만 만든다.
