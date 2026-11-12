@@ -401,9 +401,9 @@ export async function changeProjectStatus(projectId: string, clientId: string, i
       const cancelled = status === 'CANCELLED';
       await notifyRecipients(tx, pending.map((application) => application.freelancer), {
         type: 'PROJECT_STATUS_CHANGED',
-        title: cancelled ? '프로젝트가 취소되었습니다' : '프로젝트 모집이 마감되었습니다',
+        title: cancelled ? '의뢰인이 프로젝트를 취소했습니다' : '프로젝트 모집이 마감되었습니다',
         message: cancelled
-          ? `'${project.title}' 프로젝트가 취소되었습니다.`
+          ? `의뢰인이 '${project.title}' 프로젝트를 취소했습니다.`
           : `'${project.title}' 프로젝트 모집이 마감되었습니다.`,
         href: '/my/applications',
       }, now);
