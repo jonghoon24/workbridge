@@ -70,7 +70,7 @@ export function registerPaymentPaths(registry: OpenAPIRegistry): void {
     tags,
     summary: '개발용 결제 완료',
     description:
-      '`ALLOW_PAYMENT_BYPASS=true`일 때만 동작한다(운영에서는 꺼 둔다). 토스 없이 결제를 완료하고 마일스톤을 결제 완료로 바꾼다. '
+      '`ALLOW_PAYMENT_BYPASS=true`일 때만 동작한다(프로덕션에서는 꺼 둔다). 토스 없이 결제를 완료하고 마일스톤을 결제 완료로 바꾼다. '
       + '결제 행을 새로 만들면 201, 기존 행을 완료하거나 이미 완료된 결제를 돌려주면 200.',
     security: bearer,
     request: { body: jsonBody(milestonePaymentBody) },

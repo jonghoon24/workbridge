@@ -7,9 +7,9 @@
 | 로컬 | 개발 | `npm run dev` (서버 :4000, 클라이언트 :3000) | 로컬 Postgres. 테스트는 이름에 `test`가 들어간 별도 DB(`scripts/test-db.sh`), E2E는 `workbridge_e2e` |
 | CI | PR과 `main` 푸시 | GitHub Actions(`ci.yml`, `e2e.yml`) | 워크플로마다 띄우는 Postgres 서비스 컨테이너 |
 | 프리뷰 | PR마다 | Vercel Preview 배포 | Supabase 프리뷰 프로젝트 |
-| 운영 | `main` 머지 | Vercel Production 배포 | Supabase 운영 프로젝트 |
+| 프로덕션 | `main` 머지 | Vercel Production 배포 | Supabase 프로덕션 프로젝트 |
 
-프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓴다. 그래서 환경변수도 Vercel의 Preview·Production 환경에 따로 넣는다
+프리뷰와 프로덕션은 서로 다른 Supabase 프로젝트를 쓴다. 그래서 환경변수도 Vercel의 Preview·Production 환경에 따로 넣는다
 ([ENV.md](ENV.md)).
 
 ### 마이그레이션
@@ -17,28 +17,28 @@
 원격 DB에 마이그레이션을 적용하는 경로는 `.github/workflows/migrate.yml` 하나뿐이다.
 
 - 언제: `main`에 푸시된 커밋이 `workbridge-server/prisma/migrations/**`를 바꿨을 때 돈다. Actions 화면에서 수동으로도 돌린다.
-- 순서: 프리뷰 DB에 `prisma migrate deploy`를 돌리고, 성공하면 운영 DB에 돌린다.
+- 순서: 프리뷰 DB에 `prisma migrate deploy`를 돌리고, 성공하면 프로덕션 DB에 돌린다.
 - 연결: 시크릿 `PREVIEW_DIRECT_URL`·`PROD_DIRECT_URL`(어떤 연결인지는 `migrate.yml` 머리 주석).
 - `concurrency: migrate`로 두 실행이 겹치지 않는다.
 
 주의할 점은 둘이다.
 
-1. 같은 `main` 푸시에서 Vercel 운영 배포와 이 워크플로가 따로 돌고, 둘의 순서를 맞추는 장치가 없다. 새 코드가
+1. 같은 `main` 푸시에서 Vercel 프로덕션 배포와 이 워크플로가 따로 돌고, 둘의 순서를 맞추는 장치가 없다. 새 코드가
    마이그레이션 전의 DB를 잠깐 상대할 수 있으므로, 마이그레이션은 이전 코드와 새 코드 모두에 안전해야 한다.
 2. 스키마를 바꾸는 PR의 서버 프리뷰는 머지 전까지 마이그레이션되지 않은 프리뷰 DB를 상대한다.
 
 ### Vercel 프로젝트
 
-| 프로젝트 | 운영 주소 |
+| 프로젝트 | 프로덕션 주소 |
 | --- | --- |
 | 서버 | https://workbridge-server-tau.vercel.app |
 | 클라이언트 | https://workbridge-client-alpha.vercel.app |
 
-둘 다 Vercel 팀 `jonghoon24s-projects`에 있고 Preview·Production 환경변수는 넣어 두었다. 리포지토리와 Vercel GitHub 앱으로 연결돼 있어서, 푸시된 브랜치와 PR마다 두 프로젝트가 프리뷰 배포되고 `main` 머지는 운영 배포가 된다.
+둘 다 Vercel 팀 `jonghoon24s-projects`에 있고 Preview·Production 환경변수는 넣어 두었다. 리포지토리와 Vercel GitHub 앱으로 연결돼 있어서, 푸시된 브랜치와 PR마다 두 프로젝트가 프리뷰 배포되고 `main` 머지는 프로덕션 배포가 된다.
 
 ### 시드 리셋 — `seed.yml`
 
-프리뷰나 운영 DB를 시드 데이터([SEED_DATA.md](SEED_DATA.md))로 되돌리는 수동 실행 전용 워크플로다. 입력 `environment`(`preview`|`production`)와 `confirm`(`seed`를 넣어야 돈다)을 받고, 마이그레이션을 먼저 적용한 뒤 `npm run db:seed`를 돌린다. **시드는 모든 테이블을 비운다.** `migrate.yml`과 같은 `concurrency: migrate` 그룹이다.
+프리뷰나 프로덕션 DB를 시드 데이터([SEED_DATA.md](SEED_DATA.md))로 되돌리는 수동 실행 전용 워크플로다. 입력 `environment`(`preview`|`production`)와 `confirm`(`seed`를 넣어야 돈다)을 받고, 마이그레이션을 먼저 적용한 뒤 `npm run db:seed`를 돌린다. **시드는 모든 테이블을 비운다.** `migrate.yml`과 같은 `concurrency: migrate` 그룹이다.
 
 ```bash
 gh workflow run seed.yml -f environment=preview -f confirm=seed
@@ -53,7 +53,7 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 [DATABASE.md](DATABASE.md#지급-계좌번호-암호화), 키 형식은 `workbridge-server/.env.example` 주석). 키는 환경마다 따로 만든다.
 **한 환경의 키는 아래 두 곳에 같은 값으로 들어간다.**
 
-| 곳 | 프리뷰 | 운영 |
+| 곳 | 프리뷰 | 프로덕션 |
 | --- | --- | --- |
 | Vercel 서버 프로젝트 환경변수 | Preview의 `PAYOUT_ACCOUNT_ENCRYPTION_KEY` | Production의 `PAYOUT_ACCOUNT_ENCRYPTION_KEY` |
 | GitHub 리포지토리 시크릿(`seed.yml`, `payout-encrypt.yml`) | `PREVIEW_PAYOUT_ACCOUNT_ENCRYPTION_KEY` | `PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY` |
@@ -82,8 +82,8 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 - Prisma 클라이언트는 설치 단계에서 `package.json`의 `postinstall: prisma generate`가 만든다. 대시보드의 Build Command에도
   `npx prisma generate`가 있지만, `vercel.json`에 `builds`가 있으면 Vercel이 대시보드 빌드 설정을 무시한다. 실제로 동작하는
   것은 `postinstall`이다.
-- 운영(`NODE_ENV=production`)에서는 `app.listen()`도 작업 큐 워커도 시작하지 않는다.
-- API 문서(`/api/docs`, `/api/openapi.json`)는 프리뷰와 로컬에서만 열리고 운영에서는 404다. 내부 엔드포인트와 오류 메시지를
+- 프로덕션(`NODE_ENV=production`)에서는 `app.listen()`도 작업 큐 워커도 시작하지 않는다.
+- API 문서(`/api/docs`, `/api/openapi.json`)는 프리뷰와 로컬에서만 열리고 프로덕션에서는 404다. 내부 엔드포인트와 오류 메시지를
   드러내지 않기 위해서다. 정확한 조건은 `workbridge-server/src/controllers/docs.controller.ts` 머리 주석에 있다.
 
 ## 프론트엔드
@@ -93,7 +93,7 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
   주석에 있다.
 - PR 프리뷰에서는 클라이언트 프리뷰가 같은 브랜치의 서버 프리뷰를 부른다. 이것은 Vercel Related Projects로 된다.
   - `workbridge-client/vercel.json`의 `relatedProjects`에 서버 프로젝트가 등록돼 있다. Vercel은 클라이언트를 배포할 때마다
-    `VERCEL_RELATED_PROJECTS`에 서버의 운영 주소와 같은 브랜치의 프리뷰 주소를 넣어 준다.
+    `VERCEL_RELATED_PROJECTS`에 서버의 프로덕션 주소와 같은 브랜치의 프리뷰 주소를 넣어 준다.
   - 클라이언트가 서버 프리뷰 주소를 직접 만들 수는 없다. 브랜치 이름이 길면 Vercel이 슬러그를 자르고 프로젝트마다 다른
     해시를 붙이기 때문이다. 그래서 이 값만 믿는다.
   - Preview 환경에는 `API_URL`을 넣지 않는다. 넣으면 Related Projects 값보다 먼저 쓰인다.
@@ -106,7 +106,7 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
   주석에 있다.
 - 백엔드 `GOOGLE_CALLBACK_URL` → 프론트엔드 Vercel URL + `/api/auth/google/callback`
 - 프론트엔드 `NEXT_PUBLIC_API_URL` → 백엔드 Vercel URL. Related Projects 값이 없는 CLI 배포에서 쓰인다.
-- 결제 우회 플래그는 두 패키지 모두 `false`로 둔다(아래 "운영 환경의 한계" 7번).
+- 결제 우회 플래그는 두 패키지 모두 `false`로 둔다(아래 "프로덕션 환경의 한계" 7번).
 
 ## Sentry
 
@@ -116,23 +116,23 @@ gh workflow run seed.yml -f environment=preview -f confirm=seed
 - **서버리스에서는 응답 직후 함수가 멈출 수 있다.** 그래서 500 응답을 보내기 전과 작업 큐 실행이 끝날 때 짧게 `flush`한다. 시간 안에 못 보내면 `warn` 한 줄을 남기고 응답은 그대로 나간다. 그 이벤트는 잃을 수 있다.
 - 기존 `error` 로그 한 줄은 그대로 남는다. Sentry 자체의 실패는 `warn`이다.
 
-## 운영 환경의 한계
+## 프로덕션 환경의 한계
 
-로컬 개발에서는 다 동작하지만 운영(Vercel)에서는 막혀 있거나 손이 필요한 것들이다. 각각 의도된 현재 상태이고, 바꾸는 것은 배포 결정과 함께 한다.
+로컬 개발에서는 다 동작하지만 프로덕션(Vercel)에서는 막혀 있거나 손이 필요한 것들이다. 각각 의도된 현재 상태이고, 바꾸는 것은 배포 결정과 함께 한다.
 
 ### 1. 작업 큐는 15분마다 돈다
 
-Vercel에는 상주 프로세스가 없다. 그래서 개발 서버가 띄우는 작업 워커(`JOB_WORKER_ENABLED`)가 운영에서는 돌지 않는다. 대신 **GitHub Actions(`.github/workflows/jobs.yml`)가 15분마다 운영 서버의 `POST /api/internal/jobs/run`을 부른다.** Actions 화면에서 수동으로도 돌린다. Vercel Cron을 쓰지 않는 것은 Hobby 플랜에서 하루 한 번만 돌아 15분 주기를 맞출 수 없기 때문이다. 프리뷰와 로컬 DB는 이 스케줄의 대상이 아니다.
+Vercel에는 상주 프로세스가 없다. 그래서 개발 서버가 띄우는 작업 워커(`JOB_WORKER_ENABLED`)가 프로덕션에서는 돌지 않는다. 대신 **GitHub Actions(`.github/workflows/jobs.yml`)가 15분마다 프로덕션 서버의 `POST /api/internal/jobs/run`을 부른다.** Actions 화면에서 수동으로도 돌린다. Vercel Cron을 쓰지 않는 것은 Hobby 플랜에서 하루 한 번만 돌아 15분 주기를 맞출 수 없기 때문이다. 프리뷰와 로컬 DB는 이 스케줄의 대상이 아니다.
 
 | 방법 | 설명 |
 | --- | --- |
 | `POST /api/internal/jobs/run` | 크론이 부르는 엔드포인트 |
-| `npm run jobs:run` | 한 번 실행하는 CLI. 운영 DB 연결 정보를 가진 곳에서 수동으로 돌린다 |
+| `npm run jobs:run` | 한 번 실행하는 CLI. 프로덕션 DB 연결 정보를 가진 곳에서 수동으로 돌린다 |
 | `npm run jobs:worker` | 상주 워커 CLI. 상주 서버가 있을 때 쓴다 |
 
 내부 엔드포인트와 크론의 동작:
 
-- 운영 서버의 `INTERNAL_JOB_TOKEN`을 `X-Internal-Token` 헤더로 보낸다. 워크플로는 같은 값을 리포지토리 시크릿 `PROD_INTERNAL_JOB_TOKEN`으로 가진다.
+- 프로덕션 서버의 `INTERNAL_JOB_TOKEN`을 `X-Internal-Token` 헤더로 보낸다. 워크플로는 같은 값을 리포지토리 시크릿 `PROD_INTERNAL_JOB_TOKEN`으로 가진다.
 - 서버에 토큰이 비어 있으면 엔드포인트가 404로 숨는다.
 - 본문 `limit`이 한 번에 실행할 작업 수를 제한한다. 워크플로는 서버리스 실행 시간 안에 끝나도록 작은 값(`JOBS_LIMIT`)을 보낸다.
 - 응답이 2xx가 아니면 워크플로가 실패한다.
@@ -141,7 +141,7 @@ Vercel에는 상주 프로세스가 없다. 그래서 개발 서버가 띄우는
 - 함수 시간 초과로 끊긴 작업은 stale lock 회수(`STALE_LOCK_MS`, `jobs/runner.ts`)로 다시 시도된다.
 - 리포지토리에 60일 동안 활동이 없으면 GitHub가 스케줄을 끈다.
 
-**두 작업은 환경변수로 꺼 두었다.** 운영 서버에서 플래그를 정확히 `true`로 켜기 전까지 아래 작업은 **일어나지 않는다**. 꺼져 있을 때 각 작업이 어떻게 남는지와 둘을 다르게 끈 이유는 [domain/jobs.md](domain/jobs.md#플래그로-꺼-둔-작업)에 있다. 로컬은 `.env.example`대로 둘 다 켠다. 로컬에서 지급은 로그 provider라 돈이 오가지 않고, 메일은 로그에만 쓴다.
+**두 작업은 환경변수로 꺼 두었다.** 프로덕션 서버에서 플래그를 정확히 `true`로 켜기 전까지 아래 작업은 **일어나지 않는다**. 꺼져 있을 때 각 작업이 어떻게 남는지와 둘을 다르게 끈 이유는 [domain/jobs.md](domain/jobs.md#플래그로-꺼-둔-작업)에 있다. 로컬은 `.env.example`대로 둘 다 켠다. 로컬에서 지급은 로그 provider라 돈이 오가지 않고, 메일은 로그에만 쓴다.
 
 | 작업 | 플래그 | 켜는 조건 |
 | --- | --- | --- |
@@ -150,7 +150,7 @@ Vercel에는 상주 프로세스가 없다. 그래서 개발 서버가 띄우는
 
 ### 2. 요청 제한 카운터와 완료 작업 정리
 
-요청 제한 카운터(`RateLimitCounter`) 중 만료된 행과 오래된 완료 작업은 매일 도는 `maintenance.cleanup` 작업이 지운다(일정은 `jobs/recurring.ts`). 운영에서는 위 크론이 이 작업을 돌린다. 크론이 멈췄을 때는 직접 지운다.
+요청 제한 카운터(`RateLimitCounter`) 중 만료된 행과 오래된 완료 작업은 매일 도는 `maintenance.cleanup` 작업이 지운다(일정은 `jobs/recurring.ts`). 프로덕션에서는 위 크론이 이 작업을 돌린다. 크론이 멈췄을 때는 직접 지운다.
 
 ```sql
 DELETE FROM "RateLimitCounter" WHERE "expiresAt" <= now() AT TIME ZONE 'UTC';
@@ -171,11 +171,11 @@ Vercel 서버리스 함수의 **요청 본문 한도는 4.5MB**다. 이 한도�
 
 남은 한계:
 
-- 프로필 이미지(`PATCH /api/users/me`)와 포트폴리오 이미지는 여전히 multipart로 서버를 거친다. 서버의 크기 한도는 `src/middlewares/upload.ts`와 `src/middlewares/attachmentUpload.ts`에 있다. 그 한도 안이어도 4.5MB를 넘는 이미지는 운영에서 플랫폼 413이다.
+- 프로필 이미지(`PATCH /api/users/me`)와 포트폴리오 이미지는 여전히 multipart로 서버를 거친다. 서버의 크기 한도는 `src/middlewares/upload.ts`와 `src/middlewares/attachmentUpload.ts`에 있다. 그 한도 안이어도 4.5MB를 넘는 이미지는 프로덕션에서 플랫폼 413이다.
 - 지운 메시지의 파일과, 메시지에 붙지 않고 만료된 업로드의 파일은 작업이 지운다. 그래서 1번의 지연만큼 늦게 사라진다(정리 작업의 일정은 `jobs/recurring.ts`). 그동안에도 그 파일의 서명 URL은 나가지 않는다.
-- 버킷은 프리뷰·운영 Supabase 프로젝트마다 따로 만든다. 만드는 법은 [ENV.md](ENV.md#supabase)에 있다.
+- 버킷은 프리뷰·프로덕션 Supabase 프로젝트마다 따로 만든다. 만드는 법은 [ENV.md](ENV.md#supabase)에 있다.
 
-**첨부 파일 저장소 이전(한 번).** 이 방식 전에 올린 첨부는 공개 버킷 `workbridge`에 있고, 행에는 공개 URL만 있다. 그대로 두어도 화면에서 보이지만(공개 URL을 그대로 내보낸다) 로그인 없이 받을 수 있는 상태가 남는다. 그 환경에 이 코드가 배포된 뒤 프리뷰 → 운영 순서로 수동 워크플로 `attachments-migrate.yml`을 돌린다. 원격 DB 접속 문자열과 Supabase 키는 GitHub 시크릿 `*_DIRECT_URL`·`*_SUPABASE_URL`·`*_SUPABASE_SECRET_KEY`에만 있다.
+**첨부 파일 저장소 이전(한 번).** 이 방식 전에 올린 첨부는 공개 버킷 `workbridge`에 있고, 행에는 공개 URL만 있다. 그대로 두어도 화면에서 보이지만(공개 URL을 그대로 내보낸다) 로그인 없이 받을 수 있는 상태가 남는다. 그 환경에 이 코드가 배포된 뒤 프리뷰 → 프로덕션 순서로 수동 워크플로 `attachments-migrate.yml`을 돌린다. 원격 DB 접속 문자열과 Supabase 키는 GitHub 시크릿 `*_DIRECT_URL`·`*_SUPABASE_URL`·`*_SUPABASE_SECRET_KEY`에만 있다.
 
 ```bash
 gh workflow run attachments-migrate.yml -f environment=preview              # 건수만 센다(found/skipped)
@@ -189,7 +189,7 @@ gh workflow run attachments-migrate.yml -f environment=preview -f apply=true # �
 ### 4. 이메일은 로그로만 나간다
 
 - **provider의 동작**: `MAIL_PROVIDER`는 비우거나 `log`만 지원한다. 이 provider는 메일을 보내지 않고, 받는 주소와 본문 전체를 `info` 로그 `mail.sent` 한 줄로 남긴다.
-- **운영에서 끈 이유**: 이 provider로 메일 작업을 돌리면 운영 로그에 개인정보(이메일 주소와 알림 내용)가 남는다. 그래서 운영에서는 `JOB_EMAIL_ENABLED`를 켜지 않는다(1번). 메일 작업은 발송 기록(delivery)을 `SKIPPED`로 끝내고, 메일은 로그에도 나가지 않는다. 실제 메일 provider와 발송 기록 보관 기간을 정한 뒤에 켠다([#26](https://github.com/jonghoon24/workbridge/issues/26)).
+- **프로덕션에서 끈 이유**: 이 provider로 메일 작업을 돌리면 프로덕션 로그에 개인정보(이메일 주소와 알림 내용)가 남는다. 그래서 프로덕션에서는 `JOB_EMAIL_ENABLED`를 켜지 않는다(1번). 메일 작업은 발송 기록(delivery)을 `SKIPPED`로 끝내고, 메일은 로그에도 나가지 않는다. 실제 메일 provider와 발송 기록 보관 기간을 정한 뒤에 켠다([#26](https://github.com/jonghoon24/workbridge/issues/26)).
 - **다른 값을 넣으면**: 서버가 시작할 때 경고 한 줄을 남기고, 모든 발송이 `FAILED`가 된다.
 
 ### 5. 클라이언트 IP
@@ -216,7 +216,7 @@ Google로만 가입한 회원은 탈퇴 직전에 Google 로그인을 한 번 �
 
 ### 7. 그 밖에
 
-- **결제 우회는 꺼 둔다.** 서버 `ALLOW_PAYMENT_BYPASS`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`는 프리뷰·운영 모두 `false`다. 켜면 토스 결제창 없이 마일스톤을 결제 완료로 만드는 `POST /api/payments/dev-complete`가 열리고, 돈을 받지 않고 결제가 끝난다. 그래서 프리뷰에서도 결제는 토스페이먼츠 테스트 결제창으로 한다.
+- **결제 우회는 꺼 둔다.** 서버 `ALLOW_PAYMENT_BYPASS`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`는 프리뷰·프로덕션 모두 `false`다. 켜면 토스 결제창 없이 마일스톤을 결제 완료로 만드는 `POST /api/payments/dev-complete`가 열리고, 돈을 받지 않고 결제가 끝난다. 그래서 프리뷰에서도 결제는 토스페이먼츠 테스트 결제창으로 한다.
 - **프로필·포트폴리오 이미지는 공개 버킷**(`workbridge`)에 추측하기 어려운 키로 저장되고 공개 URL로 나간다. 공개 프로필에 보이는 이미지라 의도된 것이다. 메시지·결과물 첨부는 3번의 비공개 버킷이다.
 - **지급 계좌번호는 저장할 때 암호화**한다(위 "지급 계좌 암호화 키"). 응답·로그·정산에는 마스킹한 값만 나간다. 예금주는 프로필 이름과만 비교한다.
 - 로그는 한 줄 JSON이고 `error`만 stderr로 간다. `LOG_LEVEL`로 기준을 정한다.

@@ -1,4 +1,4 @@
-# 프리뷰 또는 운영 DB를 시드 데이터(docs/SEED_DATA.md)로 되돌린다. 시드는 모든 테이블을 비우므로
+# 프리뷰 또는 프로덕션 DB를 시드 데이터(docs/SEED_DATA.md)로 되돌린다. 시드는 모든 테이블을 비우므로
 # 수동 실행 전용이고, confirm에 `seed`를 입력해야 돈다. 마이그레이션을 먼저 적용한다.
 #   gh workflow run seed.yml -f environment=preview -f confirm=seed
 name: seed

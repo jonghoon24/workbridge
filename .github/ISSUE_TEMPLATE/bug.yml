@@ -45,7 +45,7 @@ body:
     id: env
     attributes:
       label: 환경
-      description: 로컬/운영, 브라우저, 커밋 해시, 관련 환경변수(비밀값 제외).
+      description: 로컬/프로덕션, 브라우저, 커밋 해시, 관련 환경변수(비밀값 제외).
     validations:
       required: false
   - type: textarea
