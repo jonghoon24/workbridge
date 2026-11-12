@@ -40,7 +40,7 @@ const variantTones = {
   REFUNDED: 'gray',
 };
 
-const statusLabels = {
+export const statusLabels = {
   UPCOMING: '모집 예정',
   OPEN: '모집 중',
   IN_PROGRESS: '진행 중',
