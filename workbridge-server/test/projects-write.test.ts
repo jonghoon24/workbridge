@@ -1622,7 +1622,7 @@ describe('PATCH /api/projects/:id/status', () => {
       expect(await prisma.notification.count()).toBe(0);
     });
 
-    it('leaves applications and notifications alone for a non-CLOSED transition', async () => {
+    it('rejects pending applications and notifies the applicant when cancelling, as closing does', async () => {
       const { client, project } = await ownedProject({ status: 'OPEN' });
       const freelancer = await makeFreelancer();
       const application = await makeApplication(project.id, freelancer.id);
@@ -1634,8 +1634,9 @@ describe('PATCH /api/projects/:id/status', () => {
       expect(res.status).toBe(200);
       expect(
         (await prisma.application.findUniqueOrThrow({ where: { id: application.id } })).status,
-      ).toBe('PENDING');
-      expect(await prisma.notification.count()).toBe(0);
+      ).toBe('REJECTED');
+      const notifications = await prisma.notification.findMany();
+      expect(notifications.map((n) => [n.userId, n.type])).toEqual([[freelancer.id, 'PROJECT_STATUS_CHANGED']]);
     });
 
     // Fault injection through the `projectLifecycle` mock. Note the scope limit described in

@@ -801,6 +801,59 @@ describe('PATCH /api/projects/:projectId/applications/:appId', () => {
       expect(await prisma.notification.count()).toBe(0);
     });
 
+    it('409s on a project cancelled through the status endpoint and creates no contract', async () => {
+      const s = await scenario();
+      const cancel = await authed(s.client)
+        .patch(`/api/projects/${s.project.id}/status`)
+        .send({ status: 'CANCELLED' });
+      expect(cancel.status).toBe(200);
+      // Cancelling rejects the pending applications like a manual close, so re-pend one to
+      // prove the accept itself checks the project, not only the application.
+      await prisma.application.update({ where: { id: s.chosen.id }, data: { status: 'PENDING' } });
+
+      const res = await authed(s.client).patch(url(s.project.id, s.chosen.id)).send({ status: 'ACCEPTED' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('PROJECT_NOT_RECRUITING');
+      expect(await prisma.contract.count()).toBe(0);
+      const after = await prisma.project.findUniqueOrThrow({ where: { id: s.project.id } });
+      expect(after.status).toBe('CANCELLED');
+    });
+
+    it('rejects every pending application and notifies each applicant when the project is cancelled', async () => {
+      const s = await scenario();
+
+      const res = await authed(s.client)
+        .patch(`/api/projects/${s.project.id}/status`)
+        .send({ status: 'CANCELLED' });
+
+      expect(res.status).toBe(200);
+      const stored = await prisma.application.findMany({ where: { projectId: s.project.id } });
+      expect(stored.map((a) => a.status)).toEqual(['REJECTED', 'REJECTED', 'REJECTED']);
+      const notified = await prisma.notification.findMany({ where: { type: 'PROJECT_STATUS_CHANGED' } });
+      expect(notified.map((n) => n.userId).sort()).toEqual(
+        [s.winner.id, s.loserA.id, s.loserB.id].sort(),
+      );
+    });
+
+    it('409s on a project whose deadline passed before any sweep ran, and the sweep rejects the application', async () => {
+      const client = await makeClient();
+      const project = await makeProject(client.id, {
+        status: 'OPEN',
+        recruitmentStartDate: daysFromNow(-10),
+        deadline: daysFromNow(-1),
+      });
+      const freelancer = await makeFreelancer();
+      const pending = await makeApplication(project.id, freelancer.id);
+
+      const res = await authed(client).patch(url(project.id, pending.id)).send({ status: 'ACCEPTED' });
+
+      expect(res.status).toBe(409);
+      expect(await prisma.contract.count()).toBe(0);
+      const after = await prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+      expect(after.status).toBe('CLOSED');
+    });
+
     it('does not notify a soft-deleted applicant that their application was rejected', async () => {
       const s = await scenario();
       await prisma.user.update({ where: { id: s.loserB.id }, data: { deletedAt: new Date() } });
