@@ -16,7 +16,7 @@ paths:
 ## 로그 — `src/lib/logger.ts`
 
 - 요청 body·query·헤더를 통째로 로그 필드에 넣지 않는다(`{ body: req.body }` 금지). 계좌번호 같은 개인정보와
-  토큰이 운영 로그에 남기 때문이다. 필요한 필드(id, 상태, 개수)만 골라 넣는다.
+  토큰이 프로덕션 로그에 남기 때문이다. 필요한 필드(id, 상태, 개수)만 골라 넣는다.
 - `error` 레벨은 세 경우에만 쓴다. `errorHandler`의 500, 응답을 보낸 뒤에 난 예외(`errorHandler`의 `headersSent`
   분기), 작업 실패다. 응답을 보낸 뒤의 예외는 사용자에게 500을 보내지 못했을 뿐 서버 버그라서 `error`다.
   나머지는 `warn`이나 `info`다. 리다이렉트로 처리하는 `googleCallback`의 실패도 `warn`이다.

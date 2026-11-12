@@ -41,7 +41,7 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 | 엔드포인트, 요청·응답, 상태 코드와 오류 코드 | `GET /api/docs`(로컬 서버) / `workbridge-server/openapi.json` |
 | 제품 결정과 그 이유, 용어, 상태 전이 / DB 불변식, 잠금, FK 삭제 동작 | `docs/domain/` / `docs/DATABASE.md` |
 | 환경변수 목록과 뜻 / 값을 넣는 곳과 외부 서비스 설정 | 각 패키지의 `.env.example` / `docs/ENV.md` |
-| 배포와 운영 환경의 한계 | `docs/DEPLOYMENT.md` |
+| 배포와 프로덕션 환경의 한계 | `docs/DEPLOYMENT.md` |
 | 시드 계정과 화면별 시나리오 | `docs/SEED_DATA.md` |
 | 문서·규칙을 어디에 둘지, 권한 설정의 이유, main 보호 / 리뷰 기준 | `docs/HARNESS.md` / `.github/REVIEW.md` |
 
@@ -66,10 +66,10 @@ E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridg
 
 ## 함정 (바로 사고가 나는 것)
 
-- 프로젝트를 읽는 GET 중 일부는 **DB 행을 바꾼다**(`workbridge-server/src/lib/projectLifecycle.ts`, 무엇을 바꾸는지는
-  `docs/domain/projects-contracts.md` "지연 스윕"). 어느 핸들러인지는 `closeExpiredOpenProjects`와
-  `rejectPendingApplicationsForClosedProjects`의 호출처로 확인한다. 이 GET을 캐시하거나, 빌드 때 정적 렌더링으로
-  부르거나, "확인만 하려고" 원격 환경에 호출하면 그 환경의 행이 바뀐다.
-- 운영에는 상주 작업 워커가 없다. GitHub Actions `jobs.yml`이 15분마다 `POST /api/internal/jobs/run`을
+- 프로젝트 목록·상세 등 일부 GET은 **읽기 전용이 아니다.** 시각에 맞춰 상태를 바꿔 줄 상주 프로세스가 없어서, 읽을 때
+  마감이 지난 프로젝트를 닫고 남은 지원을 거절한다(지연 스윕, `docs/domain/projects-contracts.md`). 그래서 이 GET을
+  캐시하거나, 빌드 때 정적 렌더링으로 부르거나, "확인만 하려고" 프리뷰·프로덕션에 호출하면 그 환경의 데이터가 바뀐다.
+  어느 핸들러인지는 `closeExpiredOpenProjects`와 `rejectPendingApplicationsForClosedProjects`의 호출처로 확인한다.
+- 프로덕션에는 상주 작업 워커가 없다. GitHub Actions `jobs.yml`이 15분마다 `POST /api/internal/jobs/run`을
   부르므로 작업은 최대 15분 늦게 돈다. 지급(`JOB_PAYOUT_ENABLED`)과 메일(`JOB_EMAIL_ENABLED`) 작업은 플래그로 꺼져 있다
-  (`docs/DEPLOYMENT.md` "운영 환경의 한계").
+  (`docs/DEPLOYMENT.md` "프로덕션 환경의 한계").

@@ -34,7 +34,7 @@ async function copyText(text) {
 }
 
 // 같은 사이트 안의 경로(`/users/12`)를 지금 주소의 출처를 붙인 전체 URL로 복사한다.
-// 운영·프리뷰·로컬 어디서 눌러도 그 환경의 주소가 된다.
+// 프로덕션·프리뷰·로컬 어디서 눌러도 그 환경의 주소가 된다.
 export default function CopyLinkButton({ path, label = '링크 복사', size = 'sm', variant = 'secondary', className = '' }) {
   const [status, setStatus] = useState('idle'); // idle | copied | failed
   const [url, setUrl] = useState('');

@@ -1,7 +1,7 @@
-# 운영 서버의 작업 큐를 15분마다 한 번 돌린다(docs/DEPLOYMENT.md "운영 환경의 한계" 1).
+# 프로덕션 서버의 작업 큐를 15분마다 한 번 돌린다(docs/DEPLOYMENT.md "프로덕션 환경의 한계" 1).
 # Vercel에는 상주 워커가 없고 Hobby 플랜의 Vercel Cron은 하루 한 번뿐이라 GitHub Actions 스케줄을 쓴다.
-# 운영 서버만 대상이다. 프리뷰와 로컬 DB에는 스케줄러가 없다.
-# 시크릿 PROD_INTERNAL_JOB_TOKEN은 운영 서버의 INTERNAL_JOB_TOKEN과 같은 값이다.
+# 프로덕션 서버만 대상이다. 프리뷰와 로컬 DB에는 스케줄러가 없다.
+# 시크릿 PROD_INTERNAL_JOB_TOKEN은 프로덕션 서버의 INTERNAL_JOB_TOKEN과 같은 값이다.
 # 정산 지급과 메일 발송은 서버의 JOB_PAYOUT_ENABLED / JOB_EMAIL_ENABLED가 true일 때만 실제로 돈다.
 name: jobs
 

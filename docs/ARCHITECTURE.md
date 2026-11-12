@@ -49,7 +49,7 @@ OpenAPI 문서(아래 "API 계약: OpenAPI")가 기준이다.
 API 문서(OpenAPI 3.1)는 코드에서 생성한다. 요청 스키마는 `validate()`가 쓰는 `src/schemas/*.ts` 그대로이고,
 응답 스키마는 `src/openapi/responses/`, 경로 등록(상태 코드별 응답과 그 오류 코드)은 `src/openapi/paths/<도메인>.ts`에
 있다. 모든 스키마는 `.openapi()`가 붙은 `z`(`src/lib/zod.ts`)를 import한다. `npm run openapi`가 커밋되는
-`workbridge-server/openapi.json`을 쓴다. 문서는 `GET /api/docs`(Scalar)와 `GET /api/openapi.json`으로도 보이고, 운영에서는
+`workbridge-server/openapi.json`을 쓴다. 문서는 `GET /api/docs`(Scalar)와 `GET /api/openapi.json`으로도 보이고, 프로덕션에서는
 꺼진다(켜지는 조건은 `src/controllers/docs.controller.ts` 머리 주석).
 
 문서와 코드가 어긋나면 테스트가 실패한다. `test/openapi.test.ts`는 앱의 라우트와 문서의 경로를 양방향으로 비교하고,
@@ -81,15 +81,15 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
   `jobs/registry.ts`의 핸들러(`jobs/handlers/`)를 부른다. 핸들러는 멱등이고 시간은 `ctx.now`로 받는다.
 - **반복 작업**: `jobs/recurring.ts`(수명주기 스윕, 정리, 주간 정산 배치). 슬롯마다 `dedupeKey`가 있어 여러 번 넣어도 하나다.
 - **실행 주체**: 개발 서버가 띄우는 워커(`jobs/worker.ts`), `npm run jobs:run`(한 번), `npm run jobs:worker`(상주),
-  `POST /api/internal/jobs/run`. 운영에서 누가 언제 돌리는지와 꺼 둔 작업은
-  [DEPLOYMENT.md "운영 환경의 한계"](DEPLOYMENT.md#운영-환경의-한계)에 있다.
+  `POST /api/internal/jobs/run`. 프로덕션에서 누가 언제 돌리는지와 꺼 둔 작업은
+  [DEPLOYMENT.md "프로덕션 환경의 한계"](DEPLOYMENT.md#프로덕션-환경의-한계)에 있다.
 
 ## 알림과 이메일
 
 알림은 `src/lib/notifications/notify.ts`의 `notify()`, `notifyMany()`, `notifyRecipients()`가 만든다
 ([notifications-logging.md](../.claude/rules/notifications-logging.md)). 이 함수들은 타입별 정책(`policy.ts`)과 받는 사람의
 설정을 보고 인앱 알림, 이메일 발송 기록, `notification.email` 작업을 호출자의 트랜잭션 안에서 함께 쓴다.
-`notifyRecipients()`는 소프트 삭제된 받는 사람을 거른다. 이메일은 작업 핸들러가 `src/lib/mail/provider.ts`로 보낸다. 운영에서
+`notifyRecipients()`는 소프트 삭제된 받는 사람을 거른다. 이메일은 작업 핸들러가 `src/lib/mail/provider.ts`로 보낸다. 프로덕션에서
 메일이 어떻게 처리되는지는 [DEPLOYMENT.md "이메일은 로그로만 나간다"](DEPLOYMENT.md#4-이메일은-로그로만-나간다)에 있다.
 
 ## 금액과 시간
@@ -121,8 +121,8 @@ User → Project → Application → Contract → Milestone ─┬→ Payment
 
 ## 환경
 
-환경은 로컬, CI, 프리뷰, 운영 넷이다(구분과 DB는 [DEPLOYMENT.md](DEPLOYMENT.md#환경)). 운영에서 서버는 Vercel 서버리스 함수로
-돈다(빌드 방식과 운영에서 시작하지 않는 것은 [DEPLOYMENT.md "백엔드"](DEPLOYMENT.md#백엔드)).
+환경은 로컬, CI, 프리뷰, 프로덕션 넷이다(구분과 DB는 [DEPLOYMENT.md](DEPLOYMENT.md#환경)). 프로덕션에서 서버는 Vercel 서버리스 함수로
+돈다(빌드 방식과 프로덕션에서 시작하지 않는 것은 [DEPLOYMENT.md "백엔드"](DEPLOYMENT.md#백엔드)).
 파일은 Supabase Storage에 둔다. 프로필·포트폴리오 이미지는 서버가 받아 공개 버킷에 올린다. 메시지·결과물 첨부는 브라우저가
 서명 업로드 URL로 비공개 버킷에 직접 올리고, 읽을 때는 서명 URL을 받는다. 환경변수는 각 패키지의 `.env.example`, 환경별로
-어디에 넣는지는 [ENV.md](ENV.md), 배포 절차와 운영 환경의 한계는 [DEPLOYMENT.md](DEPLOYMENT.md)에 있다.
+어디에 넣는지는 [ENV.md](ENV.md), 배포 절차와 프로덕션 환경의 한계는 [DEPLOYMENT.md](DEPLOYMENT.md)에 있다.

@@ -8,7 +8,7 @@
 사실 하나에는 집 하나를 둔다. 집은 그 사실이 설명하는 대상에 가장 가까운 곳이다.
 코드 주석, 설정 파일 주석, 문서 순으로 고르고, 다른 곳에서는 그 집을 링크한다.
 
-- `CLAUDE.md`는 모든 세션과 CI의 Claude가 매번 읽는 지도다. 커맨드, 언제 어떤 문서를 읽을지, 컨벤션, 어느 경로를 고치든 사고가 나는 함정만 둔다.
+- `CLAUDE.md`는 모든 세션과 CI의 Claude가 매번 읽는 지도다. 커맨드, 언제 어떤 문서를 읽을지, 컨벤션, 경로와 상관없이 걸리는 함정만 둔다.
 - `.claude/rules/*.md`는 `paths:`에 맞는 파일을 Claude가 읽거나 고칠 때만 컨텍스트에 들어온다.
   그런 파일을 읽기 전에는 rule이 보이지 않는다.
   rule에는 그 경로에서 할 일과 하지 말 일을 명령문으로 쓴다. 명령마다 한 줄 이유와 `docs/` 링크를 단다.
@@ -27,7 +27,7 @@
 ## 2. 권한 규칙의 이유
 
 목록의 원본은 `.claude/settings.json`의 `permissions`다. JSON이라 주석을 달 수 없어서 묶음별 이유를 여기 적는다.
-어떤 상황에서도 정당하지 않은 것은 `deny`에 둔다. 가끔 정당하지만 되돌리기 어려운 것은 `ask`에 두고, 실행할 때마다 사람이 승인한다.
+어떤 상황에서도 필요 없는 것은 `deny`에 둔다. 가끔 필요하지만 되돌리기 어려운 것은 `ask`에 두고, 실행할 때마다 사람이 승인한다.
 가끔 필요한 것까지 `deny`에 두면 막힌 에이전트가 다른 커맨드로 돌아가려 한다.
 
 | 묶음 | 이유 |
@@ -35,11 +35,11 @@
 | deny: `.env` 계열 Read | 서버 `.env`에 JWT 비밀키, 외부 서비스 키, DB 접속 문자열이 있다. Read deny는 같은 파일의 Edit/Write와 Bash의 `grep … .env`도 막으므로 `.env`는 사람이 만든다. `.env.example`은 걸리지 않는다. |
 | deny: `migrate reset`, `--force-reset`, `--accept-data-loss` | 스키마와 데이터를 통째로 지운다. 스키마는 새 마이그레이션으로만 바꾼다. |
 | deny: 강제 push | 공유 브랜치의 히스토리를 덮어쓴다. `main`은 3절의 ruleset도 막고, 이 규칙은 기능 브랜치까지 막는다. |
-| deny: `vercel pull`, `vercel env pull` | 운영 비밀값을 로컬 파일로 내려받는다. 그 파일은 `.env` deny 밖에 놓일 수 있다. |
-| ask: `dropdb`, `DROP TABLE`·`DATABASE`·`SCHEMA`, `TRUNCATE` | 병렬 작업이 만든 로컬 DB를 정리할 때는 정당하지만, 잘못 겨누면 데이터를 잃는다. 테스트 DB는 테스트 코드의 `resetDb()`가 비운다. |
-| ask: `supabase.co`, `supabase.com` | Preview와 Production의 DB와 저장소가 Supabase에 있다. 원격 마이그레이션과 데이터 작업은 워크플로로 하고, 커맨드로 직접 닿을지는 사람이 그때마다 정한다. |
+| deny: `vercel pull`, `vercel env pull` | 프로덕션 비밀값을 로컬 파일로 내려받는다. 그 파일은 `.env` deny 밖에 놓일 수 있다. |
+| ask: `dropdb`, `DROP TABLE`·`DATABASE`·`SCHEMA`, `TRUNCATE` | 병렬 작업이 만든 로컬 DB를 정리할 때는 필요하지만, 잘못 겨누면 데이터를 잃는다. 테스트 DB는 테스트 코드의 `resetDb()`가 비운다. |
+| ask: `supabase.co`, `supabase.com` | Preview와 Production의 DB와 저장소가 Supabase에 있다. 원격 마이그레이션과 데이터 작업은 워크플로로 하고, 커맨드로 직접 접속할지는 사람이 그때마다 정한다. |
 | ask: `gh workflow run` | 수동으로 실행하는 워크플로는 모두 원격 DB나 저장소를 바꾼다. `seed.yml`은 모든 테이블을 비운다. 워크플로의 `confirm` 입력은 에이전트도 넣을 수 있어서 승인을 따로 받는다. |
-| ask: `vercel … --prod`, `vercel promote`, `vercel rollback`, `vercel env …` | 운영 배포는 보통 `main` 머지와 Vercel Git 연동으로 한다. 손으로 운영에 배포·승격·롤백하거나 환경변수를 바꿀 때만 승인한다. |
+| ask: `vercel … --prod`, `vercel promote`, `vercel rollback`, `vercel env …` | 프로덕션 배포는 보통 `main` 머지와 Vercel Git 연동으로 한다. 손으로 프로덕션에 배포·승격·롤백하거나 환경변수를 바꿀 때만 승인한다. |
 | allow: 검사 커맨드, `npm run openapi`, 읽기 전용 git·gh | 고치고 검사하는 루프가 매번 승인을 묻지 않게 한다. `npm run openapi`는 DB·환경변수·네트워크 없이 `openapi.json` 한 파일만 다시 쓴다. |
 
 - 쓰는 git(commit, push 등), `gh pr create`, `prisma migrate dev`는 allow에 일부러 넣지 않았다. 실행할 때 사람이 승인한다.
@@ -70,4 +70,4 @@
 
 ## 5. MCP
 
-`.mcp.json`은 Sentry MCP 서버를 연결한다. 운영과 프리뷰 서버의 오류를 Sentry 프로젝트 `workbridge-server`에서 조회해 원인을 찾을 때 쓴다. 사용자마다 OAuth 로그인이 필요하다.
+`.mcp.json`은 Sentry MCP 서버를 연결한다. 프로덕션과 프리뷰 서버의 오류를 Sentry 프로젝트 `workbridge-server`에서 조회해 원인을 찾을 때 쓴다. 사용자마다 OAuth 로그인이 필요하다.

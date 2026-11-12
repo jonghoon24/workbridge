@@ -3,7 +3,7 @@
 변수마다 뜻, 형식, 예시 값은 각 패키지의 `.env.example` 주석에 있다(`workbridge-server/.env.example`,
 `workbridge-client/.env.example`). 서버 코드가 값을 읽는 방식(필수 여부, 기본값)은 `workbridge-server/src/env.ts`가 정한다.
 이 문서는 그 두 곳에 적을 수 없는 것만 다룬다. 값을 환경마다 어디에 넣는지와, 코드 밖에서 해야 하는 외부 서비스 설정이다.
-환경(로컬, CI, 프리뷰, 운영)의 구분은 [DEPLOYMENT.md](DEPLOYMENT.md#환경)에 있다.
+환경(로컬, CI, 프리뷰, 프로덕션)의 구분은 [DEPLOYMENT.md](DEPLOYMENT.md#환경)에 있다.
 
 ## 어디에 넣나
 
@@ -12,8 +12,8 @@
 직접 정해 덮어쓴다. 서버는 시작할 때 `dotenv`로 `workbridge-server/.env`를 읽으므로, 테스트와 E2E가 덮어쓰지 않은 값은
 그 파일의 값이 그대로 쓰인다.
 
-**프리뷰·운영.** Vercel의 서버 프로젝트와 클라이언트 프로젝트에 각각 넣는다. 한 프로젝트 안에서 Preview 환경과
-Production 환경에 따로 넣는다. 프리뷰와 운영은 서로 다른 Supabase 프로젝트를 쓰기 때문에, DB 연결 문자열과 Supabase 값과
+**프리뷰·프로덕션.** Vercel의 서버 프로젝트와 클라이언트 프로젝트에 각각 넣는다. 한 프로젝트 안에서 Preview 환경과
+Production 환경에 따로 넣는다. 프리뷰와 프로덕션은 서로 다른 Supabase 프로젝트를 쓰기 때문에, DB 연결 문자열과 Supabase 값과
 지급 계좌 암호화 키는 환경마다 다르다. `PROXY_SHARED_SECRET`은 서버와 클라이언트 두 프로젝트에 같은 값을 넣는다.
 배포한 뒤 주소에 맞춰 고칠 값은 [DEPLOYMENT.md "배포 후 업데이트"](DEPLOYMENT.md#배포-후-업데이트)에 있다.
 
@@ -25,7 +25,7 @@ Production 환경에 따로 넣는다. 프리뷰와 운영은 서로 다른 Supa
 | `PREVIEW_DIRECT_URL`, `PROD_DIRECT_URL` | `migrate.yml`, `seed.yml`, `payout-encrypt.yml`, `attachments-migrate.yml` | `DIRECT_URL` |
 | `PREVIEW_PAYOUT_ACCOUNT_ENCRYPTION_KEY`, `PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY` | `seed.yml`, `payout-encrypt.yml` | `PAYOUT_ACCOUNT_ENCRYPTION_KEY` |
 | `PREVIEW_SUPABASE_URL`, `PROD_SUPABASE_URL`, `PREVIEW_SUPABASE_SECRET_KEY`, `PROD_SUPABASE_SECRET_KEY` | `attachments-migrate.yml` | `SUPABASE_URL`, `SUPABASE_SECRET_KEY` |
-| `PROD_INTERNAL_JOB_TOKEN` | `jobs.yml` | 운영의 `INTERNAL_JOB_TOKEN` |
+| `PROD_INTERNAL_JOB_TOKEN` | `jobs.yml` | 프로덕션의 `INTERNAL_JOB_TOKEN` |
 | `CLAUDE_CODE_OAUTH_TOKEN` | `claude.yml`, `claude-code-review.yml` | 없음. Claude Code 액션의 인증 토큰이다 |
 
 ## E2E
@@ -39,7 +39,7 @@ Production 환경에 따로 넣는다. 프리뷰와 운영은 서로 다른 Supa
 
 ### Supabase
 
-프리뷰와 운영 Supabase 프로젝트마다 한 번씩 한다.
+프리뷰와 프로덕션 Supabase 프로젝트마다 한 번씩 한다.
 
 1. 프로젝트 설정의 API 키 화면에서 프로젝트 URL과 Secret key(`sb_secret_`로 시작)를 복사해 `SUPABASE_URL`,
    `SUPABASE_SECRET_KEY`에 넣는다.
@@ -72,7 +72,7 @@ Production 환경에 따로 넣는다. 프리뷰와 운영은 서로 다른 Supa
 4. (재인증의 로그인 시각) Google Auth Platform > Settings > Advanced Settings에서 **Session age claims**를 켠다. Google은
    앱이 게시되고(Audience가 In production) 인증된(Verification Center가 Verified) 경우에만 ID 토큰에 로그인 시각
    `auth_time`을 넣는다. 켠 뒤 실제 Google 왕복에서 `auth_time`이 오는 것을 확인하고 서버의
-   `GOOGLE_REAUTH_REQUIRE_AUTH_TIME`을 `true`로 둔다. 운영의 현재 상태는 [DEPLOYMENT.md "Google 전용 계정의 재인증은 로그인 시각을
+   `GOOGLE_REAUTH_REQUIRE_AUTH_TIME`을 `true`로 둔다. 프로덕션의 현재 상태는 [DEPLOYMENT.md "Google 전용 계정의 재인증은 로그인 시각을
    확인하지 못한다"](DEPLOYMENT.md#6-google-전용-계정의-재인증은-로그인-시각을-확인하지-못한다)에 있다.
 
 ### 토스페이먼츠

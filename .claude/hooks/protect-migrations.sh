@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # PreToolUse (Edit|Write|MultiEdit): 적용된 Prisma 마이그레이션은 고치지 않는다.
-# 커밋된 마이그레이션은 프리뷰·운영 DB에 이미 적용됐거나 머지 후 migrate.yml이 적용한다. 고쳐도
+# 커밋된 마이그레이션은 프리뷰·프로덕션 DB에 이미 적용됐거나 머지 후 migrate.yml이 적용한다. 고쳐도
 # `migrate deploy`는 이미 적용한 것으로 보고 다시 돌리지 않는다(오류 없이 넘어간다). 그래서 고친 내용은
-# 프리뷰·운영에 들어가지 않고, 새로 만드는 DB(CI·로컬)에만 들어가 환경마다 스키마가 갈라진다.
+# 프리뷰·프로덕션에 들어가지 않고, 새로 만드는 DB(CI·로컬)에만 들어가 환경마다 스키마가 갈라진다.
 # jq로 경로를 읽는다. jq가 없으면 입력에 마이그레이션 경로가 보일 때 막는다(추적 안 된 폴더 예외도 적용하지 못한다).
 # 새 마이그레이션은 `npx prisma migrate dev --name <name>`으로 만든다(db-migration 스킬).
 # 유일한 예외: 아직 git에 없는 마이그레이션 폴더(`migrate dev --create-only` 직후)에는

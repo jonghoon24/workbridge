@@ -10,7 +10,7 @@
 - 포트폴리오·경력과 스킬 기반 프로젝트 추천
 - 인앱·이메일 알림과 알림 종류별 설정
 
-자동 승인, 정산, 이메일 같은 예약 작업은 Postgres 기반 작업 큐가 처리합니다. 운영에서 작업 큐가 도는 방식과 꺼 둔 작업(정산 지급, 메일)은 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#운영-환경의-한계)에 있습니다.
+자동 승인, 정산, 이메일 같은 예약 작업은 Postgres 기반 작업 큐가 처리합니다. 프로덕션에서 작업 큐가 도는 방식과 꺼 둔 작업(정산 지급, 메일)은 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#프로덕션-환경의-한계)에 있습니다.
 
 ## 구성
 
@@ -42,7 +42,7 @@ cp .env.example .env.local    # NEXT_PUBLIC_API_URL=http://localhost:4000
 npm run dev
 ```
 
-시드 계정은 [docs/SEED_DATA.md](docs/SEED_DATA.md)에 있습니다(비밀번호는 모두 `password123`, 예: 의뢰인 `kim@example.com`, 프리랜서 `park@example.com`). 토스 결제창 없이 결제를 끝내려면 서버 `ALLOW_PAYMENT_BYPASS`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`를 `true`로 둡니다. 로컬 전용이고, 프리뷰·운영에서는 끕니다.
+시드 계정은 [docs/SEED_DATA.md](docs/SEED_DATA.md)에 있습니다(비밀번호는 모두 `password123`, 예: 의뢰인 `kim@example.com`, 프리랜서 `park@example.com`). 토스 결제창 없이 결제를 끝내려면 서버 `ALLOW_PAYMENT_BYPASS`와 클라이언트 `NEXT_PUBLIC_ALLOW_PAYMENT_BYPASS`를 `true`로 둡니다. 로컬 전용이고, 프리뷰·프로덕션에서는 끕니다.
 
 ## 테스트
 
@@ -72,7 +72,7 @@ npm run lint && npm run build
 
 ## 배포
 
-백엔드와 프론트엔드를 각각 Vercel에 배포합니다. 환경(로컬, CI, 프리뷰, 운영), 마이그레이션, Sentry, 운영 환경의 한계는 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)에 있습니다.
+백엔드와 프론트엔드를 각각 Vercel에 배포합니다. 환경(로컬, CI, 프리뷰, 프로덕션), 마이그레이션, Sentry, 프로덕션 환경의 한계는 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)에 있습니다.
 
 ## 문서
 
@@ -83,7 +83,7 @@ npm run lint && npm run build
 | [workbridge-server/openapi.json](workbridge-server/openapi.json) | API 문서(OpenAPI 3.1, zod 스키마에서 생성). 화면은 로컬 서버의 `GET /api/docs` |
 | [docs/DATABASE.md](docs/DATABASE.md) | 데이터베이스 불변식, 잠금, 스키마가 표현하지 못하는 제약, 마이그레이션 메모 |
 | [docs/ENV.md](docs/ENV.md) | 환경변수를 넣는 곳(환경별)과 외부 서비스 설정. 변수 설명은 각 패키지의 `.env.example` |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 환경, Vercel 배포, 운영 환경의 한계 |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 환경, Vercel 배포, 프로덕션 환경의 한계 |
 | [docs/SEED_DATA.md](docs/SEED_DATA.md) | 시드 데이터와 둘러보기 시나리오 |
 | [docs/HARNESS.md](docs/HARNESS.md) | Claude Code 하네스: 문서 배치 원칙, 권한 규칙의 이유, `main` 브랜치 보호, GitHub Actions의 Claude가 하네스 변경을 보는 방식, MCP |
 | [.github/REVIEW.md](.github/REVIEW.md) | 코드 리뷰 기준 |

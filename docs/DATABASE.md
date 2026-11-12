@@ -1,6 +1,6 @@
 # 데이터베이스 불변식과 잠금
 
-PostgreSQL(운영은 Supabase) + Prisma. 모델·필드·enum·인덱스의 원본은 `workbridge-server/prisma/schema.prisma`(필드 주석 포함)이고,
+PostgreSQL(프로덕션은 Supabase) + Prisma. 모델·필드·enum·인덱스의 원본은 `workbridge-server/prisma/schema.prisma`(필드 주석 포함)이고,
 마이그레이션은 `prisma/migrations/`에 있다. 제품 규칙과 상태 전이는 [domain/](domain/README.md)에 있다. 이 문서는 스키마만 읽어서는
 보이지 않는 것, 즉 DB 밖에서 지키는 불변식, 스키마가 표현하지 못하는 제약, 잠금 순서, 알고 있는 부채를 정리한다.
 
