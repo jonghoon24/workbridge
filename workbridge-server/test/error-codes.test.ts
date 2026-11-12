@@ -102,6 +102,7 @@ const PUBLISHED: readonly (readonly [string, number])[] = [
   ['COUNTERPART_INACTIVE', 409],
   ['MESSAGE_NOT_FOUND', 404],
   ['MESSAGE_DELETE_WINDOW_EXPIRED', 409],
+  ['PROJECT_NOT_RECRUITING', 409],
 ];
 
 describe('the error code table', () => {

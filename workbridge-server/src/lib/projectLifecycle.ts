@@ -17,13 +17,15 @@ export function getProjectStatusForRecruitmentStart(
 export async function rejectPendingApplicationsForClosedProjects(
   applicationWhere: Prisma.ApplicationWhereInput = {},
   client: PrismaTransactionClient = prisma,
+  // CLOSED for the sweeps; `PATCH /:id/status` also passes CANCELLED for the project it cancels.
+  projectStatus: Extract<ProjectStatus, 'CLOSED' | 'CANCELLED'> = 'CLOSED',
 ) {
   return client.application.updateMany({
     where: {
       ...applicationWhere,
       status: 'PENDING',
       project: {
-        status: 'CLOSED',
+        status: projectStatus,
         deletedAt: null,
       },
     },
