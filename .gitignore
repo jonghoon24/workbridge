@@ -26,6 +26,3 @@ Thumbs.db
 
 # npx playwright cli의 세션 산출물(스냅샷, 스크린샷)
 .playwright-cli/
-
-# @claude(claude.yml)가 드래프트 PR 본문을 쓰는 임시 파일
-/.pr-body.md
