@@ -96,6 +96,7 @@ export const CODE_MESSAGES = {
   APPLICATION_ALREADY_EXISTS: '이미 지원한 프로젝트입니다. 내 지원 현황에서 확인할 수 있습니다.',
   APPLICATION_ALREADY_PROCESSED: '이미 처리된 지원입니다. 새로고침한 뒤 다시 확인해 주세요.',
   CONTRACT_ALREADY_EXISTS: '이 프로젝트에는 이미 계약이 있습니다.',
+  PROJECT_NOT_RECRUITING: '모집이 끝난 프로젝트라 지원을 수락할 수 없습니다.',
 
   // 계약·마일스톤
   CONTRACT_NOT_FOUND: '계약을 찾을 수 없습니다.',

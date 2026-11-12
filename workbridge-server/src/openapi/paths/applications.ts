@@ -86,6 +86,7 @@ export function registerApplicationPaths(registry: OpenAPIRegistry): void {
         NOT_OWNER,
         cause('PROJECT_NOT_FOUND', '없거나 삭제된 프로젝트'),
         cause('APPLICATION_NOT_FOUND', '이 프로젝트의 지원이 아님, 지원자가 탈퇴했거나 삭제됨(수락 도중 포함)'),
+        cause('PROJECT_NOT_RECRUITING', '수락하려는데 프로젝트가 모집 중(OPEN, 마감 전)이 아님(취소·마감·마감일 지남)'),
         cause('APPLICATION_ALREADY_PROCESSED', '대기 중이 아님'),
         cause('CONTRACT_ALREADY_EXISTS', '동시에 다른 지원이 수락됨'),
       ),
