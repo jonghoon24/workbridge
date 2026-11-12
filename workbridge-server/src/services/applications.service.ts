@@ -189,6 +189,11 @@ export async function decideApplication(
   { status }: ApplicationDecisionInput,
   now: Date,
 ) {
+  // As applying does, sweep first: a project whose deadline has passed is CLOSED (and its pending
+  // applications rejected) before the status check below, so the answer never depends on whether
+  // someone happened to list projects earlier.
+  if (status === 'ACCEPTED') await closeExpiredOpenProjects(now);
+
   const project = await prisma.project.findFirst({
     where: { id: projectId, deletedAt: null },
   });
@@ -217,6 +222,12 @@ export async function decideApplication(
     throw new AppError('APPLICATION_ALREADY_PROCESSED', 'This application has already been processed');
   }
 
+  // A contract is only made while recruiting (OPEN and, after the sweep, before the deadline).
+  // After the pending check, so an already-decided application keeps its own conflict code.
+  if (status === 'ACCEPTED' && project.status !== 'OPEN') {
+    throw new AppError('PROJECT_NOT_RECRUITING', 'Project is not recruiting');
+  }
+
   if (status === 'ACCEPTED') {
     // Atomic transaction: accept application, reject others, create contract and its default
     // milestone, close recruitment, notify, open the conversation (steps 1–7 below).
@@ -227,10 +238,23 @@ export async function decideApplication(
         // it, two accepts each locked their own application and then waited on the other's to
         // reject it — a deadlock (40P01, a 500). The loser now waits, then hits the unique
         // contract below (409). A project deleted while this waited is gone (404).
-        const locked = await tx.$queryRaw<{ id: string }[]>`
-          SELECT "id" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR UPDATE`;
+        const locked = await tx.$queryRaw<{ id: string; status: string }[]>`
+          SELECT "id", "status" FROM "Project" WHERE "id" = ${projectId} AND "deletedAt" IS NULL FOR UPDATE`;
         if (locked.length === 0) {
           throw new AppError('PROJECT_NOT_FOUND', 'Project not found');
+        }
+        // A cancel or close that committed after the read above must not get a contract.
+        if (locked[0].status !== 'OPEN') {
+          // Name the more specific cause when a concurrent accept (or decision) got here first.
+          if (await tx.contract.findFirst({ where: { projectId, status: { not: 'CANCELLED' } }, select: { id: true } })) {
+            throw new AppError('CONTRACT_ALREADY_EXISTS', 'A contract already exists for this project');
+          }
+          const decided = await tx.application.findFirst({
+            where: { id: appId, projectId, status: { not: 'PENDING' } },
+            select: { id: true },
+          });
+          if (decided) throw new AppError('APPLICATION_ALREADY_PROCESSED', 'This application has already been processed');
+          throw new AppError('PROJECT_NOT_RECRUITING', 'Project is not recruiting');
         }
 
         // Accept only while still pending and the applicant still active, under the application's
