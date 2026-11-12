@@ -68,7 +68,7 @@ test('내 지원 현황의 상태 탭이 개수를 보여 주고 고른 상태�
   // 수락됨: 지원이 없으면 빈 상태 문구
   await tab('수락됨', 0).click();
   await expect(cards).toHaveCount(0);
-  await expect(page.getByText('해당 상태의 지원이 없습니다')).toBeVisible();
+  await expect(page.getByText('수락됨 상태의 지원이 없습니다')).toBeVisible();
 
   // 전체로 돌아오면 다시 모두 보인다
   await tab('전체', 3).click();

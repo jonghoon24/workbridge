@@ -69,7 +69,7 @@ export default function MyApplicationsPage() {
           <StatusTabs tabs={TABS} value={status} onChange={setStatus} counts={counts} />
 
           {visible.length === 0 ? (
-            <EmptyState icon={BriefcaseIcon} title="해당 상태의 지원이 없습니다" />
+            <EmptyState icon={BriefcaseIcon} title={`${statusLabels[status]} 상태의 지원이 없습니다`} />
           ) : (
             <div className="space-y-4">
               {visible.map((app) => (
