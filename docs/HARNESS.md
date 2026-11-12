@@ -10,7 +10,7 @@
 사실 하나에는 집 하나를 둔다. 집은 그 사실이 설명하는 대상에 가장 가까운 곳이다.
 코드 주석, 설정 파일 주석, 문서 순으로 고르고, 다른 곳에서는 그 집을 링크한다.
 
-- `AGENTS.md`는 모든 세션의 에이전트가 매번 읽는 지도다. 커맨드, 언제 어떤 문서를 읽을지, 컨벤션, 경로와 상관없이 걸리는 함정만 둔다.
+- `AGENTS.md`는 모든 세션과 CI의 에이전트가 매번 읽는 지도다. 커맨드, 언제 어떤 문서를 읽을지, 컨벤션, 경로와 상관없이 걸리는 함정만 둔다.
   `CLAUDE.md`는 Claude Code가 `AGENTS.md`를 읽게 하는 import(`@AGENTS.md`)다. Claude Code에만 해당하는 지시만 여기에 더한다.
 - `.claude/rules/*.md`는 경로별 규칙이다. Claude Code에서는 `paths:`에 맞는 파일을 읽거나 고칠 때만 컨텍스트에 들어온다.
   그런 파일을 읽기 전에는 rule이 보이지 않는다. Codex에는 같은 기능이 없어서 `AGENTS.md` "경로별 규칙" 표를 보고
@@ -18,7 +18,7 @@
   rule에는 그 경로에서 할 일과 하지 말 일을 명령문으로 쓴다. 명령마다 한 줄 이유와 `docs/` 링크를 단다.
   서버 파일 하나를 고치면 여러 rule이 함께 들어온다. 그래서 같은 규칙은 한 파일에만 둔다.
 - `docs/`는 코드 옆에 둘 수 없는 것을 서술한다. 여러 파일에 걸친 "왜", 리포지토리 밖의 운영 지식, 제품 결정과 그 이유가 여기 온다. rules의 명령문은 다시 적지 않고 링크한다.
-- `.github/REVIEW.md`는 로컬 `pre-pr-review` 스킬과 사람 리뷰어가 함께 읽는 리뷰 기준이다. 항목 번호는 `REVIEW #n`으로 참조되므로 바꾸지 않는다.
+- `.github/REVIEW.md`는 로컬 `pre-pr-review` 스킬, CI 리뷰어, 사람 리뷰어가 함께 읽는 리뷰 기준이다. 항목 번호는 `REVIEW #n`으로 참조되므로 바꾸지 않는다.
 - 스킬(`.claude/skills/`)은 여러 단계를 거치는 절차를 담는다. 언제 쓰는지는 `description`이 말한다. 본문은 두 도구에서
   모두 따를 수 있게 쓰고, 도구마다 방법이 다른 단계만 나눠 적는다.
 - 훅과 워크플로가 무엇을 왜 하는지는 그 파일의 머리 주석이 원본이다. 훅 스크립트는 `jq`가 있어야 돈다.
@@ -114,14 +114,26 @@
 - `main`은 PR로만 바뀐다. 협업자가 한 명이라 필요한 승인 수는 0이다.
 - `main`의 삭제와 강제 push를 막는다. 관리자를 포함해 아무도 우회할 수 없다.
 - 머지 전에 필수 체크 세 개가 통과해야 한다. `ci.yml`의 `workbridge-server`와 `workbridge-client`, `e2e.yml`의 `playwright (chromium)`이다.
+- AI 리뷰는 일부러 필수 체크에 넣지 않았다. 드래프트 PR, 포크에서 온 PR, 워크플로 파일을 바꾼 PR에서는 돌지 않기 때문이다.
 
-## 6. MCP
+## 6. GitHub Actions의 Claude가 보는 하네스
+
+`claude.yml`과 `claude-code-review.yml`은 `anthropics/claude-code-action`으로 Claude Code를 돌린다. 각 워크플로의 동작은
+파일 머리 주석에 있다. 액션 안의 Claude Code도 로컬과 같이 `CLAUDE.md`의 import로 `AGENTS.md`를 읽고, 읽거나 고치는 파일에 맞는 rules를 불러온다.
+
+- PR이 바꾼 하네스는 머지한 뒤에 적용된다. 액션은 Claude Code를 시작하기 전에 `.claude/`, `CLAUDE.md`, `AGENTS.md` 등을
+  base 브랜치의 내용으로 되돌린다. PR이 CI의 Claude에게 줄 지시를 바꾸지 못하게 하는 장치다.
+- 리뷰 기준도 같다. 리뷰 프롬프트가 `git show origin/<base>:…`로 base 브랜치의 리뷰 기준을 읽는다. 그래서 기준을 바꾸는 PR은 바뀌기 전 기준으로 리뷰받는다.
+- 액션은 워크플로 파일이 기본 브랜치의 것과 다르면 실행하지 않는다. 그래서 워크플로를 고친 PR에는 AI 리뷰가 돌지 않고, 체크는 통과로 표시된다.
+- CI 리뷰어가 일관되게 보는 것은 `.github/REVIEW.md`와 rules가 다루는 것뿐이다. 리뷰 코멘트는 머지를 막지 않는다.
+
+## 7. MCP
 
 Sentry MCP 서버를 연결한다. Claude Code는 `.mcp.json`, Codex는 `.codex/config.toml`이 같은 서버를 가리킨다.
 프로덕션과 프리뷰 서버의 오류를 Sentry 프로젝트 `workbridge-server`에서 조회해 원인을 찾을 때 쓴다.
 사용자마다 OAuth 로그인이 필요하다(Claude Code는 `/mcp`, Codex는 `codex mcp login sentry`).
 
-## 7. 팀이 공유하는 것 / 내 컴퓨터에만 두는 것
+## 8. 팀이 공유하는 것 / 내 컴퓨터에만 두는 것
 
 | | Claude Code | Codex |
 |---|---|---|

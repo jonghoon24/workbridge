@@ -68,6 +68,7 @@ npm run lint && npm run build
 - 알려진 버그는 GitHub 이슈로 추적하고, 고치는 PR에 회귀 테스트를 넣습니다.
 - E2E는 로그인, 프로젝트 등록, 지원, 수락·서명, 마일스톤 결제·제출·승인을 브라우저로 확인합니다([workbridge-client/e2e/README.md](workbridge-client/e2e/README.md)).
 - CI: PR과 `main` 푸시마다 [`ci.yml`](.github/workflows/ci.yml)(서버·클라이언트 검사)과 [`e2e.yml`](.github/workflows/e2e.yml)(Playwright)이 Postgres 서비스 컨테이너로 돕니다. 무엇을 검사하는지는 두 워크플로 파일이 원본입니다.
+- AI 리뷰: PR마다 Claude가 [`.github/REVIEW.md`](.github/REVIEW.md) 기준으로 리뷰를 남깁니다(`claude-code-review.yml`). 이슈·PR에서 `@claude`를 멘션해 작업을 맡길 수도 있습니다(`claude.yml`).
 
 ## 배포
 
@@ -84,7 +85,7 @@ npm run lint && npm run build
 | [docs/ENV.md](docs/ENV.md) | 환경변수를 넣는 곳(환경별)과 외부 서비스 설정. 변수 설명은 각 패키지의 `.env.example` |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 환경, Vercel 배포, 프로덕션 환경의 한계 |
 | [docs/SEED_DATA.md](docs/SEED_DATA.md) | 시드 데이터와 둘러보기 시나리오 |
-| [docs/HARNESS.md](docs/HARNESS.md) | 에이전트 하네스(Claude Code, Codex): 문서 배치 원칙, 도구별 설정 위치, Codex 처음 설정, 권한 규칙의 이유, `main` 브랜치 보호, MCP, 팀 공유와 개인 설정 |
+| [docs/HARNESS.md](docs/HARNESS.md) | 에이전트 하네스(Claude Code, Codex): 문서 배치 원칙, 도구별 설정 위치, Codex 처음 설정, 권한 규칙의 이유, `main` 브랜치 보호, GitHub Actions의 Claude가 보는 하네스, MCP, 팀 공유와 개인 설정 |
 | [.github/REVIEW.md](.github/REVIEW.md) | 코드 리뷰 기준 |
 
 ## 기여

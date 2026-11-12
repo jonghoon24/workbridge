@@ -26,6 +26,7 @@ Production 환경에 따로 넣는다. 프리뷰와 프로덕션은 서로 다�
 | `PREVIEW_PAYOUT_ACCOUNT_ENCRYPTION_KEY`, `PROD_PAYOUT_ACCOUNT_ENCRYPTION_KEY` | `seed.yml`, `payout-encrypt.yml` | `PAYOUT_ACCOUNT_ENCRYPTION_KEY` |
 | `PREVIEW_SUPABASE_URL`, `PROD_SUPABASE_URL`, `PREVIEW_SUPABASE_SECRET_KEY`, `PROD_SUPABASE_SECRET_KEY` | `attachments-migrate.yml` | `SUPABASE_URL`, `SUPABASE_SECRET_KEY` |
 | `PROD_INTERNAL_JOB_TOKEN` | `jobs.yml` | 프로덕션의 `INTERNAL_JOB_TOKEN` |
+| `CLAUDE_CODE_OAUTH_TOKEN` | `claude.yml`, `claude-code-review.yml` | 없음. Claude Code 액션의 인증 토큰이다 |
 
 ## E2E
 
