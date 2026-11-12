@@ -12,6 +12,7 @@ import { formatDate, formatKRW } from '@/lib/format';
 import { CONTRACT_STATUS_LABELS } from '@/constants/milestones';
 import UnreadBadge from '@/components/messages/UnreadBadge';
 import EmptyState from '@/components/ui/EmptyState';
+import StatusTabs from '@/components/ui/StatusTabs';
 import { FileTextIcon } from '@/components/ui/Icons';
 import PageLoader from '@/components/ui/PageLoader';
 import { errorCode, toUserMessage } from '@/lib/errorMessages';
@@ -92,22 +93,7 @@ export default function MyContractsPage() {
         <p className="text-gray-600 mt-1">계약별 마일스톤 진행 상황을 확인하세요</p>
       </div>
 
-      <div className="flex gap-1 border-b border-gray-200 mb-6 overflow-x-auto">
-        {TABS.map((tab) => (
-          <button
-            key={tab.value || 'all'}
-            type="button"
-            onClick={() => changeTab(tab.value)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
-              status === tab.value
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <StatusTabs tabs={TABS} value={status} onChange={changeTab} />
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-6">
