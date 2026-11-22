@@ -6,7 +6,8 @@ default_permissions = "workbridge"
 [permissions.workbridge]
 extends = ":workspace"
 
-# .claude/settings.json의 Read deny와 같은 글롭. 샌드박스 안의 모든 커맨드와 파일 편집에 걸리고 .env.example은 걸리지 않는다.
+# .claude/settings.json의 Read deny와 같은 글롭. 에이전트의 모든 커맨드와 파일 편집에 걸리고 .env.example은 걸리지 않는다.
+# 이 차단이 있는 동안 에이전트 커맨드는 네트워크와 localhost에 닿지 못한다(docs/HARNESS.md 3절).
 [permissions.workbridge.filesystem.":workspace_roots"]
 "**/.env" = "deny"
 "**/.env.local" = "deny"

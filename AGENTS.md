@@ -33,6 +33,10 @@ npm run build   # 클라이언트의 정합성 검사 — 단위 테스트가 �
 E2E는 리포지토리 루트에서 `bash scripts/e2e.sh`(Playwright, `workbridge-client/e2e/`).
 앱 전체를 띄우고 확인할 때는 `run-workbridge` 스킬을 쓴다.
 
+Codex에서는 에이전트가 localhost Postgres나 네트워크가 필요한 커맨드(테스트, `test-db.sh`, `prisma migrate dev`, E2E,
+`git fetch`·`push`, `gh`)를 돌리지 못한다. 실패하면 다른 방법으로 돌아가지 말고 사용자에게 TUI에서 `!`를 붙여 돌려
+달라고 한다(`docs/HARNESS.md` 3절).
+
 ## 어디를 읽을지
 
 | 필요할 때 | 문서 |

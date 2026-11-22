@@ -72,6 +72,7 @@
   `prisma migrate dev`, E2E, `git fetch`·`push`, `gh`)는 승인해도 돌리지 못한다. 이런 커맨드는 개발자가 TUI에서
   `!`를 앞에 붙여 직접 돌리거나(네트워크 제한 없이 돌고 결과가 대화에 남는다) 터미널에서 돌린다.
   `npm run openapi`도 샌드박스 안에서는 실패하지만 PostToolUse 훅이 샌드박스 밖에서 다시 만든다.
+  Codex CLI 0.170에서 확인한 동작이다. 버전을 올려 달라지면 이 항목과 4절 표의 allow 행을 고친다.
 
 ## 4. 권한 규칙의 이유
 
@@ -82,7 +83,7 @@
 
 | 묶음 | 이유 | Codex에서 |
 |---|---|---|
-| deny: `.env` 계열 Read | 서버 `.env`에 JWT 비밀키, 외부 서비스 키, DB 접속 문자열이 있다. Read deny는 같은 파일의 Edit/Write와 Bash의 `grep … .env`도 막으므로 `.env`는 사람이 만든다. `.env.example`은 걸리지 않는다. | 권한 프로필의 같은 글롭이 샌드박스 안의 모든 프로세스와 파일 편집을 막는다. 샌드박스 밖 실행에는 걸리지 않는다(3절). |
+| deny: `.env` 계열 Read | 서버 `.env`에 JWT 비밀키, 외부 서비스 키, DB 접속 문자열이 있다. Read deny는 같은 파일의 Edit/Write와 Bash의 `grep … .env`도 막으므로 `.env`는 사람이 만든다. `.env.example`은 걸리지 않는다. | 권한 프로필의 같은 글롭이 에이전트가 돌리는 모든 프로세스와 파일 편집을 막는다. `cat`이든 `dotenv`든 읽지 못하고, 그 대신 에이전트 커맨드의 네트워크도 열리지 않는다(3절). |
 | deny: `migrate reset`, `--force-reset`, `--accept-data-loss` | 스키마와 데이터를 통째로 지운다. 스키마는 새 마이그레이션으로만 바꾼다. | `forbidden`. `prisma migrate reset`과 `npx` 형태, `db push` 바로 뒤에 온 두 플래그만 잡는다. |
 | deny: 강제 push | 공유 브랜치의 히스토리를 덮어쓴다. `main`은 5절의 ruleset도 막고, 이 규칙은 기능 브랜치까지 막는다. | `forbidden`. `git push`나 `git push origin` 바로 뒤의 `-f`·`--force`·`--force-with-lease`만 잡는다. push는 네트워크가 막혀 에이전트가 돌리지 못한다(3절). |
 | deny: `vercel pull`, `vercel env pull` | 프로덕션 비밀값을 로컬 파일로 내려받는다. 그 파일은 `.env` deny 밖에 놓일 수 있다. | `forbidden`. `vercel`과 `npx vercel` 형태. |
