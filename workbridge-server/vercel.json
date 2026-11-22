@@ -2,6 +2,5 @@
   "version": 2,
   "regions": ["icn1"],
   "builds": [{ "src": "src/index.ts", "use": "@vercel/node" }],
-  "routes": [{ "src": "/(.*)", "dest": "src/index.ts" }],
-  "git": { "deploymentEnabled": { "**": false, "main": true } }
+  "routes": [{ "src": "/(.*)", "dest": "src/index.ts" }]
 }
