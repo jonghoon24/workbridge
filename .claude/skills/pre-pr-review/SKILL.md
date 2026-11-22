@@ -8,6 +8,9 @@ allowed-tools: Bash(git fetch:*), Bash(git status:*), Bash(git diff:*), Bash(git
 
 리포지토리 루트에서, 기능 브랜치에서 돌린다. 5단계가 커밋하는데 `main`은 PR로만 바뀌므로 `main`에서는 돌리지 않는다.
 
+Codex에서는 샌드박스가 `.git` 쓰기와 네트워크를 막는다. `git commit`은 권한 상승을 승인받아 돌린다. `git fetch`,
+`git push`, `gh`는 승인해도 네트워크가 열리지 않으므로 사용자에게 TUI에서 `!`를 붙여 돌려 달라고 한다(`docs/HARNESS.md` 3절).
+
 ## 1. 범위
 
 ```bash
@@ -17,6 +20,7 @@ git log --oneline origin/main..HEAD
 ```
 
 커밋하지 않은 변경 사항이 있으면 → 멈추고 먼저 커밋할지 묻는다.
+`git fetch`가 실패하면 → 멈추고 그렇다고 알린다. 낡은 `origin/main`과 비교해 리뷰하지 않는다.
 
 ## 2. 일반 리뷰
 

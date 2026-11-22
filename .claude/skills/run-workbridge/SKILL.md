@@ -25,8 +25,8 @@ description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 
 - 2와 3에는 Playwright Chromium: `(cd workbridge-client && npx playwright install chromium)`.
 - 외부 서비스(Google OAuth, 토스페이먼츠, Supabase Storage)는 더미 값을 쓴다:
   그 기능은 실패하지만, 핵심 흐름은 모두 로컬 DB로 동작한다.
-- Codex에서는 샌드박스 안의 커맨드가 `.env`와 localhost에 닿지 못한다. DB·서버·브라우저를 쓰는 커맨드는 샌드박스 밖
-  실행을 승인받아 돌린다.
+- Codex에서는 에이전트의 커맨드가 `.env`와 localhost에 닿지 못하고, 승인해도 마찬가지다. DB·서버·브라우저를 쓰는
+  커맨드는 사용자에게 TUI에서 `!`를 붙여 돌려 달라고 한다(`docs/HARNESS.md` 3절).
 
 ## 설정 (한 번만)
 
