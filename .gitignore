@@ -24,5 +24,17 @@ Thumbs.db
 !.claude/skills/
 !.claude/skills/**
 
+# .codex/와 .agents/도 공유 하네스(config.toml, rules, hooks.json, 스킬 링크)만 추적한다
+.codex/*
+!.codex/config.toml
+!.codex/rules/
+!.codex/hooks.json
+.agents/*
+!.agents/skills
+
+# 개인 지시 파일. AGENTS.override.md는 같은 폴더의 AGENTS.md를 대신하므로 쓰지 않는다(docs/HARNESS.md)
+CLAUDE.local.md
+AGENTS.override.md
+
 # npx playwright cli의 세션 산출물(스냅샷, 스크린샷)
 .playwright-cli/

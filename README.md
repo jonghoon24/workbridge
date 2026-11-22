@@ -84,7 +84,7 @@ npm run lint && npm run build
 | [docs/ENV.md](docs/ENV.md) | 환경변수를 넣는 곳(환경별)과 외부 서비스 설정. 변수 설명은 각 패키지의 `.env.example` |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 환경, Vercel 배포, 프로덕션 환경의 한계 |
 | [docs/SEED_DATA.md](docs/SEED_DATA.md) | 시드 데이터와 둘러보기 시나리오 |
-| [docs/HARNESS.md](docs/HARNESS.md) | Claude Code 하네스: 문서 배치 원칙, 권한 규칙의 이유, `main` 브랜치 보호, GitHub Actions의 Claude가 하네스 변경을 보는 방식, MCP |
+| [docs/HARNESS.md](docs/HARNESS.md) | 에이전트 하네스(Claude Code, Codex): 문서 배치 원칙, 도구별 설정 위치, Codex 처음 설정, 권한 규칙의 이유, `main` 브랜치 보호, MCP, 팀 공유와 개인 설정 |
 | [.github/REVIEW.md](.github/REVIEW.md) | 코드 리뷰 기준 |
 
 ## 기여
