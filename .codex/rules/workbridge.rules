@@ -1,0 +1,87 @@
+# Codex 커맨드 규칙. .claude/settings.json의 deny와 ask를 prefix_rule로 옮긴 것이다.
+# prefix_rule은 argv의 앞부분만 비교한다. 문자열 포함 패턴(SQL 문, 호스트명, 아무 위치의 플래그)은 옮기지 못하고,
+# 그 몫은 샌드박스(네트워크·localhost 차단)가 맡는다. allow 규칙은 두지 않는다: .codex/config.toml의 권한 프로필이
+# .env 읽기를 막는 동안에는 allow 규칙에 맞는 커맨드도 .env 차단과 네트워크 차단을 그대로 받고, 승인해도 네트워크는
+# 열리지 않는다.
+# 묶음별 이유와 차이는 docs/HARNESS.md "권한 규칙의 이유".
+
+# --- forbidden: 어떤 상황에서도 필요 없는 것 ---
+
+prefix_rule(
+    pattern = ["npx", "prisma", "migrate", "reset"],
+    decision = "forbidden",
+    justification = "Wipes the database. Change the schema with a new migration (db-migration skill).",
+    match = ["npx prisma migrate reset --force"],
+)
+prefix_rule(
+    pattern = ["prisma", "migrate", "reset"],
+    decision = "forbidden",
+    justification = "Wipes the database. Change the schema with a new migration (db-migration skill).",
+)
+prefix_rule(
+    pattern = ["npx", "prisma", "db", "push", ["--force-reset", "--accept-data-loss"]],
+    decision = "forbidden",
+    justification = "Drops schema or data. Change the schema with a new migration (db-migration skill).",
+    match = ["npx prisma db push --accept-data-loss"],
+)
+prefix_rule(
+    pattern = ["git", "push", ["-f", "--force", "--force-with-lease"]],
+    decision = "forbidden",
+    justification = "Force push rewrites shared history. Push new commits instead.",
+    match = ["git push -f origin feature", "git push --force"],
+    not_match = ["git push origin feature"],
+)
+prefix_rule(
+    pattern = ["git", "push", "origin", ["-f", "--force", "--force-with-lease"]],
+    decision = "forbidden",
+    justification = "Force push rewrites shared history. Push new commits instead.",
+    match = ["git push origin --force feature"],
+)
+prefix_rule(
+    pattern = ["vercel", "pull"],
+    decision = "forbidden",
+    justification = "Downloads production secrets to a local file.",
+)
+prefix_rule(
+    pattern = ["vercel", "env", "pull"],
+    decision = "forbidden",
+    justification = "Downloads production secrets to a local file.",
+    match = ["vercel env pull .env"],
+)
+prefix_rule(
+    pattern = ["npx", "vercel", "pull"],
+    decision = "forbidden",
+    justification = "Downloads production secrets to a local file.",
+)
+prefix_rule(
+    pattern = ["npx", "vercel", "env", "pull"],
+    decision = "forbidden",
+    justification = "Downloads production secrets to a local file.",
+    match = ["npx vercel env pull"],
+)
+
+# --- prompt: 가끔 필요하지만 되돌리기 어려운 것 ---
+
+prefix_rule(
+    pattern = ["dropdb"],
+    decision = "prompt",
+    justification = "Drops a database. Check which one before approving.",
+)
+prefix_rule(
+    pattern = ["gh", "workflow", "run"],
+    decision = "prompt",
+    justification = "Manual workflows change remote databases or storage.",
+    match = ["gh workflow run seed.yml"],
+)
+# --prod 같은 플래그는 위치가 정해져 있지 않아 vercel 커맨드 전체를 묻는다.
+prefix_rule(
+    pattern = ["vercel"],
+    decision = "prompt",
+    justification = "Vercel CLI can deploy, promote, roll back or change env vars.",
+    match = ["vercel --prod", "vercel promote https://x.vercel.app"],
+)
+prefix_rule(
+    pattern = ["npx", "vercel"],
+    decision = "prompt",
+    justification = "Vercel CLI can deploy, promote, roll back or change env vars.",
+)

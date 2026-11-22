@@ -7,7 +7,7 @@ paths:
 
 - **커밋된 `prisma/migrations/` 폴더는 어떤 방법으로도 고치거나 지우거나 이름을 바꾸지 않는다**(`sed -i`, `rm`, `git mv` 포함).
   이미 preview와 production DB에 적용됐고 Prisma는 적용한 마이그레이션을 다시 돌리지 않으므로, 고친 내용은 원격 DB에
-  반영되지 않는다. 잘못된 마이그레이션은 새 마이그레이션으로 고친다. 로컬 훅은 Claude의 Edit/Write만 막고,
+  반영되지 않는다. 잘못된 마이그레이션은 새 마이그레이션으로 고친다. 로컬 훅은 에이전트의 파일 편집 툴(Claude Code의 Edit/Write, Codex의 apply_patch)만 막고,
   나머지 방법은 PR의 CI(`ci.yml`)가 잡는다.
 - 스키마 변경은 `schema.prisma` 수정 → `npx prisma migrate dev --name <name>` 순서로 한다. 절차는 `db-migration` 스킬.
 - 새 테이블은 만드는 마이그레이션에서 `ENABLE ROW LEVEL SECURITY`를 켠다(정책 없이, `FORCE`도 없이).

@@ -1,12 +1,15 @@
 ---
 name: pre-pr-review
-description: PR을 열기 전에 main 대비 브랜치 diff를 /code-review와 .github/REVIEW.md의 번호 항목으로 리뷰하고(pre-PR review), 수정을 적용해 커밋하고, 사람이 봐야 할 지적을 표시한 뒤 리포지토리 템플릿으로 PR을 연다(open a PR)
+description: PR을 열기 전에 main 대비 브랜치 diff를 /code-review(Codex는 직접 리뷰)와 .github/REVIEW.md의 번호 항목으로 리뷰하고(pre-PR review), 수정을 적용해 커밋하고, 사람이 봐야 할 지적을 표시한 뒤 리포지토리 템플릿으로 PR을 연다(open a PR)
 allowed-tools: Bash(git fetch:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(npm run typecheck:*), Bash(npm run lint:*), Bash(npm run build:*), Bash(npm run openapi:*), Bash(npx vitest run:*), Read, Grep, Glob, Edit, Skill
 ---
 
 # PR 전 리뷰
 
 리포지토리 루트에서, 기능 브랜치에서 돌린다. 5단계가 커밋하는데 `main`은 PR로만 바뀌므로 `main`에서는 돌리지 않는다.
+
+Codex에서는 샌드박스가 `.git` 쓰기와 네트워크를 막는다. `git commit`은 권한 상승을 승인받아 돌린다. `git fetch`,
+`git push`, `gh`는 승인해도 네트워크가 열리지 않으므로 사용자에게 TUI에서 `!`를 붙여 돌려 달라고 한다(`docs/HARNESS.md` 3절).
 
 ## 1. 범위
 
@@ -17,12 +20,15 @@ git log --oneline origin/main..HEAD
 ```
 
 커밋하지 않은 변경 사항이 있으면 → 멈추고 먼저 커밋할지 묻는다.
+`git fetch`가 실패하면 → 멈추고 그렇다고 알린다. 낡은 `origin/main`과 비교해 리뷰하지 않는다.
 
 ## 2. 일반 리뷰
 
-브랜치 diff를 `main`과 비교해 `/code-review medium --fix`를 돌린다(Skill 툴, 스킬
-`code-review`, 인자는 `medium --fix`와 대상인 현재 브랜치). 지적마다 결과를 적는다:
-`fixed` 또는 `skipped`(와 그 이유).
+브랜치 diff를 `main`과 비교해 일반 리뷰를 돌린다. 지적마다 결과를 적는다: `fixed` 또는 `skipped`(와 그 이유).
+
+- Claude Code: `/code-review medium --fix`(Skill 툴, 스킬 `code-review`, 인자는 `medium --fix`와 대상인 현재 브랜치).
+- Codex: `git diff origin/main...HEAD`를 직접 읽고 정확성 버그(잘못된 조건, 빠진 오류 처리, 경합, 깨진 호출처)를 찾아
+  고친다. 사용자가 TUI에서 `/review`를 돌려 두었으면 그 지적도 같이 처리한다.
 
 ## 3. WorkBridge 기준 — `.github/REVIEW.md`
 
