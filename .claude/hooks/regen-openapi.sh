@@ -23,7 +23,7 @@ files=$(jq -r '
 while IFS= read -r file; do
   case "$file" in
     */workbridge-server/src/*.ts)
-      server_dir="${file%%/src/*}"
+      server_dir="${file%/workbridge-server/src/*}/workbridge-server"
       (cd "$server_dir" && npm run -s openapi >/dev/null 2>&1) || true
       exit 0 ;;
   esac
