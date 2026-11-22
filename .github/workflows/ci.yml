@@ -152,7 +152,7 @@ jobs:
         run: npm run check:error-codes
 
       # 클라이언트에는 단위 테스트가 없어서 프로덕션 빌드가 깨끗이 끝나는 것이 정합성 검사다
-      # (CLAUDE.md). API URL은 요청 때만 읽으므로 어떤 값이든 빌드된다.
+      # (AGENTS.md). API URL은 요청 때만 읽으므로 어떤 값이든 빌드된다.
       - name: 빌드
         run: npm run build
         env:
