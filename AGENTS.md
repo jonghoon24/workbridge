@@ -93,3 +93,10 @@ Claude Code는 맞는 파일을 읽거나 고칠 때 이 규칙을 자동으로 
 - 프로덕션에는 상주 작업 워커가 없다. GitHub Actions `jobs.yml`이 15분마다 `POST /api/internal/jobs/run`을
   부르므로 작업은 최대 15분 늦게 돈다. 지급(`JOB_PAYOUT_ENABLED`)과 메일(`JOB_EMAIL_ENABLED`) 작업은 플래그로 꺼져 있다
   (`docs/DEPLOYMENT.md` "프로덕션 환경의 한계").
+
+## Code Review Rules
+
+- PR을 리뷰할 때는 `.github/REVIEW.md`를 읽고 그 번호 항목을 기준으로 삼는다. 항목 위반은 P1로 다루고 지적에 `REVIEW #n`을 붙인다.
+- 바뀐 파일의 경로에 해당하는 `.claude/rules/*.md`를 위 "경로별 규칙" 표에서 찾아 읽는다.
+- 실제로 틀렸거나 기준을 어긴 것만 지적한다. 스타일과 취향은 지적하지 않는다.
+- 리뷰 코멘트는 한국어 합니다체로 쓴다.
