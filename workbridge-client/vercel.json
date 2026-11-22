@@ -1,4 +1,5 @@
 {
   "regions": ["icn1"],
-  "relatedProjects": ["prj_u3RYDLPGTEVB29lYr8z60KXSyiSm"]
+  "relatedProjects": ["prj_u3RYDLPGTEVB29lYr8z60KXSyiSm"],
+  "git": { "deploymentEnabled": { "**": false, "main": true } }
 }
