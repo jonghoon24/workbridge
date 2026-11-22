@@ -1,6 +1,9 @@
-# Codex 커맨드 규칙. .claude/settings.json의 permissions를 prefix_rule로 옮긴 것이다.
+# Codex 커맨드 규칙. .claude/settings.json의 deny와 ask를 prefix_rule로 옮긴 것이다.
 # prefix_rule은 argv의 앞부분만 비교한다. 문자열 포함 패턴(SQL 문, 호스트명, 아무 위치의 플래그)은 옮기지 못하고,
-# 그 몫은 샌드박스(네트워크·localhost 차단 → 승인)가 맡는다. 묶음별 이유와 차이는 docs/HARNESS.md "권한 규칙의 이유".
+# 그 몫은 샌드박스(네트워크·localhost 차단)가 맡는다. allow 규칙은 두지 않는다: .codex/config.toml의 권한 프로필이
+# .env 읽기를 막는 동안에는 allow 규칙에 맞는 커맨드도 .env 차단과 네트워크 차단을 그대로 받고, 승인해도 네트워크는
+# 열리지 않는다.
+# 묶음별 이유와 차이는 docs/HARNESS.md "권한 규칙의 이유".
 
 # --- forbidden: 어떤 상황에서도 필요 없는 것 ---
 
@@ -81,43 +84,4 @@ prefix_rule(
     pattern = ["npx", "vercel"],
     decision = "prompt",
     justification = "Vercel CLI can deploy, promote, roll back or change env vars.",
-)
-
-# --- allow: 샌드박스 안에서는 돌지 않는 검사 루프 ---
-# allow는 샌드박스 밖에서 묻지 않고 실행한다. 로컬 Postgres(localhost)나 dev 서버에 접속해야 하는 커맨드만 둔다.
-# typecheck·lint·build·openapi·읽는 git은 샌드박스 안에서 돌므로 규칙이 필요 없다.
-
-prefix_rule(
-    pattern = ["npm", "test"],
-    decision = "allow",
-    match = ["npm test", "npm test -- test/money.test.ts"],
-)
-prefix_rule(
-    pattern = ["npm", "run", "test"],
-    decision = "allow",
-)
-prefix_rule(
-    pattern = ["npx", "vitest", "run"],
-    decision = "allow",
-    match = ["npx vitest run test/payments.test.ts"],
-    not_match = ["npx vitest"],
-)
-prefix_rule(
-    pattern = ["bash", ["scripts/test-db.sh", "scripts/e2e.sh"]],
-    decision = "allow",
-)
-prefix_rule(
-    pattern = ["npx", "playwright", ["test", "cli"]],
-    decision = "allow",
-    not_match = ["npx playwright install"],
-)
-prefix_rule(
-    pattern = ["gh", "pr", ["view", "diff", "list", "checks"]],
-    decision = "allow",
-    not_match = ["gh pr create", "gh pr merge 1"],
-)
-prefix_rule(
-    pattern = ["gh", ["issue", "run"], ["view", "list"]],
-    decision = "allow",
-    not_match = ["gh issue create", "gh run rerun 1"],
 )

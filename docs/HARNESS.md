@@ -53,12 +53,12 @@
 
 클론마다 한 번 한다.
 
-1. 리포지토리 루트에서 `codex`를 띄우고 "Trust this folder?"에서 신뢰한다.
-2. `/hooks`에서 훅 세 개를 검토하고 신뢰한다.
+1. 리포지토리 루트에서 `codex`를 띄우고 "Trust this folder?"에서 "Trust and continue"를 고른다.
+2. 이어서 뜨는 "Hooks need review"에서 훅 세 개를 검토하고 신뢰한다(나중에는 `/hooks`).
 3. `codex mcp login sentry`로 Sentry에 로그인한다.
 
-- `.codex/`(설정, 권한 프로필, 규칙, 훅, MCP)는 신뢰한 프로젝트에서만 로드된다. 신뢰하지 않으면 경고 없이 통째로
-  빠진다. `AGENTS.md`와 스킬은 신뢰와 상관없이 읽힌다.
+- `.codex/`(설정, 권한 프로필, 규칙, 훅, MCP)는 신뢰한 프로젝트에서만 로드된다. 신뢰하지 않으면 통째로 빠지고
+  `codex exec`는 "Untrusted project-local configuration is disabled" 경고만 낸다. `AGENTS.md`와 스킬은 신뢰와 상관없이 읽힌다.
 - 훅 신뢰는 클론 경로와 훅 정의의 해시로 `~/.codex/config.toml`에 기록된다. `.codex/hooks.json`이 바뀌면 다시 신뢰한다.
   TUI는 신뢰하지 않은 훅을 알려 주지만 `codex exec`는 경고 없이 건너뛴다.
 - `git worktree`로 만든 작업 폴더에서는 Codex가 훅 정의를 그 폴더가 아니라 메인 체크아웃의 `.codex/hooks.json`에서
@@ -66,9 +66,12 @@
   worktree의 것이다.
 - 개인 `~/.codex/config.toml`이나 고른 프로필에 `sandbox_mode`가 있거나 `--sandbox`/`-s`로 띄우면 권한 프로필이
   꺼져 `.env`가 읽힌다. `sandbox_mode`는 두지 않는다.
-- 권한 프로필은 샌드박스 안에서 도는 모든 프로세스에 걸린다. `dotenv`로 `.env`를 읽는 `npm run dev`와 `npm test`도
-  샌드박스 안에서는 `.env`를 읽지 못하고, localhost Postgres에도 닿지 못한다. 그래서 테스트, DB, E2E 커맨드는 allow
-  규칙이나 승인으로 샌드박스 밖에서 돌고, 그때는 `.env` deny가 걸리지 않는다.
+- 권한 프로필이 `.env` 읽기를 막는 동안에는 에이전트 커맨드의 네트워크가 열리지 않는다. allow 규칙에 맞는 커맨드도
+  `.env` 차단과 네트워크 차단을 그대로 받고, 권한 상승을 승인한 커맨드는 `.git`에 쓸 수 있지만 네트워크는 막혀 있다. 그래서
+  에이전트는 typecheck와 lint는 돌리지만 localhost Postgres나 네트워크가 필요한 커맨드(서버 테스트, `test-db.sh`,
+  `prisma migrate dev`, E2E, `git fetch`·`push`, `gh`)는 승인해도 돌리지 못한다. 이런 커맨드는 개발자가 TUI에서
+  `!`를 앞에 붙여 직접 돌리거나(네트워크 제한 없이 돌고 결과가 대화에 남는다) 터미널에서 돌린다.
+  `npm run openapi`도 샌드박스 안에서는 실패하지만 PostToolUse 훅이 샌드박스 밖에서 다시 만든다.
 
 ## 4. 권한 규칙의 이유
 
@@ -81,24 +84,25 @@
 |---|---|---|
 | deny: `.env` 계열 Read | 서버 `.env`에 JWT 비밀키, 외부 서비스 키, DB 접속 문자열이 있다. Read deny는 같은 파일의 Edit/Write와 Bash의 `grep … .env`도 막으므로 `.env`는 사람이 만든다. `.env.example`은 걸리지 않는다. | 권한 프로필의 같은 글롭이 샌드박스 안의 모든 프로세스와 파일 편집을 막는다. 샌드박스 밖 실행에는 걸리지 않는다(3절). |
 | deny: `migrate reset`, `--force-reset`, `--accept-data-loss` | 스키마와 데이터를 통째로 지운다. 스키마는 새 마이그레이션으로만 바꾼다. | `forbidden`. `prisma migrate reset`과 `npx` 형태, `db push` 바로 뒤에 온 두 플래그만 잡는다. |
-| deny: 강제 push | 공유 브랜치의 히스토리를 덮어쓴다. `main`은 5절의 ruleset도 막고, 이 규칙은 기능 브랜치까지 막는다. | `forbidden`. `git push`나 `git push origin` 바로 뒤의 `-f`·`--force`·`--force-with-lease`만 잡는다. push는 네트워크가 필요해 어차피 승인을 거친다. |
+| deny: 강제 push | 공유 브랜치의 히스토리를 덮어쓴다. `main`은 5절의 ruleset도 막고, 이 규칙은 기능 브랜치까지 막는다. | `forbidden`. `git push`나 `git push origin` 바로 뒤의 `-f`·`--force`·`--force-with-lease`만 잡는다. push는 네트워크가 막혀 에이전트가 돌리지 못한다(3절). |
 | deny: `vercel pull`, `vercel env pull` | 프로덕션 비밀값을 로컬 파일로 내려받는다. 그 파일은 `.env` deny 밖에 놓일 수 있다. | `forbidden`. `vercel`과 `npx vercel` 형태. |
-| ask: `dropdb`, `DROP TABLE`·`DATABASE`·`SCHEMA`, `TRUNCATE` | 병렬 작업이 만든 로컬 DB를 정리할 때는 필요하지만, 잘못 겨누면 데이터를 잃는다. 테스트 DB는 테스트 코드의 `resetDb()`가 비운다. | `dropdb`만 `prompt`. SQL 문은 인자 안에 있어 규칙으로 못 잡는다. 샌드박스가 localhost를 막아 `psql`이 승인을 거친다. |
-| ask: `supabase.co`, `supabase.com` | Preview와 Production의 DB와 저장소가 Supabase에 있다. 원격 마이그레이션과 데이터 작업은 워크플로로 하고, 커맨드로 직접 접속할지는 사람이 그때마다 정한다. | 규칙 없음. 샌드박스가 네트워크를 막아 원격 접속이 승인을 거친다. |
+| ask: `dropdb`, `DROP TABLE`·`DATABASE`·`SCHEMA`, `TRUNCATE` | 병렬 작업이 만든 로컬 DB를 정리할 때는 필요하지만, 잘못 겨누면 데이터를 잃는다. 테스트 DB는 테스트 코드의 `resetDb()`가 비운다. | `dropdb`만 `prompt`. SQL 문은 인자 안에 있어 규칙으로 못 잡는다. 샌드박스가 localhost를 막아 `psql`과 `dropdb`가 로컬 DB에 닿지 못한다. |
+| ask: `supabase.co`, `supabase.com` | Preview와 Production의 DB와 저장소가 Supabase에 있다. 원격 마이그레이션과 데이터 작업은 워크플로로 하고, 커맨드로 직접 접속할지는 사람이 그때마다 정한다. | 규칙 없음. 샌드박스가 네트워크를 막아 원격 접속이 되지 않는다. |
 | ask: `gh workflow run` | 수동으로 실행하는 워크플로는 모두 원격 DB나 저장소를 바꾼다. `seed.yml`은 모든 테이블을 비운다. 워크플로의 `confirm` 입력은 에이전트도 넣을 수 있어서 승인을 따로 받는다. | `prompt`. |
 | ask: `vercel … --prod`, `vercel promote`, `vercel rollback`, `vercel env …` | 프로덕션 배포는 보통 `main` 머지와 Vercel Git 연동으로 한다. 손으로 프로덕션에 배포·승격·롤백하거나 환경변수를 바꿀 때만 승인한다. | `vercel`과 `npx vercel` 전체를 `prompt`. 플래그 위치가 정해져 있지 않아서다. |
-| allow: 검사 커맨드, `npm run openapi`, 읽기 전용 git·gh | 고치고 검사하는 루프가 매번 승인을 묻지 않게 한다. `npm run openapi`는 DB·환경변수·네트워크 없이 `openapi.json` 한 파일만 다시 쓴다. | 샌드박스 안에서 도는 검사와 읽는 git은 규칙 없이 묻지 않고 돈다. localhost나 네트워크가 필요한 테스트, `test-db.sh`, E2E, Playwright, 읽기 전용 `gh`만 `allow`다. `allow`는 샌드박스 밖에서 묻지 않고 실행하므로 Claude Code의 allow보다 넓다. |
+| allow: 검사 커맨드, `npm run openapi`, 읽기 전용 git·gh | 고치고 검사하는 루프가 매번 승인을 묻지 않게 한다. `npm run openapi`는 DB·환경변수·네트워크 없이 `openapi.json` 한 파일만 다시 쓴다. | 규칙 없음. typecheck, lint, 읽는 git은 샌드박스 안에서 묻지 않고 돈다. 테스트, E2E, `gh`는 allow 규칙으로도 샌드박스를 벗어나지 못해서(3절) 규칙을 두지 않는다. |
 
 - 쓰는 git(commit, push 등), `gh pr create`, `prisma migrate dev`는 allow에 일부러 넣지 않았다. 실행할 때 사람이 승인한다.
-  Codex에서는 샌드박스가 `.git` 쓰기와 네트워크를 막아 같은 커맨드가 승인을 거친다.
-- Claude Code의 Bash 규칙은 커맨드 텍스트만 본다. `bash -c '…'`처럼 다른 형태로 부르면 걸리지 않는다. 보안 경계가 아니라 흔한 실수를 막는 장치다.
+  Codex에서는 `git commit`이 `.git` 쓰기 승인을 거치고, 네트워크나 localhost가 필요한 나머지는 개발자가 돌린다(3절).
+- 두 도구의 커맨드 규칙은 커맨드 텍스트만 본다. `bash -c '…'`처럼 셸을 한 번 더 감싸 부르면 Claude Code의 Bash 규칙도,
+  Codex의 `forbidden`도 걸리지 않는다. 보안 경계가 아니라 흔한 실수를 막는 장치다.
 - Claude Code의 deny와 ask의 Bash 패턴은 앞뒤가 `*`인 문자열 포함 패턴이다. 그래서 `grep -rn TRUNCATE` 같은 검색도 걸린다. 검색은 Grep 툴로 한다.
 - Codex의 규칙은 문자열 포함이 아니라 argv 앞부분을 비교한다. 위 표에서 "만 잡는다"고 적은 나머지 형태는 샌드박스의
-  승인에 맡긴다. Codex 훅은 `ask`를 표현하지 못해서 문자열 패턴을 흉내 내는 Bash 훅은 두지 않는다.
-- 한 커맨드가 ask와 deny에 함께 걸리면 deny가 이긴다(Codex도 `forbidden` > `prompt` > `allow`). 예를 들어 `vercel env pull`은 ask의 `*vercel env *`에도 맞지만 거부된다.
+  네트워크·localhost 차단에 맡긴다. Codex 훅은 `ask`를 표현하지 못해서 문자열 패턴을 흉내 내는 Bash 훅은 두지 않는다.
+- 한 커맨드가 ask와 deny에 함께 걸리면 deny가 이긴다(Codex도 `forbidden` > `prompt`). 예를 들어 `vercel env pull`은 ask의 `*vercel env *`에도 맞지만 거부된다.
 - Claude Code의 allow는 워크스페이스를 신뢰한 뒤에만 적용되고 deny와 ask는 항상 적용된다. Codex는 `forbidden`까지
   포함한 프로젝트 규칙 전체가 신뢰한 뒤에만 적용된다.
-- 개인 설정의 `approvals_reviewer`가 `auto_review`이면 Codex의 `prompt`와 샌드박스 밖 실행을 사람 대신 검토 모델이 승인한다.
+- 개인 설정의 `approvals_reviewer`가 `auto_review`이면 Codex의 `prompt`와 권한 상승 요청을 사람 대신 검토 모델이 승인한다.
 - 규칙을 고치면 `codex execpolicy check --rules .codex/rules/workbridge.rules -- <커맨드>`로 확인한다. 각 규칙의
   `match`·`not_match` 예시는 Codex가 규칙을 읽을 때 검사한다.
 
