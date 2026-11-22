@@ -116,16 +116,24 @@
 - 머지 전에 필수 체크 세 개가 통과해야 한다. `ci.yml`의 `workbridge-server`와 `workbridge-client`, `e2e.yml`의 `playwright (chromium)`이다.
 - AI 리뷰는 일부러 필수 체크에 넣지 않았다. 드래프트 PR, 포크에서 온 PR, 워크플로 파일을 바꾼 PR에서는 돌지 않기 때문이다.
 
-## 6. GitHub Actions의 Claude가 보는 하네스
+## 6. GitHub에서 도는 에이전트가 보는 하네스
 
 `claude.yml`과 `claude-code-review.yml`은 `anthropics/claude-code-action`으로 Claude Code를 돌린다. 각 워크플로의 동작은
 파일 머리 주석에 있다. 액션 안의 Claude Code도 로컬과 같이 `CLAUDE.md`의 import로 `AGENTS.md`를 읽고, 읽거나 고치는 파일에 맞는 rules를 불러온다.
 
-- PR이 바꾼 하네스는 머지한 뒤에 적용된다. 액션은 Claude Code를 시작하기 전에 `.claude/`, `CLAUDE.md`, `AGENTS.md` 등을
+- Claude 워크플로에서는 PR이 바꾼 하네스가 머지한 뒤에 적용된다. 액션은 Claude Code를 시작하기 전에 `.claude/`, `CLAUDE.md`, `AGENTS.md` 등을
   base 브랜치의 내용으로 되돌린다. PR이 CI의 Claude에게 줄 지시를 바꾸지 못하게 하는 장치다.
 - 리뷰 기준도 같다. 리뷰 프롬프트가 `git show origin/<base>:…`로 base 브랜치의 리뷰 기준을 읽는다. 그래서 기준을 바꾸는 PR은 바뀌기 전 기준으로 리뷰받는다.
 - 액션은 워크플로 파일이 기본 브랜치의 것과 다르면 실행하지 않는다. 그래서 워크플로를 고친 PR에는 AI 리뷰가 돌지 않고, 체크는 통과로 표시된다.
 - CI 리뷰어가 일관되게 보는 것은 `.github/REVIEW.md`와 rules가 다루는 것뿐이다. 리뷰 코멘트는 머지를 막지 않는다.
+- Codex 코드 리뷰는 ChatGPT Codex Connector GitHub 앱이 돌린다. 설정은 ChatGPT의 Codex 코드 리뷰 설정에 있고, 리포지토리에는
+  워크플로도 시크릿도 없다. 자동 리뷰는 `main`으로 가는 PR에서 돈다. 다른 브랜치로 가는 PR은 `@codex review` 코멘트로 부른다.
+- Codex 리뷰 규칙의 원본은 `AGENTS.md`의 `## Code Review Rules` 절이다. 이 절이 `.github/REVIEW.md`와 경로별 rules를
+  가리키므로 두 리뷰어가 같은 기준을 쓴다. 리뷰 기준을 바꿀 때는 `.github/REVIEW.md`를 고치고 이 절은 그대로 둔다.
+  Codex는 GitHub에 P0·P1 지적만 달기 때문에 이 절이 항목 위반을 P1로 다루게 한다.
+- Codex 리뷰는 base가 아니라 PR의 `AGENTS.md`를 읽는다. 그래서 리뷰 규칙을 바꾸는 PR은 바뀐 규칙으로 리뷰받는다
+  (Claude 리뷰는 base의 것을 쓴다). `AGENTS.md`의 이 절이나 `.github/REVIEW.md`를 고치는 PR은 사람이 그 변경을 직접 본다.
+- Codex 리뷰는 GitHub 체크로 나타나지 않고 머지를 막지 않는다.
 
 ## 7. MCP
 
