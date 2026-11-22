@@ -25,10 +25,12 @@ description: WorkBridge 앱을 로컬에서 빌드하고 띄워서 조작한다 
 - 2와 3에는 Playwright Chromium: `(cd workbridge-client && npx playwright install chromium)`.
 - 외부 서비스(Google OAuth, 토스페이먼츠, Supabase Storage)는 더미 값을 쓴다:
   그 기능은 실패하지만, 핵심 흐름은 모두 로컬 DB로 동작한다.
+- Codex에서는 샌드박스 안의 커맨드가 `.env`와 localhost에 닿지 못한다. DB·서버·브라우저를 쓰는 커맨드는 샌드박스 밖
+  실행을 승인받아 돌린다.
 
 ## 설정 (한 번만)
 
-`.env` 파일은 Claude의 파일 툴에 대해 거부 목록에 있다(`.claude/settings.json`). 쓰기가 거부되면
+`.env` 파일은 에이전트 권한이 막는다(Claude Code는 `.claude/settings.json`, Codex는 `.codex/config.toml`의 권한 프로필). 쓰기가 거부되면
 아래 블록을 사용자에게 보여 주고 직접 만들게 한다. URL은 모두 `localhost`를 쓴다.
 
 ```bash
@@ -126,7 +128,7 @@ API 문서 화면은 `http://localhost:4000/api/docs`, 원본은 `http://localho
 ## 주의할 점
 
 - **시드 날짜는 밀린다.** 시드한 뒤 시간이 지나 마감이 지나면, 목록을 읽을 때 지연 스윕이 그 프로젝트를 닫는다
-  (`CLAUDE.md` "함정"). 다시 시드한다: `(cd workbridge-server && npm run db:seed)`.
+  (`AGENTS.md` "함정"). 다시 시드한다: `(cd workbridge-server && npm run db:seed)`.
 - **암호화 키를 바꾸면 다시 시드한다.** 시드는 `workbridge-server/.env`를 읽고(이미 셸에 있는 값이 우선),
   지급 계좌번호를 `PAYOUT_ACCOUNT_ENCRYPTION_KEY`로 암호화해 넣는다.
 - **결제 우회가 켜져 있다**(로컬, 플래그 둘 다). 결제는 마일스톤 단위다:

@@ -1,6 +1,6 @@
 ---
 name: pre-pr-review
-description: PR을 열기 전에 main 대비 브랜치 diff를 /code-review와 .github/REVIEW.md의 번호 항목으로 리뷰하고(pre-PR review), 수정을 적용해 커밋하고, 사람이 봐야 할 지적을 표시한 뒤 리포지토리 템플릿으로 PR을 연다(open a PR)
+description: PR을 열기 전에 main 대비 브랜치 diff를 /code-review(Codex는 직접 리뷰)와 .github/REVIEW.md의 번호 항목으로 리뷰하고(pre-PR review), 수정을 적용해 커밋하고, 사람이 봐야 할 지적을 표시한 뒤 리포지토리 템플릿으로 PR을 연다(open a PR)
 allowed-tools: Bash(git fetch:*), Bash(git status:*), Bash(git diff:*), Bash(git log:*), Bash(git show:*), Bash(git rev-parse:*), Bash(git add:*), Bash(git commit:*), Bash(gh pr create:*), Bash(gh pr view:*), Bash(npm run typecheck:*), Bash(npm run lint:*), Bash(npm run build:*), Bash(npm run openapi:*), Bash(npx vitest run:*), Read, Grep, Glob, Edit, Skill
 ---
 
@@ -20,9 +20,11 @@ git log --oneline origin/main..HEAD
 
 ## 2. 일반 리뷰
 
-브랜치 diff를 `main`과 비교해 `/code-review medium --fix`를 돌린다(Skill 툴, 스킬
-`code-review`, 인자는 `medium --fix`와 대상인 현재 브랜치). 지적마다 결과를 적는다:
-`fixed` 또는 `skipped`(와 그 이유).
+브랜치 diff를 `main`과 비교해 일반 리뷰를 돌린다. 지적마다 결과를 적는다: `fixed` 또는 `skipped`(와 그 이유).
+
+- Claude Code: `/code-review medium --fix`(Skill 툴, 스킬 `code-review`, 인자는 `medium --fix`와 대상인 현재 브랜치).
+- Codex: `git diff origin/main...HEAD`를 직접 읽고 정확성 버그(잘못된 조건, 빠진 오류 처리, 경합, 깨진 호출처)를 찾아
+  고친다. 사용자가 TUI에서 `/review`를 돌려 두었으면 그 지적도 같이 처리한다.
 
 ## 3. WorkBridge 기준 — `.github/REVIEW.md`
 
