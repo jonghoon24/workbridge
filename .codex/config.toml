@@ -1,0 +1,19 @@
+# 팀이 공유하는 Codex 설정. 프로젝트를 신뢰해야 로드된다. 처음 한 번 할 일과 함정은 docs/HARNESS.md.
+# 개인 설정(모델, 승인 방식)은 ~/.codex/config.toml에 둔다. 거기에 sandbox_mode가 있으면 아래 권한 프로필이 꺼진다.
+
+default_permissions = "workbridge"
+
+[permissions.workbridge]
+extends = ":workspace"
+
+# .claude/settings.json의 Read deny와 같은 글롭. 샌드박스 안의 모든 커맨드와 파일 편집에 걸리고 .env.example은 걸리지 않는다.
+[permissions.workbridge.filesystem.":workspace_roots"]
+"**/.env" = "deny"
+"**/.env.local" = "deny"
+"**/.env.test" = "deny"
+"**/.env.*.local" = "deny"
+"**/.env.production*" = "deny"
+
+# .mcp.json과 같은 서버. 개발자마다 `codex mcp login sentry`로 로그인한다.
+[mcp_servers.sentry]
+url = "https://mcp.sentry.dev/mcp"
