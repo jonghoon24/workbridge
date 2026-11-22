@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Stop: Claude가 끝내기 전에 HEAD 이후 바뀐 곳의 가벼운 정적 검사를 돌린다.
+# Stop: 에이전트가 끝내기 전에 HEAD 이후 바뀐 곳의 가벼운 정적 검사를 돌린다(Claude Code와 Codex 공용).
 #   workbridge-server/**/*.ts 변경 → npm run typecheck (src/와 test/ 모두)
 #   workbridge-server/**/*.{ts,js,mjs} 변경 → npm run lint (CI와 같은 기준)
 #   workbridge-client/src/** 변경   → npm run lint (경고도 실패. 기준은 package.json)
-# exit 2면 실패한 마지막 줄이 Claude에게 돌아가 작업을 이어 간다.
+# exit 2면 실패한 마지막 줄(stderr)이 에이전트에게 돌아가 작업을 이어 간다. 통과하면 stdout에 아무것도 쓰지 않고
+# exit 0으로 끝낸다(Codex는 exit 0일 때 stdout을 JSON으로 읽는다). 입력에서는 두 도구에 같은 `stop_hook_active`만 쓴다.
 # 서버 테스트 스위트는 일부러 돌리지 않는다. 실제 Postgres가 필요하고 오래 걸려서, DB가 없는 환경에서는
-# 매번 실패해 Claude를 붙잡는다. 파일 단위 테스트는 Claude가 `npx vitest run`으로 돌리고, 전체는 ci.yml이 돌린다.
+# 매번 실패해 에이전트를 붙잡는다. 파일 단위 테스트는 에이전트가 `npx vitest run`으로 돌리고, 전체는 ci.yml이 돌린다.
 # 통과한 작업 트리 상태(추적 안 된 파일 포함 해시)를 .git에 기록해 두고, 그 뒤로 아무것도 바뀌지 않았으면
 # 다시 돌리지 않는다 — 커밋하지 않은 변경을 둔 채 질문만 주고받는 턴마다 검사가 다시 도는 것을 막는다.
 set -uo pipefail

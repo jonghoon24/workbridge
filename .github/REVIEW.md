@@ -58,11 +58,11 @@
 
 11. **커밋된 마이그레이션은 고치지 않는다. 스키마 변경은 새 마이그레이션으로 한다.**
     - 근거: [`.claude/rules/prisma.md`](../.claude/rules/prisma.md).
-    - CI(`ci.yml`)가 검사한다. PR이 커밋된 마이그레이션 파일을 고치거나 지우거나 이름을 바꾸면 실패한다. 로컬에서는 훅(`protect-migrations.sh`)이 Claude의 Edit/Write를 막는다.
+    - CI(`ci.yml`)가 검사한다. PR이 커밋된 마이그레이션 파일을 고치거나 지우거나 이름을 바꾸면 실패한다. 로컬에서는 훅(`protect-migrations.sh`)이 에이전트의 파일 편집 툴을 막는다.
     - 확인: 새 모델이면 `test/helpers/db.ts`의 `TABLES`가, 필요하면 `prisma/seed.js`도 함께 바뀌었는지 본다.
 
 12. **실패한 테스트를 통과시키려고 단언을 지우거나 약하게 바꾸지 않는다. 버그를 고치는 PR에는 회귀 테스트가 있다.**
-    - 근거: `CLAUDE.md` "테스트", [`.claude/rules/tests.md`](../.claude/rules/tests.md).
+    - 근거: `AGENTS.md` "테스트", [`.claude/rules/tests.md`](../.claude/rules/tests.md).
     - 왜: 단언을 지금 응답에 맞춰 바꾸면 버그가 기대값으로 굳는다. 버그는 실패하는 테스트로 남기지 않고 이슈로만 추적한다. 그래서 고치는 PR의 회귀 테스트가 재발을 잡는 유일한 장치다.
     - 확인:
       - 기존 `expect(`가 지워지거나 느슨해진 곳을 찾는다. 기대 상태 코드나 메시지 변경, `toEqual` → `toMatchObject`, 검사하던 필드 삭제가 그 예다.
