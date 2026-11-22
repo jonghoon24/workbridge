@@ -1,5 +1,7 @@
 import type { NextFunction, Response } from 'express';
 
+import { logger } from '../lib/logger';
+import prisma from '../lib/prisma';
 import {
   approveMilestone,
   getMilestoneDetail,
@@ -55,6 +57,16 @@ export async function createSubmissionUploads(req: AuthedRequest, res: Response,
 /** `POST /api/milestones/:id/submissions`. */
 export async function createSubmission(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
+    const milestone = await prisma.milestone.findUnique({
+      where: { id: req.params.id },
+      select: { contractId: true, sequence: true },
+    });
+    logger.info('milestone submission received', {
+      milestoneId: req.params.id,
+      contractId: milestone?.contractId,
+      sequence: milestone?.sequence,
+      body: req.body,
+    });
     const result = await submitMilestone(req.params.id, req.user.id, req.body as SubmissionInput, new Date());
     res.status(201).json(result);
   } catch (err) {
